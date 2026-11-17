@@ -2,7 +2,7 @@
   <img src="https://github.com/corbitsdev/corbits-builder/raw/main/apps/web/src/assets/corbits-mark.svg" alt="Builder" width="96">
 </p>
 <h1 align="center">Builder</h1>
-<p align="center">Turn a half-baked idea into a working application, without being a developer.</p>
+<p align="center">Build, write, edit or improve anything by talking to one assistant, without being a developer.</p>
 <p align="center">
   <a href="https://github.com/corbitsdev/corbits-builder/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/corbitsdev/corbits-builder/actions/workflows/ci.yml/badge.svg"></a>
 </p>
@@ -17,24 +17,26 @@
 
 ## How it works
 
-1. **Describe it.** Tell the coordinator your idea; it asks what a product
-   person would.
-2. **Shape it.** It writes a brief, your constraints and a few approaches. You
-   pick one, and it fills in the requirements.
-3. **Choose a look.** Describe the look you want, or compare design concepts
-   side by side.
-4. **Build it.** It writes a build plan, then builds the app in a live preview.
-5. **Take it.** Download the source, the design and every document.
-
-You approve each document before anything moves on, answer open questions on
-question cards, and can ask for changes while the app is being built.
+1. **Say what you want.** Tell the coordinator what to build, write, edit or
+   improve: an app, a command-line tool, a library, a document, research, an
+   analysis, or a small change to something that exists. It asks what a
+   careful colleague would.
+2. **It brings in the help.** The coordinator composes specialists (a writer, a
+   designer, a coder, a presenter, a worker, an analyst and any others
+   installed) into a plan you can follow beside the conversation. There is no
+   fixed path, and a small change stays small.
+3. **Steer it.** Approve documents and designs on screens made for them, pick
+   fonts and colours, answer questions, or type what you want instead at any
+   point, including while something is being built. Say "just build it" to let
+   it go ahead without asking.
+4. **Take it.** Download the code, the design and every document.
 
 ## Quick start
 
 **With your coding agent.** In the folder where you want Builder, run
 
 ```bash
-npx skills add corbitsdev/corbits-builder
+bunx skills add corbitsdev/corbits-builder
 ```
 
 then tell your agent:
@@ -69,6 +71,7 @@ the app or in `.env.hub`
 - [User manual](https://github.com/corbitsdev/corbits-builder/blob/main/docs/USER_MANUAL.md): using Builder.
 - [Self-hosting](https://github.com/corbitsdev/corbits-builder/blob/main/docs/SELF_HOST.md): running it with Docker.
 - [Development](https://github.com/corbitsdev/corbits-builder/blob/main/docs/DEV.md) and [Contributing](https://github.com/corbitsdev/corbits-builder/blob/main/CONTRIBUTING.md): working on the code.
+- [Architecture: layers](https://github.com/corbitsdev/corbits-builder/blob/main/docs/ARCHITECTURE.md#layers-and-what-may-import-what): which parts of the repository may import which.
 - [AGENTS.md](https://github.com/corbitsdev/corbits-builder/blob/main/AGENTS.md): conventions for coding agents.
 - [skills/](https://github.com/corbitsdev/corbits-builder/tree/main/skills): agent skills to install Builder, drive it through its API and import a repository as a project.
 

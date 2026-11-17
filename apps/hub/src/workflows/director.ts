@@ -1,3 +1,4 @@
+import { FINISH_CHECK_HOLDS } from "../config/checks.ts";
 import { deflateSync } from "node:zlib";
 import { type } from "arktype";
 import { defaultDirectorFactory, defineDirector } from "@intx/agent/authoring";
@@ -6,13 +7,30 @@ import type {
   InferenceError,
   ReactorAction,
   ReactorDirector,
+  ReactorInboundEvent,
   RetryPolicy,
+  ToolCall,
 } from "@intx/types/runtime";
+import { COORDINATOR_NOTE_LEAD } from "@corbits-builder/schemas/native-specialist";
 import { MODEL_FAILURE_REPLIES, type Timeouts } from "../config/models.ts";
 import { REPETITION_ABORT } from "../inference/repetition.ts";
-import { readCheckDetail, type CheckDetail } from "../builds/check-detail.ts";
-import { accessRefused } from "./http-json.ts";
-import { COMPACTOR, DROP_DEGENERATE, textOf } from "./compaction.ts";
+import {
+  DONE_CHECKS_TOOL,
+  readCheckDetail,
+  readDoneChecks,
+  type CheckDetail,
+} from "../builds/check-detail.ts";
+import type { DoneChecks, RunBlock } from "@corbits-builder/schemas/activity";
+import { accessRefused } from "@corbits-builder/plugin/http-json";
+import { BLOCKED_RULE, END_BLOCKED_RUN, REPORT_BLOCKED } from "./blocked.ts";
+import {
+  COMPACTOR,
+  DROP_DEGENERATE,
+  HELD_REPLY,
+  isDirectorNote,
+  REPEATED_FAILURE,
+  textOf,
+} from "./compaction.ts";
 
 // About 1 coder turn in 100 skipped reasoning and repeated one sentence ("Ok to write. Let me
 // write.") for 220000 to 280000 characters until the output cap. The default director mailed it to
@@ -22,6 +40,9 @@ import { COMPACTOR, DROP_DEGENERATE, textOf } from "./compaction.ts";
 // 2390. Final. Done." upward; both compress below a fifth of their size, where the long reasoning
 // in 128 kept traces compressed to between 0.04 and 0.44 and no long text-only turn was anything
 // but a runaway.
+// What a run fails with when the provider refuses its sign-in; the hub reads it back from the run.
+export const SIGN_IN_REJECTED = "model_credentials_rejected:";
+
 const MAX_DEGENERATE_TURNS = 2;
 // The sample after a cut stream is not the same request again: a fresh seed, and a presence
 // penalty on tokens the new turn has already produced. Only the OpenAI-compatible adapter cuts a
@@ -60,7 +81,7 @@ function isDegenerate(turn: ConversationTurn): boolean {
 }
 
 // A turn cut off while reasoning ends in a thinking block, which Anthropic refuses to take back
-// (400 "The final block in an assistant message cannot be thinking", run_517bbd62 on 2026-10-30).
+// (400 "The final block in an assistant message cannot be thinking").
 const isCutOff = (turn: ConversationTurn) =>
   turn.role === "assistant" &&
   !turn.content.some(
@@ -69,15 +90,75 @@ const isCutOff = (turn: ConversationTurn) =>
       (block.type === "text" && block.text.trim()),
   );
 
+// A turn with two or more calls that ask the person runs its calls one at a time, the next once the
+// one before has its result. A call that asks parks the run, and the run reports only the first call
+// parked, so a second parked in the same batch was never asked about nor answered and the next
+// inference failed on its unanswered call. The default director never sees such a batch, so every
+// tool.done of it that reaches the default director infers.
+function nextCall(
+  event: ReactorInboundEvent,
+  turns: ConversationTurn[],
+  asks: ReadonlySet<string>,
+): ToolCall | undefined {
+  if (
+    event.type !== "inference.done" &&
+    event.type !== "tool.done" &&
+    event.type !== "resume.tool_result"
+  )
+    return undefined;
+  const at = turns.findLastIndex((turn) => turn.role === "assistant");
+  const asking = turns[at]?.content.filter(
+    (block) => block.type === "tool_call" && asks.has(block.name),
+  );
+  if (asking === undefined || asking.length < 2) return undefined;
+  const answered = new Set(
+    turns
+      .slice(at + 1)
+      .flatMap((turn) =>
+        turn.content.flatMap((block) =>
+          block.type === "tool_result" ? [block.callId] : [],
+        ),
+      ),
+  );
+  const call = turns[at]?.content.find(
+    (block) => block.type === "tool_call" && !answered.has(block.id),
+  );
+  if (call?.type !== "tool_call") return undefined;
+  return { id: call.id, name: call.name, arguments: call.arguments };
+}
+
 // A turn that spends the whole output budget reasoning ends with neither text nor a tool call, which
 // left the designer parked, so the turn is dropped and sampled again, a few times.
 const MAX_EMPTY_TURNS = 3;
 
-// After this many held replies the reply goes out as it is, so a model that cannot pass is not held forever.
+// After this many held replies the run fails as not finished, so a model that cannot do the work is
+// not held forever, and its reply never reaches the coordinator as a finished report.
 const MAX_UNCHECKED_REPLIES = 3;
 
-// What a run fails with when the provider refuses its sign-in; the hub reads it back from the run.
-export const SIGN_IN_REJECTED = "model_credentials_rejected:";
+// What a held reply is told besides what is missing.
+const FINISH_OR_SAY_WHY = ` Do that, then reply. If it cannot be done, reply saying why; after ${MAX_UNCHECKED_REPLIES} held replies the run ends as not finished, with your last reply as the reason.`;
+
+// Why a run whose replies were held every time failed: what it did not do, and its last words.
+const notFinished = (reason: string, lastWords: string) =>
+  `not_finished: ${MAX_UNCHECKED_REPLIES + 1} replies in a row came before the work was done. ${reason} Its last reply: ${JSON.stringify(lastWords)}`;
+
+// The checks a finished reply waits on: the checks of a plugin that its action's done names.
+type Done = { plugin: string; checks: string[] };
+
+// What a held reply is told of the done checks that failed on the app as saved, with their evidence.
+function failedChecks(
+  done: Done,
+  ran: Extract<DoneChecks, { results: unknown }>,
+): string | undefined {
+  const failed = ran.results.filter(({ result }) => result === "fail");
+  if (failed.length === 0) return undefined;
+  const at = ran.commit === undefined ? "" : ` at commit ${ran.commit}`;
+  const each = failed.map(
+    ({ check, summary, evidence }) =>
+      `${done.plugin} ${check} failed: ${summary}${evidence.length > 0 ? `\nEvidence:\n${evidence.join("\n")}` : ""}`,
+  );
+  return `Builder ran the checks the work must pass on the app as saved${at}, and ${each.join("\n\n")}\n\nFix the app so they pass; they run again on your next reply.`;
+}
 
 const TRANSIENT_ERRORS: ReadonlySet<InferenceError["category"]> = new Set([
   "retryable",
@@ -169,11 +250,20 @@ const withRetryPolicy = (
 });
 
 // Shell edits the done gate counts as changes: redirection into a file (not 2>&1 or >/dev/null),
-// tee, sed -i, mv, cp, rm and touch.
+// tee, sed -i, mv, cp, rm and touch. Telling where a command writes would take a shell parser, so
+// one into a build folder or outside the workspace counts too, and the hold says to make the finish
+// check the last call instead.
 const SHELL_WRITE =
   /(?<![0-9&])>>?\s*(?!&|\/dev\/null)\S|\b(tee|sed\s+-i|mv|cp|rm|touch)\b/;
 
 const WRITE_TOOLS = new Set(["write_file", "edit_file"]);
+// A user turn that hands the agent a new task: mail, rather than a tool result or a director's note.
+const isTask = (turn: ConversationTurn) =>
+  turn.role === "user" &&
+  turn.content.some(
+    (block) => block.type === "text" && !isDirectorNote(block.text),
+  );
+
 // The current task's calls, newest first: everything after the last mail the agent was handed.
 function taskCalls(turns: readonly ConversationTurn[]) {
   const results = new Map<string, { detail: unknown; isError: boolean }>();
@@ -186,11 +276,7 @@ function taskCalls(turns: readonly ConversationTurn[]) {
   }[] = [];
   for (let index = turns.length - 1; index >= 0; index--) {
     const turn = turns[index]!;
-    if (
-      turn.role === "user" &&
-      turn.content.some((block) => block.type === "text")
-    )
-      break;
+    if (isTask(turn)) break;
     for (const block of [...turn.content].reverse()) {
       if (block.type === "tool_result")
         results.set(block.callId, {
@@ -236,15 +322,27 @@ const ranShell = (call: TaskCall, pattern: RegExp) =>
   typeof call.command === "string" &&
   pattern.test(call.command);
 
+const changesFiles = (call: TaskCall) =>
+  WRITE_TOOLS.has(call.name) || ranShell(call, SHELL_WRITE);
+
 // Run 36's coder passed check-app, kept editing, broke the app and would have replied done; a reply
-// counts as done only when no file changed after the last passing check. check_design is the
-// designer's check-app and files the design when it passes.
-function unchecked(turns: readonly ConversationTurn[]): boolean {
+// counts as done only when no file changed after the last passing check. The coder's tools mark only
+// its finish check, check-stack, as one. check_design is the designer's check-app and files the
+// design when it passes. Where the task's finish check stands: done (it passed after the last
+// change, or nothing changed), never run since files changed, failed when last run, or passed
+// with files changed after it.
+function finishCheck(
+  turns: readonly ConversationTurn[],
+): "done" | "unrun" | "failed" | "changed" {
+  let changed = false;
   for (const call of taskCalls(turns)) {
-    if (call.check) return call.isError || !call.check.checkPassed;
-    if (WRITE_TOOLS.has(call.name) || ranShell(call, SHELL_WRITE)) return true;
+    if (call.check) {
+      if (call.isError || !call.check.checkPassed) return "failed";
+      return changed ? "changed" : "done";
+    }
+    if (changesFiles(call)) changed = true;
   }
-  return false;
+  return changed ? "unrun" : "done";
 }
 
 const filed = (call: TaskCall) =>
@@ -253,72 +351,209 @@ const filed = (call: TaskCall) =>
     call.name === "file_package" ||
     call.check?.filed === true);
 
-// A writer on 2026-10-30 replied with the whole approaches document as text and never filed it;
-// the coordinator waited on a writer that had already answered. A designer's reply also waits for a
-// filed design option after the last file change. A presenter files the approval package with
-// file_package.
-function unfiled(turns: readonly ConversationTurn[]): boolean {
+// The call that filed the task's work, unless a file changed after it. A writer can reply with its
+// whole document as text and never file it, leaving the coordinator waiting on a writer that has
+// already answered. A designer's reply also waits for a filed design option after the last file
+// change. The approval package is filed with file_package.
+function lastFiling(turns: readonly ConversationTurn[]): TaskCall | undefined {
   for (const call of taskCalls(turns)) {
-    if (filed(call)) return false;
-    if (WRITE_TOOLS.has(call.name) || ranShell(call, SHELL_WRITE)) return true;
-  }
-  return true;
-}
-
-const READ_TOOLS = new Set(["read_artifact", "read_skill", "read_file"]);
-const ApprovalDetail = type({ canStart: "string[] > 0" });
-
-/*
- * A model often answers an approval by saying the document is ready for approval and starting
- * nothing. The steps the approval opened are still waiting while only reads follow it.
- */
-function unstartedSteps(
-  turns: readonly ConversationTurn[],
-): string[] | undefined {
-  // A reply that asks the person something hands the turn to them on purpose.
-  const asks = turns
-    .at(-1)
-    ?.content.some(
-      (block) => block.type === "text" && /[?？]/.test(block.text),
-    );
-  if (asks) return undefined;
-  for (const call of taskCalls(turns)) {
-    if (call.name === "request_approval") {
-      const detail = ApprovalDetail(call.detail);
-      return call.isError || detail instanceof type.errors
-        ? undefined
-        : detail.canStart;
-    }
-    if (!READ_TOOLS.has(call.name)) return undefined;
+    if (filed(call)) return call;
+    if (changesFiles(call)) return undefined;
   }
   return undefined;
+}
+
+const unfiled = (turns: readonly ConversationTurn[]) =>
+  lastFiling(turns) === undefined;
+
+const DESIGN_CHOSEN_BY_BUILDER =
+  "This design was chosen automatically because the person handed approvals over to Builder; they can ask to see or change it.";
+
+// What a reply after filed work ends with: the screens that show it, or, for a design option Builder
+// chose itself, that nobody needs to choose it; nothing when the work is not filed.
+function filedEnding(
+  turns: readonly ConversationTurn[],
+  presents: string,
+): string | undefined {
+  const filing = lastFiling(turns);
+  if (!filing) return undefined;
+  return filing.check?.designChosen ? DESIGN_CHOSEN_BY_BUILDER : presents;
 }
 
 function holdReply(
   config: {
-    checkBeforeDone?: boolean;
+    checkBeforeDone?: string | null;
     fileBeforeDone?: boolean;
-    startAfterApproval?: boolean;
   },
   turns: readonly ConversationTurn[],
-  held: number,
 ): string | undefined {
   // A refused access ends the agent's job: the reply it led to says what it finished, so nothing
   // holds it.
   if (refusedBeforeReply(turns)) return undefined;
-  if (config.checkBeforeDone && unchecked(turns))
-    return "Files changed after the last passing check-app, so the work is not done yet.";
+  if (config.checkBeforeDone) {
+    const state = finishCheck(turns);
+    if (state !== "done")
+      return FINISH_CHECK_HOLDS[state](config.checkBeforeDone);
+  }
   if (config.fileBeforeDone && unfiled(turns)) {
     if (config.checkBeforeDone)
-      return "The design option is not filed yet; check_design validates and files it.";
+      return `The design option is not filed yet; ${config.checkBeforeDone} validates and files it.`;
     return "The document is not filed yet; write_artifact files it.";
   }
-  // The person may have asked to wait, so the approval is a reminder once rather than a rule.
-  const steps =
-    config.startAfterApproval && held === 0 ? unstartedSteps(turns) : undefined;
-  if (steps)
-    return `The approval went through, so these can start now: ${steps.join(", ")}. Start what the person wants next, unless they asked to wait.`;
   return undefined;
+}
+
+// Whether the agent reported a block in its current task, which its next reply ends the run on.
+const reportedBlock = (turns: readonly ConversationTurn[]) =>
+  taskCalls(turns).some(
+    (call) => call.name === REPORT_BLOCKED && !call.isError,
+  );
+
+// A designer's file tools were refused 99 times for one reason it could not change. Three in a row
+// is one past the twice the shared rule allows, so the agent is told once.
+const NOTE_AFTER_FAILURES = 3;
+// Three more after the note were three chances to change course, so the run ends.
+const END_AFTER_FAILURES = 6;
+// The repeated error is the recorded reason; a block's reason holds at most 2000 characters.
+const FAILURE_QUOTE_CHARS = 500;
+
+const JsonCode = type({ code: "string > 0" });
+
+// What a failed call's result says went wrong, as one key across tools: the code before the first
+// colon of a refusal such as "artifact_write_refused: ...", or a JSON error body's code, else the
+// whole text.
+function failureKey(text: string): string {
+  const code = /^([a-z][a-z0-9_.-]*):/.exec(text)?.[1];
+  if (code !== undefined) return code;
+  if (text.trimStart().startsWith("{")) {
+    try {
+      const body = JsonCode(JSON.parse(text));
+      if (!(body instanceof type.errors)) return body.code;
+    } catch (cause) {
+      if (!(cause instanceof SyntaxError)) throw cause;
+    }
+  }
+  return text.trim().replaceAll(/\s+/g, " ");
+}
+
+/**
+ * The newest turns of tool results of the current task that failed the same way in a row, and the
+ * newest failure. A success or a different failure ends the run of them.
+ */
+function failureStreak(turns: readonly ConversationTurn[]) {
+  const streak = { count: 0, key: "", latest: "" };
+  for (let index = turns.length - 1; index >= 0; index--) {
+    const turn = turns[index]!;
+    if (isTask(turn)) return streak;
+    // One turn holds one model call's results, and a batch of them failing alike is one mistake.
+    let counted = false;
+    for (const block of [...turn.content].reverse()) {
+      if (block.type !== "tool_result") continue;
+      const said = textOf(block.content);
+      if (block.isError !== true) return streak;
+      const key = failureKey(said);
+      if (streak.count === 0) {
+        streak.key = key;
+        streak.latest = said;
+      }
+      if (key !== streak.key) return streak;
+      if (!counted) streak.count += 1;
+      counted = true;
+    }
+  }
+  return streak;
+}
+
+const quoted = (text: string) =>
+  text.length > FAILURE_QUOTE_CHARS
+    ? `${text.slice(0, FAILURE_QUOTE_CHARS)}…`
+    : text;
+
+// The note at the third identical failure; a role without the blocked exit is told only to change
+// course.
+const repeatedFailureNote = (latest: string, blocks: boolean) =>
+  `${REPEATED_FAILURE}your last ${NOTE_AFTER_FAILURES} calls failed with the same error: ${JSON.stringify(quoted(latest))}. Trying again will not change it. Take a different approach${blocks ? `, or if nothing you can do changes it, report the block with ${REPORT_BLOCKED}` : ""}.`;
+
+type Caps = Parameters<ReactorDirector["decide"]>[2];
+
+/**
+ * A director with the way out of work the agent cannot get past. With blocks, once the agent has
+ * reported a block its next reply is let through whatever would hold it and ends the run. Three
+ * turns of tool results in a row that fail the same way get one note to change course; with blocks,
+ * six end the run as blocked by Builder. A run ends as blocked by a stop, not a reply, so its assignment
+ * stays unanswered and the coordinator gets the blocked note.
+ */
+function withBlockedExit(
+  director: ReactorDirector,
+  blocks: boolean,
+): ReactorDirector {
+  let endCall: string | undefined;
+  let endings = 0;
+  // Whether the current streak of identical failures has had its note.
+  let noted = false;
+  // Records Builder's own block first when given one.
+  const endBlocked = (caps: Caps, block: RunBlock | Record<string, never>) => {
+    endings += 1;
+    endCall = `end-blocked-${endings}`;
+    return [
+      caps.checkpoint("blocked"),
+      caps.executeTools(
+        [{ id: endCall, name: END_BLOCKED_RUN, arguments: block }],
+        false,
+        false,
+      ),
+    ];
+  };
+  const brake = (turns: readonly ConversationTurn[], caps: Caps) => {
+    const streak = failureStreak(turns);
+    if (streak.count < NOTE_AFTER_FAILURES) {
+      noted = false;
+      return undefined;
+    }
+    if (blocks && streak.count >= END_AFTER_FAILURES)
+      return endBlocked(caps, {
+        reason: quoted(streak.latest),
+        tried: `Ended by Builder after ${END_AFTER_FAILURES} identical failures in a row.`,
+      });
+    if (noted) return undefined;
+    noted = true;
+    return [
+      caps.checkpoint("repeated-failures"),
+      caps.compact(DROP_DEGENERATE, repeatedFailureNote(streak.latest, blocks)),
+    ];
+  };
+  return {
+    decide: async (event, state, caps) => {
+      // The hub stops the run once its end is requested, so it waits for that rather than replying.
+      if (event.type === "tool.done" && event.result.callId === endCall) {
+        endCall = undefined;
+        const { content, isError } = event.result;
+        if (isError)
+          throw new Error(
+            `blocked_run_not_ended: ${typeof content === "string" ? content : JSON.stringify(content)}`,
+          );
+        return [caps.checkpoint("blocked-run-ending"), caps.wait()];
+      }
+      if (
+        blocks &&
+        event.type === "inference.done" &&
+        !event.turn.content.some((block) => block.type === "tool_call") &&
+        reportedBlock(state.turns)
+      )
+        return endBlocked(caps, {});
+      const decided = await director.decide(event, state, caps);
+      // After a turn's results, before the agent sees them.
+      const infers = (Array.isArray(decided) ? decided : [decided]).some(
+        (action) => action.type === "infer",
+      );
+      if (
+        infers &&
+        (event.type === "tool.done" || event.type === "resume.tool_result")
+      )
+        return brake(state.turns, caps) ?? decided;
+      return decided;
+    },
+  };
 }
 
 /**
@@ -327,26 +562,38 @@ function holdReply(
  * too long. A turn cut off with no text and no tool call is continued instead of parked, and a
  * turn that only repeats one sentence is dropped and sampled again, as is a stream the source adapter
  * cut for repeating one passage. The third such turn in one task fails the run, or with
- * replyOnFailure is the reply. With checkBeforeDone, a final reply waits for a passing check-app
- * after the last file change; with fileBeforeDone, it waits for a filed document; with
- * startAfterApproval, a reply after an approval that starts and asks nothing is held once. A reply
- * after a Builder tool refused the agent's access is never held. Every inference retries an
+ * replyOnFailure is the reply. With checkBeforeDone, a final reply waits for a passing finish check
+ * after the last file change; with fileBeforeDone, it waits for a filed document; with done, a reply
+ * those rules let out waits for the hub to run the named checks on the app as saved, and goes out
+ * only when they pass. Each held reply is answered in the same conversation with what is missing,
+ * and a fourth fails the run as not finished; done checks that could not be run twice in a row fail
+ * it too. A reply after a Builder tool refused the agent's access is never held. With presents, a
+ * reply after filed work ends with it, so the coordinator reads which screen shows the work, or with
+ * a line that Builder chose the design itself when approvals are handed over. Every inference retries an
  * overloaded, slow or rate-limited model a few times; once that gives up, the run fails, or with
- * replyOnFailure the reply says what failed. The model-specific numbers come from the agent
+ * replyOnFailure the reply says what failed. An agent offered report_blocked carries the shared rule on
+ * using it, and once it has reported a block its next reply is not held and ends the run as blocked.
+ * Three tool results in a row that fail the same way get one note to change course; with the
+ * blocked exit, six end the run as blocked by Builder. The model-specific numbers come from the agent
  * definition's director config.
  */
 export const compactingDirector = (packageName: string) =>
   defineDirector<{
     contextWindow: number;
     compactAt: number;
-    // Whether a final reply waits for a passing check-app after the last file change.
-    checkBeforeDone?: boolean;
+    // The finish check a final reply waits on, passing after the last file change, by the name the
+    // agent runs it by; null for none.
+    checkBeforeDone?: string | null;
     // Whether a final reply waits for a write_artifact that filed the task's document.
     fileBeforeDone?: boolean;
-    // Whether a reply after an approval that starts and asks nothing is held once.
-    startAfterApproval?: boolean;
+    // The checks the hub runs on the saved result before a final reply goes out; null for none.
+    done?: Done | null;
     // Whether a runaway or a model failure is the reply rather than a failed run.
     replyOnFailure?: boolean;
+    // What a reply after filed work ends with: the screen that shows the work to the person.
+    presents?: string | null;
+    // The tools offered with approval "ask", by the same policy that offers them.
+    asks?: string[];
     // Timeouts every inference carries, where the source overrides Interchange's defaults.
     timeouts: Timeouts;
   }>({
@@ -354,10 +601,16 @@ export const compactingDirector = (packageName: string) =>
     configSchema: type({
       contextWindow: "number.integer > 0",
       compactAt: "0 < number < 1",
-      "checkBeforeDone?": "boolean",
+      "checkBeforeDone?": "string > 0 | null",
       "fileBeforeDone?": "boolean",
-      "startAfterApproval?": "boolean",
+      "done?": type({
+        "+": "reject",
+        plugin: "string > 0",
+        checks: type("string > 0").array().atLeastLength(1),
+      }).or("null"),
       "replyOnFailure?": "boolean",
+      "presents?": "string | null",
+      "asks?": "string[]",
       timeouts: {
         "+": "reject",
         "totalTimeoutMs?": "number.integer > 0",
@@ -365,13 +618,56 @@ export const compactingDirector = (packageName: string) =>
       },
     }),
     factory: (config, env, agent) => {
-      const inner = defaultDirectorFactory({}, env, agent) as ReactorDirector;
+      // The done checks and ending a blocked run are the director's own calls, never the model's.
+      const offered = agent.toolDefinitions.filter(
+        (tool) =>
+          tool.name !== DONE_CHECKS_TOOL && tool.name !== END_BLOCKED_RUN,
+      );
+      // A specialist has the blocked exit; the coordinator, which has no one above it to tell, does not.
+      const blocks = offered.some((tool) => tool.name === REPORT_BLOCKED);
+      const systemPrompt = blocks
+        ? `${agent.systemPrompt}\n\n${BLOCKED_RULE}`
+        : agent.systemPrompt;
+      const inner = defaultDirectorFactory({}, env, {
+        systemPrompt,
+        toolDefinitions: offered,
+        compactorNames: agent.compactorNames,
+      }) as ReactorDirector;
+      const asks = new Set(config.asks);
       const limit = Math.floor(config.contextWindow * config.compactAt);
       let compactedSinceInference = false;
       let emptyTurns = 0;
       let degenerateTurns = 0;
       let uncheckedReplies = 0;
-      let notDoneReason: string | undefined;
+      // The reply waiting on its done checks, by the call that runs them; the reply they passed; and
+      // how many times in a row they could not be run.
+      let checking:
+        | {
+            callId: string;
+            replied: Extract<ReactorInboundEvent, { type: "inference.done" }>;
+          }
+        | undefined;
+      let checkedTurn: ConversationTurn | undefined;
+      let doneRuns = 0;
+      let unrunChecks = 0;
+      // A held reply is answered in the same conversation with what is missing; the fourth in a row
+      // fails the run as not finished.
+      const hold = (
+        caps: Parameters<ReactorDirector["decide"]>[2],
+        notDone: string,
+        lastWords: string,
+      ) => {
+        uncheckedReplies += 1;
+        if (uncheckedReplies > MAX_UNCHECKED_REPLIES)
+          throw new Error(notFinished(notDone, lastWords));
+        return [
+          caps.checkpoint("reply-before-done"),
+          caps.compact(
+            DROP_DEGENERATE,
+            HELD_REPLY + notDone + FINISH_OR_SAY_WHY,
+          ),
+        ];
+      };
       // A thrown error is the reactor's fatal path (INFERENCE.md "Director Decision Function"): it
       // emits reactor.error and ends the run failed, which reaches the coordinator as a specialist
       // ended notice instead of a reply that reads as the specialist's result.
@@ -386,6 +682,37 @@ export const compactingDirector = (packageName: string) =>
       const director: ReactorDirector = {
         decide: async (event, state, caps) => {
           if (event.type === "message.received") degenerateTurns = 0;
+          const { done } = config;
+          if (
+            done &&
+            event.type === "tool.done" &&
+            event.result.callId === checking?.callId
+          ) {
+            const { replied } = checking;
+            checking = undefined;
+            const lastWords = textOf(replied.turn.content);
+            const ran = readDoneChecks(event.result);
+            const names = done.checks
+              .map((check) => `${done.plugin} ${check}`)
+              .join(", ");
+            if ("unrun" in ran) {
+              unrunChecks += 1;
+              if (unrunChecks > 1)
+                throw new Error(
+                  `not_finished: ${names} could not be run on the app as saved: ${ran.unrun}. Its last reply: ${JSON.stringify(lastWords)}`,
+                );
+              return hold(
+                caps,
+                `Builder could not run ${names} on the app as saved, so the work is not known to be done: ${ran.unrun}.`,
+                lastWords,
+              );
+            }
+            unrunChecks = 0;
+            const failed = failedChecks(done, ran);
+            if (failed) return hold(caps, failed, lastWords);
+            checkedTurn = replied.turn;
+            return director.decide(replied, state, caps);
+          }
           // The source adapter cut a stream that repeated one passage; nothing of the turn was kept.
           if (
             event.type === "inference.error" &&
@@ -397,23 +724,12 @@ export const compactingDirector = (packageName: string) =>
               return [
                 caps.checkpoint("repetition-abort"),
                 caps.infer({
-                  systemPrompt: agent.systemPrompt,
-                  tools: [...agent.toolDefinitions],
+                  systemPrompt,
+                  tools: offered,
                   providerOptions: resample(),
                 }),
               ];
             return runaways(caps);
-          }
-          if (event.type === "compaction.done" && notDoneReason) {
-            const reason = notDoneReason;
-            notDoneReason = undefined;
-            return [
-              caps.checkpoint("reply-before-done"),
-              caps.infer({
-                systemPrompt: `${agent.systemPrompt}\n\n${reason}`,
-                tools: [...agent.toolDefinitions],
-              }),
-            ];
           }
           if (event.type === "inference.done") {
             compactedSinceInference = false;
@@ -444,17 +760,32 @@ export const compactingDirector = (packageName: string) =>
               (block) => block.type === "tool_call",
             );
             const notDone = replying
-              ? holdReply(config, state.turns, uncheckedReplies)
+              ? holdReply(config, state.turns)
               : undefined;
-            if (notDone) {
-              uncheckedReplies += 1;
-              if (uncheckedReplies <= MAX_UNCHECKED_REPLIES) {
-                notDoneReason = notDone;
-                return [
-                  caps.checkpoint("reply-before-done"),
-                  caps.compact(DROP_DEGENERATE, "reply before done"),
-                ];
-              }
+            if (notDone) return hold(caps, notDone, textOf(event.turn.content));
+            // The rules above passed; the hub runs the done checks before the reply goes out.
+            if (
+              replying &&
+              done &&
+              event.turn !== checkedTurn &&
+              !refusedBeforeReply(state.turns)
+            ) {
+              doneRuns += 1;
+              checking = { callId: `done-checks-${doneRuns}`, replied: event };
+              return [
+                caps.checkpoint("done-checks"),
+                caps.executeTools(
+                  [
+                    {
+                      id: checking.callId,
+                      name: DONE_CHECKS_TOOL,
+                      arguments: { plugin: done.plugin, checks: done.checks },
+                    },
+                  ],
+                  false,
+                  false,
+                ),
+              ];
             }
             if (replying) uncheckedReplies = 0;
           }
@@ -469,8 +800,26 @@ export const compactingDirector = (packageName: string) =>
               caps.compact(COMPACTOR, "context_overflow"),
             ];
           }
-          const actions = await inner.decide(event, state, caps);
-          const list = Array.isArray(actions) ? actions : [actions];
+          const next = nextCall(event, state.turns, asks);
+          if (next)
+            return [
+              caps.checkpoint("tool-execution"),
+              caps.executeTools([next], false),
+            ];
+          const decided = await inner.decide(event, state, caps);
+          const list = Array.isArray(decided) ? decided : [decided];
+          const ending = config.presents
+            ? filedEnding(state.turns, config.presents)
+            : undefined;
+          const actions = ending
+            ? list.map((action) =>
+                action.type === "reply"
+                  ? caps.reply(
+                      `${action.content}${COORDINATOR_NOTE_LEAD}${ending}`,
+                    )
+                  : action,
+              )
+            : decided;
           const input = state.lastCycleUsage
             ? state.lastCycleUsage.input + state.lastCycleUsage.cacheRead
             : 0;
@@ -488,6 +837,10 @@ export const compactingDirector = (packageName: string) =>
           return actions;
         },
       };
-      return withRetryPolicy(director, !config.replyOnFailure, config.timeouts);
+      return withRetryPolicy(
+        withBlockedExit(director, blocks),
+        !config.replyOnFailure,
+        config.timeouts,
+      );
     },
   });

@@ -768,8 +768,24 @@ export const QuestionArguments = type({
 export type QuestionArguments = typeof QuestionArguments.infer;
 
 /**
+ * A screen the host parks a call on instead of prompts: a plugin, one of its
+ * actions, and the input the person's interface draws. The runtime carries the
+ * input without reading it. `questions` is ruled out so the union with
+ * prompts, whose defaults are morphs, can tell the two apart.
+ */
+export const QuestionScreen = type({
+  "+": "reject",
+  plugin: "string > 0",
+  action: "string > 0",
+  input: "Record<string, unknown>",
+  "questions?": "never",
+});
+export type QuestionScreen = typeof QuestionScreen.infer;
+
+/**
  * A paused `question` call as people see it: each prompt carries the id the
  * runtime gave it, and the person's answer names those ids.
+ * A screen is kept as the host asked it.
  */
 export const AskedQuestion = type({
   "+": "reject",
@@ -778,7 +794,7 @@ export const AskedQuestion = type({
     .array()
     .atLeastLength(1)
     .atMostLength(5),
-});
+}).or(QuestionScreen);
 export type AskedQuestion = typeof AskedQuestion.infer;
 
 /** A question a workflow run asked, and where it stands in the run's log. */
@@ -1503,6 +1519,11 @@ export type PendingOperation = {
   approvalSnapshot?: ApprovalSnapshot;
   /** The prompts of a `kind: "question"` operation, for the person who answers. */
   question?: AskedQuestion;
+  /**
+   * The parked call runs once the person answers its screen, rather than
+   * taking the answer as its result.
+   */
+  rerun?: true;
 };
 
 /**

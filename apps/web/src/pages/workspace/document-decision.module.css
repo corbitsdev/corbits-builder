@@ -11,12 +11,8 @@
   color: var(--wb-muted-foreground);
 }
 
-.what {
-  margin: 0;
-}
-
 /* The library card always renders Approve always as its second action.
-   Document cards and the design card do not offer that standing grant. */
+   A tool ask's card does not offer that standing grant. */
 .decision[data-once]
   [data-slot="tool-approval-card"]
   > div:last-child
@@ -28,12 +24,8 @@
    label fills the row, Not yet wraps, and the auto margin pins it to the
    right edge, so Not yet drops that margin. A label wider than the card
    wraps between words inside its own button; the card's overflow-wrap
-   anywhere would otherwise break it a letter at a time. The design card
-   sizes its actions on their own. */
-.decision:not([data-design])
-  [data-slot="tool-approval-card"]
-  > div:last-child
-  > button {
+   anywhere would otherwise break it a letter at a time. */
+.decision [data-slot="tool-approval-card"] > div:last-child > button {
   flex-shrink: 1;
   min-width: 0;
   height: auto;
@@ -43,36 +35,12 @@
   word-break: normal;
 }
 
-.decision:not([data-design])
+.decision
   [data-slot="tool-approval-card"]
   > div:last-child
   > button:last-child {
   flex-shrink: 0;
   margin-inline-start: 0;
-}
-
-/* Design approval: the two actions share one line and one height, and Not
-   yet is not pinned to the right edge. Each starts at its label's width and
-   shares the spare room, so a label wraps between words only once the line
-   is too narrow for it; the button centres its text, so clipping it would
-   cut both ends. */
-.decision[data-design] [data-slot="tool-approval-card"] > div:last-child {
-  flex-wrap: nowrap;
-  align-items: stretch;
-}
-
-.decision[data-design]
-  [data-slot="tool-approval-card"]
-  > div:last-child
-  > button {
-  flex: 1 1 auto;
-  margin-inline-start: 0;
-  height: auto;
-  min-height: 2rem;
-  white-space: normal;
-  overflow-wrap: normal;
-  word-break: normal;
-  text-align: center;
 }
 
 /* The library keeps a settled line's words from shrinking, so a long document title ran past the
@@ -83,67 +51,6 @@
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-}
-
-/* A long document title wraps inside the card instead of running past its edge. */
-.show {
-  align-self: flex-start;
-  max-width: 100%;
-  height: auto;
-  padding: 0;
-  white-space: normal;
-  text-align: start;
-  overflow-wrap: anywhere;
-}
-
-.sources {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.concepts {
-  width: 100%;
-  margin: 0;
-  border-collapse: collapse;
-}
-
-.concepts th,
-.concepts td {
-  padding: var(--space-1) var(--space-3) var(--space-1) 0;
-  text-align: start;
-  vertical-align: baseline;
-  font-weight: 400;
-}
-
-.concepts thead th {
-  font-weight: 600;
-  color: var(--wb-muted-foreground);
-}
-
-.concepts tbody td:first-child {
-  font-weight: 600;
-}
-
-.details summary {
-  color: var(--wb-muted-foreground);
-  font-size: 0.75rem;
-  cursor: pointer;
-}
-
-/* An opened list of many versions scrolls inside the card, so the decision stays in view. */
-.details .sources {
-  max-height: 16rem;
-  margin-top: var(--space-1);
-  overflow-y: auto;
-}
-
-.details p {
-  margin: var(--space-1) 0 0;
-  font-size: 0.75rem;
 }
 
 .next {

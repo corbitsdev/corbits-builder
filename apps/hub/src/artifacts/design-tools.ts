@@ -4,12 +4,11 @@ import { HUB_CREDENTIAL_HANDLE } from "@intx/types/credential-delivery";
 import type { RuntimeCapabilities } from "@intx/types/runtime-capabilities";
 import {
   DesignBundle,
-  type ArtifactRef,
+  HubArtifactReceipt,
 } from "@corbits-builder/schemas/artifact";
 import type { PreparedDesignSubmission } from "./design-draft.ts";
 import { resolveWorkflowProjectScope } from "../workflows/project-scope.ts";
-import { workflowHttpJson } from "../workflows/http-json.ts";
-import { HubArtifactReceipt } from "./tools.ts";
+import { workflowHttpJson } from "@corbits-builder/plugin/http-json";
 
 // Writes a bundle's files under root, skipping any path that would land outside it.
 export async function writeBundle<T extends string | Uint8Array>(
@@ -38,20 +37,17 @@ export async function unpackDesign(content: string, workspace: string) {
 
 export async function fileDesignOption(
   capabilities: RuntimeCapabilities,
+  role: string,
   submission: PreparedDesignSubmission,
   signal: AbortSignal,
-): Promise<ArtifactRef> {
-  const scope = await resolveWorkflowProjectScope(
-    capabilities,
-    "designer",
-    signal,
-  );
+) {
+  const scope = await resolveWorkflowProjectScope(capabilities, role, signal);
   const projectPath =
     "/api/tenants/" +
     encodeURIComponent(scope.tenantId) +
     "/projects/" +
     encodeURIComponent(scope.projectId);
-  const { artifact } = HubArtifactReceipt.assert(
+  return HubArtifactReceipt.assert(
     await workflowHttpJson({
       capabilities,
       handle: HUB_CREDENTIAL_HANDLE,
@@ -65,5 +61,4 @@ export async function fileDesignOption(
       signal,
     }),
   );
-  return artifact;
 }

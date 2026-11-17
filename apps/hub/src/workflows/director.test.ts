@@ -11,21 +11,21 @@ import type {
   ReactorInboundEvent,
   ReactorState,
   RetryPolicy,
+  ToolCall,
 } from "@intx/types/runtime";
 import type { RuntimeCapabilities } from "@intx/types/runtime-capabilities";
-import {
-  designStarterFiles,
-  designThemes,
-} from "@corbits-builder/designer/skills" with { type: "macro" };
 import { fileDesignOption } from "../artifacts/design-tools.ts";
+import { CATALOG } from "../plugins/catalog.ts";
 import {
   CHECK_DESIGN_TOOL,
   createDesignSubmission,
 } from "../builds/design-submission.ts";
 import { designCheckRunning } from "../config/design.ts";
+import { COORDINATOR_NOTE_LEAD } from "@corbits-builder/schemas/native-specialist";
 import { MODEL_FAILURE_REPLIES } from "../config/models.ts";
 import { REPETITION_ABORT } from "../inference/repetition.ts";
 import { trimHistory } from "./compaction.ts";
+import { END_BLOCKED_RUN, REPORT_BLOCKED } from "./blocked.ts";
 import { compactingDirector } from "./director.ts";
 
 const director = (
@@ -209,6 +209,117 @@ test("a refused model is still a specialist's reply, not a rejected sign-in", as
   );
 });
 
+test("a turn with two calls that wait on the person ends with a result for each", async () => {
+  const subject = compactingDirector("@corbits-builder/test").factory(
+    {
+      contextWindow: 200_000,
+      compactAt: 0.8,
+      asks: ["install_packages"],
+      timeouts: {},
+    },
+    {} as never,
+    { systemPrompt: "", toolDefinitions: [], compactorNames: [] },
+  ) as ReactorDirector;
+  const installHono = {
+    id: "a",
+    name: "install_packages",
+    arguments: { packages: ["hono"] },
+  };
+  const installZod = {
+    id: "b",
+    name: "install_packages",
+    arguments: { packages: ["zod"] },
+  };
+  const report = { id: "c", name: "report_values", arguments: {} };
+  const turnOf = (calls: ToolCall[]) => ({
+    role: "assistant" as const,
+    model: "gpt-5",
+    content: calls.map((call) => ({
+      type: "tool_call" as const,
+      id: call.id,
+      name: call.name,
+      arguments: call.arguments,
+    })),
+    timestamp: 1,
+  });
+  const inferred = (turn: ReturnType<typeof turnOf>): ReactorInboundEvent => ({
+    type: "inference.done",
+    turn,
+    usage: state.tokenUsage,
+    source: { sourceId: "openai", provider: "openai", model: "gpt-5" },
+  });
+  // A turn with at most one call that asks runs all its calls together, as before.
+  const single = turnOf([installHono, report]);
+  const together = await subject.decide(
+    inferred(single),
+    { ...state, turns: [single] },
+    createCapabilities(),
+  );
+  expect(
+    (Array.isArray(together) ? together : [together]).flatMap((action) =>
+      action.type === "execute_tools" ? action.calls : [],
+    ),
+  ).toEqual([installHono, report]);
+
+  const turn = turnOf([installHono, installZod, report]);
+  const turns: ConversationTurn[] = [
+    {
+      role: "user",
+      content: [{ type: "text", text: "Build it." }],
+      timestamp: 0,
+    },
+    turn,
+  ];
+  const decideOn = async (event: ReactorInboundEvent) => {
+    const actions = await subject.decide(
+      event,
+      { ...state, turns },
+      createCapabilities(),
+    );
+    return (Array.isArray(actions) ? actions : [actions]) as ReactorAction[];
+  };
+  const dispatched = (actions: ReactorAction[]) =>
+    actions.flatMap((action) =>
+      action.type === "execute_tools" ? action.calls : [],
+    );
+  const answer = (id: string) => {
+    turns.push({
+      role: "user",
+      content: [
+        {
+          type: "tool_result",
+          callId: id,
+          content: [{ type: "text", text: "ok" }],
+        },
+      ],
+      timestamp: 2,
+    });
+    return decideOn({
+      type: "tool.done",
+      result: { callId: id, content: "ok" },
+    });
+  };
+
+  // Each install parks the run on its own approval, so each is dispatched alone and the next only
+  // once the one before it has its result.
+  expect(dispatched(await decideOn(inferred(turn)))).toEqual([installHono]);
+  expect(
+    dispatched(
+      await decideOn({ type: "resume.execute_tools", calls: [installHono] }),
+    ),
+  ).toEqual([installHono]);
+  expect(dispatched(await answer("a"))).toEqual([installZod]);
+  expect(
+    dispatched(
+      await decideOn({ type: "resume.execute_tools", calls: [installZod] }),
+    ),
+  ).toEqual([installZod]);
+  expect(dispatched(await answer("b"))).toEqual([report]);
+  const last = await answer("c");
+  expect(dispatched(last)).toEqual([]);
+  expect(last.some((action) => action.type === "infer")).toBe(true);
+});
+
 test("a model call that hits a time limit fails a specialist as a timeout naming the limit", async () => {
   const limit = "inference call exceeded total timeout (900000 ms wall-clock)";
   await expect(
@@ -221,7 +332,7 @@ test("designer director holds replies until the latest edits pass check_design a
     {
       contextWindow: 200_000,
       compactAt: 0.8,
-      checkBeforeDone: true,
+      checkBeforeDone: CHECK_DESIGN_TOOL,
       fileBeforeDone: true,
     },
     {} as never,
@@ -289,19 +400,9 @@ test("designer director holds replies until the latest edits pass check_design a
     usage: state.tokenUsage,
     source: cycleSource,
   });
-  expect(heldUnchecked.some((action) => action.type === "compact")).toBe(true);
-  const reInferUnchecked = await decideWithTurns(uncheckedTurns, {
-    type: "compaction.done",
-    compactor: "@corbits-builder/drop-degenerate-turn",
-    reason: "reply before done",
-  });
-  const infer1 = reInferUnchecked.find((action) => action.type === "infer");
-  const prompt1 =
-    infer1?.type === "infer" && typeof infer1.options?.systemPrompt === "string"
-      ? infer1.options.systemPrompt
-      : undefined;
-  expect(prompt1).toContain(
-    "Files changed after the last passing check-app, so the work is not done yet.",
+  const note1 = heldUnchecked.find((action) => action.type === "compact");
+  expect(note1?.type === "compact" ? note1.reason : "").toContain(
+    `${CHECK_DESIGN_TOOL} has not run in this task, so the work is not done yet.`,
   );
 
   // 2. Reply when no files changed yet and no design option was filed -> held by fileBeforeDone.
@@ -319,18 +420,8 @@ test("designer director holds replies until the latest edits pass check_design a
     usage: state.tokenUsage,
     source: cycleSource,
   });
-  expect(heldUnfiled.some((action) => action.type === "compact")).toBe(true);
-  const reInferUnfiled = await decideWithTurns(unfiledTurns, {
-    type: "compaction.done",
-    compactor: "@corbits-builder/drop-degenerate-turn",
-    reason: "reply before done",
-  });
-  const infer2 = reInferUnfiled.find((action) => action.type === "infer");
-  const prompt2 =
-    infer2?.type === "infer" && typeof infer2.options?.systemPrompt === "string"
-      ? infer2.options.systemPrompt
-      : undefined;
-  expect(prompt2).toContain(
+  const note2 = heldUnfiled.find((action) => action.type === "compact");
+  expect(note2?.type === "compact" ? note2.reason : "").toContain(
     "The design option is not filed yet; check_design validates and files it.",
   );
 
@@ -423,130 +514,44 @@ test("designer director holds replies until the latest edits pass check_design a
     source: cycleSource,
   });
   expect(acceptedOverlap.some((action) => action.type === "reply")).toBe(true);
-});
 
-test("coordinator director reminds once after an approval that opened a step, unless the reply asks the person", async () => {
-  const subject = () =>
-    compactingDirector("@corbits-builder/coordinator-test").factory(
-      { contextWindow: 200_000, compactAt: 0.8, startAfterApproval: true },
-      {} as never,
-      { systemPrompt: "Base prompt.", toolDefinitions: [], compactorNames: [] },
-    ) as ReactorDirector;
-  const reply = (text: string) => ({
-    role: "assistant" as const,
-    model: "gpt-6.1-terra",
-    content: [{ type: "text" as const, text }],
-    timestamp: 5,
-  });
-  const replied = (text: string): ReactorInboundEvent => ({
-    type: "inference.done",
-    turn: reply(text),
-    usage: state.tokenUsage,
-    source: { sourceId: "openai", provider: "openai", model: "gpt-6.1-terra" },
-  });
-  const approval = (
-    extra: { detail?: unknown; isError?: boolean } = {},
-  ): ConversationTurn[] => [
+  // 5. Filed work's reply carries the screens that show it, as Builder's note after the designer's words.
+  const presenting = compactingDirector(
+    "@corbits-builder/designer-test",
+  ).factory(
     {
-      role: "user",
-      content: [{ type: "text", text: "Go with your recommendation." }],
-      timestamp: 0,
+      contextWindow: 200_000,
+      compactAt: 0.8,
+      checkBeforeDone: CHECK_DESIGN_TOOL,
+      fileBeforeDone: true,
+      presents: "Open the choose screen.",
     },
+    {} as never,
+    { systemPrompt: "Base prompt.", toolDefinitions: [], compactorNames: [] },
+  ) as ReactorDirector;
+  const presented = await presenting.decide(
     {
-      role: "assistant",
-      content: [
-        { type: "tool_call", id: "a", name: "request_approval", arguments: {} },
-      ],
-      timestamp: 1,
+      type: "inference.done",
+      turn: replyTurn,
+      usage: state.tokenUsage,
+      source: cycleSource,
     },
-    {
-      role: "user",
-      content: [
-        {
-          type: "tool_result",
-          callId: "a",
-          content: [{ type: "text", text: "{}" }],
-          ...extra,
-        },
-      ],
-      timestamp: 2,
-    },
-  ];
-  const opened = { detail: { canStart: ["product_requirements"] } };
-  const then = (name: string): ConversationTurn[] => [
-    {
-      role: "assistant",
-      content: [{ type: "tool_call", id: "r", name, arguments: {} }],
-      timestamp: 3,
-    },
-    {
-      role: "user",
-      content: [
-        {
-          type: "tool_result",
-          callId: "r",
-          content: [{ type: "text", text: "{}" }],
-        },
-      ],
-      timestamp: 4,
-    },
-  ];
-  const holds = async (
-    turns: ConversationTurn[],
-    text = "It is ready for approval.",
-    director = subject(),
-  ) => {
-    const actions = await director.decide(
-      replied(text),
-      { ...state, turns: [...turns, reply(text)] },
-      createCapabilities(),
-    );
-    return (Array.isArray(actions) ? actions : [actions]).some(
-      (action) => action.type === "compact",
-    );
-  };
-
-  expect(await holds([...approval(opened), ...then("read_artifact")])).toBe(
-    true,
-  );
-  expect(await holds(approval())).toBe(false);
-  expect(await holds([...approval(opened), ...then("deploy_writer")])).toBe(
-    false,
-  );
-  expect(await holds(approval({ ...opened, isError: true }))).toBe(false);
-  expect(
-    await holds(
-      approval(opened),
-      "Do you want one design or several? Tell me any apps or colours you like.",
-    ),
-  ).toBe(false);
-
-  const director = subject();
-  const turns = approval(opened);
-  expect(await holds(turns, undefined, director)).toBe(true);
-  const retried = await director.decide(
-    {
-      type: "compaction.done",
-      compactor: "@corbits-builder/drop-degenerate-turn",
-      reason: "reply before done",
-    },
-    { ...state, turns },
+    { ...state, turns: autoFiledTurns },
     createCapabilities(),
   );
-  const infer = (Array.isArray(retried) ? retried : [retried]).find(
-    (action) => action.type === "infer",
+  const reply = (Array.isArray(presented) ? presented : [presented]).find(
+    (action) => action.type === "reply",
   );
-  expect(infer?.type === "infer" ? infer.options?.systemPrompt : "").toContain(
-    "these can start now: product_requirements",
+  const [own, note] = (reply?.type === "reply" ? reply.content : "").split(
+    COORDINATOR_NOTE_LEAD,
   );
-  expect(await holds(turns, "I will wait until you are ready.", director)).toBe(
-    false,
-  );
+  expect(own).toBe("Done.");
+  expect(note).toBe("Open the choose screen.");
 });
 
 test("coder director takes a check-app verdict from the result's detail after trimming drops its text", async () => {
   const subject = compactingDirector("@corbits-builder/coder-test").factory(
-    { contextWindow: 200_000, compactAt: 0.8, checkBeforeDone: true },
+    { contextWindow: 200_000, compactAt: 0.8, checkBeforeDone: "check-stack" },
     {} as never,
     { systemPrompt: "", toolDefinitions: [], compactorNames: [] },
   ) as ReactorDirector;
@@ -659,7 +664,7 @@ test("coder director never holds a reply that follows a refused access", async (
       {
         contextWindow: 200_000,
         compactAt: 0.8,
-        checkBeforeDone: true,
+        checkBeforeDone: "check-stack",
       },
       {} as never,
       { systemPrompt: "", toolDefinitions: [], compactorNames: [] },
@@ -705,20 +710,15 @@ test("coder director never holds a reply that follows a refused access", async (
     usage: state.tokenUsage,
     source: { sourceId: "openai", provider: "openai", model: "gpt-5" },
   };
-  // A held reply's reason, from the prompt it is sampled again with, or undefined once it goes out.
+  // A held reply's note, as its compaction carries it, or undefined once it goes out.
   const heldFor = async (
     director: ReactorDirector,
     turns: ConversationTurn[],
   ) => {
     const actions = await decideOn(director, turns, replied);
     if (actions.some((action) => action.type === "reply")) return undefined;
-    const retried = await decideOn(director, turns, {
-      type: "compaction.done",
-      compactor: "@corbits-builder/drop-degenerate-turn",
-      reason: "reply before done",
-    });
-    const infer = retried.find((action) => action.type === "infer");
-    return infer?.type === "infer" ? infer.options?.systemPrompt : "";
+    const compact = actions.find((action) => action.type === "compact");
+    return compact?.type === "compact" ? compact.reason : "";
   };
 
   const editedAfter: ConversationTurn[] = [
@@ -746,13 +746,95 @@ test("coder director never holds a reply that follows a refused access", async (
     result("write2"),
   ];
   expect(await heldFor(subject(), wrotePast)).toContain(
-    "Files changed after the last passing check-app",
+    "Files changed after check-stack last passed",
   );
 });
 
+test("a coder's held reply says whether its finish check never ran, failed, or passed before a change", async () => {
+  const subject = () =>
+    compactingDirector("@corbits-builder/coder-test").factory(
+      {
+        contextWindow: 200_000,
+        compactAt: 0.8,
+        checkBeforeDone: "check-stack",
+      },
+      {} as never,
+      { systemPrompt: "", toolDefinitions: [], compactorNames: [] },
+    ) as ReactorDirector;
+  const replyTurn = {
+    role: "assistant" as const,
+    model: "gpt-5",
+    content: [{ type: "text" as const, text: "Done." }],
+    timestamp: 5,
+  };
+  const call = (id: string, name: string, args: Record<string, unknown>) => ({
+    role: "assistant" as const,
+    content: [{ type: "tool_call" as const, id, name, arguments: args }],
+    timestamp: 1,
+  });
+  const result = (callId: string, detail?: { checkPassed: boolean }) => ({
+    role: "user" as const,
+    content: [
+      {
+        type: "tool_result" as const,
+        callId,
+        content: [{ type: "text" as const, text: "ok" }],
+        ...(detail === undefined ? {} : { detail }),
+      },
+    ],
+    timestamp: 2,
+  });
+  const task = {
+    role: "user" as const,
+    content: [{ type: "text" as const, text: "Build the app." }],
+    timestamp: 0,
+  };
+  const write = [
+    call("write", "write_file", { path: "src/main.ts", content: "" }),
+    result("write"),
+  ];
+  const check = (checkPassed: boolean) => [
+    call("check", "run_shell", { command: "check-stack" }),
+    result("check", { checkPassed }),
+  ];
+  const heldFor = async (turns: ConversationTurn[]) => {
+    const actions = await subject().decide(
+      {
+        type: "inference.done",
+        turn: replyTurn,
+        usage: state.tokenUsage,
+        source: { sourceId: "openai", provider: "openai", model: "gpt-5" },
+      },
+      { ...state, turns: [task, ...turns, replyTurn] },
+      createCapabilities(),
+    );
+    const list = Array.isArray(actions) ? actions : [actions];
+    if (list.some((action) => action.type === "reply")) return undefined;
+    const compact = list.find((action) => action.type === "compact");
+    return compact?.type === "compact" ? compact.reason : "";
+  };
+
+  expect(await heldFor(write)).toContain(
+    "check-stack has not run in this task",
+  );
+  expect(await heldFor([...write, ...check(false)])).toContain(
+    "The last check-stack run failed",
+  );
+  expect(await heldFor([...check(true), ...write])).toContain(
+    "Files changed after check-stack last passed",
+  );
+  const cleaned = [
+    ...check(true),
+    call("clean", "run_shell", { command: "rm -rf dist" }),
+    result("clean"),
+  ];
+  expect(await heldFor(cleaned)).toContain("Make check-stack your last call");
+  expect(await heldFor([...write, ...check(true)])).toBeUndefined();
+});
+
 test("check_design validates DESIGN.md and .dark in styles.css and auto-files the design option on pass", async () => {
-  const starter = designStarterFiles();
-  const modernSleek = designThemes()["modern-sleek"]!;
+  const starter = CATALOG.design!.starter;
+  const modernSleek = CATALOG.design!.themes.get("modern-sleek")!;
   const workspace = await realpath(
     await mkdtemp(join(tmpdir(), "sb-design-autocheck-")),
   );
@@ -782,15 +864,16 @@ test("check_design validates DESIGN.md and .dark in styles.css and auto-files th
           domain: "example.invalid",
           role: "designer",
           workflows: {
-            "writer-constraints": deployment,
-            "writer-approaches": deployment,
             "writer-product-requirements": deployment,
             "writer-build-plan": deployment,
+            "writer-document": deployment,
             reviewer: deployment,
             coder: deployment,
             designer: deployment,
           },
           openNetwork: false,
+          firstBuild: false,
+          toolchains: { paths: [], dataDir: "/unused" },
           build: {
             assetDirectory: "/assets",
             browserCli: "/browser",
@@ -822,7 +905,7 @@ test("check_design validates DESIGN.md and .dark in styles.css and auto-files th
       workspace,
       async () => ({ exitCode: 0, output: "check passed: opened all screens" }),
       (submission, signal) =>
-        fileDesignOption(capabilities, submission, signal),
+        fileDesignOption(capabilities, "designer", submission, signal),
     );
     const signal = new AbortController().signal;
 
@@ -889,4 +972,288 @@ test("check_design validates DESIGN.md and .dark in styles.css and auto-files th
   } finally {
     await rm(workspace, { recursive: true, force: true });
   }
+});
+
+// A specialist offered the blocked exit, held to every rule a finished reply waits on.
+const specialist = () =>
+  compactingDirector("@corbits-builder/designer-test").factory(
+    {
+      contextWindow: 200_000,
+      compactAt: 0.8,
+      checkBeforeDone: CHECK_DESIGN_TOOL,
+      fileBeforeDone: true,
+      done: { plugin: "designer", checks: ["check-app"] },
+      timeouts: {},
+    },
+    {} as never,
+    {
+      systemPrompt: "Base prompt.",
+      toolDefinitions: [
+        { name: REPORT_BLOCKED, description: "", inputSchema: {} },
+        { name: END_BLOCKED_RUN, description: "", inputSchema: {} },
+        { name: "write_file", description: "", inputSchema: {} },
+      ],
+      compactorNames: [],
+    },
+  ) as ReactorDirector;
+
+const assignment: ConversationTurn = {
+  role: "user",
+  content: [{ type: "text", text: "Change the font." }],
+  timestamp: 0,
+};
+const called = (
+  id: string,
+  name: string,
+  args: Record<string, unknown> = {},
+) => ({
+  role: "assistant" as const,
+  content: [{ type: "tool_call" as const, id, name, arguments: args }],
+  timestamp: 1,
+});
+const answered = (callId: string, text: string, isError = false) => ({
+  role: "user" as const,
+  content: [
+    {
+      type: "tool_result" as const,
+      callId,
+      content: [{ type: "text" as const, text }],
+      ...(isError ? { isError } : {}),
+    },
+  ],
+  timestamp: 2,
+});
+const said: ConversationTurn = {
+  role: "assistant",
+  content: [{ type: "text", text: "The hub refuses my file writes." }],
+  timestamp: 3,
+};
+const decideOn = async (
+  subject: ReactorDirector,
+  turns: ConversationTurn[],
+  event: ReactorInboundEvent,
+) => {
+  const actions = await subject.decide(
+    event,
+    { ...state, turns },
+    createCapabilities(),
+  );
+  return (Array.isArray(actions) ? actions : [actions]) as ReactorAction[];
+};
+const replied = (turn: ConversationTurn): ReactorInboundEvent => ({
+  type: "inference.done",
+  turn: turn as Extract<ConversationTurn, { role: "assistant" }>,
+  usage: state.tokenUsage,
+  source: { sourceId: "openai", provider: "openai", model: "gpt-5" },
+});
+const toolDone = (callId: string, isError = false): ReactorInboundEvent => ({
+  type: "tool.done",
+  result: { callId, content: "x", ...(isError ? { isError } : {}) },
+});
+const endCallOf = (actions: ReactorAction[]) => {
+  const run = actions.find((action) => action.type === "execute_tools");
+  return run?.type === "execute_tools" ? run.calls[0] : undefined;
+};
+
+test("a reported block lets the next reply through unchecked and ends the run, never replying", async () => {
+  const subject = specialist();
+  const unfinished = [
+    assignment,
+    called("write", "write_file", { path: "a.css", content: "" }),
+    answered("write", "permission_denied: writes are refused", true),
+  ];
+  // Without a block the reply is held, as the work is unchecked and unfiled.
+  const held = await decideOn(
+    specialist(),
+    [...unfinished, said],
+    replied(said),
+  );
+  expect(held.some((action) => action.type === "compact")).toBe(true);
+
+  const blocked = [
+    ...unfinished,
+    called("block", REPORT_BLOCKED, {
+      reason: "The hub refuses my file writes.",
+      tried: "Writing the stylesheet twice.",
+    }),
+    answered("block", "Recorded."),
+    said,
+  ];
+  const ending = await decideOn(subject, blocked, replied(said));
+  expect(ending.some((action) => action.type === "reply")).toBe(false);
+  const end = endCallOf(ending);
+  expect(end?.name).toBe(END_BLOCKED_RUN);
+  // The agent already recorded its block, so ending records nothing of Builder's.
+  expect(end?.arguments).toEqual({});
+  // Once the hub has the end, the run waits for its stop rather than replying.
+  const after = await decideOn(subject, blocked, toolDone(end!.id));
+  expect(after.map((action) => action.type)).toEqual(["checkpoint", "wait"]);
+
+  // An end the hub refused fails the run rather than leaving it waiting.
+  const refused = specialist();
+  const again = endCallOf(await decideOn(refused, blocked, replied(said)));
+  await expect(
+    decideOn(refused, blocked, toolDone(again!.id, true)),
+  ).rejects.toThrow("blocked_run_not_ended");
+
+  // A refused report is no block: the reply is held as before.
+  const unrecorded = [
+    ...unfinished,
+    called("block", REPORT_BLOCKED, { reason: "r", tried: "t" }),
+    answered("block", "run_not_started_for_an_action: no", true),
+    said,
+  ];
+  const stillHeld = await decideOn(specialist(), unrecorded, replied(said));
+  expect(endCallOf(stillHeld)).toBeUndefined();
+});
+
+test("the shared rule on blocks reaches a specialist's prompt and not the coordinator's", async () => {
+  const promptOf = async (subject: ReactorDirector) => {
+    const actions = await decideOn(subject, [assignment], {
+      type: "message.received",
+      message: { role: "user", content: [{ type: "text", text: "go" }] },
+    } as never);
+    const infer = actions.find((action) => action.type === "infer");
+    return infer?.type === "infer" ? infer.options?.systemPrompt : undefined;
+  };
+  expect(await promptOf(specialist())).toContain(REPORT_BLOCKED);
+  expect(await promptOf(director(false))).not.toContain(REPORT_BLOCKED);
+});
+
+type Result = { name: string; text: string; isError?: boolean };
+// The decision after the last turn's results, with the given turns of results since the assignment.
+const afterTurns = async (subject: ReactorDirector, batches: Result[][]) => {
+  const turns: ConversationTurn[] = [assignment];
+  batches.forEach((batch, turn) => {
+    const id = (index: number) => `c${turn}-${index}`;
+    turns.push(
+      {
+        role: "assistant",
+        content: batch.map(({ name }, index) => ({
+          type: "tool_call" as const,
+          id: id(index),
+          name,
+          arguments: {},
+        })),
+        timestamp: 1,
+      },
+      {
+        role: "user",
+        content: batch.map(({ text, isError }, index) => ({
+          type: "tool_result" as const,
+          callId: id(index),
+          content: [{ type: "text" as const, text }],
+          isError: isError === true,
+        })),
+        timestamp: 2,
+      },
+    );
+  });
+  const last = batches.length - 1;
+  // The default director infers once the batch it ran has every result.
+  await decideOn(subject, turns.slice(0, -2), replied(turns.at(-2)!));
+  let actions: ReactorAction[] = [];
+  for (let index = 0; index < batches[last]!.length; index++)
+    actions = await decideOn(subject, turns, toolDone(`c${last}-${index}`));
+  return actions;
+};
+// The decision after a turn's results, with the given results in a row, one a turn.
+const afterResults = (subject: ReactorDirector, results: Result[]) =>
+  afterTurns(
+    subject,
+    results.map((result) => [result]),
+  );
+const refusal = (name: string) => ({
+  name,
+  text: `artifact_write_refused: the design is read-only for ${name}`,
+  isError: true,
+});
+const noteOf = (actions: ReactorAction[]) => {
+  const compact = actions.find((action) => action.type === "compact");
+  return compact?.type === "compact" ? compact.reason : undefined;
+};
+const inferred = (actions: ReactorAction[]) =>
+  actions.some((action) => action.type === "infer");
+
+test("three identical failures from any tool get one note, and six end the run as blocked", async () => {
+  const subject = specialist();
+  const tools = ["read_file", "write_file", "check_design"];
+  const failures = (count: number) =>
+    Array.from({ length: count }, (_, index) => refusal(tools[index % 3]!));
+  expect(inferred(await afterResults(subject, failures(2)))).toBe(true);
+  const note = noteOf(await afterResults(subject, failures(3)));
+  expect(note).toContain("artifact_write_refused: the design is read-only");
+  expect(note).toContain(REPORT_BLOCKED);
+  // Once per streak: the fourth and fifth go on to the model.
+  expect(inferred(await afterResults(subject, failures(4)))).toBe(true);
+  expect(inferred(await afterResults(subject, failures(5)))).toBe(true);
+  const end = endCallOf(await afterResults(subject, failures(6)));
+  expect(end?.name).toBe(END_BLOCKED_RUN);
+  expect(end?.arguments).toEqual({
+    reason: "artifact_write_refused: the design is read-only for check_design",
+    tried: "Ended by Builder after 6 identical failures in a row.",
+  });
+});
+
+test("one turn's identical failures count once, so only six failing turns end the run", async () => {
+  const outside = (path: string) => ({
+    name: "read_file",
+    text: `path_outside_workspace: /workspace/${path} is not inside the workspace /hub/workspace; use the relative path ${path}`,
+    isError: true,
+  });
+  const batch = Array.from({ length: 7 }, (_, index) => outside(`${index}.md`));
+  expect(inferred(await afterTurns(specialist(), [batch]))).toBe(true);
+  const turns = (count: number) => Array.from({ length: count }, () => batch);
+  expect(endCallOf(await afterTurns(specialist(), turns(5)))).toBeUndefined();
+  expect(
+    endCallOf(await afterTurns(specialist(), turns(6)))?.arguments,
+  ).toEqual({
+    reason: outside("6.md").text,
+    tried: "Ended by Builder after 6 identical failures in a row.",
+  });
+  // A success in the turn ends the run of failures before it, as a success on its own would.
+  const ok = { name: "read_file", text: "# Design" };
+  const mixed = await afterTurns(specialist(), [
+    ...turns(5),
+    [outside("a.md"), ok, outside("b.md")],
+  ]);
+  expect(inferred(mixed)).toBe(true);
+  expect(noteOf(mixed)).toBeUndefined();
+});
+
+test("a success, a different error, or a timed-out wait for mail shape the count as they should", async () => {
+  const fail = refusal("write_file");
+  const ok = { name: "read_file", text: "body {}" };
+  // A success between failures starts the count again.
+  expect(
+    noteOf(await afterResults(specialist(), [fail, fail, ok, fail, fail])),
+  ).toBeUndefined();
+  // Different errors do not add up, and an error's code is what makes two the same.
+  const other = {
+    name: "write_file",
+    text: "invalid_arguments: path is required",
+    isError: true,
+  };
+  expect(
+    noteOf(await afterResults(specialist(), [fail, other, fail, other, fail])),
+  ).toBeUndefined();
+  const reworded = {
+    name: "read_file",
+    text: "artifact_write_refused: another wording",
+    isError: true,
+  };
+  expect(
+    noteOf(await afterResults(specialist(), [fail, reworded, fail])),
+  ).toBeDefined();
+});
+
+test("the coordinator gets the note on repeated failures but is never ended as blocked", async () => {
+  const coordinator = director(false);
+  const failures = Array.from({ length: 6 }, () => refusal("execute"));
+  const note = noteOf(await afterResults(coordinator, failures.slice(0, 3)));
+  expect(note).toBeDefined();
+  expect(note).not.toContain(REPORT_BLOCKED);
+  const sixth = await afterResults(coordinator, failures);
+  expect(endCallOf(sixth)).toBeUndefined();
+  expect(inferred(sixth)).toBe(true);
 });

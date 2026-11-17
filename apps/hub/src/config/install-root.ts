@@ -1,7 +1,7 @@
 import type { Environment } from "../environment.ts";
 
-// The install's root tenant: every workspace is created under it, so what it owns (the server's
-// provider keys) every workspace and project inherits.
+// The install's root tenant. Every workspace is created under it, so every workspace and project
+// inherits what it owns: the server's provider keys.
 export const installRoot = Object.freeze({
   slug: "builder-install",
   name: "Builder install",

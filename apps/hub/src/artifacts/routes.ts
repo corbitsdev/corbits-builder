@@ -20,15 +20,21 @@ import {
   DecidedApprovalList,
   DesignChoice,
   DesignChoiceReceipt,
-  DesignConceptRecord,
   DesignDraft,
   DesignTweaks,
   DesignTweaksReceipt,
+  DocumentApproval,
+  DocumentApprovalReceipt,
   LiveApp,
   MaterialReceipt,
   MaterialRemovedReceipt,
+  ProjectRuns,
+  RunAction,
+  RunActionStart,
+  DesignConceptRecord,
 } from "@corbits-builder/schemas/artifact";
-import { ProjectActivity } from "@corbits-builder/schemas/activity";
+import { ProjectActivity, RunBlock } from "@corbits-builder/schemas/activity";
+import { showsScreen } from "@corbits-builder/schemas/conversation";
 import {
   EXPORT_SECTIONS,
   ExportSection,
@@ -36,16 +42,35 @@ import {
 } from "@corbits-builder/schemas/project";
 import { actorOf } from "../projects/authorization.ts";
 import { ProjectError } from "../projects/errors.ts";
-import { readJson } from "../lib/json.ts";
+import { body, security } from "../http/route-parts.ts";
 import { mailRunAsCaller } from "../mail/caller-mail.ts";
+import { documentApprovedNote } from "../config/answers.ts";
+import { askedQuestions } from "../plugins/question.ts";
+import type { Checks } from "../plugins/checks.ts";
+import { projectFacts } from "../plugins/facts.ts";
 import { mountApprovalRoundRoutes } from "./approval-rounds.ts";
+import {
+  CATALOG,
+  catalogOf,
+  isReadyPlan,
+  isWorkflowAction,
+  PLUGINS,
+  ProjectFollowing,
+} from "../plugins/catalog.ts";
 import type { createArtifactService } from "./service.ts";
+import { projectValueWrites } from "../values/project-values.ts";
+import type { Answer } from "../answers/answer.ts";
 
-const security = [
-  { sessionCookie: [] },
-  { deviceBearer: [] },
-  { coordinatorBearer: [] },
-];
+// Each installed ready-made plan, by its handle, with the fact that ends it.
+const READY_PLANS = new Map(
+  PLUGINS.filter(isReadyPlan).map(({ builder }) => [
+    builder.handle,
+    builder.ends,
+  ]),
+);
+
+// The fact a document's approval makes true, followed by its kind.
+const APPROVED = "approved:";
 
 // The app version a download or an export names, or undefined for the saved app.
 function appVersionQuery(c: {
@@ -63,13 +88,16 @@ function appVersionQuery(c: {
 export function mountArtifactRoutes(
   app: Hono<TenantEnv>,
   service: ReturnType<typeof createArtifactService>,
-  nativeFetch?: (request: Request) => Promise<Response>,
+  {
+    answer,
+    nativeFetch,
+    checks,
+  }: {
+    answer: Answer;
+    nativeFetch?: ((request: Request) => Promise<Response>) | undefined;
+    checks?: Checks | undefined;
+  },
 ) {
-  const body = async (c: { req: { json(): Promise<unknown> } }) => {
-    const json = await readJson(c.req);
-    if (json === undefined) throw new ProjectError(400, "invalid_json");
-    return json;
-  };
   app.get(
     "/:projectId/artifacts",
     describeRoute({
@@ -210,7 +238,7 @@ export function mountArtifactRoutes(
       tags: ["Artifacts"],
       operationId: "readPreviousDesignDraft",
       description:
-        "For the calling designer run: the draft the design continues from, with its DESIGN.md. The newest earlier designer run of this project for the same design concept decides: its workspace while it runs, or once it ended unless the concept's design option, or the design without a concept, was filed since; else that filed design at its latest version, with the look the person saved.",
+        "For the calling designer run: the draft the design continues from, with its DESIGN.md. The newest earlier designer run of this project for the same design concept decides. It is that run's workspace while it runs, or once it ended unless the concept's design option, or the design without a concept, was filed since. Else it is that filed design at its latest version, with the look the person saved.",
       security,
       responses: {
         200: {
@@ -228,6 +256,379 @@ export function mountArtifactRoutes(
       return c.json(
         await service.previousDesignDraft(actorOf(c), c.req.param("projectId")),
       );
+    },
+  );
+  app.get(
+    "/:projectId/following",
+    describeRoute({
+      tags: ["Artifacts"],
+      operationId: "readProjectFollowing",
+      description:
+        "The handles of the ready-made plans the project is following, none when it follows none. A plan whose ending fact holds is finished and no longer followed.",
+      security,
+      responses: {
+        200: {
+          description: "The ready-made plans the project is following",
+          content: {
+            "application/json": { schema: resolver(ProjectFollowing) },
+          },
+        },
+        503: { description: "The hub cannot read the project's records" },
+      },
+    }),
+    async (c) => {
+      const current = actorOf(c);
+      const projectId = c.req.param("projectId");
+      if (!checks) throw new ProjectError(503, "following_unavailable");
+      const listed = await service.list(current, projectId);
+      const facts = projectFacts({
+        artifacts: listed.artifacts,
+        preferences: listed.preferences,
+        checks: await checks.latest(current, projectId),
+      });
+      const handles = await service.projectFollowing(current, projectId);
+      return c.json({
+        following: handles.filter((handle) => {
+          const ends = READY_PLANS.get(handle);
+          return ends === undefined || !facts.has(ends);
+        }),
+      });
+    },
+  );
+  app.post(
+    "/:projectId/following",
+    describeRoute({
+      tags: ["Artifacts"],
+      operationId: "setProjectFollowing",
+      description:
+        "Sets the installed ready-made plans the project is following, by their handles; none stops it following any.",
+      security,
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": { schema: resolver(ProjectFollowing) },
+        },
+      },
+      responses: {
+        200: {
+          description: "The ready-made plans the project is now following",
+          content: {
+            "application/json": { schema: resolver(ProjectFollowing) },
+          },
+        },
+        400: {
+          description: "A handle that is not an installed ready-made plan",
+        },
+      },
+    }),
+    async (c) => {
+      const input = ProjectFollowing(await body(c));
+      if (input instanceof type.errors)
+        throw new ProjectError(400, "invalid_project_following", {
+          issues: input,
+        });
+      const unknown = input.following.find(
+        (handle) => !READY_PLANS.has(handle),
+      );
+      if (unknown !== undefined)
+        throw new ProjectError(400, "unknown_ready_plan", { plan: unknown });
+      return c.json({
+        following: await service.setFollowing(
+          actorOf(c),
+          c.req.param("projectId"),
+          input.following,
+        ),
+      });
+    },
+  );
+  app.post(
+    "/:projectId/run-actions",
+    describeRoute({
+      tags: ["Artifacts"],
+      operationId: "recordRunAction",
+      description:
+        "Records the plugin action the coordinator just started a specialist run for, before the run's assignment reaches it, and the id of the plan step it does when the coordinator could tell which. The run is then listed among the coordinator's runs, the plan shows it on that step, the coordinator may stop it, and it may save the project values that action writes. What the action's start keeps for the run comes with it: a record, checked against the record the action's definition declares and stored against the run, and project values, each one the action writes, checked against its declared type and stored as the values route stores it.",
+      security,
+      requestBody: {
+        required: true,
+        content: { "application/json": { schema: resolver(RunActionStart) } },
+      },
+      responses: {
+        200: {
+          description: "The recorded run and action",
+          content: { "application/json": { schema: resolver(RunAction) } },
+        },
+        400: {
+          description:
+            "A record the action does not declare, a value it does not write or its type refuses, or a run started as a role other than the one the action starts",
+        },
+        404: {
+          description:
+            "No specialist run by that id in the project, or no installed action by that name",
+        },
+      },
+    }),
+    async (c) => {
+      const current = actorOf(c);
+      const projectId = c.req.param("projectId");
+      const input = RunActionStart(await body(c));
+      if (input instanceof type.errors)
+        throw new ProjectError(400, "invalid_run_action", { issues: input });
+      const catalog = await catalogOf(service.projectState, current, projectId);
+      const action = catalog.actions
+        .filter(isWorkflowAction)
+        .find(
+          (installed) =>
+            installed.plugin === input.plugin &&
+            installed.action === input.action,
+        );
+      if (!action)
+        throw new ProjectError(404, "action_not_installed", {
+          plugin: input.plugin,
+          action: input.action,
+        });
+      const kept = action.keep(input);
+      if (!kept.ok)
+        throw new ProjectError(400, "invalid_run_keep", {
+          text: kept.problem,
+        });
+      const values = input.values ?? {};
+      // A start clears a value it writes with null, as a first build that names no starter does.
+      projectValueWrites(
+        Object.fromEntries(
+          Object.entries(values).filter(([, value]) => value !== null),
+        ),
+        await service.projectState(current, projectId),
+        CATALOG.values,
+      );
+      return c.json(
+        await service.recordRunAction(
+          current,
+          projectId,
+          {
+            runId: input.runId,
+            plugin: input.plugin,
+            action: input.action,
+            role: catalog.packages.get(action.workflow)?.role,
+            step: input.step,
+            record: kept.record,
+          },
+          values,
+        ),
+      );
+    },
+  );
+  app.get(
+    "/:projectId/runs",
+    describeRoute({
+      tags: ["Artifacts"],
+      operationId: "listCoordinatorRuns",
+      description:
+        "The runs the coordinator started in the project for a plugin action: every one still at work, with its state and latest activity as far as this hub saw it, and the latest that ended, with why when one failed.",
+      security,
+      responses: {
+        200: {
+          description: "The coordinator's runs, newest first",
+          content: { "application/json": { schema: resolver(ProjectRuns) } },
+        },
+      },
+    }),
+    async (c) =>
+      c.json({
+        runs: await service.runs(actorOf(c), c.req.param("projectId")),
+      }),
+  );
+  app.post(
+    "/:projectId/runs/:runId/stop",
+    describeRoute({
+      tags: ["Artifacts"],
+      operationId: "stopCoordinatorRun",
+      description:
+        "Stops a run the coordinator started in the project, for the person or the coordinator, through Interchange's cancellation; the coordinator's note on its end says which stopped it. What the run filed or pushed before it stopped is kept.",
+      security,
+      responses: {
+        200: { description: "The stop was requested" },
+        404: {
+          description:
+            "No run the coordinator started in the project by that id",
+        },
+        409: { description: "The run has already ended" },
+      },
+    }),
+    async (c) =>
+      c.json(
+        await service.stopRun(
+          actorOf(c),
+          c.req.param("projectId"),
+          c.req.param("runId"),
+          c.get("principal")?.kind === "user" ? "person" : "coordinator",
+        ),
+      ),
+  );
+  app.post(
+    "/:projectId/run-block",
+    describeRoute({
+      tags: ["Artifacts"],
+      operationId: "recordRunBlock",
+      description:
+        "A specialist run records what stops its work and what it tried, in its own words or in Builder's for it. The run shows as blocked once it ends, and the coordinator's note on its end leads with the block.",
+      security,
+      requestBody: {
+        required: true,
+        content: { "application/json": { schema: resolver(RunBlock) } },
+      },
+      responses: {
+        200: { description: "The block was recorded" },
+        400: { description: "No reason or nothing tried" },
+        403: {
+          description: "The caller is not a run started for a plugin action",
+        },
+      },
+    }),
+    async (c) => {
+      const input = RunBlock(await body(c));
+      if (input instanceof type.errors)
+        throw new ProjectError(400, "invalid_run_block", { issues: input });
+      return c.json(
+        await service.recordBlock(actorOf(c), c.req.param("projectId"), input),
+      );
+    },
+  );
+  app.post(
+    "/:projectId/run-block/end",
+    describeRoute({
+      tags: ["Artifacts"],
+      operationId: "endBlockedRun",
+      description:
+        "Ends the calling specialist run once its block is recorded, through Interchange's cancellation with the reason blocked, as a stop does.",
+      security,
+      responses: {
+        200: { description: "The end was requested" },
+        409: { description: "The run has recorded no block" },
+      },
+    }),
+    async (c) =>
+      c.json(await service.endBlockedRun(actorOf(c), c.req.param("projectId"))),
+  );
+  app.post(
+    "/:projectId/artifacts/:artifactId/approval",
+    describeRoute({
+      tags: ["Artifacts"],
+      operationId: "approveDocument",
+      description:
+        "The signed-in person approves a filed document at the version they read, with no question asking for it. The hub records the approval of exactly that version as an approve screen's answer records it. When the coordinator is waiting on an approve question whose documents this approval now completes, the hub answers that question as the approve screen would, at each document's current version. Otherwise it leaves any such question open and sends the coordinator a hub note naming the document and version.",
+      security: [{ sessionCookie: [] }, { deviceBearer: [] }],
+      requestBody: {
+        required: true,
+        content: { "application/json": { schema: resolver(DocumentApproval) } },
+      },
+      responses: {
+        200: {
+          description: "The approval recorded, and the question it answered",
+          content: {
+            "application/json": {
+              schema: resolver(DocumentApprovalReceipt),
+            },
+          },
+        },
+        403: { description: "The caller is not a person on the project" },
+        404: { description: "No filed artifact by that id" },
+        409: {
+          description:
+            "Not a document, or a version that is no longer the newest",
+        },
+      },
+    }),
+    async (c) => {
+      const current = actorOf(c);
+      const projectId = c.req.param("projectId");
+      const artifactId = c.req.param("artifactId");
+      const input = DocumentApproval(await body(c));
+      if (input instanceof type.errors)
+        throw new ProjectError(400, "invalid_document_approval", {
+          issues: input,
+        });
+      const { kind } = await service.read(current, projectId, { artifactId });
+      // Read before recording, so a conversation that cannot be read refuses with nothing recorded.
+      const { runId, questions } = await askedQuestions(
+        c,
+        nativeFetch,
+        projectId,
+      );
+      await service.approveShown(
+        current,
+        projectId,
+        [{ artifactId, version: input.version }],
+        [APPROVED + kind],
+        (coordinator, content) =>
+          mailRunAsCaller(
+            c,
+            nativeFetch,
+            current.tenantId,
+            coordinator,
+            content,
+          ),
+      );
+      // The open question whose answer approves this document too, with every kind it approves.
+      const { screens } = await catalogOf(
+        service.projectState,
+        current,
+        projectId,
+      );
+      const [asking] = questions.flatMap((question) => {
+        if (question.status !== "open" || !showsScreen(question)) return [];
+        const { signalName, asked } = question;
+        const screen = screens.find(
+          ({ plugin, action }) =>
+            plugin === asked.plugin && action === asked.action,
+        );
+        if (!screen) return [];
+        const kinds = screen
+          .returns(asked.input)
+          .flatMap((fact) =>
+            fact.startsWith(APPROVED) ? [fact.slice(APPROVED.length)] : [],
+          );
+        return kinds.includes(kind) ? [{ signalName, kinds }] : [];
+      });
+      if (asking !== undefined) {
+        const shown = (await service.list(current, projectId)).artifacts.filter(
+          (artifact) => asking.kinds.includes(artifact.kind),
+        );
+        const covered = asking.kinds.every((each) =>
+          shown.some(
+            (artifact) =>
+              artifact.kind === each &&
+              artifact.approvedVersion === artifact.version,
+          ),
+        );
+        // As the approve screen answers: each document it asked for, at the version on show.
+        if (covered) {
+          await answer(c, projectId, asking.signalName, {
+            output: {
+              approved: shown.map((artifact) => ({
+                kind: artifact.kind,
+                artifactId: artifact.artifactId,
+                version: artifact.version,
+              })),
+            },
+          });
+          return c.json({
+            artifactId,
+            kind,
+            version: input.version,
+            answered: asking.signalName,
+          });
+        }
+      }
+      if (runId !== null)
+        await mailRunAsCaller(
+          c,
+          nativeFetch,
+          current.tenantId,
+          runId,
+          documentApprovedNote(kind, input.version),
+        );
+      return c.json({ artifactId, kind, version: input.version });
     },
   );
   app.post(
@@ -413,7 +814,7 @@ export function mountArtifactRoutes(
       tags: ["Artifacts"],
       operationId: "removeMaterial",
       description:
-        "Takes an attached file back. The coordinator, when one runs, is told the file is withdrawn first, so a note that cannot be sent leaves the material in place for another try; then the material is archived, so it leaves the project's documents and the coordinator's filed materials while its versions stay. The message it was sent with keeps showing it. `told` says whether a coordinator was mailed.",
+        "Takes an attached file back. The coordinator, when one runs, is told the file is withdrawn first, so a note that cannot be sent leaves the material in place for another try. Then the material is archived, so it leaves the project's documents and the coordinator's filed materials while its versions stay. The message it was sent with keeps showing it. `told` says whether a coordinator was mailed.",
       security,
       responses: {
         200: {
@@ -439,12 +840,12 @@ export function mountArtifactRoutes(
     },
   );
   app.post(
-    "/:projectId/design-concepts",
+    "/:projectId/run-concepts",
     describeRoute({
       tags: ["Artifacts"],
-      operationId: "recordDesignConcept",
+      operationId: "recordRunConcept",
       description:
-        "Names the design concept a designer run the coordinator just deployed works on; the run's design is filed as that concept's design_option.",
+        "Records the design concept a run the coordinator just deployed works on, before its assignment; the design it files is filed as that concept's design_option.",
       security,
       requestBody: {
         required: true,
@@ -452,34 +853,17 @@ export function mountArtifactRoutes(
           "application/json": { schema: resolver(DesignConceptRecord) },
         },
       },
-      responses: {
-        200: {
-          description: "The recorded run and concept",
-          content: {
-            "application/json": { schema: resolver(DesignConceptRecord) },
-          },
-        },
-      },
+      responses: { 200: { description: "The concept as stored" } },
     }),
-    async (c) => {
-      return c.json(
+    async (c) =>
+      c.json(
         await service.recordDesignConcept(
           actorOf(c),
           c.req.param("projectId"),
           await body(c),
         ),
-      );
-    },
-  );
-  app.post("/:projectId/presenter-assignments", async (c) => {
-    return c.json(
-      await service.recordPresenterAssignment(
-        actorOf(c),
-        c.req.param("projectId"),
-        await body(c),
       ),
-    );
-  });
+  );
   app.get(
     "/:projectId/manual",
     describeRoute({
@@ -545,6 +929,10 @@ export function mountArtifactRoutes(
             "Whether the app is running, starting, stopped, failed or has no files yet",
           content: { "application/json": { schema: resolver(LiveApp) } },
         },
+        409: {
+          description:
+            "The project serves no web app to run, as it has no stack.run (no_web_app), or its stack.run is not a run (invalid_stack_run)",
+        },
         503: {
           description:
             "This hub does not serve apps, or the project's app repository cannot be read",
@@ -567,12 +955,16 @@ export function mountArtifactRoutes(
       tags: ["Artifacts"],
       operationId: "keepLiveApp",
       description:
-        "Says the project is open. The hub runs one app per project from its current files, in the coder's sandbox on ports it picks, with the app's own dev script, so every change to those files shows at once; packages are installed again when they change and a crashed app restarts. It stops once this route has not been called for a minute and starts again on the next call.",
+        "Says the project is open. The hub runs one app per project from its current files, in the coder's sandbox on ports it picks, with the app's own dev script, so every change to those files shows at once. Packages are installed again when they change and a crashed app restarts. It stops once this route has not been called for a minute and starts again on the next call.",
       security,
       responses: {
         200: {
           description: "The app's state after the request",
           content: { "application/json": { schema: resolver(LiveApp) } },
+        },
+        409: {
+          description:
+            "The project serves no web app to run, as it has no stack.run (no_web_app), or its stack.run is not a run (invalid_stack_run)",
         },
         503: {
           description:

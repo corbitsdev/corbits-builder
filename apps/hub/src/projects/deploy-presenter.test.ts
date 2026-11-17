@@ -4,16 +4,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { RuntimeCapabilities } from "@intx/types/runtime-capabilities";
 import {
-  AUDIENCE_PERSONAS,
-  findAudiencePersona,
-  formatPersonaGuidance,
-  presenterAssignmentMessage,
-} from "@corbits-builder/presenter/personas";
-import {
   experimentalApprovals,
   preferenceGuidance,
   preferenceRegistry,
 } from "../config/preferences.ts";
+import { COORDINATOR } from "../workflows/coordinator-role.ts";
 import {
   createPackageTools,
   DECK_CHECK,
@@ -21,7 +16,6 @@ import {
   DECK_PDF,
   writePackageAssignment,
 } from "../artifacts/package-tools.ts";
-import { createDeployTools } from "./deploy-tools.ts";
 
 const deployment = {
   source: {
@@ -35,260 +29,6 @@ const deployment = {
   defaultSourceOfferingId: "offering",
 };
 
-test("AUDIENCE_PERSONAS defines ceo, cto, investor, client and end_user with their default documents", () => {
-  expect(AUDIENCE_PERSONAS.map((persona) => persona.id)).toEqual([
-    "ceo",
-    "cto",
-    "investor",
-    "client",
-    "end_user",
-  ]);
-  expect(findAudiencePersona("ceo")?.defaultDocuments).toEqual([
-    "problem_brief",
-    "approaches",
-    "build_plan",
-  ]);
-  expect(findAudiencePersona("cto")?.defaultDocuments).toEqual([
-    "problem_brief",
-    "constraints",
-    "approaches",
-    "build_plan",
-  ]);
-  expect(findAudiencePersona("investor")?.defaultDocuments).toEqual([
-    "problem_brief",
-    "approaches",
-    "product_requirements",
-  ]);
-  expect(findAudiencePersona("client")?.defaultDocuments).toEqual([
-    "problem_brief",
-    "product_requirements",
-    "build_plan",
-  ]);
-  expect(findAudiencePersona("end_user")?.defaultDocuments).toEqual([
-    "problem_brief",
-    "product_requirements",
-  ]);
-
-  const guidance = formatPersonaGuidance(findAudiencePersona("ceo")!);
-  expect(guidance).toContain("Audience persona: CEO (ceo)");
-  expect(guidance).toContain(
-    "business outcome, strategic fit, risks, resource ask",
-  );
-  const message = presenterAssignmentMessage({
-    projectId: "proj-1",
-    audience: "ceo",
-    decisionNeeded: "Approve Q3 staffing and budget",
-    tone: "Executive and direct",
-    length: "6 slides",
-    instruction:
-      "Prepare an executive deck for our CEO covering the brief, chosen approach and build plan.",
-    documents: [
-      {
-        artifactId: "art-brief",
-        kind: "problem_brief",
-        title: "Problem Brief",
-        version: 2,
-        sha256: "a".repeat(64),
-        path: ".inputs/problem_brief.md",
-      },
-    ],
-  });
-  expect(message).toContain("Approve Q3 staffing and budget");
-  expect(message).toContain(".inputs/problem_brief.md");
-  expect(message).toContain('"personaId": "ceo"');
-});
-
-test("deploy_presenter requires approved documents and pins source refs and filed design tokens, from a design larger than its result cap", async () => {
-  const sha = (char: string) => char.repeat(64);
-  const documents: Record<string, unknown>[] = [
-    {
-      kind: "problem_brief",
-      artifactId: "id-brief",
-      title: "Problem Brief",
-      version: 2,
-      sha256: sha("1"),
-      approvedVersion: 2,
-    },
-    {
-      kind: "approaches",
-      artifactId: "id-approaches",
-      title: "Approaches",
-      version: 1,
-      sha256: sha("2"),
-    },
-    {
-      kind: "build_plan",
-      artifactId: "id-plan",
-      title: "Build Plan",
-      version: 3,
-      sha256: sha("3"),
-      approvedVersion: 3,
-    },
-    {
-      kind: "design",
-      artifactId: "id-design",
-      title: "Calm Notebook",
-      version: 4,
-      sha256: sha("4"),
-      approvedVersion: 4,
-    },
-  ];
-  const maxResultBytes = 65536;
-  let fullTextBytes = 0;
-  const deployed: unknown[] = [];
-  const sealedAssignments: unknown[] = [];
-  const mailed: string[] = [];
-  const fetch = async (path: string, init: RequestInit) => {
-    const body = init.body ? JSON.parse(String(init.body)) : undefined;
-    if (path.endsWith("/workflows/deployments")) {
-      deployed.push(body);
-      return Response.json({
-        id: "run-presenter-1",
-        tenantId: "tenant",
-        definitionAssetId: "asset",
-        status: "deployed",
-        createdAt: new Date(0).toISOString(),
-      });
-    }
-    if (path.endsWith("/presenter-assignments") && init.method === "POST") {
-      sealedAssignments.push(body);
-      return Response.json(body);
-    }
-    if (path.endsWith("/artifacts") && init.method === "GET")
-      return Response.json({
-        artifacts: documents,
-        inFlight: [],
-        appBuilt: false,
-        preferences: {},
-      });
-    if (path.includes("/artifacts/") && init.method === "GET") {
-      const found = documents.find((item) =>
-        path.includes("/artifacts/" + String(item["artifactId"])),
-      )!;
-      const content =
-        found["kind"] === "design"
-          ? JSON.stringify({
-              files: {
-                "DESIGN.md":
-                  '---\nname: "Calm Notebook"\n---\n\n# Calm Notebook',
-                "designs/index.html": "<main>Mockup</main>",
-                "designs/styles.css": ":root { --primary: #2563eb; }",
-                "designs/screens/orders.html": "<p>Order</p>".repeat(
-                  maxResultBytes,
-                ),
-              },
-            })
-          : `Full text of ${String(found["title"])}`.padEnd(fullTextBytes);
-      return Response.json({
-        artifactId: found["artifactId"],
-        kind: found["kind"],
-        title: found["title"],
-        version: found["version"],
-        sha256: found["sha256"],
-        filedAt: new Date(0).toISOString(),
-        content,
-      });
-    }
-    return Response.json({ code: "unexpected_route" }, { status: 404 });
-  };
-  const capabilities = {
-    resolve: (name: string) =>
-      name === "credentials"
-        ? { resolve: async () => ({ kind: "http", fetch }) }
-        : {
-            send: async (msg: { content: string }) => {
-              mailed.push(msg.content);
-            },
-          },
-  } as unknown as RuntimeCapabilities;
-  const tools = createDeployTools({
-    tenantId: "tenant",
-    projectId: "project",
-    domain: "example.invalid",
-    workflows: {
-      "writer-constraints": deployment,
-      "writer-approaches": deployment,
-      "writer-product-requirements": deployment,
-      "writer-build-plan": deployment,
-      reviewer: deployment,
-      coder: deployment,
-      designer: deployment,
-      presenter: deployment,
-    },
-    maxResultBytes,
-  })({ capabilities } as never);
-
-  const callArgs = {
-    audience: "ceo",
-    decisionNeeded: "Approve budget and phase 1 kickoff",
-    kinds: ["problem_brief", "approaches", "build_plan"],
-    tone: "Executive and direct",
-    length: "6-8 slides",
-    instruction:
-      "Build the CEO approval deck leading with the phase 1 ask and ROI.",
-  };
-
-  // Unapproved approaches is refused first.
-  const unapproved = await tools.run(
-    { id: "call-1", name: "deploy_presenter", arguments: callArgs },
-    new AbortController().signal,
-  );
-  expect(unapproved.isError).toBe(true);
-  expect(unapproved.content).toStartWith("approaches_not_approved:");
-  expect(deployed).toHaveLength(0);
-
-  // Approve approaches, but leave design unapproved: must refuse design_not_approved.
-  documents.find((doc) => doc["kind"] === "approaches")!["approvedVersion"] = 1;
-  delete documents.find((doc) => doc["kind"] === "design")!["approvedVersion"];
-  const unapprovedDesign = await tools.run(
-    { id: "call-1b", name: "deploy_presenter", arguments: callArgs },
-    new AbortController().signal,
-  );
-  expect(unapprovedDesign.isError).toBe(true);
-  expect(unapprovedDesign.content).toStartWith("design_not_approved:");
-  expect(deployed).toHaveLength(0);
-
-  // Approve design and deploy again.
-  documents.find((doc) => doc["kind"] === "design")!["approvedVersion"] = 4;
-  const approved = await tools.run(
-    { id: "call-2", name: "deploy_presenter", arguments: callArgs },
-    new AbortController().signal,
-  );
-  expect(approved.isError).toBeUndefined();
-  expect(JSON.parse(String(approved.content))).toEqual({
-    runId: "run-presenter-1",
-    role: "presenter",
-    status: "deployed",
-  });
-  expect(deployed).toHaveLength(1);
-  expect(sealedAssignments).toHaveLength(1);
-  expect(sealedAssignments[0]).toMatchObject({
-    runId: "run-presenter-1",
-    assignment: {
-      sealed: true,
-      audience: "ceo",
-      decisionNeeded: "Approve budget and phase 1 kickoff",
-    },
-  });
-  expect(mailed).toHaveLength(1);
-  expect(mailed[0]).toContain("Approve budget and phase 1 kickoff");
-  expect(mailed[0]).toContain("/problem_brief.md");
-  expect(mailed[0]).toContain("/approaches.md");
-  expect(mailed[0]).toContain("/build_plan.md");
-  expect(mailed[0]).not.toContain("Full text of");
-  expect(mailed[0]).toContain("--primary: #2563eb;");
-  expect(mailed[0]).toContain('"artifactId": "id-design"');
-
-  fullTextBytes = maxResultBytes;
-  const oversized = await tools.run(
-    { id: "call-3", name: "deploy_presenter", arguments: callArgs },
-    new AbortController().signal,
-  );
-  expect(oversized.isError).toBeUndefined();
-  expect(mailed).toHaveLength(2);
-  expect(mailed[1]).not.toContain("Full text of");
-});
-
 test("file_package refuses until check_deck passes on the current deck, then files approval_package with pinned sources", async () => {
   const workspace = await mkdtemp(join(tmpdir(), "sb-package-tools-test-"));
   const posted: { path: string; body: unknown }[] = [];
@@ -300,16 +40,17 @@ test("file_package refuses until check_deck passes on the current deck, then fil
         domain: "example.invalid",
         role: "presenter",
         workflows: {
-          "writer-constraints": deployment,
-          "writer-approaches": deployment,
           "writer-product-requirements": deployment,
           "writer-build-plan": deployment,
+          "writer-document": deployment,
           reviewer: deployment,
           coder: deployment,
           designer: deployment,
           presenter: deployment,
         },
         openNetwork: false,
+        firstBuild: false,
+        toolchains: { paths: [], dataDir: "/unused" },
         build: {
           assetDirectory: "/tmp",
           browserCli: "/tmp/browser",
@@ -337,7 +78,7 @@ test("file_package refuses until check_deck passes on the current deck, then fil
   const capabilities = {
     resolve: () => ({ resolve: async () => ({ kind: "http", fetch }) }),
   } as unknown as RuntimeCapabilities;
-  const runner = createPackageTools()({
+  const runner = createPackageTools("presenter")({
     toolCwd: workspace,
     capabilities,
   } as never);
@@ -506,24 +247,30 @@ test("file_package refuses until check_deck passes on the current deck, then fil
   }
 });
 
+// The presenter is a declared agent, built from the one entry every declared agent shares.
+const AGENT_ENTRY = "../workflows/agent-package.ts";
+
 test("presenter workflow entry binds Medium tier inference and approval_package write grant", async () => {
   const { MODEL_PROVIDERS, tierBinding } = await import("../config/models.ts");
   const { resolveRoleInference } =
     await import("../workflows/role-inference.ts");
-  const { roleModel, runRole } = await import("../plugins/catalog.ts");
-  const bindings = (role: string) =>
-    tierBinding(
-      MODEL_PROVIDERS,
-      { profile: "anthropic_default" },
-      roleModel(runRole(role)),
-    );
-  expect(bindings("presenter")).toEqual(bindings("writer"));
+  const { CATALOG, roleModel } = await import("../plugins/catalog.ts");
+  const presenter = CATALOG.role("presenter");
+  if (!presenter) throw new Error("presenter_role_missing");
+  const choice = { profile: "anthropic_default" };
+  const model = roleModel(presenter);
+  expect(model.tier).toBe("medium");
+  const binding = tierBinding(MODEL_PROVIDERS, choice, model);
   process.env.BUILDER_ROLE_INFERENCE = JSON.stringify(
-    resolveRoleInference(MODEL_PROVIDERS, "presenter", bindings("presenter")),
+    resolveRoleInference(MODEL_PROVIDERS, model.budget, binding),
   );
-  const entry = await import("@corbits-builder/presenter/packages/presenter");
+  const brought = CATALOG.packages.get("presenter");
+  if (brought === undefined || !("agent" in brought))
+    throw new Error("presenter_agent_missing");
+  process.env.BUILDER_AGENT = JSON.stringify(brought.agent);
+  const entry = await import(`${AGENT_ENTRY}?presenter`);
   expect(entry.director).toBeDefined();
-  expect(entry.default.steps.present).toMatchObject({ triggers: 1 });
+  expect(entry.default.steps.work).toMatchObject({ triggers: 1 });
   expect(entry.default.grantRequirements).toEqual([
     { resource: "sb-project:*", action: "read", source: "invoker" },
     {
@@ -544,17 +291,17 @@ test("experimental_approvals preference includes coordinator guidance when enabl
 
   const enabledGuidance = preferenceGuidance(
     { experimental_approvals: "yes" },
-    "coordinator",
+    COORDINATOR,
   ).join("\n");
-  expect(enabledGuidance).toContain("deploy_presenter");
+  expect(enabledGuidance).toContain("files the next approval_package");
   expect(enabledGuidance).toContain("approval_package");
   expect(enabledGuidance).toContain("reviewer feedback (external");
 
   const disabledGuidance = preferenceGuidance(
     { experimental_approvals: "no" },
-    "coordinator",
+    COORDINATOR,
   ).join("\n");
-  expect(disabledGuidance).not.toContain("deploy_presenter");
+  expect(disabledGuidance).not.toContain("files the next approval_package");
   expect(disabledGuidance).not.toContain("approval_package");
   expect(disabledGuidance).not.toContain("reviewer feedback");
   expect(disabledGuidance).not.toContain("Approvals:");

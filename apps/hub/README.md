@@ -1,14 +1,17 @@
 # Hub
 
 The Builder server. It composes native Interchange with Builder's tenancy,
-sign-in, projects, versioned documents and approvals on Postgres, starts each
-role's workflow, and serves the built interface on the same origin.
+sign-in, projects, versioned documents and approvals on Postgres, runs the
+coordinator and the plugins' workflows, and serves the built interface on the
+same origin.
 
 ## Where it fits
 
-The hub runs Interchange in-process. It imports
-the role packages in [`plugins/`][plugins] and [`workflows/`][workflows] and builds each one into a
-deployable workflow package with hub-supplied tools, and it shares types with
+The hub runs Interchange in-process. It reads every plugin under
+[`plugins/`][plugins] when it starts, through `@corbits-builder/plugin-host`,
+and builds the coordinator in [`workflows/coordinator`][workflows] and each
+plugin's workflows and agents into deployable workflow packages with
+hub-supplied tools. It names no plugin in its code, and it shares types with
 the client through [`packages/schemas`][schemas]. The [client][client] and the
 [interface][web] reach it only over HTTP. Scripts and tests
 use a few of its package exports.
@@ -19,14 +22,12 @@ use a few of its package exports.
 - `src/config/`: user-visible wording, model tiers and other settings.
 - `src/projects/`, `src/artifacts/`, `src/settings/`, `src/invitations/`,
   `src/audit/`: services and routes for each product area.
-- `src/plugins/`: the catalog, read once from the `builder` block of each
-  `plugins/*` package and of this package, which declares the coordinator's and
-  reviewer's roles and the model settings.
-- `src/workflows/`: the bundling that turns each package the catalog declares
-  into a workflow package; `entries/` holds the coordinator's and reviewer's
-  modules.
-- `src/builds/`, `src/live-app/`: the coder's sandbox, tools, starter app
-  and live preview.
+- `src/plugins/`: the plugin catalog read from `plugins/`, the coordinator's
+  tools, plugin checks and the facts a plan step waits on.
+- `src/workflows/`: the coordinator's entry and the bundling that turns the
+  coordinator and each plugin's workflows into packages.
+- `src/builds/`, `src/live-app/`: the designer's and coder's sandbox and
+  tools, and the live preview.
 - `src/sidecar/`, `src/provisioning/`: where agent sidecars run.
 - `src/mail/`, `src/auth/`: conversations and agent grants.
 - `src/db/`: the Drizzle schema and migrations.
@@ -42,7 +43,7 @@ and `bun run test` check it. The
 and the hub each own.
 
 [plugins]: https://github.com/corbitsdev/corbits-builder/tree/main/plugins
-[workflows]: https://github.com/corbitsdev/corbits-builder/tree/main/workflows
+[workflows]: https://github.com/corbitsdev/corbits-builder/tree/main/workflows/coordinator
 [schemas]: https://github.com/corbitsdev/corbits-builder/tree/main/packages/schemas
 [client]: https://github.com/corbitsdev/corbits-builder/tree/main/packages/client
 [web]: https://github.com/corbitsdev/corbits-builder/tree/main/apps/web

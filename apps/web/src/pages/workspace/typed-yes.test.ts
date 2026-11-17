@@ -99,36 +99,10 @@ test("a failed denial stops before delivering the message", async () => {
   expect(steps).toEqual(["decide"]);
 });
 
-test("choosing an approach approves a matching ask, and declines an unrelated open ask with the choice as its reason", async () => {
-  const matchingSteps: string[] = [];
-  const matchingFault = await chooseApproachWithOpenApproval({
-    askedApprovalId: "appr-approaches",
-    openApprovalId: "appr-approaches",
-    decide: async (decision) => {
-      matchingSteps.push(`decide:${decision.approvalId}:${decision.choice}`);
-      return null;
-    },
-    deliver: async () => {
-      matchingSteps.push("deliver");
-      return true;
-    },
-    decline: async (approvalId) => {
-      matchingSteps.push(`decline:${approvalId}`);
-      return true;
-    },
-    notSent: "not sent",
-  });
-  expect(matchingFault).toBeNull();
-  expect(matchingSteps).toEqual(["decide:appr-approaches:yes", "deliver"]);
-
+test("choosing an approach declines an open ask with the choice as its reason", async () => {
   const unrelatedSteps: string[] = [];
   const unrelatedFault = await chooseApproachWithOpenApproval({
-    askedApprovalId: undefined,
     openApprovalId: "appr-design",
-    decide: async (decision) => {
-      unrelatedSteps.push(`decide:${decision.approvalId}:${decision.choice}`);
-      return null;
-    },
     deliver: async () => {
       unrelatedSteps.push("deliver");
       return true;

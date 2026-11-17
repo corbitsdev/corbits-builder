@@ -3,4 +3,5 @@ set -eu
 bun_bin=$(command -v bun || printf '%s' "$HOME/.bun/bin/bun")
 "$bun_bin" run format:check
 "$bun_bin" run lint
+"$bun_bin" run boundaries
 "$bun_bin" run typecheck

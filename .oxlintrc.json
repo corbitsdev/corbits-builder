@@ -32,6 +32,20 @@
       {
         "max": 5
       }
+    ],
+    "eslint/no-restricted-imports": [
+      "error",
+      {
+        "patterns": [
+          {
+            "group": [
+              "@corbits-builder/plugin-host",
+              "@corbits-builder/plugin-host/**"
+            ],
+            "message": "Only the hub imports the plugin host; a plugin author's types live in @corbits-builder/plugin."
+          }
+        ]
+      }
     ]
   },
   "overrides": [
@@ -52,6 +66,245 @@
       ],
       "rules": {
         "eslint/max-params": "off"
+      }
+    },
+    {
+      "files": ["apps/hub/**"],
+      "rules": {
+        "eslint/no-restricted-imports": "off"
+      }
+    },
+    {
+      "files": ["plugins/**"],
+      "rules": {
+        "eslint/no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "regex": "^@corbits-builder/(hub|plugin-host)(/|$)",
+                "message": "A plugin reaches the host only through @corbits-builder/plugin, never the hub's or the plugin host's own modules."
+              },
+              {
+                "group": [
+                  "@corbits-builder/*",
+                  "@corbits-builder/*/**",
+                  "!@corbits-builder/plugin",
+                  "!@corbits-builder/plugin/**",
+                  "!@corbits-builder/plugin-ui",
+                  "!@corbits-builder/plugin-ui/**",
+                  "!@corbits-builder/schemas",
+                  "!@corbits-builder/schemas/**",
+                  "!@corbits-builder/app-checks",
+                  "!@corbits-builder/app-checks/**",
+                  "!@corbits-builder/hub",
+                  "!@corbits-builder/hub/**",
+                  "!@corbits-builder/plugin-host",
+                  "!@corbits-builder/plugin-host/**"
+                ],
+                "message": "A plugin never imports another plugin; what plugins share belongs in @corbits-builder/plugin, @corbits-builder/plugin-ui, @corbits-builder/schemas or @corbits-builder/app-checks."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    // An override replaces the rule for its files, so each depth of a plugin's files restates the
+    // package rules and adds how many folders up a relative import may climb before it leaves.
+    // The host is matched by a regex because a glob group's negations would also clear it.
+    {
+      "files": ["plugins/*/*.ts", "plugins/*/*.tsx"],
+      "rules": {
+        "eslint/no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "regex": "^@corbits-builder/(hub|plugin-host)(/|$)",
+                "message": "A plugin reaches the host only through @corbits-builder/plugin, never the hub's or the plugin host's own modules."
+              },
+              {
+                "group": [
+                  "@corbits-builder/*",
+                  "@corbits-builder/*/**",
+                  "!@corbits-builder/plugin",
+                  "!@corbits-builder/plugin/**",
+                  "!@corbits-builder/plugin-ui",
+                  "!@corbits-builder/plugin-ui/**",
+                  "!@corbits-builder/schemas",
+                  "!@corbits-builder/schemas/**",
+                  "!@corbits-builder/app-checks",
+                  "!@corbits-builder/app-checks/**",
+                  "!@corbits-builder/hub",
+                  "!@corbits-builder/hub/**",
+                  "!@corbits-builder/plugin-host",
+                  "!@corbits-builder/plugin-host/**"
+                ],
+                "message": "A plugin never imports another plugin; what plugins share belongs in @corbits-builder/plugin, @corbits-builder/plugin-ui, @corbits-builder/schemas or @corbits-builder/app-checks."
+              },
+              {
+                "regex": "^(\\.\\./){1}",
+                "message": "A plugin imports only its own files; a relative path never leaves its folder."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["plugins/*/*/*.ts", "plugins/*/*/*.tsx"],
+      "rules": {
+        "eslint/no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "regex": "^@corbits-builder/(hub|plugin-host)(/|$)",
+                "message": "A plugin reaches the host only through @corbits-builder/plugin, never the hub's or the plugin host's own modules."
+              },
+              {
+                "group": [
+                  "@corbits-builder/*",
+                  "@corbits-builder/*/**",
+                  "!@corbits-builder/plugin",
+                  "!@corbits-builder/plugin/**",
+                  "!@corbits-builder/plugin-ui",
+                  "!@corbits-builder/plugin-ui/**",
+                  "!@corbits-builder/schemas",
+                  "!@corbits-builder/schemas/**",
+                  "!@corbits-builder/app-checks",
+                  "!@corbits-builder/app-checks/**",
+                  "!@corbits-builder/hub",
+                  "!@corbits-builder/hub/**",
+                  "!@corbits-builder/plugin-host",
+                  "!@corbits-builder/plugin-host/**"
+                ],
+                "message": "A plugin never imports another plugin; what plugins share belongs in @corbits-builder/plugin, @corbits-builder/plugin-ui, @corbits-builder/schemas or @corbits-builder/app-checks."
+              },
+              {
+                "regex": "^(\\.\\./){2}",
+                "message": "A plugin imports only its own files; a relative path never leaves its folder."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["plugins/*/*/*/*.ts", "plugins/*/*/*/*.tsx"],
+      "rules": {
+        "eslint/no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "regex": "^@corbits-builder/(hub|plugin-host)(/|$)",
+                "message": "A plugin reaches the host only through @corbits-builder/plugin, never the hub's or the plugin host's own modules."
+              },
+              {
+                "group": [
+                  "@corbits-builder/*",
+                  "@corbits-builder/*/**",
+                  "!@corbits-builder/plugin",
+                  "!@corbits-builder/plugin/**",
+                  "!@corbits-builder/plugin-ui",
+                  "!@corbits-builder/plugin-ui/**",
+                  "!@corbits-builder/schemas",
+                  "!@corbits-builder/schemas/**",
+                  "!@corbits-builder/app-checks",
+                  "!@corbits-builder/app-checks/**",
+                  "!@corbits-builder/hub",
+                  "!@corbits-builder/hub/**",
+                  "!@corbits-builder/plugin-host",
+                  "!@corbits-builder/plugin-host/**"
+                ],
+                "message": "A plugin never imports another plugin; what plugins share belongs in @corbits-builder/plugin, @corbits-builder/plugin-ui, @corbits-builder/schemas or @corbits-builder/app-checks."
+              },
+              {
+                "regex": "^(\\.\\./){3}",
+                "message": "A plugin imports only its own files; a relative path never leaves its folder."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["plugins/*/*/*/*/*.ts", "plugins/*/*/*/*/*.tsx"],
+      "rules": {
+        "eslint/no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "regex": "^@corbits-builder/(hub|plugin-host)(/|$)",
+                "message": "A plugin reaches the host only through @corbits-builder/plugin, never the hub's or the plugin host's own modules."
+              },
+              {
+                "group": [
+                  "@corbits-builder/*",
+                  "@corbits-builder/*/**",
+                  "!@corbits-builder/plugin",
+                  "!@corbits-builder/plugin/**",
+                  "!@corbits-builder/plugin-ui",
+                  "!@corbits-builder/plugin-ui/**",
+                  "!@corbits-builder/schemas",
+                  "!@corbits-builder/schemas/**",
+                  "!@corbits-builder/app-checks",
+                  "!@corbits-builder/app-checks/**",
+                  "!@corbits-builder/hub",
+                  "!@corbits-builder/hub/**",
+                  "!@corbits-builder/plugin-host",
+                  "!@corbits-builder/plugin-host/**"
+                ],
+                "message": "A plugin never imports another plugin; what plugins share belongs in @corbits-builder/plugin, @corbits-builder/plugin-ui, @corbits-builder/schemas or @corbits-builder/app-checks."
+              },
+              {
+                "regex": "^(\\.\\./){4}",
+                "message": "A plugin imports only its own files; a relative path never leaves its folder."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["plugins/*/*/*/*/*/*.ts", "plugins/*/*/*/*/*/*.tsx"],
+      "rules": {
+        "eslint/no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "regex": "^@corbits-builder/(hub|plugin-host)(/|$)",
+                "message": "A plugin reaches the host only through @corbits-builder/plugin, never the hub's or the plugin host's own modules."
+              },
+              {
+                "group": [
+                  "@corbits-builder/*",
+                  "@corbits-builder/*/**",
+                  "!@corbits-builder/plugin",
+                  "!@corbits-builder/plugin/**",
+                  "!@corbits-builder/plugin-ui",
+                  "!@corbits-builder/plugin-ui/**",
+                  "!@corbits-builder/schemas",
+                  "!@corbits-builder/schemas/**",
+                  "!@corbits-builder/app-checks",
+                  "!@corbits-builder/app-checks/**",
+                  "!@corbits-builder/hub",
+                  "!@corbits-builder/hub/**",
+                  "!@corbits-builder/plugin-host",
+                  "!@corbits-builder/plugin-host/**"
+                ],
+                "message": "A plugin never imports another plugin; what plugins share belongs in @corbits-builder/plugin, @corbits-builder/plugin-ui, @corbits-builder/schemas or @corbits-builder/app-checks."
+              },
+              {
+                "regex": "^(\\.\\./){5}",
+                "message": "A plugin imports only its own files; a relative path never leaves its folder."
+              }
+            ]
+          }
+        ]
       }
     },
     {
@@ -77,6 +330,13 @@
                 "message": "A view or a story never reaches the hub. Take what it shows as props; the page's model reads it."
               },
               {
+                "group": [
+                  "@corbits-builder/plugin-host",
+                  "@corbits-builder/plugin-host/**"
+                ],
+                "message": "Only the hub imports the plugin host; a plugin author's types live in @corbits-builder/plugin."
+              },
+              {
                 "group": ["**/*.model", "**/*.model.ts", "**/*.model.js"],
                 "message": "A view owns its props and a story draws the view; neither runs the page's model."
               }
@@ -92,6 +352,13 @@
           "error",
           {
             "patterns": [
+              {
+                "group": [
+                  "@corbits-builder/plugin-host",
+                  "@corbits-builder/plugin-host/**"
+                ],
+                "message": "Only the hub imports the plugin host; a plugin author's types live in @corbits-builder/plugin."
+              },
               {
                 "group": ["**/*.module.css"],
                 "message": "A model holds no look. Styles belong to the view."

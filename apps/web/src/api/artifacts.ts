@@ -3,7 +3,6 @@ import {
   type PackageZipReviewerQuery,
 } from "@corbits-builder/client";
 import type {
-  DesignChoice,
   DesignTweaks,
   UserManual,
 } from "@corbits-builder/schemas/artifact";
@@ -23,6 +22,52 @@ export async function listProjectArtifacts(projectId: string) {
   const tenantId = await workspaceTenantId();
   return productClient().projectArtifacts(tenantId, projectId);
 }
+
+export async function readProjectPlan(projectId: string) {
+  const tenantId = await workspaceTenantId();
+  return productClient().projectPlan(tenantId, projectId);
+}
+
+/** Changes a plan step as the person; a refusal throws with the hub's own sentence. */
+async function changePlanStep(
+  send: (
+    client: ReturnType<typeof productClient>,
+    tenantId: string,
+  ) => Promise<unknown>,
+) {
+  const tenantId = await workspaceTenantId();
+  try {
+    return await send(productClient(), tenantId);
+  } catch (cause) {
+    const text = (await refusal(cause))?.body["text"];
+    if (typeof text === "string") throw new Error(text);
+    throw await readableFailure(cause);
+  }
+}
+
+export const declinePlanStep = (projectId: string, stepId: string) =>
+  changePlanStep((client, tenantId) =>
+    client.declinePlanStep(tenantId, projectId, stepId),
+  );
+
+export const restorePlanStep = (projectId: string, stepId: string) =>
+  changePlanStep((client, tenantId) =>
+    client.restorePlanStep(tenantId, projectId, stepId),
+  );
+
+export const goAheadPlanStep = (projectId: string, stepId: string) =>
+  changePlanStep((client, tenantId) =>
+    client.goAheadPlanStep(tenantId, projectId, stepId),
+  );
+
+export const setPlanStepAskFirst = (
+  projectId: string,
+  stepId: string,
+  askFirst: boolean,
+) =>
+  changePlanStep((client, tenantId) =>
+    client.setPlanStepAskFirst(tenantId, projectId, stepId, askFirst),
+  );
 
 export async function readArtifact(
   projectId: string,
@@ -184,9 +229,35 @@ export async function saveDesignTweaks(projectId: string, input: DesignTweaks) {
   return productClient().saveDesignTweaks(tenantId, projectId, input);
 }
 
-export async function chooseDesign(projectId: string, input: DesignChoice) {
+/** The named project values as stored, null where the project has none yet. */
+export async function readProjectValues(
+  projectId: string,
+  keys: readonly string[],
+  signal: AbortSignal,
+) {
   const tenantId = await workspaceTenantId();
-  return productClient().chooseDesign(tenantId, projectId, input);
+  const read = await productClient().projectValues(
+    tenantId,
+    projectId,
+    keys,
+    signal,
+  );
+  return read.values;
+}
+
+/** The person approves a filed document at the version they read. */
+export async function approveDocument(
+  projectId: string,
+  artifactId: string,
+  version: number,
+) {
+  const tenantId = await workspaceTenantId();
+  return productClient().approveDocument(
+    tenantId,
+    projectId,
+    artifactId,
+    version,
+  );
 }
 
 /** The file types the coordinator reads and how many and how large they may be. */

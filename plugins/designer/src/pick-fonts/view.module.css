@@ -1,0 +1,229 @@
+.picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.choosing {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.choosingLabel {
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+}
+
+/* A segmented control: a sunken track, the side being chosen raised out of it. */
+.sides {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+  padding: 3px;
+  border-radius: var(--radius-md);
+  background: var(--muted);
+}
+
+.side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  color: var(--muted-foreground);
+  text-align: left;
+  cursor: pointer;
+}
+
+.side:hover {
+  background: color-mix(in oklab, var(--background) 50%, transparent);
+  color: var(--foreground);
+}
+
+.side[aria-pressed="true"] {
+  background: var(--background);
+  color: var(--foreground);
+  box-shadow:
+    0 0 0 1px var(--border-strong),
+    0 1px 2px color-mix(in srgb, var(--foreground) 12%, transparent);
+}
+
+.side:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+
+.sideLabel {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--space-2);
+  font-size: 0.75rem;
+}
+
+.was {
+  color: var(--muted-foreground);
+}
+
+.sideFont {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search {
+  position: relative;
+}
+
+.search > [data-slot="input"] {
+  padding-right: 2.25rem;
+}
+
+.search > button {
+  position: absolute;
+  top: 0;
+  right: 0;
+}
+
+.list {
+  position: relative;
+  max-height: 10rem;
+  overflow-y: auto;
+  padding: var(--space-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--background);
+}
+
+/* Reads as a question's prompt in the questions card, quieter: it labels a section, not a choice. */
+.group {
+  position: sticky;
+  top: calc(-1 * var(--space-1));
+  z-index: 1;
+  margin: 0;
+  padding: var(--space-2) var(--space-2) var(--space-1);
+  background: var(--background);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--muted-foreground);
+}
+
+.option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 2rem;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  font-size: 0.875rem;
+  cursor: pointer;
+  /* Clears the sticky group label when a row scrolls into view. */
+  scroll-margin-top: 2rem;
+}
+
+.option[data-active],
+.option:hover {
+  background: var(--muted);
+}
+
+.option[aria-selected="true"] {
+  background: var(--wb-selected);
+  font-weight: 500;
+}
+
+.option[aria-selected="true"][data-active] {
+  outline: 1px solid var(--primary-emphasis);
+  outline-offset: -1px;
+}
+
+.name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.inUse {
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--muted-foreground);
+}
+
+.mark {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+  color: var(--primary-emphasis);
+}
+
+.empty {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 0.875rem;
+  color: var(--muted-foreground);
+}
+
+.empty p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.note {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--muted-foreground);
+}
+
+.hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* The proposed fonts, each one press, under the fonts in use. */
+.offers {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.offersLabel {
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+}
+
+.offer {
+  max-width: 100%;
+}
+
+.offer[aria-pressed="true"] {
+  border-color: var(--primary);
+  background: var(--wb-selected);
+}
+
+/* On a phone every control is a finger's height. */
+@media (max-width: 30rem) {
+  .side,
+  .offer,
+  .option {
+    min-height: var(--target);
+  }
+
+  /* Taller rows keep about as many in view, short enough that the card itself does not scroll. */
+  .list {
+    max-height: 12rem;
+  }
+}

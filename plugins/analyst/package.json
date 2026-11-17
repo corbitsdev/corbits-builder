@@ -1,0 +1,78 @@
+{
+  "name": "@corbits-builder/analyst",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Works through the numbers of a question, from the project's documents and figures on the web, and files the analysis.",
+  "license": "SEE LICENSE IN ../../LICENSE.md",
+  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
+  "type": "module",
+  "dependencies": {
+    "@corbits-builder/plugin": "workspace:*",
+    "@corbits-builder/schemas": "workspace:*",
+    "arktype": "catalog:"
+  },
+  "builder": {
+    "handle": "analyst",
+    "runs": "specialist",
+    "groups": [
+      "research",
+      "documents"
+    ],
+    "when": "The person asks for an analysis that comes down to numbers: market size, unit economics, pricing or a funnel, worked through and filed as a document.",
+    "unless": "Research or a comparison without figures to work through, a question to answer in the reply, a document written only from the project's own documents, or building or changing code.",
+    "roles": [
+      {
+        "name": "analyst",
+        "label": "Analyst",
+        "model": "writer",
+        "limits": "document",
+        "tools": [
+          "read_artifact",
+          "write_artifact",
+          "web"
+        ],
+        "slot": "writer",
+        "status": {
+          "working": "Working out the numbers",
+          "done": "Worked out the numbers"
+        },
+        "preferences": [
+          "technical"
+        ],
+        "filesDocuments": true
+      }
+    ],
+    "settings": {
+      "writer": {
+        "label": "Writer",
+        "hint": "Writes the documents.",
+        "tier": "medium"
+      }
+    },
+    "budgets": {
+      "document": {
+        "maxOutputTokens": 32768
+      }
+    },
+    "agents": {
+      "analyst": {
+        "prompt": "./prompt.md"
+      }
+    },
+    "actions": {
+      "analyse": {
+        "returns": [
+          "filed:{kind}"
+        ],
+        "start": {
+          "agent": "analyst"
+        }
+      }
+    },
+    "examples": [
+      "size the market for our product",
+      "work out the unit economics of the premium plan",
+      "what would a price of ten dollars a month earn us"
+    ]
+  }
+}

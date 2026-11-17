@@ -9,7 +9,7 @@ import type { RuntimeCapabilities } from "@intx/types/runtime-capabilities";
 import { INPUTS_DIRECTORY } from "@corbits-builder/schemas/app-files";
 import { HubArtifactList } from "../artifacts/tools.ts";
 import { sourceDocument } from "./source-document.ts";
-import { workflowHttpJson } from "./http-json.ts";
+import { workflowHttpJson } from "@corbits-builder/plugin/http-json";
 import {
   projectScopeFailure,
   resolveWorkflowProjectScope,
@@ -18,7 +18,7 @@ import { savedResultPath } from "./saved-result-tools.ts";
 import {
   ArtifactContent,
   MATERIAL_KIND,
-  WriterDocumentKind,
+  isDocumentKind,
   type ArtifactListItem,
 } from "@corbits-builder/schemas/artifact";
 
@@ -80,8 +80,8 @@ async function filedDocuments(
     list.artifacts
       .filter(
         (item) =>
-          WriterDocumentKind.allows(item.kind) ||
-          ["problem_brief", "design", MATERIAL_KIND].includes(item.kind),
+          isDocumentKind(item.kind) ||
+          ["design", MATERIAL_KIND].includes(item.kind),
       )
       .map(async (item) => {
         const document = ArtifactContent.assert(

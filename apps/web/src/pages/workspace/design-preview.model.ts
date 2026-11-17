@@ -5,6 +5,10 @@ import { keys } from "../../queries/keys.ts";
 import { readProjectActivity } from "../../api/activity.ts";
 import { readDesignDraft } from "../../api/artifacts.ts";
 import type { DesignFiles } from "./design-bundle.ts";
+import { roleOf } from "./roles.ts";
+
+// Whether a run's role drafts the design.
+const designs = (role: string) => roleOf(role)?.designs === true;
 
 const DRAFT_REFRESH_MS = 12_000;
 const DESIGNER_ACTIVITY_MS = 2_000;
@@ -24,7 +28,7 @@ export function designDraftFiled(
   if (hasFiledDesign) return true;
   if (inFlight === undefined) return false;
   return !inFlight.some(
-    (run) => run.role === "designer" && run.concept === undefined,
+    (run) => designs(run.role) && run.concept === undefined,
   );
 }
 
@@ -50,13 +54,13 @@ export function useDesignDraft(
     queryFn: ({ signal }) => readProjectActivity(projectId, signal),
     enabled: !designFiled,
     refetchInterval: (query) =>
-      query.state.data?.agents.some((agent) => agent.role === "designer")
+      query.state.data?.agents.some((agent) => designs(agent.role))
         ? DESIGNER_ACTIVITY_MS
         : DRAFT_REFRESH_MS,
     refetchOnWindowFocus: false,
   });
   const lastWrite = activity.data?.agents
-    .filter((agent) => agent.role === "designer")
+    .filter((agent) => designs(agent.role))
     .flatMap((agent) => agent.tools)
     .filter((tool) => FILE_WRITES.has(tool.name) && !tool.running)
     .map((tool) => `${tool.at} ${tool.subject ?? ""}`)

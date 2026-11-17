@@ -24,7 +24,7 @@ export function invitationEmail(
     text: [
       `You have been invited to ${config.naming.productName}.`,
       "Sign up or sign in with this email address and a password, then verify your email before accepting.",
-      `Your authenticated invitation API address is ${link}.`,
+      `Your invitation is at ${link}.`,
       "Reading this address does not sign you in or activate access. Use its /accept endpoint to accept explicitly.",
       `The invitation expires at ${expiresAt}. Ignore this message if you did not expect an invitation.`,
     ].join("\n\n"),

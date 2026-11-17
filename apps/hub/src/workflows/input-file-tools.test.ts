@@ -2,7 +2,6 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { INPUTS_DIRECTORY } from "@corbits-builder/schemas/app-files";
-import { assignmentToWriterMessage } from "@corbits-builder/writer/task";
 import { createInputFileTools, inputFileName } from "./input-file-tools.ts";
 
 test("writer inputs are placed once, confined to their folder, and saved results remain readable", async () => {
@@ -129,35 +128,17 @@ test("colliding material titles keep distinct contents at the assignment paths",
       workdir,
       storage: { readBlob: async () => new Uint8Array() },
     } as never);
-    const ref = (artifactId: string) => ({
-      artifactId,
-      version: 1,
-      sha256: "a".repeat(64),
-    });
-    const message = JSON.parse(
-      assignmentToWriterMessage(
-        {
-          projectId: "project",
-          deliverableId: "review",
-          kind: "engineering_review",
-          briefRef: ref("first"),
-          sourceRefs: [ref("second")],
-          output: { expectedVersion: 1 },
-          instruction: "Review the materials",
-        },
-        documents,
-      ),
+    // The path an assignment names for each document, as the hub's Filed.document names it.
+    const paths = documents.map(
+      (document) => INPUTS_DIRECTORY + "/" + inputFileName(document),
     );
-    expect(
-      message.documents.map((document: { path: string }) => document.path),
-    ).toEqual([
+    expect(paths).toEqual([
       INPUTS_DIRECTORY + "/notes-a-first.md",
       INPUTS_DIRECTORY + "/notes-a-second.md",
     ]);
-    for (const [index, document] of message.documents.entries()) {
-      expect(document.content).toBeUndefined();
+    for (const [index, path] of paths.entries()) {
       const result = await tools.run(
-        { id: "read", name: "read_file", arguments: { path: document.path } },
+        { id: "read", name: "read_file", arguments: { path } },
         new AbortController().signal,
       );
       expect(result.isError).toBeUndefined();
@@ -226,6 +207,8 @@ test("only source document kinds are fetched and the design is readable markdown
           designer: deployment,
         },
         openNetwork: false,
+        firstBuild: false,
+        toolchains: { paths: [], dataDir: "/unused" },
         build: {
           assetDirectory: "/tmp",
           browserCli: "/tmp/browser",

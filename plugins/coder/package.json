@@ -2,48 +2,213 @@
   "name": "@corbits-builder/coder",
   "version": "0.9.0",
   "private": true,
+  "description": "Builds the project's code the first time, whatever kind of thing it is, and changes the code the project has, built here or imported.",
   "license": "SEE LICENSE IN ../../LICENSE.md",
   "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
   "type": "module",
-  "exports": {
-    "./assets": "./src/assets.ts",
-    "./contract": "./src/contract.ts",
-    "./packages/*": "./src/packages/*.ts"
-  },
   "dependencies": {
-    "@corbits-builder/hub": "workspace:*",
-    "@corbits/mcp": "0.4.1",
+    "@corbits-builder/app-checks": "workspace:*",
+    "@corbits-builder/plugin": "workspace:*",
+    "@corbits-builder/schemas": "workspace:*",
     "@corbits/react-ui": "0.5.1",
-    "@intx/agent": "workspace:*",
-    "@intx/tools-mail": "workspace:*",
-    "@intx/workflow": "workspace:*"
+    "arktype": "catalog:"
   },
   "builder": {
+    "handle": "coder",
+    "runs": "specialist",
+    "groups": [
+      "build",
+      "change"
+    ],
+    "when": "The project's code needs building for the first time, or the person asks for a change to the code the project has.",
+    "unless": "The person is still unsure what they want and would rather compare options or see a mockup first.",
     "roles": [
       {
         "name": "coder",
+        "label": "Coder",
         "model": "builder",
         "limits": "coding",
-        "called": "the app builder",
-        "ended": {
-          "failed": "The app builder stopped before finishing.",
-          "cancelled": "The build was stopped.",
-          "task": "The coder building the app"
-        }
+        "tools": [
+          "read_artifact",
+          "web"
+        ],
+        "status": {
+          "working": "Working on the code",
+          "done": "Worked on the code"
+        },
+        "preferences": [
+          "replies",
+          "technical"
+        ],
+        "buildsFrom": [
+          "problem_brief",
+          "constraints",
+          "approaches",
+          "product_requirements",
+          "build_plan",
+          "design"
+        ],
+        "files": "app",
+        "writesCode": true
       }
     ],
-    "packages": {
+    "settings": {
+      "builder": {
+        "label": "App builder",
+        "hint": "Builds the app.",
+        "tier": "high"
+      }
+    },
+    "budgets": {
+      "coding": {
+        "maxOutputTokens": 65536
+      }
+    },
+    "agents": {
       "coder": {
-        "entry": "./src/packages/coder.ts",
-        "role": "coder"
+        "prompt": "./prompt.md",
+        "workspace": "./src/workspace.ts"
+      }
+    },
+    "starters": {
+      "coder": "./src/start.ts"
+    },
+    "appStarters": {
+      "web-app": {
+        "about": "A web app people use in a browser: a Bun workspace with client/ (Vite, React, React Router, TanStack Query, Tailwind CSS v4 and @corbits/react-ui), server/ (Hono on Bun, with data people enter kept as validated JSON files under server/data through createStore, and data the app ships with under server/src/data) and packages/shared (zod schemas both sides use).",
+        "folder": "starter",
+        "run": {
+          "command": "bun run dev",
+          "port": "CLIENT_PORT",
+          "extraPorts": [
+            "PORT"
+          ]
+        },
+        "setup": "bun install --frozen-lockfile",
+        "checks": [
+          "bun install --frozen-lockfile",
+          "bun run typecheck",
+          "bun run build"
+        ],
+        "setupFailed": "If it says the lockfile is frozen, bring bun.lock up to date with install_packages, naming the packages the output says changed at the versions package.json gives them.",
+        "legacyDefault": true
       },
-      "coder-any-package": {
-        "entry": "./src/packages/coder-any-package.ts",
-        "role": "coder",
-        "replaces": {
-          "package": "coder",
-          "when": "install_any_package"
-        }
+      "bare": {
+        "about": "A TypeScript project on Bun that is not a web app, such as a command-line tool, a library, a script or a service: one package with tests and no framework.",
+        "folder": "starters/bare",
+        "setup": "bun install --frozen-lockfile",
+        "checks": [
+          "bun install --frozen-lockfile",
+          "bun run typecheck",
+          "bun run test",
+          "bun run build"
+        ],
+        "setupFailed": "If it says the lockfile is frozen, bring bun.lock up to date with install_packages, naming the packages the output says changed at the versions package.json gives them."
+      }
+    },
+    "actions": {
+      "build": {
+        "requires": [
+          [
+            "filed:product_requirements",
+            "!app_exists"
+          ],
+          [
+            "filed:build_plan",
+            "!app_exists"
+          ]
+        ],
+        "returns": [
+          "app_exists"
+        ],
+        "writes": [
+          "stack.language",
+          "stack.starter",
+          "stack.checks",
+          "stack.run"
+        ],
+        "start": {
+          "workflow": "coder",
+          "correlation": "coder",
+          "app": "new"
+        },
+        "done": [
+          "builds"
+        ]
+      },
+      "change": {
+        "requires": [
+          [
+            "app_exists"
+          ]
+        ],
+        "returns": [],
+        "reads": [
+          "brand.guidelines",
+          "stack.language"
+        ],
+        "writes": [
+          "stack.language",
+          "stack.checks",
+          "stack.run"
+        ],
+        "start": {
+          "workflow": "coder",
+          "correlation": "coder-change",
+          "app": "existing"
+        },
+        "done": [
+          "builds"
+        ]
+      },
+      "builds": {
+        "requires": [
+          [
+            "app_exists"
+          ]
+        ],
+        "all": [
+          {
+            "command": {
+              "value": "stack.checks"
+            }
+          }
+        ],
+        "returns": [
+          "builds:app"
+        ]
+      }
+    },
+    "examples": [
+      "build it",
+      "go ahead and build it",
+      "start building",
+      "build me a command-line tool",
+      "change the font to Inter",
+      "add a flag that prints the version",
+      "the save button does nothing"
+    ],
+    "facts": {
+      "app_exists": "the project has code, built or imported",
+      "!app_exists": "the project has no code yet",
+      "builds:app": "the project's saved code builds"
+    },
+    "values": {
+      "stack.language": {
+        "about": "The programming language the project's code is written in, such as TypeScript.",
+        "type": "text"
+      },
+      "stack.starter": {
+        "about": "The starter the project's code started from, when it started from one: web-app for a web app with a browser client and a server, bare for a TypeScript project on Bun that is not a web app. Builder saves it, with the starter's checks as stack.checks and how it starts as stack.run, when a first build names a starter, and writes the starter's files as the project's first code before the coder starts; code that started from an empty project has none.",
+        "type": "text"
+      },
+      "stack.checks": {
+        "about": "The commands, in order, that prove the project's saved code installs, builds and passes its tests, one per line.",
+        "type": "text"
+      },
+      "stack.run": {
+        "about": "How the project's program starts so a person can open it in a browser, as { \"command\": the command that starts it, \"port\": the environment variable naming the port it answers on, \"waitFor\": a line it prints once it is ready, if any, \"extraPorts\": any other variables it needs a free port in }. A project without one serves nothing to open.",
+        "type": "json"
       }
     }
   }

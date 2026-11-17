@@ -34,6 +34,7 @@
 
 import { type } from "arktype";
 
+import type { CallCheck } from "@intx/inference";
 import type { GrantEffect } from "@intx/types";
 import {
   ToolCredentialDeclarationArray,
@@ -133,6 +134,11 @@ export interface ToolBundle {
   readonly definitions: readonly ToolDefinition[];
   run(call: ToolCall, signal: AbortSignal): Promise<ToolResult>;
   dispose?(): Promise<void>;
+  /**
+   * Checks a call to one of this bundle's tools before it runs: refuse it,
+   * or park it on a screen the person answers. See `CallCheck`.
+   */
+  checkCall?: CallCheck;
 }
 
 /**

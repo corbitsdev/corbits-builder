@@ -1,4 +1,4 @@
-import { QueryClient } from "@tanstack/react-query";
+import { QueryClient, type DehydrateOptions } from "@tanstack/react-query";
 import { createAsyncStoragePersister } from "@tanstack/query-async-storage-persister";
 import {
   persistQueryClientRestore,
@@ -29,6 +29,15 @@ export const queryClient = new QueryClient({
   },
 });
 
+/**
+ * What the browser keeps between visits. A query that still has data is kept after a failed
+ * refetch. One marked `meta: { persist: false }` only matters while this page waits on it.
+ */
+export const savedReads: DehydrateOptions = {
+  shouldDehydrateQuery: (query) =>
+    query.state.data !== undefined && query.meta?.["persist"] !== false,
+};
+
 const persistOptions: PersistQueryClientOptions = {
   queryClient,
   persister: createAsyncStoragePersister({
@@ -38,13 +47,8 @@ const persistOptions: PersistQueryClientOptions = {
   maxAge: CACHE_LIFETIME_MS,
   // Saved data is read back without checking its shape, so a change to what a cached read
   // holds needs a new value here, or pages render the old shape and break.
-  buster: "hub-preferences-record",
-  // A query that still has data is kept after a failed refetch. One marked
-  // `meta: { persist: false }` only matters while this page waits on it.
-  dehydrateOptions: {
-    shouldDehydrateQuery: (query) =>
-      query.state.data !== undefined && query.meta?.["persist"] !== false,
-  },
+  buster: "room-question-status-screens-hub-preferences",
+  dehydrateOptions: savedReads,
 };
 
 /**

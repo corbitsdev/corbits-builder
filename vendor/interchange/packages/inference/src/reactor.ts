@@ -640,6 +640,34 @@ export function createReactor(config: ReactorConfig): Reactor {
             `Question ${op.correlationId} was answered but its prompts were not kept`,
           );
         }
+        if ("plugin" in op.question) {
+          if (!("output" in answer)) {
+            throw new Error(
+              `Question ${op.correlationId} shows a screen but was answered by prompt id`,
+            );
+          }
+          if (op.rerun === true) {
+            // The screen gave what the call waited on: run it once, past the
+            // pause it would otherwise raise again.
+            for (const ext of beforeToolExtensions) {
+              ext.grantOneShot?.(suspendedCall.id);
+            }
+            return { mode: "redispatch", calls: [suspendedCall] };
+          }
+          return {
+            mode: "tool_result",
+            result: {
+              callId: suspendedCall.id,
+              content: answer,
+              isError: false,
+            },
+          };
+        }
+        if ("output" in answer) {
+          throw new Error(
+            `Question ${op.correlationId} asks prompts but was answered with a screen output`,
+          );
+        }
         // The person answered by the ids the runtime gave each prompt; the
         // model never saw those, so it reads the answers against its own words.
         const answers = op.question.questions.map((prompt) => {

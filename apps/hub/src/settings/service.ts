@@ -26,17 +26,16 @@ import {
 } from "./policy.ts";
 import { invalidPreference } from "../config/preferences.ts";
 import { invalidModelChoice } from "../config/models.ts";
-import { undeclaredSetting } from "../plugins/catalog.ts";
 import { connectedProviders } from "../projects/model-choice.ts";
 import { modelDirectory } from "./custom-providers.ts";
 import { digest } from "../lib/digest.ts";
 import type { Actor } from "../lib/actor.ts";
 
-const record = (
-  fields: SettingsRecord["fields"],
+const record = <Fields extends SettingsRecord["fields"]>(
+  fields: Fields,
   projectId?: string,
   personal = false,
-): SettingsRecord => ({
+): SettingsRecord & { fields: Fields } => ({
   scope: personal ? "personal" : projectId ? "project" : "tenant",
   ...(projectId ? { projectId } : {}),
   fields,
@@ -95,11 +94,7 @@ export function createSettingsService(db: DB["db"]) {
     if (models) {
       const directory = await modelDirectory(db, actor.tenantId);
       const connected = await connectedProviders(db, directory, actor.tenantId);
-      const refused =
-        invalidModelChoice(directory, models, connected) ??
-        models.custom
-          ?.map(({ roleTiers }) => undeclaredSetting(roleTiers))
-          .find((setting) => setting !== undefined);
+      const refused = invalidModelChoice(directory, models, connected);
       if (refused)
         throw new ProjectError(400, "unknown_model_choice", {
           choice: refused,

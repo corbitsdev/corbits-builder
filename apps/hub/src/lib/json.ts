@@ -1,3 +1,6 @@
+export const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
 /** A body's JSON, or undefined when it is not JSON; any other read failure propagates. */
 export async function readJson(body: {
   json(): Promise<unknown>;

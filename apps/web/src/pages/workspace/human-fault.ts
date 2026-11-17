@@ -29,6 +29,8 @@ const CONFLICT_SENTENCES: Readonly<Record<string, string>> = {
   project_archived: "This project is archived. Restore it to make changes.",
   stale_revision:
     "The project changed while you were working. Reopen it and try again.",
+  artifact_ref_stale:
+    "A newer version of this document is filed. Read that one, then approve it.",
   project_busy: "The project is busy right now. Try again in a moment.",
   coordinator_capacity_full:
     "This computer is already running as many agents as it allows, so this project's coordinator could not start. Close or archive another project, then try again.",

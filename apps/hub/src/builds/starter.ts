@@ -12,37 +12,33 @@ import {
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { hasCode } from "@intx/types";
+import { isWorkflowAction } from "@corbits-builder/plugin-host/catalog";
+import type { Role } from "@corbits-builder/plugin";
 import {
   AppBundle,
   type ArtifactContent,
 } from "@corbits-builder/schemas/artifact";
 import { unpackDesign, writeBundle } from "../artifacts/design-tools.ts";
-import { bundleFiles } from "./app-snapshot.ts";
+import { bundleFiles } from "@corbits-builder/schemas/app-files";
+import { workspaceHoldsApp } from "./app-workspace.ts";
 import type { AppRepository } from "./app-repository.ts";
 import {
-  CODER_INPUTS,
-  DESIGNER_INPUTS,
   INPUTS_DIRECTORY,
   KIT_DIGEST,
+  SKILLS_DIRECTORY,
   inputFile,
   inputPath,
+  isInputKind,
 } from "../config/inputs.ts";
-import {
-  checkScript,
-  kitDigest,
-  starterFiles,
-  watchScript,
-} from "@corbits-builder/coder/assets" with { type: "macro" };
-import { designStarterFiles } from "@corbits-builder/designer/skills" with { type: "macro" };
+import { CATALOG } from "../plugins/catalog.ts";
+import type { WorkflowProjectScope } from "@corbits-builder/schemas/installed-workflows";
 
-const STARTER = starterFiles();
-const DESIGN_STARTER = designStarterFiles();
-export const STARTER_INDEX = DESIGN_STARTER[".builder/designs/index.html"]!;
+// The files a design workspace starts from, as the plugin that drafts designs declares them; none
+// while no installed plugin does.
+const DESIGN_STARTER = CATALOG.design?.starter ?? {};
+export const STARTER_INDEX = DESIGN_STARTER[".builder/designs/index.html"];
 export const STARTER_HOME_SCREEN =
-  DESIGN_STARTER[".builder/designs/screens/home.html"]!;
-const KIT = kitDigest();
-export const CHECK_APP = checkScript();
-export const WATCH_PAGE = watchScript();
+  DESIGN_STARTER[".builder/designs/screens/home.html"];
 
 const SCREENS_PLACEHOLDER = "<!-- builder:screens -->";
 const SCREENS_START = "<!-- builder:screens:start -->";
@@ -69,7 +65,8 @@ function normalizeScreenHtml(file: string, cleaned: string): string {
 
 const isStarterHome = (file: string, html: string) =>
   file === "home.html" &&
-  (html === STARTER_HOME_SCREEN || html.trim() === STARTER_HOME_SCREEN.trim());
+  STARTER_HOME_SCREEN !== undefined &&
+  html.trim() === STARTER_HOME_SCREEN.trim();
 
 // Splices per-screen HTML files into the mockup shell's <!-- builder:screens --> marker (or
 // <main>), wrapping the spliced markup in start/end markers so repeated calls replace the
@@ -119,9 +116,24 @@ export function spliceDesignScreens(
   return `${indexHtml}\n${marked}`;
 }
 
-export const STARTER_SPLICED_INDEX = spliceDesignScreens(STARTER_INDEX, {
-  "home.html": STARTER_HOME_SCREEN,
-});
+/**
+ * A read of the mockup shell with the block Builder splices in left out: one line says what it
+ * holds, so a reader opens the screen it needs in its own file instead of a copy of every screen.
+ * A read that starts or ends inside the block leaves out the part it holds.
+ */
+export function withoutSplicedScreens(read: string): string {
+  const start = read.indexOf(SCREENS_START);
+  const end = read.indexOf(SCREENS_END);
+  if (start === -1 && end === -1) return read;
+  const from = Math.max(start, 0);
+  const to = end < from ? read.length : end + SCREENS_END.length;
+  return `${read.slice(0, from)}<!-- builder:screens: Builder writes a copy of every file in designs/screens/ here each time one is saved; read and edit each screen in its own file -->${read.slice(to)}`;
+}
+
+export const STARTER_SPLICED_INDEX =
+  STARTER_INDEX === undefined || STARTER_HOME_SCREEN === undefined
+    ? undefined
+    : spliceDesignScreens(STARTER_INDEX, { "home.html": STARTER_HOME_SCREEN });
 
 // Re-splices .builder/designs/screens/*.html into .builder/designs/index.html on disk whenever
 // a design write completes, and drops the untouched starter home.html once another screen exists.
@@ -241,41 +253,58 @@ export function sharedBrowser() {
 type ReadFiled = (kind: string) => Promise<ArtifactContent | undefined>;
 type ReadBundle = () => Promise<Readonly<Record<string, string>> | undefined>;
 
-// Every warm writes the current filed inputs afresh: the role's documents under INPUTS_DIRECTORY,
-// and for an app the component kit digest beside them and the design unpacked into .builder.
+// The files of every skill pack of an action that starts a workflow of the role, each in its pack's
+// folder.
+const packFiles = (role: string) =>
+  Object.fromEntries(
+    CATALOG.actions
+      .filter(isWorkflowAction)
+      .filter((action) => CATALOG.packages.get(action.workflow)?.role === role)
+      .flatMap((action) => action.packs)
+      .flatMap(({ path, files }) =>
+        Object.entries(files).map(([file, text]) => [
+          `${SKILLS_DIRECTORY}/${path}/${file}`,
+          text,
+        ]),
+      ),
+  );
+
+// Every warm writes the current filed inputs afresh: the documents the role builds from and its
+// skill packs under INPUTS_DIRECTORY, and for code the chosen design unpacked into .builder, with
+// the component kit digest the plugin gives beside the documents whenever a design is chosen or the
+// code serves a web app.
 async function writeInputs(
-  kind: "app" | "design",
+  role: Role,
   workspace: string,
   read: ReadFiled,
+  serves: boolean,
+  kit: string | undefined,
 ) {
   await rm(join(workspace, INPUTS_DIRECTORY), { recursive: true, force: true });
-  for (const input of kind === "app" ? CODER_INPUTS : DESIGNER_INPUTS) {
+  for (const input of role.buildsFrom.filter(isInputKind)) {
     const document = await read(input);
     if (document)
       await writeBundle(workspace, {
-        [inputPath(input)]: inputFile(document, kind === "app"),
+        [inputPath(input)]: inputFile(
+          document,
+          role.tools.includes("read_artifact"),
+        ),
       });
   }
-  if (kind !== "app") return;
-  await writeBundle(workspace, { [KIT_DIGEST]: KIT });
+  await writeBundle(workspace, packFiles(role.name));
+  if (role.designs) return;
   const design = await read("design");
+  if (kit !== undefined && (design || serves))
+    await writeBundle(workspace, { [KIT_DIGEST]: kit });
   if (design) await unpackDesign(design.content, workspace);
 }
 
 const THEME_STYLES = join("designs", "styles.css");
 
-async function seedFiles(
-  kind: "app" | "design",
-  read: ReadFiled,
+async function designSeed(
   readTheme: ReadBundle,
   readPrevious: ReadBundle,
-): Promise<Record<string, string | Uint8Array>> {
-  if (kind === "app") {
-    const filedApp = await read("app");
-    return filedApp
-      ? bundleFiles(AppBundle.assert(JSON.parse(filedApp.content)))
-      : STARTER;
-  }
+): Promise<Record<string, string>> {
   const previous = await readPrevious();
   if (previous)
     return {
@@ -294,35 +323,58 @@ async function seedFiles(
 }
 
 // Seeds a fresh workspace and returns the setup command the sandbox must still run, if any: an app
-// is a checkout of its repository's main once main holds a version; before then, or while the
-// repository is unavailable, it starts from the project's filed app when there is one, else from
-// the app starter; a seed made while the repository is unavailable becomes a version on top of main
-// once it is reachable. A design starts from the draft an earlier designer left for its concept, else
-// from the design starter in the stylesheet of the theme its concept starts from; the theme's sample
-// screens and DESIGN.md only preview it. The marker sits beside the workspace, out of the sandbox's
-// reach, and is written only once setup succeeded, so a sidecar that restarts mid-setup runs it
-// again.
+// is a checkout of its repository's main, where the hub wrote a first build's starter; while main
+// holds no version, or the repository is unavailable, it starts from the project's filed app when
+// there is one, else empty; a seed made while the repository is unavailable becomes a version on
+// top of main once it is reachable. The setup command is the one the project's stack declares;
+// code that declares none has none. A design starts from the draft an earlier designer left for its
+// concept, else from the design starter in the stylesheet of the theme its concept starts from; the
+// theme's sample screens and DESIGN.md only preview it. The marker sits beside the workspace, out
+// of the sandbox's reach, and is written only once setup succeeded, so a sidecar that restarts
+// mid-setup runs it again.
 export async function prepareWorkspace(
-  kind: "app" | "design",
+  role: Role,
   workspace: string,
   read: ReadFiled,
   readTheme: ReadBundle = async () => undefined,
   readPrevious: ReadBundle = async () => undefined,
-  app?: { repository: AppRepository; signal: AbortSignal },
-) {
-  if (app) await app.repository.prepare(app.signal);
-  const seeded =
-    kind === "app" ? "package.json" : join(".builder", "DESIGN.md");
-  if (!(await exists(join(workspace, seeded))))
-    await writeBundle(
-      workspace,
-      await seedFiles(kind, read, readTheme, readPrevious),
-    );
-  await writeInputs(kind, workspace, read);
+  app?: {
+    repository: AppRepository;
+    signal: AbortSignal;
+    stack: WorkflowProjectScope["stack"];
+    serves: boolean;
+    kit: string;
+  },
+): Promise<{
+  setup:
+    | { command: string; advice: string; done: () => Promise<void> }
+    | undefined;
+}> {
+  if (role.designs) {
+    if (!(await exists(join(workspace, ".builder", "DESIGN.md"))))
+      await writeBundle(workspace, await designSeed(readTheme, readPrevious));
+    await writeInputs(role, workspace, read, false, undefined);
+    return { setup: undefined };
+  }
+  if (!app) throw new Error("app_workspace_needs_its_repository");
+  await app.repository.prepare(app.signal);
+  if (!(await workspaceHoldsApp(workspace))) {
+    const filedApp = await read("app");
+    if (filedApp)
+      await writeBundle(
+        workspace,
+        bundleFiles(AppBundle.assert(JSON.parse(filedApp.content))),
+      );
+  }
+  await writeInputs(role, workspace, read, app.serves, app.kit);
   const marker = join(dirname(workspace), ".workspace-ready");
-  if (kind !== "app" || (await exists(marker))) return undefined;
-  return {
-    command: "bun install --frozen-lockfile",
-    done: () => writeFile(marker, ""),
-  };
+  const setup =
+    !app.stack || (await exists(marker))
+      ? undefined
+      : {
+          command: app.stack.setup,
+          advice: app.stack.setupFailed,
+          done: () => writeFile(marker, ""),
+        };
+  return { setup };
 }

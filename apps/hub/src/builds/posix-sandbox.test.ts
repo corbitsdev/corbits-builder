@@ -1,11 +1,26 @@
 import { expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SandboxManager } from "@anthropic-ai/sandbox-runtime";
 import { rgPath } from "@vscode/ripgrep";
+import { declaredRun, starterValues } from "@corbits-builder/plugin";
+import { type } from "arktype";
+import { CATALOG } from "../plugins/catalog.ts";
+import { startedRun } from "./coding-tools.ts";
 import { buildPackageLayout } from "./package-layout.ts";
-import { createPosixBuildExecutor, publicHostName } from "./posix-sandbox.ts";
+import {
+  createPosixBuildExecutor,
+  publicHostName,
+  toolchainReadPaths,
+} from "./posix-sandbox.ts";
 
 test("the open network admits only public names, however a private address is spelled", () => {
   for (const host of [
@@ -35,11 +50,60 @@ test("the open network admits only public names, however a private address is sp
     expect([host, publicHostName(host)]).toEqual([host, true]);
 });
 
+test("toolchain links cannot expose hub data or overlap writable folders", async () => {
+  const root = await mkdtemp(join(tmpdir(), "toolchain-links-"));
+  try {
+    const data = join(root, "data");
+    const workspace = join(root, "workspace");
+    const home = join(root, "home");
+    const sockets = join(root, "sockets");
+    const other = join(data, "other-project");
+    const nested = join(workspace, "nested");
+    for (const path of [other, nested, home, sockets])
+      await mkdir(path, { recursive: true });
+    const dataLink = join(root, "hub-link");
+    await symlink(data, dataLink);
+    for (const target of [
+      data,
+      other,
+      root,
+      workspace,
+      nested,
+      home,
+      sockets,
+    ]) {
+      const link = join(root, "toolchain");
+      await symlink(target, link);
+      await expect(
+        toolchainReadPaths({ paths: [link], dataDir: dataLink }, [
+          workspace,
+          home,
+          sockets,
+        ]),
+      ).rejects.toThrow(`SANDBOX_TOOLCHAIN_PATHS: ${link}`);
+      await rm(link);
+    }
+    const sdk = join(root, "sdk");
+    await mkdir(sdk);
+    expect(
+      await toolchainReadPaths({ paths: [sdk], dataDir: dataLink }, [
+        workspace,
+        home,
+        sockets,
+      ]),
+    ).toContain(sdk);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 // Exercise real isolation where the host has the required OS sandbox tools.
-test.skipIf(
+const sandboxTest = test.skipIf(
   !SandboxManager.isSupportedPlatform() ||
     SandboxManager.checkDependencies({ command: rgPath }).errors.length > 0,
-)(
+);
+
+sandboxTest(
   "workspace output is writable while host files and approved inputs stay protected",
   async () => {
     const root = await mkdtemp(join(tmpdir(), "builder-sandbox-test-"));
@@ -101,6 +165,250 @@ test.skipIf(
       await executor?.dispose();
       await rm(root, { recursive: true, force: true });
     }
+  },
+  60_000,
+);
+
+sandboxTest(
+  "a configured toolchain folder is readable and never writable, and one over the workspace is refused",
+  async () => {
+    const root = await mkdtemp(join(tmpdir(), "builder-toolchain-test-"));
+    let executor:
+      | Awaited<ReturnType<typeof createPosixBuildExecutor>>
+      | undefined;
+    try {
+      const workspace = join(root, "jobs", "workspace");
+      const toolchain = join(root, "toolchain");
+      await mkdir(workspace, { recursive: true });
+      await mkdir(toolchain);
+      await writeFile(join(toolchain, "VERSION"), "toolchain-sentinel");
+      const layout = await buildPackageLayout();
+      const limits = { commandTimeoutMs: 10_000, maxToolResultBytes: 10_000 };
+      const shell = (command: string) =>
+        executor!.run(
+          {
+            id: crypto.randomUUID(),
+            name: "run_shell",
+            arguments: { command },
+          },
+          new AbortController().signal,
+        );
+      executor = await createPosixBuildExecutor(workspace, limits, layout);
+      expect(
+        (await shell(`cat ${join(toolchain, "VERSION")}`)).content,
+      ).not.toContain("toolchain-sentinel");
+      await executor.dispose();
+
+      executor = await createPosixBuildExecutor(workspace, limits, layout, {
+        toolchains: { paths: [toolchain], dataDir: join(root, "jobs") },
+      });
+      expect(
+        (await shell(`cat ${join(toolchain, "VERSION")}`)).content,
+      ).toContain("toolchain-sentinel");
+      await shell(`echo changed > ${join(toolchain, "VERSION")}`);
+      expect(await readFile(join(toolchain, "VERSION"), "utf8")).toBe(
+        "toolchain-sentinel",
+      );
+      await executor.dispose();
+      executor = undefined;
+
+      await expect(
+        createPosixBuildExecutor(workspace, limits, layout, {
+          toolchains: {
+            paths: [join(root, "jobs")],
+            dataDir: join(root, "jobs"),
+          },
+        }),
+      ).rejects.toThrow("SANDBOX_TOOLCHAIN_PATHS");
+    } finally {
+      await executor?.dispose();
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+  60_000,
+);
+
+// A real sandbox whose workspace holds files, with programs allowed to keep running in it.
+async function withRunner(
+  files: Record<string, string>,
+  use: (
+    executor: Awaited<ReturnType<typeof createPosixBuildExecutor>>,
+    workspace: string,
+  ) => Promise<void>,
+) {
+  const root = await mkdtemp(join(tmpdir(), "builder-runner-test-"));
+  let executor:
+    | Awaited<ReturnType<typeof createPosixBuildExecutor>>
+    | undefined;
+  try {
+    const workspace = join(root, "workspace");
+    await mkdir(workspace);
+    for (const [path, content] of Object.entries(files))
+      await writeFile(join(workspace, path), content);
+    executor = await createPosixBuildExecutor(
+      workspace,
+      { commandTimeoutMs: 10_000, maxToolResultBytes: 64_000 },
+      await buildPackageLayout(),
+      { app: true },
+    );
+    await use(executor, workspace);
+  } finally {
+    await executor?.dispose();
+    await rm(root, { recursive: true, force: true });
+  }
+}
+
+async function untilReady(
+  executor: Awaited<ReturnType<typeof createPosixBuildExecutor>>,
+) {
+  const deadline = Date.now() + 15_000;
+  while (!executor.appState()?.ready && Date.now() < deadline)
+    await Bun.sleep(100);
+  return executor.appState();
+}
+
+sandboxTest(
+  "a program that keeps running stays ready across later calls and is gone once the run ends",
+  async () => {
+    await withRunner({}, async (executor, workspace) => {
+      await executor.app({
+        run: {
+          // Anything still running a few seconds after the run ends writes late.txt.
+          command:
+            "echo listening on $PORT; (sleep 3; echo child > late.txt) & exec sleep 300",
+          port: "PORT",
+          extraPorts: [],
+          waitFor: "listening",
+        },
+        page: false,
+      });
+      const first = await untilReady(executor);
+      if (!first) throw new Error("program_never_started");
+      expect(first).toMatchObject({ running: true, ready: true });
+      expect(first.log.join("\n")).toMatch(/listening on \d+/);
+      const between = await executor.run(
+        { id: "between", name: "run_shell", arguments: { command: "true" } },
+        new AbortController().signal,
+      );
+      expect(between.isError).not.toBe(true);
+      const second = await executor.app();
+      expect(second).toMatchObject({ running: true, ready: true });
+      expect(second.log).toEqual(first.log);
+      await executor.dispose();
+      await Bun.sleep(4_000);
+      expect(await Bun.file(join(workspace, "late.txt")).exists()).toBe(false);
+    });
+  },
+  60_000,
+);
+
+sandboxTest(
+  "the web starter's program starts as the stack.run its first build saves declares and answers on its address",
+  async () => {
+    const run = declaredRun(
+      starterValues({
+        name: "web-app",
+        starter: CATALOG.appStarters.get("web-app")!,
+      }),
+    );
+    if (!run || run instanceof type.errors)
+      throw new Error("web_starter_saves_no_run");
+    await withRunner(
+      {
+        "package.json": JSON.stringify({
+          scripts: {
+            dev: "bun -e 'Bun.serve({ port: Number(process.env.CLIENT_PORT), fetch: () => new Response(process.env.PORT) }); console.log(\"ready\")'",
+          },
+        }),
+      },
+      async (executor) => {
+        const app = await executor.app({ run, page: false });
+        expect(app.command).toBe("bun run dev");
+        const deadline = Date.now() + 15_000;
+        let body: string | undefined;
+        while (body === undefined && Date.now() < deadline) {
+          try {
+            body = await (await fetch(app.url)).text();
+          } catch (error) {
+            if (!(error instanceof Error)) throw error;
+            await Bun.sleep(200);
+          }
+        }
+        // The server half gets a port of its own, apart from the address the client answers on.
+        expect(body).toMatch(/^\d+$/);
+        expect(app.url).not.toEndWith(`:${body}`);
+        expect(executor.appState()).toMatchObject({
+          running: true,
+          ready: true,
+        });
+      },
+    );
+  },
+  60_000,
+);
+
+sandboxTest(
+  "a part that finishes cleanly stops nothing, and one that fails marks its part stopped",
+  async () => {
+    // `bun --filter`'s own words as each workspace's script ends.
+    await withRunner({}, async (executor) => {
+      await executor.app({
+        run: {
+          command:
+            "echo '@app/shared build: Exited with code 0'; echo listening; exec sleep 300",
+          port: "PORT",
+          extraPorts: [],
+          waitFor: "listening",
+        },
+        page: false,
+      });
+      const built = await untilReady(executor);
+      expect(built?.stopped).toBeUndefined();
+      expect(built?.running).toBe(true);
+      await executor.app({
+        run: {
+          command:
+            "echo '@app/server dev: Exited with code 1'; echo listening; exec sleep 300",
+          port: "PORT",
+          extraPorts: [],
+          waitFor: "listening",
+        },
+        page: false,
+      });
+      expect((await untilReady(executor))?.stopped).toBe("@app/server");
+    });
+  },
+  60_000,
+);
+
+sandboxTest(
+  "a restart keeps every port the program was given, and a command of the agent's own gets the project's port variables",
+  async () => {
+    const declared = {
+      command: "bun run dev",
+      port: "CLIENT_PORT",
+      extraPorts: ["PORT"],
+    };
+    await withRunner({}, async (executor) => {
+      const own = startedRun(
+        "echo client=$CLIENT_PORT api=$PORT; exec sleep 300",
+        { waitFor: "client=" },
+        declared,
+      );
+      await executor.app({ run: own, page: false });
+      const first = await untilReady(executor);
+      if (!first) throw new Error("program_never_started");
+      const said = /client=(\d+) api=(\d+)/.exec(first.log.join("\n"));
+      expect(said?.slice(1)).toEqual([
+        String(first.ports["CLIENT_PORT"]),
+        String(first.ports["PORT"]),
+      ]);
+      // The address is served from the declared page port.
+      expect(first.url).toEndWith(`:${String(first.ports["CLIENT_PORT"])}`);
+      const restarted = await executor.restartApp();
+      expect(restarted?.ports).toEqual(first.ports);
+      expect(restarted?.url).toBe(first.url);
+    });
   },
   60_000,
 );

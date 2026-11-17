@@ -112,6 +112,15 @@ body {
     var(--brand-primary-active) 76%,
     var(--background)
   );
+  /* What the person has picked, in every question and screen alike; stronger on dark, where a
+     faint tint of the lightened orange disappears into the ground. */
+  --wb-selected: color-mix(
+    in oklab,
+    var(--primary-emphasis) 16%,
+    var(--background)
+  );
+  /* Every question and screen in the conversation fills the message column, open or settled. */
+  --wb-question-width: 100%;
 }
 
 :root.dark body {
@@ -120,6 +129,11 @@ body {
     in srgb,
     var(--brand-primary-active) 76%,
     var(--foreground)
+  );
+  --wb-selected: color-mix(
+    in oklab,
+    var(--primary-emphasis) 30%,
+    var(--background)
   );
 }
 

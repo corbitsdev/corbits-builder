@@ -2,14 +2,16 @@
 // srt's sandbox manager is process-global, so each app is a process of its own. Each stdin line
 // names the source: a directory to follow (a build workspace, read here and never by the app) or
 // a filed bundle. Its files are mirrored into the app's own workspace, packages are installed when
-// they change, and `bun run dev` serves every later change. The app's state goes to stdout as one
-// JSON object per line whenever it changes. Closing stdin or SIGTERM ends it.
+// they change, and the program the project's stack.run declares (the second argument) serves every
+// later change. The app's state goes to stdout as one JSON object per line whenever it changes.
+// Closing stdin or SIGTERM ends it.
 import { createHash } from "node:crypto";
 import { existsSync, watch, type FSWatcher } from "node:fs";
 import { readFile, rename, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, join, sep } from "node:path";
 import { type } from "arktype";
 import { hasCode } from "@intx/types";
+import { AppRun } from "@corbits-builder/schemas/installed-workflows";
 import { liveAppWording } from "../config/live-app.ts";
 import { errorCode } from "../request-error.ts";
 import { reportState, type HostReport } from "./host-report.ts";
@@ -21,6 +23,10 @@ import {
   createPosixBuildExecutor,
   IGNORED_CHANGES,
 } from "../builds/posix-sandbox.ts";
+import {
+  INSTALL_TIMEOUT_MS,
+  installPackages,
+} from "../builds/sandbox-command.ts";
 
 export const HostSource = type({ dir: "string > 0" }).or({
   files: { "[string]": "string" },
@@ -28,13 +34,17 @@ export const HostSource = type({ dir: "string > 0" }).or({
 });
 export type HostSource = typeof HostSource.infer;
 
-const INSTALL_TIMEOUT_MS = 280_000;
 const SYNC_DEBOUNCE_MS = 150;
 const STATE_MS = 1_000;
 const tail = (output: string) => output.trim().split("\n").slice(-40);
 
 if (!process.argv[2]) throw new Error("live_app_workspace_required");
 const workspace = process.argv[2];
+if (!process.argv[3]) throw new Error("live_app_program_required");
+const program = {
+  run: AppRun.assert(JSON.parse(process.argv[3])),
+  page: false,
+};
 let last = "";
 const report = (state: HostReport) => {
   const line = JSON.stringify(state);
@@ -137,22 +147,14 @@ async function apply(files: Readonly<Record<string, string | Uint8Array>>) {
     installing = true;
     let result;
     try {
-      result = await executor.run(
-        {
-          id: "install",
-          name: "run_shell",
-          arguments: { command: "bun install", timeout: INSTALL_TIMEOUT_MS },
-        },
-        AbortSignal.timeout(INSTALL_TIMEOUT_MS + 5_000),
-      );
+      result = await installPackages(executor, INSTALL_TIMEOUT_MS);
     } finally {
       installing = false;
     }
-    const output = String(result.content);
-    if (result.isError || output.startsWith("exit code ")) {
+    if (result.exitCode !== 0) {
       failure = {
         error: liveAppWording.commandFailed("bun install"),
-        log: tail(output),
+        log: tail(result.output),
       };
       return;
     }
@@ -160,7 +162,8 @@ async function apply(files: Readonly<Record<string, string | Uint8Array>>) {
     if (executor.appState()) await executor.restartApp();
   }
   const app = executor.appState();
-  if (!app || !app.running || app.stopped !== undefined) await executor.app();
+  if (!app || !app.running || app.stopped !== undefined)
+    await executor.app(program);
 }
 
 async function runAfter(previous: Promise<void>, work: () => Promise<void>) {
@@ -279,7 +282,7 @@ async function currentState(): Promise<HostReport | undefined> {
   if (!app.running || app.stopped !== undefined) {
     if (!restartedSinceChange) {
       restartedSinceChange = true;
-      enqueue(async () => void (await executor.app()));
+      enqueue(async () => void (await executor.app(program)));
       return undefined;
     }
     return {

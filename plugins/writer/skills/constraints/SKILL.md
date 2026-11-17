@@ -1,28 +1,31 @@
 ---
 name: constraints
-description: Use when writing or revising a constraints document - the bounds every later document and the build stay inside - solution form, platforms, people and scale, data sources, privacy and accessibility, outside services, budget and timeline, what the first version includes, with reasons for each exclusion.
+description: Use when writing or revising a constraints document, for any kind of work - the bounds the work stays inside - its form, platforms, people and scale, data sources, privacy and accessibility, outside services, budget and timeline, what the first version includes, with reasons for each exclusion.
 ---
 
 # Constraints
 
-Constraints draw the fence the app is built inside, not the building. Every
-later document and the build stay within them, so each bound is concrete
-enough to check a design or a plan against.
+Constraints draw the fence the work is done inside, not the building. They
+fit anything: an app, a command-line tool, an API, a data pipeline, a
+document or a process. Whatever is written or built while they stand stays
+within them, so each bound is concrete enough to check a design or a plan
+against.
 
 ## Sections, in order
 
 1. `## In short`: two to four one-line bullets with the bounds that shape
-   the app most: its form, its audience and scale, its hardest limit.
+   the work most: its form, its audience and scale, its hardest limit.
    **Bold the words that carry the meaning.**
-2. `## Solution form`: the form the app takes (hosted web, mobile, desktop,
-   command line, an API) and, for each form left out, the reason.
+2. `## Solution form`: the form it takes (a hosted web app, a mobile or
+   desktop app, a command-line tool, an API or library, a scheduled job, a
+   document) and, for each form left out, the reason.
 3. `## Platforms and devices`: where it runs and what people use it on.
 4. `## People and scale`: who uses it, how many, and the tools they already
    have.
 5. `## Data sources`: where the real data comes from, how it arrives, and
-   where it is kept. The app runs on real data, so name each source.
+   where it is kept. It runs on real data, so name each source.
 6. `## Privacy and accessibility`: who may see what, what stays private,
-   and the accessibility level it meets.
+   and, where people use it directly, the accessibility level it meets.
 7. `## Outside services and accounts`: each service it connects to and the
    account or credential the person provides.
 8. `## Budget and timeline`: the agent's time and cost to build, the
@@ -40,6 +43,9 @@ enough to check a design or a plan against.
     Assumptions stays there alone. Each one here is also one of
     write_artifact's openQuestions.
 
+Leave out a section that cannot apply, such as platforms for a written
+report, rather than filling it.
+
 ## What makes it good
 
 - State each bound as a fact with its number or name: "fewer than 50
@@ -49,6 +55,7 @@ enough to check a design or a plan against.
   set yourself goes under Assumptions.
 - Write a section as one tight paragraph or a few bullets, to the person as
   "you", and only the sentences that change what they think or decide.
-- Draw the fence and leave the architecture to the approaches document.
+- Draw the fence and leave the architecture to the approaches or the build
+  plan.
 
 `read_skill constraints file reference/exemplar.md` shows the shape.

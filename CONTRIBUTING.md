@@ -67,7 +67,7 @@ one [model provider](https://github.com/corbitsdev/corbits-builder/blob/main/doc
 
    This applies the migrations, then starts the hub on http://localhost:8000
    and the UI on http://localhost:5173. The UI hot-reloads; restart after
-   changing `apps/hub`, `workflows/` or `packages/`. If a port is taken, set
+   changing `apps/hub`, `workflows/`, `packages/` or `plugins/`. If a port is taken, set
    `PORT` or `DB_PORT` in `.env.hub` (and `UI_HUB_ORIGIN` in `.env.web` to
    match `PORT`), or `UI_PORT` in `.env.web`.
    `bun run dev:stop` stops the whole stack, including anything an earlier

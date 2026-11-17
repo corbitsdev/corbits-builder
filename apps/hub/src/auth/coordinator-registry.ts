@@ -4,6 +4,7 @@ import {
   createWorkflowRunLaunchSpecStore,
   workflowRunExecutability,
   type DB,
+  type DBExecutor,
 } from "@intx/db";
 import { principal, workflowDefinition, workflowRun } from "@intx/db/schema";
 import { digest } from "../lib/digest.ts";
@@ -32,6 +33,19 @@ const CoordinatorStep = type({
       .atLeastLength(1),
   },
 });
+
+export async function activeCoordinator(db: DBExecutor, projectId: string) {
+  const [row] = await db
+    .select({ runId: projectCoordinator.runId })
+    .from(projectCoordinator)
+    .where(
+      and(
+        eq(projectCoordinator.projectId, projectId),
+        eq(projectCoordinator.active, true),
+      ),
+    );
+  return row;
+}
 
 // The host registers a real, approved unbounded coordinator. A name or a bearer
 // claim cannot create that role; native grants remain a separate authority check.

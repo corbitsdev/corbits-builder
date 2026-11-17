@@ -1,5 +1,13 @@
-import type { InstalledWorkflows } from "@corbits-builder/schemas/installed-workflows";
-import { projectCoordinator } from "../db/schema.ts";
+import { type SandboxToolchains } from "@corbits-builder/schemas/installed-workflows";
+import { type } from "arktype";
+import {
+  InstalledWorkflows,
+  INSTALLED_WORKFLOWS_KEY,
+} from "@corbits-builder/schemas/installed-workflows";
+import { CheckRun } from "@corbits-builder/schemas/artifact";
+import { projectCoordinator, runAction } from "../db/schema.ts";
+import { declaredRun } from "@corbits-builder/plugin";
+import { readJson } from "../lib/json.ts";
 import { verifyAgentToken } from "@corbits/agent-token";
 import { sha256 } from "@intx/crypto";
 import { createGrantStore, type createDB } from "@intx/db";
@@ -24,17 +32,15 @@ import type { Actor } from "../lib/actor.ts";
 import { createCoordinatorRegistry } from "./coordinator-registry.ts";
 import { projectResource } from "../projects/errors.ts";
 import { spawnedWorkflowRole } from "../workflows/spawn-role.ts";
+import { COORDINATOR } from "../workflows/coordinator-role.ts";
 import { buildPackageLayout } from "../builds/package-layout.ts";
-import {
-  installedFrom,
-  scopeWorkflows,
-} from "../workflows/install-for-tenant.ts";
-import { CATALOG } from "../plugins/catalog.ts";
-import { nativePackageName } from "../workflows/package-name.ts";
-import { readJson } from "../lib/json.ts";
+import { scopeWorkflows } from "../workflows/project-scope.ts";
 import { coordinatorUpgrading } from "@corbits-builder/schemas/conversation";
 import { opensNetwork } from "../config/preferences.ts";
+import { CATALOG } from "../plugins/catalog.ts";
+import { projectValueStore, readStoredValues } from "../values/store.ts";
 import { loadSettings } from "../settings/policy.ts";
+import { isFirstBuild } from "../projects/app-repository.ts";
 
 let layoutPromise: ReturnType<typeof buildPackageLayout> | undefined;
 const buildLayout = () =>
@@ -44,6 +50,15 @@ const buildLayout = () =>
   }));
 
 const log = getLogger(["corbits-builder", "agent-callback-auth"]);
+
+// How code that began from an installed starter, by the project's stack.starter, prepares a fresh
+// workspace: the command and what to do when it fails. Code that began from none declares nothing.
+function declaredStack(values: Readonly<Record<string, unknown>>) {
+  const name = values["stack.starter"];
+  const starter =
+    typeof name === "string" ? CATALOG.appStarters.get(name) : undefined;
+  return starter && { setup: starter.setup, setupFailed: starter.setupFailed };
+}
 
 // A packaged specialist declares invoker requirements, and the coordinator that
 // deploys it is itself an invoker. The specialist gets copies of the coordinator's
@@ -112,22 +127,6 @@ function isNativeWorkflowDeploy(method: string, path: string): boolean {
   return (
     method === "POST" &&
     /^\/api\/tenants\/[^/]+\/workflows\/deployments$/.test(path)
-  );
-}
-
-// A deploy of any writer package. An outdated coordinator names the constraints writer whatever
-// document it means, so that deploy is refused while a handoff waits on busy specialists.
-async function startsWriter(request: Request) {
-  const body = await readJson(request.clone());
-  const pin =
-    typeof body === "object" && body !== null && "pin" in body
-      ? body.pin
-      : undefined;
-  return (
-    typeof pin === "string" &&
-    Array.from(CATALOG.filers.values()).some((name) =>
-      pin.startsWith(nativePackageName(name) + "@"),
-    )
   );
 }
 
@@ -226,8 +225,34 @@ async function nativeRunIdentity(
   };
 }
 
+// Whether a specialist's run asks for a check of the plugin whose action started it, in the project
+// it was started in: the done checks its director runs before its reply goes out. The body is read
+// from a copy, so the route still reads it.
+async function runsOwnCheck(
+  db: ReturnType<typeof createDB>["db"],
+  run: { runId: string; tenantId: string },
+  projectId: string,
+  request: Request,
+) {
+  const asked = CheckRun(await readJson(request.clone()));
+  if (asked instanceof type.errors) return false;
+  const [started] = await db
+    .select({ plugin: runAction.plugin })
+    .from(runAction)
+    .where(
+      and(
+        eq(runAction.runId, run.runId),
+        eq(runAction.tenantId, run.tenantId),
+        eq(runAction.projectId, projectId),
+      ),
+    );
+  return started?.plugin === asked.plugin;
+}
+
 export function createAgentTokenBridge(
   db: ReturnType<typeof createDB>["db"],
+  // The toolchain folders every build sandbox reads, from the hub's environment.
+  toolchains: SandboxToolchains,
   runTokens?: RunTokenLookup,
   upgrades?: {
     // Reinstalls a tenant whose stored packages predate this hub, so a run is never refused for it.
@@ -285,7 +310,7 @@ export function createAgentTokenBridge(
     }
     const nativeBearer = bearer.startsWith(NATIVE_RUN_TOKEN_PREFIX);
     const artifactRoute =
-      /^\/api\/tenants\/[^/]+\/projects\/[^/]+\/(?:artifacts(?:\/[^/]+)?|artifact-approvals|design-themes\/run|design-draft\/previous|app-repository(?:\/revoke)?)$/.test(
+      /^\/api\/tenants\/[^/]+\/projects\/[^/]+\/(?:artifacts(?:\/[^/]+)?|artifact-approvals|design-themes\/run|design-draft\/previous|app-repository(?:\/revoke)?|run-values|run-block(?:\/end)?)$/.test(
         c.req.path,
       );
     const runtimeScope = c.req.path === "/api/workflow-project-scope";
@@ -307,8 +332,6 @@ export function createAgentTokenBridge(
               upgrades.handoff(deployer.tenantId, deployer.runId),
             );
             if (outcome === "handed_off") return heldUntilStopped(c);
-            if (outcome === "busy" && (await startsWriter(c.req.raw)))
-              return c.json({ code: coordinatorUpgrading }, 409);
           }
           await mirrorDelegatableDeployerGrants(db, {
             tenantId: deployer.tenantId,
@@ -329,14 +352,14 @@ export function createAgentTokenBridge(
     if (runtimeScope) {
       if (!nativeBearer || c.req.method !== "GET") return denied();
       let binding = await registry.boundRun(identity.runId);
-      let role: string = "coordinator";
+      let role = COORDINATOR.name;
       if (!binding) {
         const launch = await db.query.workflowRunLaunchSpec.findFirst({
           where: eq(workflowRunLaunchSpec.anchorRunId, identity.runId),
         });
         const spawned = spawnedWorkflowRole(launch?.frozenApprovalBundle);
         if (!launch || !spawned) return denied();
-        role = spawned;
+        role = spawned.name;
         const [invoker] = await db
           .select({ runId: projectCoordinator.runId })
           .from(projectCoordinator)
@@ -357,29 +380,51 @@ export function createAgentTokenBridge(
         where: eq(tenant.id, identity.tenantId),
       });
       if (!row) return denied();
-      const stored = installedFrom(row.config);
+      const config = row.config as Record<string, unknown> | null;
+      const stored = InstalledWorkflows(config?.[INSTALLED_WORKFLOWS_KEY]);
       const installed =
-        stored.status !== "current"
+        stored instanceof type.errors
           ? upgrades &&
             binding.run.principalId &&
             (await upgrades.install(
               { tenantId: row.id, principalId: binding.run.principalId },
               binding.projectId,
             ))
-          : stored.installed;
+          : stored;
       if (!installed) return denied();
       const { preferences } = await loadSettings(
         db,
         identity.tenantId,
         binding.projectId,
       );
+      const values = await readStoredValues(
+        projectValueStore(db, row.id, binding.projectId),
+      );
+      let run = declaredRun(values);
+      // A stack.run that is not a run serves nothing here, so the coder still starts and can report one.
+      if (run instanceof type.errors) {
+        log.warn("The project's stack.run is not a run: {issues}", {
+          projectId: binding.projectId,
+          issues: run.summary,
+        });
+        run = undefined;
+      }
+      const [action] = await db
+        .select({ action: runAction.action })
+        .from(runAction)
+        .where(eq(runAction.runId, identity.runId))
+        .limit(1);
       return c.json({
         tenantId: row.id,
         domain: row.domain,
         projectId: binding.projectId,
         role,
-        workflows: scopeWorkflows(installed, preferences.value),
+        workflows: scopeWorkflows(installed),
         openNetwork: opensNetwork(preferences.value),
+        toolchains,
+        stack: declaredStack(values),
+        run,
+        firstBuild: isFirstBuild(action?.action),
         build: await buildLayout(),
       });
     }
@@ -389,15 +434,35 @@ export function createAgentTokenBridge(
     }
     const base = "/api/tenants/" + encodeURIComponent(identity.tenantId);
     // Spawned specialists hold no project binding; their native grants decide
-    // which artifacts they may read and write.
-    if (artifactRoute && !(await registry.boundRun(identity.runId))) {
+    // which artifacts they may read and write. run-values saves only what the
+    // run's own plugin action writes, which the hub checks for the run, and run-block records and
+    // ends only the calling run. A specialist runs only the checks of its own plugin.
+    const checkProject = c.req.path.match(
+      /^\/api\/tenants\/[^/]+\/projects\/([^/]+)\/check-runs$/,
+    )?.[1];
+    if (
+      (artifactRoute || checkProject !== undefined) &&
+      !(await registry.boundRun(identity.runId))
+    ) {
       const collection =
-        /\/(?:artifacts|artifact-approvals|app-repository(?:\/revoke)?)$/.test(
+        /\/(?:artifacts|artifact-approvals|app-repository(?:\/revoke)?|run-values|run-block(?:\/end)?)$/.test(
           c.req.path,
         );
-      if (
-        !nativeBearer ||
-        (c.req.method !== "GET" && !(collection && c.req.method === "POST"))
+      if (!nativeBearer) return denied();
+      if (checkProject !== undefined) {
+        if (
+          c.req.method !== "POST" ||
+          !(await runsOwnCheck(
+            db,
+            { runId: identity.runId, tenantId: identity.tenantId },
+            decodeURIComponent(checkProject),
+            c.req.raw,
+          ))
+        )
+          return denied();
+      } else if (
+        c.req.method !== "GET" &&
+        !(collection && c.req.method === "POST")
       )
         return denied();
       const [actor] = await db
@@ -435,11 +500,14 @@ export function createAgentTokenBridge(
     const projectRoute =
       suffix !== null &&
       ((c.req.method === "GET" &&
-        /^(|\/audit|\/artifacts(?:\/[^/]+)?)$/.test(suffix)) ||
+        /^(|\/audit|\/artifacts(?:\/[^/]+)?|\/values|\/following|\/plan|\/runs|\/checks)$/.test(
+          suffix,
+        )) ||
         (c.req.method === "POST" &&
-          /^(\/mutations|\/artifacts|\/artifact-approvals|\/design-concepts|\/presenter-assignments)$/.test(
+          /^(\/mutations|\/artifacts|\/artifact-approvals|\/run-concepts|\/following|\/run-actions|\/check-runs|\/runs\/[^/]+\/stop)$/.test(
             suffix,
-          )));
+          )) ||
+        (c.req.method === "PUT" && suffix === "/plan"));
     const deployRoute =
       c.req.method === "POST" && c.req.path === base + "/workflows/deployments";
     if (!projectRoute && !deployRoute) return denied();

@@ -1,12 +1,13 @@
 import { type } from "arktype";
+import type { OutputBudget } from "@corbits-builder/plugin";
 import { Effort, type RoleBinding } from "@corbits-builder/schemas/models";
-import { sharedRoles, type AgentRole } from "../inference/model-limits.ts";
 import {
   bindingLimits,
   modelProvider,
   type ModelDirectory,
   type Timeouts,
 } from "../config/models.ts";
+import { budgetOn } from "../inference/model-limits.ts";
 
 // A provider that sets no limits of its own runs on Interchange's.
 const INTERCHANGE_DEFAULTS: Timeouts = {};
@@ -31,12 +32,12 @@ export const RoleInference = type({
 export type RoleInference = typeof RoleInference.infer;
 
 /**
- * The model source, its window and the per-call parameters one role's package runs with. Resolved
- * on the hub, where a workspace's custom models are known.
+ * The model source, its window and the per-call parameters one role's package runs with, by the
+ * output budget the role runs with. Resolved on the hub, where a workspace's custom models are known.
  */
 export function resolveRoleInference(
   directory: ModelDirectory,
-  output: string,
+  output: OutputBudget,
   bound: RoleBinding,
 ): RoleInference {
   const provider = modelProvider(directory, bound.provider);
@@ -45,10 +46,11 @@ export function resolveRoleInference(
   const limits = bindingLimits(directory, bound.provider, bound.model);
   if (!limits)
     throw new Error(`model_limits_required:${bound.provider}:${bound.model}`);
-  const isBudget = (name: string): name is AgentRole =>
-    Object.hasOwn(sharedRoles, name);
-  if (!isBudget(output)) throw new Error(`No budget ${output}`);
-  const budget = limits.roles[output];
+  const budget = budgetOn(limits, output);
+  if (budget.maxOutputTokens >= limits.contextWindow)
+    throw new Error(
+      `model_budget_exceeds_window:${bound.provider}:${bound.model}`,
+    );
   return {
     source: { provider: plugin, model: bound.model },
     contextWindow: limits.contextWindow,

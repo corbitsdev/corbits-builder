@@ -1,8 +1,8 @@
-import { designThemes } from "@corbits-builder/designer/skills" with { type: "macro" };
 import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { CATALOG } from "../plugins/catalog.ts";
 import { createDesignSubmission } from "./design-submission.ts";
 
 test("a workspace without a .builder folder still runs check-app and names the files it needs", async () => {
@@ -49,7 +49,7 @@ async function withDesign(
   run: (workspace: string, doc: string) => Promise<void>,
 ) {
   const workspace = await mkdtemp(join(tmpdir(), "sb-design-submit-"));
-  const files = designThemes()["modern-sleek"]!;
+  const files = CATALOG.design!.themes.get("modern-sleek")!;
   try {
     for (const [path, content] of Object.entries(files)) {
       const target = join(workspace, ".builder", path);
@@ -74,7 +74,7 @@ test("one check lists check-app's problems and an invalid DESIGN.md together", a
         exitCode: 1,
         output: "check failed: 1 problem\n✗ /#/home overflows at 390 px",
       }),
-      async () => receipt,
+      async () => ({ artifact: receipt }),
     );
     const result = await submission.run(
       checkCall,
@@ -97,7 +97,7 @@ test("a design without designs/index.html names the files it needs", async () =>
         exitCode: 1,
         output: "check failed: 1 problem\n✗ .builder/designs has no index.html",
       }),
-      async () => receipt,
+      async () => ({ artifact: receipt }),
     );
     const result = await submission.run(
       checkCall,
@@ -121,7 +121,7 @@ test("check-app that cannot start still reports an invalid DESIGN.md", async () 
       async () => {
         throw new Error("spawn check-app ENOENT");
       },
-      async () => receipt,
+      async () => ({ artifact: receipt }),
     );
     const result = await submission.run(
       checkCall,
@@ -148,7 +148,7 @@ test("a failed submission retries, while unchanged files reuse the receipt", asy
       async () => {
         posts += 1;
         if (posts === 1) throw new Error("temporary filing failure");
-        return receipt;
+        return { artifact: receipt };
       },
     );
     const signal = new AbortController().signal;
@@ -195,7 +195,7 @@ test("a file changed during checking is not filed, including files outside desig
       },
       async () => {
         posts += 1;
-        return receipt;
+        return { artifact: receipt };
       },
     );
     const signal = new AbortController().signal;
@@ -208,6 +208,20 @@ test("a file changed during checking is not filed, including files outside desig
       filed: true,
     });
     expect(posts).toBe(1);
+    submission.dispose();
+  });
+});
+
+test("an option the hub chose as the design itself says so in the check detail", async () => {
+  await withDesign(async (workspace) => {
+    const submission = createDesignSubmission(
+      workspace,
+      async () => ({ exitCode: 0, output: "check passed" }),
+      async () => ({ artifact: receipt, designChosen: true }),
+    );
+    expect(
+      (await submission.run(checkCall, new AbortController().signal)).detail,
+    ).toEqual({ checkPassed: true, filed: true, designChosen: true });
     submission.dispose();
   });
 });
@@ -228,7 +242,7 @@ test("an overlapping check is refused; cancellation prevents filing and releases
       },
       async () => {
         posts += 1;
-        return receipt;
+        return { artifact: receipt };
       },
     );
     const caller = new AbortController();

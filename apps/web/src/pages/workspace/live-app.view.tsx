@@ -22,7 +22,7 @@ import {
   TriangleAlert,
   X,
 } from "lucide-react";
-import { Markdown } from "../../markdown.jsx";
+import { DocumentView, Markdown } from "@corbits-builder/plugin-ui/markdown";
 import { wording } from "../../config.ts";
 import {
   Sketching,
@@ -94,22 +94,17 @@ export type LiveAppViewProps = {
 };
 
 export type BuilderStatusViewProps = {
+  /** Who is building the app, by the label of its role. */
+  role: string;
   /** What the app builder is doing, in the activity strip's words. */
   phrase: string;
-  /** It waits on the person's answer, so the dot holds still. */
-  asking: boolean;
 };
 
-export function BuilderStatusView({ phrase, asking }: BuilderStatusViewProps) {
+export function BuilderStatusView({ role, phrase }: BuilderStatusViewProps) {
   return (
     <p className={styles.status} role="status">
-      <StatusDot
-        label=""
-        live={!asking}
-        tone={asking ? "warning" : "emphasis"}
-        size="xs"
-      />
-      {wording.activity.role.coder}: {phrase}
+      <StatusDot label="" live tone="emphasis" size="xs" />
+      {role}: {phrase}
     </p>
   );
 }
@@ -489,7 +484,7 @@ function ChecklistRow({ item }: { item: ChecklistItem }) {
             <span>{item.title}</span>
           </summary>
           <div className={styles.checklistEvidence}>
-            <Markdown source={evidence} document />
+            <DocumentView source={evidence} />
           </div>
         </details>
       )}
@@ -543,7 +538,7 @@ function Checklist({
         </Button>
       </header>
       {total === 0 ? (
-        <Markdown source={markdown} document />
+        <DocumentView source={markdown} />
       ) : (
         <ul className={styles.checklistItems}>
           {entries.map((entry, index) =>

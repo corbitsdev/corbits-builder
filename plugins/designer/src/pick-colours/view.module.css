@@ -1,0 +1,111 @@
+.picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+/* A side: the swatch to pick with, its name and value, and the proposed colour when there is one. */
+.row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 12rem) auto;
+  align-items: end;
+  justify-content: start;
+  gap: var(--space-2) var(--space-3);
+}
+
+/* The system's colour input drawn as a plain swatch, the same height as the field beside it. */
+.well {
+  width: 2.75rem;
+  height: 2.25rem;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: none;
+  cursor: pointer;
+}
+
+.well::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.well::-webkit-color-swatch {
+  border: none;
+  border-radius: calc(var(--radius-md) - 1px);
+}
+
+.well::-moz-color-swatch {
+  border: none;
+  border-radius: calc(var(--radius-md) - 1px);
+}
+
+.well:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.label {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--space-2);
+  font-size: 0.75rem;
+}
+
+.was {
+  color: var(--muted-foreground);
+}
+
+.value {
+  font-variant-numeric: tabular-nums;
+}
+
+.proposed {
+  justify-self: start;
+}
+
+.proposed[aria-pressed="true"] {
+  border-color: var(--primary);
+  background: var(--wb-selected);
+}
+
+.swatch {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.note {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--muted-foreground);
+}
+
+/* On a phone the proposed colour takes the line under the field, and every control a finger's height. */
+@media (max-width: 30rem) {
+  .row {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .proposed {
+    grid-column: 2;
+  }
+
+  .well,
+  .value,
+  .proposed {
+    min-height: var(--target);
+  }
+
+  .well {
+    height: var(--target);
+  }
+}

@@ -1,0 +1,14 @@
+/* The frame fills what the screen gives it; a phone keeps a phone's width, centred. */
+.frame {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  width: 100%;
+  min-height: 0;
+}
+
+.frame[data-device="phone"] {
+  width: min(100%, 24rem);
+  margin-inline: auto;
+  border-inline: 1px solid var(--wb-border);
+}

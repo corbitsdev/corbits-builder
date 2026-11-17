@@ -1,0 +1,64 @@
+.steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.step {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.instruction {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.label {
+  padding: 0 var(--space-1);
+  border: 1px solid var(--wb-border);
+  border-radius: var(--radius-panel);
+  font-size: 0.75rem;
+  color: var(--wb-muted-foreground);
+}
+
+.detail {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--wb-muted-foreground);
+  overflow-wrap: anywhere;
+}
+
+.setting {
+  font-family: var(--wb-font-mono);
+  font-size: 0.75rem;
+  color: var(--wb-foreground);
+}
+
+.link {
+  font-size: 0.8125rem;
+  color: var(--wb-primary);
+  text-underline-offset: 2px;
+  overflow-wrap: anywhere;
+}
+
+.hint {
+  margin: var(--space-3) 0 0;
+  font-size: 0.8125rem;
+  color: var(--wb-muted-foreground);
+}

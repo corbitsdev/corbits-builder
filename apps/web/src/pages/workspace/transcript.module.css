@@ -15,6 +15,15 @@
   padding-inline-start: 2.5rem;
 }
 
+/* What the agents produced reads as an indented entry under the person's message that led to it:
+   its tick starts further in, and keeps the rail's own states and colours. */
+.thread
+  [data-slot="conversation-map-tick"]:not([data-turn-id^="person:"])
+  > span {
+  margin-inline-start: 0.5rem;
+  width: 1rem;
+}
+
 /* The log scrolls inside the room. flex-shrink 0 made its height follow the
    settle spacer, and the spacer then grew from that new height. */
 .log {
@@ -44,21 +53,28 @@
 
 /* A turn arriving. The newest row rises into place. The reserve under a
    settled turn is not a turn; animating it moves the measurement the
-   reserve is computed from. */
-.log [data-slot="conversation-item"]:last-child {
+   reserve is computed from. A specialist's row is an item too, for the map to jump to, but rises
+   only with the turn that holds it. */
+.log
+  > [data-slot="conversation-column"]
+  > [data-slot="conversation-item"]:last-child {
   animation: global(turn-in) var(--duration-standard, 200ms)
     var(--ease-out, ease) both;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .log [data-slot="conversation-item"]:last-child {
+  .log
+    > [data-slot="conversation-column"]
+    > [data-slot="conversation-item"]:last-child {
     animation: none;
   }
 }
 
+/* At phone width the column's own inline padding is the whole gutter; the log's would double it. */
 @media (max-width: 640px) {
   .log {
-    padding: var(--space-4);
+    padding-block: var(--space-4);
+    padding-inline: 0;
   }
 }
 
@@ -66,12 +82,17 @@
   overflow-wrap: anywhere;
 }
 
-/* The run line's box, so the hand-off to it doesn't move. */
 .thinking {
   align-self: start;
   padding-block: var(--space-1);
   font-size: 0.875rem;
   line-height: 1.25rem;
+}
+
+/* The turn's last line: the thinking line while it works, then its copy action in the same box,
+   so the turn's end does not move what is below it. */
+.footer {
+  min-height: 2rem;
 }
 
 /* The trigger's inline padding (px-1) hangs outside, so its words start under
@@ -80,32 +101,20 @@
   margin-inline-start: calc(-1 * var(--space-1));
 }
 
-/* A live run's line shimmers as ShimmerText does, so it alone shows the turn
-   is at work. The trigger's first span is its line; the chevron stays solid. */
-[data-streaming] > .run > span:first-child {
-  background-image: linear-gradient(
-    90deg,
-    var(--muted-foreground) 40%,
-    var(--foreground) 50%,
-    var(--muted-foreground) 60%
-  );
-  background-size: 200% 100%;
-  /* Nothing in the build prefixes; without the clip the text stays transparent. */
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  animation: global(corbits-shimmer-sweep) 1.8s linear infinite;
-}
-
-@media (prefers-reduced-motion: reduce), (forced-colors: active) {
-  [data-streaming] > .run > span:first-child {
-    animation: none;
-    background: none;
-    color: inherit;
-  }
+/* A command as a step's row: its own text in the code face, held to the row's one line. */
+.command {
+  font-family: var(--wb-font-mono);
+  font-size: 0.8125rem;
 }
 
 .endedDetails summary {
   display: inline;
   cursor: pointer;
+}
+
+/* What came of a step in plain words: the interface's own face, not the code face of its box. */
+.words {
+  font-family: var(--wb-font-ui);
+  font-size: 0.8125rem;
+  line-height: 1.25rem;
 }

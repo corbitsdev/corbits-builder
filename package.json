@@ -2,7 +2,7 @@
   "name": "corbits-builder",
   "version": "0.1.0-rc.3",
   "private": true,
-  "description": "Builder turns an idea into approved documents, a design and a working web app, with agents on the model provider you choose.",
+  "description": "Builder lets you build, write, edit or improve anything by talking to one assistant that brings in specialists, on the model provider you choose.",
   "license": "SEE LICENSE IN LICENSE.md",
   "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
   "repository": {
@@ -12,8 +12,8 @@
   "workspaces": [
     "apps/*",
     "packages/*",
-    "plugins/*",
     "workflows/*",
+    "plugins/*",
     "vendor/interchange/packages/*",
     "vendor/interchange/apps/sidecar"
   ],
@@ -33,6 +33,7 @@
     "dev:seed": "bun --env-file=.env.hub --conditions=intx-src scripts/seed-projects.ts",
     "import:repo": "bun --conditions=intx-src scripts/import-repo.ts",
     "lint": "bun --bun run oxlint --deny-warnings",
+    "boundaries": "depcruise plugins packages apps workflows",
     "format": "bun fmt --no-script",
     "format:check": "bun fmt --no-script --check",
     "typecheck": "bun run --cwd apps/web css-types && bun check --no-script && bun check --no-script -p packages/client && bun check --no-script -p packages/pdf && bun check --no-script -p packages/slidedeck && bun check --no-script -p packages/zip && bun check --no-script -p apps/web",
@@ -80,17 +81,15 @@
     "@anthropic-ai/sandbox-runtime": "0.0.81",
     "@corbits-builder/client": "workspace:*",
     "@corbits-builder/coordinator": "workspace:*",
-    "@corbits-builder/designer": "workspace:*",
     "@corbits-builder/hub": "workspace:*",
-    "@corbits-builder/presenter": "workspace:*",
     "@corbits-builder/schemas": "workspace:*",
-    "@corbits-builder/writer": "workspace:*",
     "@corbits/slidedeck": "workspace:*",
     "@emulators/core": "0.12.3",
     "@emulators/google": "0.12.3",
     "@intx/sidecar-app": "workspace:*",
     "@playwright/test": "1.64.1",
     "@types/bun": "1.4.4",
+    "dependency-cruiser": "18.7.2",
     "drizzle-kit": "0.31.9",
     "jszip": "3.10.2",
     "oxlint": "1.89.0",
@@ -114,6 +113,7 @@
     "tar": "7.5.22"
   },
   "patchedDependencies": {
-    "@corbits/mcp@0.4.1": "patches/@corbits%2Fmcp@0.4.1.patch"
+    "@corbits/mcp@0.4.1": "patches/@corbits%2Fmcp@0.4.1.patch",
+    "@corbits/react-ui@0.5.1": "patches/@corbits%2Freact-ui@0.5.1.patch"
   }
 }

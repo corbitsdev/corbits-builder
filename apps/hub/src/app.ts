@@ -47,6 +47,7 @@ import { createProductConfig } from "./config/index.ts";
 import {
   readCoordinatorStartTimeoutMs,
   readHubEnvironment,
+  readPluginHint,
   readGoogleEmulateBaseUrl,
   required,
 } from "./environment.ts";
@@ -69,7 +70,7 @@ import { createAgentUpgrades } from "./projects/upgrade-agents.ts";
 import { agentUpgrade } from "./config/agent-upgrade.ts";
 import { installForTenant } from "./workflows/install-for-tenant.ts";
 import { createHubMail, hubRequestSession } from "./mail/hub-mail.ts";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { createProductRoutes } from "./product.ts";
 import {
   createHubAuth,
@@ -101,6 +102,8 @@ import { createRunExport } from "./telemetry/run-export.ts";
 import { createRunSpans } from "./telemetry/run-spans.ts";
 import { createRunTracing } from "./telemetry/run-tracing.ts";
 import { createAgentActivity } from "./artifacts/activity.ts";
+import { createArtifactService } from "./artifacts/service.ts";
+import { createChecks } from "./plugins/checks.ts";
 import { requestErrorMetadata } from "./request-error.ts";
 import { createLiveAppProxy } from "./live-app/proxy.ts";
 import { createLiveAppRunner } from "./live-app/runner.ts";
@@ -120,6 +123,7 @@ export async function createHubRuntime(
   const env = readHubEnvironment(rawEnvironment);
   const coordinatorStartTimeoutMs =
     readCoordinatorStartTimeoutMs(rawEnvironment);
+  const pluginHint = readPluginHint(rawEnvironment);
   const handle = createDB(env.database);
   let authEmail: ReturnType<typeof createAuthEmail>;
   try {
@@ -449,15 +453,20 @@ export async function createHubRuntime(
     app.use(liveAppProxy.refuseAppOrigins);
     app.use(createHubContextMiddleware({ getSession }));
     app.use(gitTokens.middleware);
-    const coordinatorTokens = createAgentTokenBridge(handle.db, runTokenStore, {
-      install: (actor, projectId) =>
-        installForTenant(
-          { db: handle.db, assets: assetService },
-          actor,
-          projectId,
-        ),
-      handoff: agentUpgrades.handoff,
-    });
+    const coordinatorTokens = createAgentTokenBridge(
+      handle.db,
+      { paths: env.toolchainPaths, dataDir: resolve(env.dataDir) },
+      runTokenStore,
+      {
+        install: (actor, projectId) =>
+          installForTenant(
+            { db: handle.db, assets: assetService },
+            actor,
+            projectId,
+          ),
+        handoff: agentUpgrades.handoff,
+      },
+    );
     app.use("/api/tenants/:tenantId/*", coordinatorTokens.middleware);
     app.use("/api/workflow-project-scope", coordinatorTokens.middleware);
     app.use(
@@ -482,16 +491,19 @@ export async function createHubRuntime(
       ),
     );
     app.all("/api/auth/*", (c) => auth.handler(c.req.raw));
-    app.use(
-      "/api/tenants/:tenantId/workflows/runs/:runId/stream",
-      createResolveTenant({ db: handle.db }),
-    );
+    for (const path of ["stream", "steps"])
+      app.use(
+        `/api/tenants/:tenantId/workflows/runs/:runId/${path}`,
+        createResolveTenant({ db: handle.db }),
+      );
     app.route(
       "/api/tenants/:tenantId",
       createWorkflowRunStreamRoutes({
         db: handle.db,
         sidecarRouter,
         requireGrant,
+        repoStore: agentRepoStore.repoStore,
+        activity: agentActivity,
       }),
     );
     app.use(
@@ -500,6 +512,7 @@ export async function createHubRuntime(
         db: handle.db,
         runs: createWorkflowRunReader(agentRepoStore.repoStore),
         repoStore: agentRepoStore.repoStore,
+        pluginHint,
       }),
     );
     // Only a signed-in member of the tenant reaches the note; Interchange's route reuses the
@@ -508,6 +521,31 @@ export async function createHubRuntime(
       "/api/tenants/:tenantId/approvals/:approvalId/reject",
       createResolveTenant({ db: handle.db }),
       createDeclineNote({ coordinatorAsk: coordinatorAskReader(handle.db) }),
+    );
+    // The hub's one runner of plugins' checks; a result is noted to the coordinator through the
+    // hub's own mail route.
+    const checks = createChecks({
+      db: handle.db,
+      toolchains: { paths: env.toolchainPaths, dataDir: resolve(env.dataDir) },
+      artifacts: createArtifactService(
+        handle.db,
+        createWorkflowRunReader(agentRepoStore.repoStore),
+        agentRepoStore.repoStore,
+      ),
+      fetch: async (request) => app.fetch(request),
+    });
+    // A coder's push to a project's app repository is how its main gets a new commit: once
+    // Interchange's receive-pack has moved the ref, the checks the push made stale re-run.
+    app.use(
+      "/api/tenants/:tenantId/assets/app/:repository/git-receive-pack",
+      async (c, next) => {
+        await next();
+        const projectId = /^app-(.+)\.git$/.exec(
+          c.req.param("repository"),
+        )?.[1];
+        if (c.res.ok && projectId)
+          void checks.pushed(projectId, new URL(c.req.url).origin);
+      },
     );
     mountHubRoutes(app, {
       db: handle.db,
@@ -578,6 +616,7 @@ export async function createHubRuntime(
         workflows.localSidecarDataDir,
         liveApps,
         workflows.services.workflowLifecycleService.requestCancellation,
+        checks,
       ),
     );
     app.route(
@@ -664,6 +703,7 @@ export async function createHubRuntime(
         reconcileNext: createSpecialistEndNotices({
           db: handle.db,
           runs: createWorkflowRunReader(agentRepoStore.repoStore),
+          repoStore: agentRepoStore.repoStore,
           mailDirectory: reportMailDirectory,
           mail: hubMail,
         }),

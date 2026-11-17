@@ -9,19 +9,25 @@ the screen-by-screen guide is the
 
 ## What it is
 
-Builder turns an idea into a working web app. A person describes what they
-want in plain words. A coordinator agent talks it through with them, has
-specialist agents write a short set of planning documents, design the screens
-and build the app, and asks the person for every decision that is theirs to
-make. The person ends with approved documents, a design they chose and the
-app's source, which runs in the browser while it is being built.
+Builder builds, writes or changes what a person asks for: a web app, a
+command-line tool, a library, a document, a piece of research, an analysis, or
+a small change to something that already exists. The person talks to one
+assistant, the coordinator. It works out what they want, brings in the
+specialists the work needs (a writer, a designer, a coder, a presenter, a
+worker for research and questions, an analyst for numbers) and asks the person
+for every decision that is theirs to make.
+
+There is no fixed path. A rough idea for an app gets requirements, a design and
+a build plan before anything is built; a request to change a font gets a font
+picker and then the change. What happens depends on what was asked.
 
 ## Who it is for
 
-Anyone who wants to build an app. Builder needs no technical knowledge: a
-small business owner, a team lead or a hobbyist answers questions about what
-they need, never about frameworks or hosting. Engineers use it too, for a
-planned, designed first version with the reasoning written down.
+Anyone who wants something built or written. Builder needs no technical
+knowledge: a small business owner, a team lead or a hobbyist answers questions
+about what they need, never about frameworks or hosting. Engineers use it too,
+for a planned, designed first version with the reasoning written down, or to
+hand off a change to code they already have.
 
 Builder is installed and run by whoever operates it, on their own machine or
 server. People sign in, work in shared workspaces and connect the model
@@ -29,74 +35,75 @@ provider of their choice.
 
 ## Why it is worth using
 
-- **The person stays in charge.** Agents recommend; only the person approves.
+- The person stays in charge. Agents recommend; only the person approves.
   Each approval names the exact version of what it covers, so nothing changes
-  under it afterwards.
-- **The thinking is kept.** The brief, the limits, the options weighed, the
-  requirements and the plan are documents the person can read, compare across
-  versions, download and change.
-- **They see the app as it is built.** The app runs live in the workspace
-  from the coder's first change, and its acceptance checklist shows how much
-  is done.
-- **It is theirs.** Documents, the design and the app's code download at any
-  time. A whole project exports to one file and imports again.
-- **No lock-in to one model vendor.** Every role runs on any supported
-  provider.
+  under it afterwards. A person who would rather not be asked can hand their
+  approvals over, and take them back at any time.
+- The work fits the request. A small change stays small: nothing makes it pass
+  through documents or a design it does not need.
+- The thinking is kept. Requirements, plans and any other document are files
+  the person can read, compare across versions, download and change.
+- They see it as it is built. A web app runs live in the project from the
+  coder's first change.
+- It is theirs. Documents, the design and the code download at any time. A
+  whole project exports to one file and imports again.
+- No lock-in to one model vendor. Every role runs on any supported provider.
 
-## The flow
+## How the work goes
 
-The coordinator decides the order of work from what exists and what the person
-says; there is no fixed sequence of screens. A typical project goes:
+The person types what they want, and may attach files. The coordinator asks
+what it needs to know, matching depth to what they brought, and lays out a plan
+beside the conversation: the steps it intends, each marked done, running,
+waiting, needing them, failed or skipped as the work goes on. The plan is
+worked out from what has actually happened, so it never says a step is done
+when it is not.
 
-1. **Idea.** The person types or dictates what they want built, and may attach
-   files for the coordinator to read.
-2. **Questions.** The coordinator interviews them, matching depth to what they
-   brought: a bare idea gets brainstorming, a detailed request gets its limits
-   confirmed. Several decisions at once arrive as a question card with options
-   and a recommended answer preselected.
-3. **Documents.** Each builds on the ones before it:
-   - the **problem brief**: who it is for, what it must do and what done looks
-     like, written by the coordinator;
-   - the **constraints**: budget, devices, data and privacy, timeline, outside
-     services and what the first version includes;
-   - the **approaches**: two or three ways to build it, with trade-offs and one
-     recommended;
-   - the **product requirements**: what the app does for whom, built the chosen
-     way.
-4. **Approaches.** The person compares the approaches side by side and picks
-   one. A pick that differs from the recommendation is recorded in the
-   document.
-5. **Requirements.** Written once the approach is chosen.
-6. **Design.** The coordinator asks whether they want one suggested design or
-   several looks to compare, and whether they have a look in mind. Ready-made
-   themes can be clicked through before any design exists. Each concept is a
-   clickable mockup of every screen, with light and dark modes, desktop and
-   phone views, and simple tweaks (colour, background, corners, font). The
-   person confirms one concept, and that choice is the design approval.
-7. **Build plan.** Written from the chosen approach and design: the stack, the
+For an idea for a web app, the usual plan is:
+
+1. Requirements. A writer writes what the app does and for whom, from what
+   the person said. The coordinator puts the open questions that are theirs to
+   them and has the requirements revised with their answers.
+2. Design. The person chooses whether to see one design or compare several
+   looks. Each design is a clickable mockup of every screen, in light and dark,
+   on desktop and phone, made from one of five themes or a look of the
+   person's own. They review it full screen, pin comments to places in it and
+   approve it or send it back, or choose one of several.
+3. Build plan. Written from the requirements and the design: the stack, the
    order of work and the acceptance checklist.
-8. **Live build.** One coder builds the whole app. The workspace shows the
-   running app, its progress against the checklist and what each agent is
-   doing. The person tries the app and asks for changes in the conversation;
-   each change goes to the coder only after they approve it.
-9. **Download.** The app's source as a zip, each document as Markdown or PDF,
-   the design, or the whole project as an export.
+4. Build. One coder builds the app. The project shows the running app and
+   what each specialist is doing. The person tries it and asks for changes in
+   plain words.
+5. User manual, if the person wants one.
+
+Anything else gets a plan the coordinator writes for it. A command-line tool
+goes to the coder with the plan it needs; research goes to the worker; a
+presentation to the presenter. A small, exactly stated change to something
+built, such as a colour, a label or a bug fix, goes straight to the coder. A new
+feature or a substantial change first gets revised requirements and a build
+plan the person approves, then the change.
+
+When a decision has a screen made for it, the person gets that screen: a font
+or colour picker, a document to approve, a design to review, a choice between
+designs, or how many looks to compare. Whatever is on screen, they can type a
+sentence instead, and that is their answer.
 
 ## Approvals
 
 - Only a person approves. An agent's recommendation is never an approval, and
   a reviewer agent's findings are advice to the coordinator.
-- An approval covers exact versions. A document changed afterwards needs
-  approval again, and the next document's writer starts only from approved
-  versions.
-- The person approves each planning document, the start of design work (or
-  every later start in that project, once they say so), the design (by
-  choosing it), every change sent to the coder and, unless they turn this off,
-  each new package the coder wants to add.
-- One approval card can cover several documents at once.
-- A person may let documents go ahead once written; the coordinator then tells
-  them about each one instead. Starting the design, choosing it and sending
-  changes to the coder still ask.
+- An approval covers exact versions. A document changed afterwards is put to
+  the person again when the coordinator judges it needs it, and work that
+  builds on a document uses the version they approved.
+- By default the person approves documents before the work that builds on
+  them, and the design by approving or choosing it. In the usual web app plan
+  the design waits for the requirements, and the build waits for the build
+  plan and the design.
+- Saying "just build it" offers to hand approvals to Builder. With approvals
+  handed over, each step starts as the one before it files its work, and the
+  coordinator tells the person what was filed instead of asking. A step a plan
+  marks as required still waits for the person's own approval.
+- Unless the person turns it off, each package the coder wants to add that no
+  approved build plan names asks first.
 
 ## Questions
 
@@ -106,16 +113,18 @@ says; there is no fixed sequence of screens. A typical project goes:
 - A document can list the open questions it leaves. By default it reaches the
   person for approval only once those are answered.
 - Specialists never ask the person directly. A question only the person can
-  answer goes to the coordinator, which asks it.
+  answer goes to the coordinator, which asks it; the rest it settles with an
+  assumption it states.
 
 ## Working the way the person wants
 
 Preferences set how much Builder asks, how long and how technical its replies
-are, how many design concepts to compare, how picky reviews are, whether
-documents need approval, whether package installs ask, whether the build may
-reach the internet beyond the package registry, and whether each project shows
-a "what's next" line. What the person says in the conversation wins over these.
-A project keeps the preferences its creator had when it started.
+are, how many design concepts to compare, what reviews raise, whether documents
+need approval, whether open questions are answered before approval, whether
+package installs ask, whether the build may reach the internet beyond the
+package registry, and whether each project shows a next step line. What the
+person says in the conversation wins over these. A project keeps the
+preferences its creator had when it started.
 
 ## Models
 
@@ -126,10 +135,11 @@ their own. A project keeps the profile it started with.
 
 ## Out of scope today
 
-- Apps other than browser web apps: native phone apps, desktop apps and browser
-  extensions. The coordinator says what it can make instead.
-- Hosting or deploying the built app. The person downloads its source.
+- Previewing anything that does not open in a browser. A command-line tool, a
+  bot or a library is built and checked, but there is no way to try it inside
+  Builder.
+- Hosting or deploying what was built. Builder can check that an app is ready
+  for Cloudflare Workers and routed to a domain; the person publishes it and
+  downloads its source.
 - Talking to a specialist directly; everything goes through the coordinator.
-  Direct conversations with the designer and app builder are planned.
-- Spend tracking, stakeholder sign-off and reviews of the built app are
-  planned, not built.
+- Spend tracking and reviews of the built app.

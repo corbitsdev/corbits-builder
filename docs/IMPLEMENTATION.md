@@ -57,13 +57,24 @@ sandbox
 Default lifetimes and retention come from `WORKFLOW_DEFAULT_*`; a completed
 run's files are kept fifteen minutes after it ends, a failed one's for a day.
 
-### Role packages
+### Plugins
 
-Each role's workflow package is bundled per set of model bindings
+The hub reads `plugins/` once when it loads
+([apps/hub/src/plugins/catalog.ts](https://github.com/corbitsdev/corbits-builder/blob/main/apps/hub/src/plugins/catalog.ts)),
+through `@corbits-builder/plugin-host`, and a wrong manifest or action folder
+stops it. Each workflow package a plugin declares, and each agent it asks the
+host to build from a prompt, is bundled per set of model bindings
 ([apps/hub/src/workflows/build-packages.ts](https://github.com/corbitsdev/corbits-builder/blob/main/apps/hub/src/workflows/build-packages.ts))
 and installed into the project's tenant
 ([apps/hub/src/workflows/install-for-tenant.ts](https://github.com/corbitsdev/corbits-builder/blob/main/apps/hub/src/workflows/install-for-tenant.ts)).
-Skills are packed into the bundle at build time with a Bun macro.
+A bundle cannot read a folder when it runs, so the bundler swaps the folder
+reader for one that carries every file the manifests name, and Bun macros
+inline a plugin's skills, starters and themes.
+
+The interface compiles each plugin's manifest and its actions' definitions,
+views and data in with `import.meta.glob`
+([apps/web/src/pages/workspace/screen-files.ts](https://github.com/corbitsdev/corbits-builder/blob/main/apps/web/src/pages/workspace/screen-files.ts)),
+and nothing else from the folder.
 
 ### Hub tools
 
@@ -72,10 +83,10 @@ own credential:
 
 - documents: `read_artifact`, `write_artifact`
   ([apps/hub/src/artifacts/tools.ts](https://github.com/corbitsdev/corbits-builder/blob/main/apps/hub/src/artifacts/tools.ts));
-- hand-offs and decisions: `request_approval`, Interchange's `question`,
-  `deploy_writer`, `review_artifact`, `design_app`, `deploy_coder`,
-  `instruct_coder`
-  ([apps/hub/src/projects/deploy-tools.ts](https://github.com/corbitsdev/corbits-builder/blob/main/apps/hub/src/projects/deploy-tools.ts));
+- the coordinator's way to act: `discover`, `execute`, `runs`, `plan` and
+  Interchange's `question` in Builder's words
+  ([apps/hub/src/plugins/tools.ts](https://github.com/corbitsdev/corbits-builder/blob/main/apps/hub/src/plugins/tools.ts)),
+  over the logic in `packages/plugin-host/src/coordinator.ts`;
 - design validation and filing: `check_design`
   ([apps/hub/src/builds/design-submission.ts](https://github.com/corbitsdev/corbits-builder/blob/main/apps/hub/src/builds/design-submission.ts));
 - skills: `read_skill`
@@ -83,10 +94,6 @@ own credential:
 - workspace tools for the designer and coder (files, shell, search, package
   installs, app status, browser)
   ([apps/hub/src/builds/](https://github.com/corbitsdev/corbits-builder/blob/main/apps/hub/src/builds)).
-
-Builder's tool packages (`tools-*`) follow Interchange's tool-package
-convention (`vendor/interchange/packages/agent/CONVENTIONS.md`), and keep each
-tool's logic a plain function so a workflow action can call it directly.
 
 The coder's browser tools are Playwright's MCP server inside its sandbox,
 limited to loopback; its web search is Exa's MCP server
@@ -102,8 +109,8 @@ headless shell.
 
 The live app
 ([apps/hub/src/live-app/](https://github.com/corbitsdev/corbits-builder/blob/main/apps/hub/src/live-app))
-is one host process per open project, running the app under srt with
-`bun run dev`, behind a proxy that gives each project's app its own port.
+is one host process per open project, running the project's `stack.run`
+command under srt, behind a proxy that gives each project's app its own port.
 
 ### App repository
 
@@ -122,21 +129,21 @@ Environment files, installs and build output never leave the workspace.
 | `packages/client`         | `@corbits-builder/client`      | The typed client for the hub's API.                              |
 | `apps/web`                | `@corbits-builder/web`         | The interface, built only on the client and the schemas.         |
 | `workflows/coordinator`   | `@corbits-builder/coordinator` | The coordinator's agent, prompt and workflow.                    |
-| `plugins/writer`          | `@corbits-builder/writer`      | The document writer and its per-kind skills.                     |
-| `workflows/reviewer`      | `@corbits-builder/reviewer`    | The document reviewer.                                           |
-| `plugins/designer`        | `@corbits-builder/designer`    | The designer, its starter, themes and skills.                    |
-| `plugins/coder`           | `@corbits-builder/coder`       | The coder, its app starter and `check-app`.                      |
-| `packages/schemas`        | `@corbits-builder/schemas`     | Types and schemas shared by the hub, client and workflows.       |
-| `packages/plugin`         | `@corbits-builder/plugin`      | What a plugin's `builder` block may declare.                     |
-| `packages/plugin-host`    | `@corbits-builder/plugin-host` | Reads a plugins folder and checks what each plugin declares.     |
+| `packages/plugin`         | `@corbits-builder/plugin`      | The plugin contract every plugin and the hub import.             |
+| `packages/plugin-host`    | `@corbits-builder/plugin-host` | Loading, searching, checking and starting plugins; the plan.     |
+| `packages/plugin-ui`      | `@corbits-builder/plugin-ui`   | The shared pieces a screen's view draws with.                    |
+| `packages/app-checks`     | `@corbits-builder/app-checks`  | The check scripts a coding or design workspace runs.             |
+| `plugins/*`               | `@corbits-builder/<folder>`    | One package per plugin: specialists, ready-made plans and packs. |
+| `packages/schemas`        | `@corbits-builder/schemas`     | Types and schemas shared by the hub, client and plugins.         |
 | `vendor/interchange`      |                                | Interchange at the pinned revision.                              |
 | `deploy/`                 |                                | The Dockerfile and Compose files.                                |
 | `scripts/`                |                                | Dev and verification scripts.                                    |
 | `skills/`                 |                                | Agent skills to install Builder and drive it through its API.    |
 | `test/integration`, `e2e` |                                | Cross-module and full-stack tests.                               |
 
-Workflow packages declare their agents and workflows with Interchange's
-definition exports (`@intx/agent/authoring`, `@intx/workflow/definition`).
+The coordinator and each plugin with agent code declare their agents and
+workflows with Interchange's definition exports (`@intx/agent/authoring`,
+`@intx/workflow/definition`).
 Cross-workspace
 imports use declared `@corbits-builder/*` exports and `workspace:*`
 dependencies;
@@ -144,10 +151,14 @@ dependencies;
 checks that code imports Interchange by package name and that the interface
 never imports the server or the database.
 
-The coder's starter is a Bun workspace: a Vite and React client with
-`@corbits/react-ui`, a Hono server and a shared schema package. Its own
-[AGENTS.md](https://github.com/corbitsdev/corbits-builder/blob/main/plugins/coder/starter/AGENTS.md)
-tells the coder where each kind of code goes.
+The coder's `web-app` starter is a Bun workspace: a Vite and React client with
+`@corbits/react-ui`, a Hono server and a shared schema package. Its `bare`
+starter is one TypeScript package on Bun with tests and no framework. Each has
+its own `AGENTS.md`
+([web-app](https://github.com/corbitsdev/corbits-builder/blob/main/plugins/coder/starter/AGENTS.md),
+[bare](https://github.com/corbitsdev/corbits-builder/blob/main/plugins/coder/starters/bare/AGENTS.md))
+that tells the coder where each kind of code goes. A first build may also start
+from an empty workspace in whatever stack the build plan names.
 
 ## Configuration
 
@@ -202,8 +213,9 @@ writing anything of its kind.
   document storage (`artifacts`), the interface kit (`react-ui`), provider
   adapters and logins, MCP and agent tokens.
 - **Builder** owns the product on top: projects and their documents, the
-  hub's own routes and tenant state, the role workflows, prompts and skills,
-  its tool packages, product configuration and the interface.
+  hub's own routes and tenant state, the coordinator, the plugin contract and
+  host, the plugins with their prompts and skills, its tool packages, product
+  configuration and the interface.
 
 When a change needs something that none of them clearly owns, or that one of
 the first two almost covers, raise it before building: it may belong upstream,

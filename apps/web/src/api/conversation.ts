@@ -102,12 +102,19 @@ export function isInputPark(event: ConversationEvent): boolean {
 
 // --- The coordinator's questions ----------------------------------------------
 
-/** Answers the coordinator's open question; the run takes it as the question call's result. */
+/**
+ * Answers the coordinator's open question through the hub, which saves and records what a screen's
+ * answer does; the run takes it as the question call's result.
+ */
 export async function answerQuestion(
   projectId: string,
   signalName: string,
   answer: QuestionAnswer,
 ): Promise<void> {
-  const { tenantId, runId } = await coordinatorRun(projectId);
-  await productClient().answerQuestion(tenantId, runId, signalName, answer);
+  await productClient().answerQuestion(
+    await workspaceTenantId(),
+    projectId,
+    signalName,
+    answer,
+  );
 }

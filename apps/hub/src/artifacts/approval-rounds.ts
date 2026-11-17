@@ -38,7 +38,6 @@ import {
   approvalRound,
   artifactImportApproval,
   project,
-  projectCoordinator,
   settingsRecord,
 } from "../db/schema.ts";
 import {
@@ -46,8 +45,10 @@ import {
   packageReadme,
   type PackageManifestSource,
 } from "../config/approval-rounds.ts";
+import { activeCoordinator } from "../auth/coordinator-registry.ts";
 import type { Actor } from "../lib/actor.ts";
-import { parseJson, readJson } from "../lib/json.ts";
+import { parseJson } from "../lib/json.ts";
+import { body, security } from "../http/route-parts.ts";
 import { mailRunAsCaller } from "../mail/caller-mail.ts";
 import { actorOf, authorizeProject } from "../projects/authorization.ts";
 import { ProjectError } from "../projects/errors.ts";
@@ -705,15 +706,7 @@ export function createPgApprovalRoundStore(
     },
 
     async activeCoordinatorRunId(projectId) {
-      const [row] = await rawDB
-        .select({ runId: projectCoordinator.runId })
-        .from(projectCoordinator)
-        .where(
-          and(
-            eq(projectCoordinator.projectId, projectId),
-            eq(projectCoordinator.active, true),
-          ),
-        );
+      const row = await activeCoordinator(rawDB, projectId);
       return row?.runId;
     },
 
@@ -1281,23 +1274,11 @@ export type ApprovalRoundService = ReturnType<
   typeof createApprovalRoundService
 >;
 
-const security = [
-  { sessionCookie: [] },
-  { deviceBearer: [] },
-  { coordinatorBearer: [] },
-];
-
 export function mountApprovalRoundRoutes(
   app: Hono<TenantEnv>,
   service: ApprovalRoundService,
   nativeFetch?: (request: Request) => Promise<Response>,
 ) {
-  const body = async (c: { req: { json(): Promise<unknown> } }) => {
-    const json = await readJson(c.req);
-    if (json === undefined) throw new ProjectError(400, "invalid_json");
-    return json;
-  };
-
   app.get(
     "/:projectId/packages/:version/zip",
     describeRoute({

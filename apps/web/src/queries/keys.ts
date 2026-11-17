@@ -29,6 +29,14 @@ export const keys = {
     all: ["userManual"] as const,
     of: (projectId: string) => ["userManual", projectId] as const,
   },
+  /** Project values the room reads for itself. */
+  projectValues: {
+    /** The values that select between plugins sharing a handle. */
+    selection: (projectId: string) =>
+      ["projectValues", projectId, "selection"] as const,
+    /** How the project's program starts, which says whether it serves a web app to preview. */
+    run: (projectId: string) => ["projectValues", projectId, "run"] as const,
+  },
   liveApp: {
     all: ["liveApp"] as const,
     of: (projectId: string) => ["liveApp", projectId] as const,
@@ -57,6 +65,9 @@ export const keys = {
     all: ["projectNextStep"] as const,
     of: (projectId: string) => ["projectNextStep", projectId] as const,
   },
+  /** The calls one run made, from its saved conversation. */
+  runSteps: (tenantId: string, runId: string) =>
+    ["runSteps", tenantId, runId] as const,
   projectRunStates: {
     all: ["projectRunStates"] as const,
     of: (projectId: string) => ["projectRunStates", projectId] as const,

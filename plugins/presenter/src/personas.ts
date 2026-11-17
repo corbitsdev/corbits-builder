@@ -83,10 +83,10 @@ export const AUDIENCE_PERSONAS: readonly AudiencePersona[] = [
   {
     id: "end_user",
     label: "End user",
-    cares: ["day-to-day experience", "screens", "key workflows"],
+    cares: ["day-to-day experience", "what they see and do", "key workflows"],
     defaultDocuments: ["problem_brief", "product_requirements"],
     length: "5-7 slides",
-    tone: "Practical and approachable: show the day-to-day experience, screens and key workflows in plain language.",
+    tone: "Practical and approachable: show the day-to-day experience, what they will see and do, and key workflows in plain language.",
   },
 ];
 
@@ -123,7 +123,7 @@ export function formatPersonaGuidance(persona: AudiencePersona): string {
   return [
     `Audience persona: ${persona.label} (${persona.id})`,
     `What they care about: ${persona.cares.join(", ")}`,
-    `Default documents: ${persona.defaultDocuments.join(", ")}`,
+    `Documents that usually serve them, when filed: ${persona.defaultDocuments.join(", ")}`,
     `Recommended length: ${persona.length}`,
     `Recommended tone: ${persona.tone}`,
   ].join("\n");
@@ -132,7 +132,7 @@ export function formatPersonaGuidance(persona: AudiencePersona): string {
 export function formatPersonasCatalog(): string {
   return AUDIENCE_PERSONAS.map(
     (persona) =>
-      `- ${persona.label} (${persona.id}): cares about ${persona.cares.join(", ")}; default documents: ${persona.defaultDocuments.join(", ")}; length: ${persona.length}; tone: ${persona.tone}`,
+      `- ${persona.label} (${persona.id}): cares about ${persona.cares.join(", ")}; documents that usually serve them, when filed: ${persona.defaultDocuments.join(", ")}; length: ${persona.length}; tone: ${persona.tone}`,
   ).join("\n");
 }
 
@@ -157,7 +157,6 @@ export type PresenterDesignTokens = PresenterSourceRef &
 
 export type PackageAssignment = Readonly<{
   sealed: true;
-  projectId: string;
   audience: string;
   personaId: AudiencePersonaId;
   personaLabel: string;
@@ -169,7 +168,6 @@ export type PackageAssignment = Readonly<{
 }>;
 
 export type PresenterAssignmentInput = Readonly<{
-  projectId: string;
   audience: string;
   decisionNeeded: string;
   tone: string;
@@ -204,7 +202,6 @@ export function buildPackageAssignment(
     : documentRefs;
   return {
     sealed: true,
-    projectId: input.projectId,
     audience: input.audience.trim(),
     personaId: persona.id,
     personaLabel: persona.label,
@@ -214,10 +211,6 @@ export function buildPackageAssignment(
     instruction: input.instruction.trim(),
     sources,
   };
-}
-
-export function defaultPackageTitle(label: string): string {
-  return `Approval package for ${label}`;
 }
 
 export function presenterAssignmentMessage(

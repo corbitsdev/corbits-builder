@@ -55,7 +55,8 @@ function toolCallsOf(value: unknown): readonly ToolCallSnapshot[] | undefined {
   return calls;
 }
 
-function finishedCallOf(
+/** The call a model finished writing, from an `inference.tool_call.end` frame's data. */
+export function finishedCallOf(
   data: RunStreamEvent["data"],
 ): FinishedCall | undefined {
   const callId = data?.callId;
@@ -71,13 +72,7 @@ function reasoningText(parts: readonly ConversationPart[]): string | undefined {
 }
 
 function toolCalls(parts: readonly ConversationPart[]): readonly PartTool[] {
-  return parts.flatMap((part) =>
-    part.kind === "tool-trace"
-      ? [part]
-      : part.kind === "tool-batch"
-        ? part.tools
-        : [],
-  );
+  return parts.flatMap((part) => (part.kind === "tool-trace" ? [part] : []));
 }
 
 function runningTools(
@@ -160,11 +155,7 @@ export function foldLiveTurn(
   for (const [id, part] of finished) {
     if (!seen.has(id)) tools.push(part);
   }
-  // One response's calls run together (INFERENCE.md, parallel execution), so several are one batch.
-  const [first] = tools;
-  if (tools.length > 1 && first !== undefined)
-    parts.push({ kind: "tool-batch", id: `batch:${first.toolCallId}`, tools });
-  else parts.push(...tools);
+  parts.push(...tools);
   if (folded.live.length > 0) parts.push({ kind: "text", text: folded.live });
   return { turn: { text: folded.live, parts }, refresh: folded.refresh };
 }

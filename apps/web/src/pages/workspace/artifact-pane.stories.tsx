@@ -15,8 +15,6 @@ import {
 import type { DeliverableState } from "./deliverable-block.tsx";
 import designConcept from "./design-concepts.stories.tsx";
 import { ConceptMockupView } from "./design-concepts.view.tsx";
-import designThemes from "./design-themes.stories.tsx";
-import { DesignThemesView } from "./design-themes.view.tsx";
 import liveApp from "./live-app.stories.tsx";
 import { LiveAppView } from "./live-app.view.tsx";
 import { TweakPanelView } from "./mockup-tweaks.view.tsx";
@@ -124,6 +122,8 @@ const meta = {
     state: ready,
     onSelect: fn(),
     onSeen: fn(),
+    open: true,
+    onClose: fn(),
     onRetry: fn(),
     onAddToPrompt: fn(),
     conceptMockup: (concept, frame) => (
@@ -188,11 +188,6 @@ export const HtmlDesign: Story = {
 /** The live designer's unfiled mockup has a tab of its own until a design is filed. */
 export const DesignDraft: Story = {
   args: { documents: [], selectedId: null, draft: sampleDraft },
-};
-
-/** Before a design exists, the themes join the documents. */
-export const Themes: Story = {
-  args: { themes: <DesignThemesView {...designThemes.args} /> },
 };
 
 /** Each design concept the person compares is a tab of its own. */

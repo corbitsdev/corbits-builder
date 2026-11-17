@@ -1,8 +1,8 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 
-// A Bun macro: it runs when an agent bundle is built, so the skills ship inside the workflow
-// package. Each skill is its directory's files keyed by path, SKILL.md first.
+// Bun macros: they run when an agent bundle is built, so the starter and themes ship inside the
+// workflow package, each as its directory's files keyed by path.
 const files = (root: string, directory = root): [string, string][] =>
   readdirSync(directory, { withFileTypes: true }).flatMap((entry) =>
     entry.isDirectory()
@@ -14,22 +14,6 @@ const files = (root: string, directory = root): [string, string][] =>
           ],
         ],
   );
-
-export const designSkills = (): Record<string, Record<string, string>> => {
-  const root = join(import.meta.dir, "..", "skills");
-  return Object.fromEntries(
-    readdirSync(root, { withFileTypes: true })
-      .filter((entry) => entry.isDirectory())
-      .map((entry) => [
-        entry.name,
-        Object.fromEntries(
-          files(join(root, entry.name)).sort(([a], [b]) =>
-            a === "SKILL.md" ? -1 : b === "SKILL.md" ? 1 : a.localeCompare(b),
-          ),
-        ),
-      ]),
-  );
-};
 
 export const designStarterFiles = (): Record<string, string> =>
   Object.fromEntries(
@@ -45,6 +29,21 @@ export const designThemeIds = (): string[] =>
     .filter((entry) => entry.isDirectory())
     .map((entry) => entry.name)
     .sort();
+
+// Each theme's DESIGN.md by its id, without its sample screens, for the designer's looks skill.
+export const designThemeDocs = (): Record<string, string> =>
+  Object.fromEntries(
+    designThemeIds().map((id) => [
+      id,
+      readFileSync(join(THEMES, id, "DESIGN.md"), "utf8"),
+    ]),
+  );
+
+export const createThemeSkill = (): string =>
+  readFileSync(
+    join(import.meta.dir, "..", "skills", "create-theme", "SKILL.md"),
+    "utf8",
+  );
 
 // The design themes a person can preview and pick before any design exists, keyed by the
 // catalog's concept id: each a design bundle (DESIGN.md and designs/) of one sample app.

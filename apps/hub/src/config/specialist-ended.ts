@@ -1,51 +1,73 @@
-import { CATALOG, runRole } from "../plugins/catalog.ts";
+import type { RunBlock } from "@corbits-builder/schemas/activity";
+import { HUB_NOTE_LEAD } from "@corbits-builder/schemas/conversation";
 import { SIGN_IN_REJECTED } from "../workflows/director.ts";
 
-// The hub's mail to a coordinator whose specialist stopped before it delivered its result. It
-// reaches the coordinator as the person's message. The fixed lead and the plain first paragraph are
-// what the person sees, as a quiet line rather than as words they typed; the paragraph after it is
-// for the coordinator only and quotes the recorded reason as Interchange gave it.
-export const SPECIALIST_ENDED_LEAD = "Status update: ";
-
-const COORDINATOR_ONLY = "\n\n";
+// The hub's note to a coordinator whose specialist stopped before it delivered its result: the plain
+// line the person sees, then for the coordinator alone the run and the recorded reason as
+// Interchange gave it, or what blocked it.
 
 type Outcome = "failed" | "cancelled";
+
+// A run the coordinator started for a plugin action is named by that action, such as "The coder's
+// change", since one role runs several actions.
+const actionNames = ({
+  plugin,
+  action,
+}: {
+  plugin: string;
+  action: string;
+}) => ({
+  words: `The ${plugin}'s ${action.replaceAll("-", " ")}`,
+  task: `The ${plugin} ${action} action`,
+});
+
+// A repair after a failure can be long work the person has not asked for, so the coordinator asks
+// first; only the hand-over that skips approvals lets it decide that alone.
+const AFTER_FAILURE = {
+  ask: "Tell the person what failed and what fixing it involves, and ask them before starting it again.",
+  decide:
+    "The person lets you decide: start it again if that fixes it, and tell them what failed.",
+};
+
+// Starting the same work again only meets the same block, so the coordinator deals with its cause
+// first.
+const AFTER_BLOCK =
+  "Do not start the same work again until its cause is dealt with: fix the cause, take another route, or tell the person what blocks it.";
 
 const SIGN_IN_REJECTED_LINE =
   "The work stopped because your model provider rejected its sign-in. Reconnect the provider in Settings, Providers, then send your request again.";
 
-const NOTICE_LINES = new Set(
-  CATALOG.roles.flatMap(({ ended }) =>
-    ended ? [ended.failed, ended.cancelled] : [],
-  ),
-).add(SIGN_IN_REJECTED_LINE);
-
 export function specialistEndedMessage(ended: {
-  role: string;
-  kind?: string;
+  runId: string;
+  // The plugin action the run was started for.
+  action: { plugin: string; action: string };
   status: Outcome;
   reason?: { message: string; code?: string };
+  // What stopped a run that was blocked, which its note leads with however the run ended.
+  blocked: RunBlock | null;
+  // The run's last tool calls, each with the start of what it returned, oldest first.
+  lastCalls: readonly string[];
+  // Whether the person handed decisions over to Builder.
+  agentDecides: boolean;
 }): string {
+  const { words, task } = actionNames(ended.action);
+  if (ended.blocked)
+    return `${HUB_NOTE_LEAD}${words} is blocked: ${ended.blocked.reason}\n\n${task} in run ${ended.runId} was blocked and ended, so no result is coming from it. What it tried: ${ended.blocked.tried}\n\n${AFTER_BLOCK}`;
   const how = ended.status === "failed" ? "failed" : "was stopped";
+  let line = `${words} was stopped.`;
+  if (ended.status === "failed") line = `${words} stopped before finishing.`;
+  // Interchange records only the text of the director's error, behind prefixes of its own.
+  if (ended.reason?.message.includes(SIGN_IN_REJECTED))
+    line = SIGN_IN_REJECTED_LINE;
   const reason = ended.reason
     ? ` Recorded reason${ended.reason.code ? ` (${ended.reason.code})` : ""}: ${ended.reason.message}`
     : "";
-  const lines = runRole(ended.role).ended!;
-  const task = lines.task.replaceAll("{kind}", ended.kind ?? "assigned");
-  // Interchange records only the text of the director's error, behind prefixes of its own.
-  const personLine = ended.reason?.message.includes(SIGN_IN_REJECTED)
-    ? SIGN_IN_REJECTED_LINE
-    : lines[ended.status];
-  return `${SPECIALIST_ENDED_LEAD}${personLine}${COORDINATOR_ONLY}${task} ${how} before finishing, so no result is coming from it.${reason}`;
-}
-
-/** A person-sent turn as the person may read it: a specialist-ended notice loses its coordinator-only part. */
-export function personTurnText(text: string): string {
-  if (!text.startsWith(SPECIALIST_ENDED_LEAD)) return text;
-  const end = text.indexOf(COORDINATOR_ONLY);
-  if (end === -1) return text;
-  // A person may type the same lead; only the hub's own notice lines are cut.
-  return NOTICE_LINES.has(text.slice(SPECIALIST_ENDED_LEAD.length, end))
-    ? text.slice(0, end)
-    : text;
+  const note = `${HUB_NOTE_LEAD}${line}\n\n${task} in run ${ended.runId} ${how} before finishing, so no result is coming from it.${reason}`;
+  if (ended.status === "cancelled") return note;
+  const calls =
+    ended.lastCalls.length > 0
+      ? `\n\nIts last calls, oldest first, show where it went wrong:\n${ended.lastCalls.join("\n")}`
+      : "";
+  const next = ended.agentDecides ? AFTER_FAILURE.decide : AFTER_FAILURE.ask;
+  return `${note}${calls}\n\n${next}`;
 }

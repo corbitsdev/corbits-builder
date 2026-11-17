@@ -4,6 +4,14 @@ import { mountDesignThemeRoutes } from "../artifacts/design-themes.ts";
 import { createArtifactService } from "../artifacts/service.ts";
 import type { AgentActivityTracker } from "../artifacts/activity.ts";
 import { mountProjectAuditRoutes } from "../audit/routes.ts";
+import { mountAnswerRoutes } from "../answers/routes.ts";
+import { createAnswer } from "../answers/answer.ts";
+import { mountPlanRoutes } from "../plans/routes.ts";
+import { createPlanService } from "../plans/service.ts";
+import { mountValueRoutes } from "../values/routes.ts";
+import { createValueService } from "../values/service.ts";
+import { mountCheckRoutes, type Checks } from "../plugins/checks.ts";
+import { createSettingsService } from "../settings/service.ts";
 import { Hono, type Context, type MiddlewareHandler } from "hono";
 import { describeRoute, resolver } from "hono-openapi";
 import {
@@ -189,6 +197,7 @@ export function createProjectRoutes(
     runId: string,
     reason: string,
   ) => Promise<unknown>,
+  checks?: Checks,
 ) {
   const app = new Hono<TenantEnv>();
   const service = createProjectService(db);
@@ -201,6 +210,8 @@ export function createProjectRoutes(
     liveApps,
     cancelRun,
   );
+  const plans = createPlanService(db);
+  const values = createValueService(db);
   // A project's coordinator can end (lifetime expiry, failure, archive) while its documents stay.
   // A fresh one takes no turn until mail arrives; the person's next message carries the held
   // resume context (coordinator-resume.ts), so the resume itself mails nothing.
@@ -213,6 +224,24 @@ export function createProjectRoutes(
   app.use("*", async (c, next) => {
     c.header("cache-control", "no-store");
     await next();
+  });
+  // Every document version, app version, approval and value the project saves comes through one of
+  // these routes, so each write that succeeds re-runs the checks it made stale. The checks' own
+  // routes only record runs and skips, which change nothing a check reads.
+  app.use("/:projectId/*", async (c, next) => {
+    await next();
+    if (
+      checks === undefined ||
+      c.req.method === "GET" ||
+      !c.res.ok ||
+      /\/check(s|-runs)(\/|$)/.test(c.req.path)
+    )
+      return;
+    void checks.changed(
+      actorOf(c),
+      c.req.param("projectId"),
+      new URL(c.req.url).origin,
+    );
   });
   app.post(
     "/import",
@@ -704,7 +733,23 @@ export function createProjectRoutes(
       }
     },
   );
-  mountArtifactRoutes(app, artifacts, nativeFetch);
+  const settings = createSettingsService(db);
+  const answer = createAnswer({
+    service: artifacts,
+    plans,
+    values,
+    nativeFetch,
+    settings,
+  });
+  mountArtifactRoutes(app, artifacts, {
+    answer,
+    nativeFetch,
+    checks,
+  });
+  mountAnswerRoutes(app, answer);
+  mountPlanRoutes(app, plans, artifacts, nativeFetch, checks);
+  mountValueRoutes(app, values, artifacts, nativeFetch);
+  if (checks) mountCheckRoutes(app, checks);
   mountProjectNextStepRoutes(app, createProjectNextStep(db, runs, liveApps));
   mountDesignThemeRoutes(app, db);
   mountProjectAuditRoutes(app, db);

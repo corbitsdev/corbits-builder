@@ -1,11 +1,11 @@
+import { QuestionOutcomes } from "./question-outcome.tsx";
 /**
  * The project room: one conversation with the coordinator, and a reading pane beside it for what
  * the agents file, without making chat inert during document review.
  */
 import { EnableAiDialog } from "../model-setup.tsx";
 import { ApprovalRoundsPanel } from "./approval-rounds.tsx";
-import { ConceptMockup, DesignChoice } from "./design-concepts.tsx";
-import { DesignThemes } from "./design-themes.tsx";
+import { ConceptMockup } from "./design-concepts.tsx";
 import { LiveApp } from "./live-app.tsx";
 import { TweakPanel } from "./mockup-tweaks.tsx";
 import { NextStepLine } from "./next-step.tsx";
@@ -17,6 +17,7 @@ import {
 } from "./room.model.ts";
 import { RoomFault, RoomSkeleton } from "./room-skeleton.tsx";
 import { RoomView } from "./room.view.tsx";
+import { ScreenQuestion } from "./screen-question.tsx";
 
 /** The room shows its loading or fault state until its first read is in hand. */
 export function StageWorkspace(props: StageWorkspaceProps) {
@@ -28,19 +29,16 @@ export function StageWorkspace(props: StageWorkspaceProps) {
 
 function ReadyRoom(props: ReadyRoomProps) {
   const { projectId } = props;
-  const { view, nextStep, designChoice, enableAi, liveApp, themes } =
+  const { view, nextStep, enableAi, liveApp, pageScreen, questionOutcomes } =
     useRoom(props);
   return (
-    <>
+    <QuestionOutcomes value={questionOutcomes}>
       <RoomView
         {...view}
         nextStep={nextStep === null ? null : <NextStepLine {...nextStep} />}
-        designChoice={
-          designChoice === null ? null : <DesignChoice {...designChoice} />
-        }
+        page={pageScreen === null ? null : <ScreenQuestion {...pageScreen} />}
         paneParts={{
           liveApp: liveApp === null ? null : <LiveApp {...liveApp} />,
-          themes: themes === null ? null : <DesignThemes {...themes} />,
           conceptMockup: (concept, frame) => (
             <ConceptMockup projectId={projectId} concept={concept} {...frame} />
           ),
@@ -53,6 +51,6 @@ function ReadyRoom(props: ReadyRoomProps) {
         }}
       />
       <EnableAiDialog {...enableAi} />
-    </>
+    </QuestionOutcomes>
   );
 }

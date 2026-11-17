@@ -4,6 +4,7 @@ import {
   type AdapterFactory,
 } from "@intx/inference";
 import type { ConversationTurn } from "@intx/types/runtime";
+import { isRecord } from "../lib/json.ts";
 
 // Codex models are trained to reach tools through one `exec` tool that runs JavaScript, and given
 // plain function tools they repeat calls and write placeholder arguments. The model sees `exec`;
@@ -46,9 +47,6 @@ const CONSTRAINTS = [
 ];
 
 type ToolCall = { name: string; arguments: Record<string, unknown> };
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
 
 function parseJSON(text: string): unknown {
   try {

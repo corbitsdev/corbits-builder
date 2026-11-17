@@ -67,7 +67,7 @@ export async function startInProcessHub() {
   // The response, or the error naming its status and body; the person's session unless the
   // credentials say otherwise.
   async function call(
-    method: "GET" | "POST",
+    method: "GET" | "POST" | "PUT",
     path: string,
     body?: object,
     credentials: Record<string, string> = { cookie },
@@ -122,7 +122,7 @@ export async function startInProcessHub() {
     // workspace.
     async seedRun(
       person: { tenantId: string; principalId: string },
-      role: "designer" | "coder",
+      role: "coordinator" | "designer" | "coder" | "writer",
       running = false,
     ) {
       const id = randomUUID();
@@ -160,7 +160,17 @@ export async function startInProcessHub() {
         sourceAuthorityPrincipalId: person.principalId,
         frozenApprovalBundle: {
           projection: {
-            steps: { work: { agent: { tags: { [`${role}.version`]: "1" } } } },
+            steps: {
+              work: {
+                agent: {
+                  // The coordinator's agent carries its version; a specialist's, its role.
+                  tags:
+                    role === "coordinator"
+                      ? { "coordinator.version": "1" }
+                      : { role },
+                },
+              },
+            },
           },
         },
         sourceOfferingIds: [],

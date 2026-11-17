@@ -1,4 +1,6 @@
+import { isAbsolute } from "node:path";
 import type { DBConfig } from "@intx/db";
+import { type } from "arktype";
 
 export type Environment = Record<string, string | undefined>;
 
@@ -142,6 +144,17 @@ export function readCoordinatorStartTimeoutMs(env: Environment): number {
   return value;
 }
 
+const PluginHint = type("'off' | 'triggers' | 'fields'");
+export type PluginHint = typeof PluginHint.infer;
+
+// Whether, and by which search, the hub notes likely plugins under the person's message to the coordinator.
+export function readPluginHint(env: Environment): PluginHint {
+  const hint = PluginHint(env["PLUGIN_HINT"] ?? "off");
+  if (hint instanceof type.errors)
+    throw new Error("PLUGIN_HINT must be off, triggers or fields");
+  return hint;
+}
+
 export function positiveInteger(
   env: Environment,
   name: string,
@@ -169,6 +182,23 @@ export function readLiveAppPorts(
   if (!match || from < 1 || to > 65535 || from > to)
     throw new Error("LIVE_APP_PORTS must be a port range such as 4100-4119");
   return { from, to };
+}
+
+/**
+ * Folders beyond the system's own that every build sandbox reads but never writes, such as a
+ * toolchain under /opt/homebrew or /Applications/Xcode.app, as absolute paths separated by ":";
+ * none unless set.
+ */
+export function readToolchainPaths(env: Environment): string[] {
+  const raw = env["SANDBOX_TOOLCHAIN_PATHS"]?.trim();
+  if (raw === undefined || raw === "") return [];
+  return raw.split(":").map((path) => {
+    if (!isAbsolute(path))
+      throw new Error(
+        `SANDBOX_TOOLCHAIN_PATHS must list absolute paths separated by ":": ${path}`,
+      );
+    return path;
+  });
 }
 
 export function readHubEnvironment(env: Environment) {
@@ -216,18 +246,20 @@ export function readHubEnvironment(env: Environment) {
   const uiOrigin = new URL(env["UI_PUBLIC_URL"] ?? baseURL.origin);
   assertBareOrigin("UI_PUBLIC_URL", uiOrigin);
   assertBareOrigin("HUB_API_ORIGIN", hubApiOrigin);
+  const dataDir = env["HUB_DATA_DIR"] ?? "data/hub";
   return {
     database: readDatabaseConfig(env),
     credentialKey,
     principalKey,
     hostname: env["HOST"] ?? "127.0.0.1",
     port: port(env["PORT"], 8000),
-    dataDir: env["HUB_DATA_DIR"] ?? "data/hub",
+    dataDir,
     webDir: env["HUB_WEB_DIR"],
     baseURL: authBaseURL,
     hubApiOrigin: hubApiOrigin.origin,
     uiOrigin: uiOrigin.origin,
     allowedEmails: readAllowedEmails(env),
     liveAppPorts: readLiveAppPorts(env),
+    toolchainPaths: readToolchainPaths(env),
   };
 }

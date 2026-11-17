@@ -8,20 +8,22 @@ import {
   DesignDraft,
   DesignThemeList,
 } from "@corbits-builder/schemas/artifact";
-import { designThemes } from "@corbits-builder/designer/skills" with { type: "macro" };
-import { DESIGN_THEMES, themeOf } from "../config/design.ts";
+import { CATALOG } from "../plugins/catalog.ts";
+import { security } from "../http/route-parts.ts";
 import { designConcept } from "../db/schema.ts";
 import { actorOf, authorizeProject } from "../projects/authorization.ts";
 import { ProjectError } from "../projects/errors.ts";
 import type { Actor } from "../lib/actor.ts";
 
-const BUNDLES = designThemes();
-
-const security = [
-  { sessionCookie: [] },
-  { deviceBearer: [] },
-  { coordinatorBearer: [] },
-];
+// The looks that are themes themselves, in the order the plugin lists them, each with its sample
+// design; none when no installed plugin drafts designs.
+const DESIGN = CATALOG.design;
+const THEMES = DESIGN
+  ? DESIGN.looks.flatMap((look) => {
+      const files = DESIGN.themes.get(look.id);
+      return files === undefined ? [] : [{ ...look, files }];
+    })
+  : [];
 
 export function mountDesignThemeRoutes(app: Hono<TenantEnv>, db: DB["db"]) {
   const readable = (actor: Actor, projectId: string) =>
@@ -47,7 +49,7 @@ export function mountDesignThemeRoutes(app: Hono<TenantEnv>, db: DB["db"]) {
     async (c) => {
       await readable(actorOf(c), c.req.param("projectId"));
       return c.json({
-        themes: DESIGN_THEMES.map(({ id, label, direction }) => ({
+        themes: THEMES.map(({ id, label, direction }) => ({
           id,
           label,
           direction,
@@ -89,9 +91,10 @@ export function mountDesignThemeRoutes(app: Hono<TenantEnv>, db: DB["db"]) {
             eq(designConcept.tenantId, actor.tenantId),
           ),
         );
-      const theme = run && themeOf(run.label);
-      if (!theme) throw new ProjectError(404, "design_theme_not_found");
-      return c.json({ files: BUNDLES[theme.id] });
+      const theme = run && DESIGN?.themeOf(run.label);
+      const files = theme && DESIGN?.themes.get(theme.id);
+      if (!files) throw new ProjectError(404, "design_theme_not_found");
+      return c.json({ files });
     },
   );
 
@@ -114,9 +117,7 @@ export function mountDesignThemeRoutes(app: Hono<TenantEnv>, db: DB["db"]) {
     async (c) => {
       await readable(actorOf(c), c.req.param("projectId"));
       const themeId = c.req.param("themeId");
-      const files = Object.hasOwn(BUNDLES, themeId)
-        ? BUNDLES[themeId]
-        : undefined;
+      const files = THEMES.find(({ id }) => id === themeId)?.files;
       if (!files) throw new ProjectError(404, "design_theme_not_found");
       return c.json({ files });
     },

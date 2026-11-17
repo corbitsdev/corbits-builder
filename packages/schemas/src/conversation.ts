@@ -2,13 +2,13 @@ import { type } from "arktype";
 import {
   AskedQuestion,
   QUESTION_TOOL_NAME,
+  QuestionScreen,
   runQuestions,
 } from "@intx/types/runtime-core";
 import { QuestionAnswer } from "@intx/types/signals";
 
 // The one place Builder names Interchange's question tool and its shapes; the app imports them here.
-export { QUESTION_TOOL_NAME };
-export type { AskedQuestion, QuestionAnswer };
+export { AskedQuestion, QUESTION_TOOL_NAME, QuestionAnswer, QuestionScreen };
 
 // These are the native mail request/acceptance and committed-event wire shapes.
 // No client-side principal, target run or trigger identity is accepted.
@@ -37,6 +37,11 @@ function withoutTrailingBlanks(line: string) {
   while (end > 0 && (line[end - 1] === " " || line[end - 1] === "\t")) end -= 1;
   return line.slice(0, end);
 }
+
+// Every note the hub mails a run on the person's behalf starts with this, so neither the coordinator
+// nor the conversation takes it for words the person wrote. A note the person sees has its plain
+// line first and the coordinator's detail after a blank line, as the conversation shows only the line.
+export const HUB_NOTE_LEAD = "Hub note, not from the person: ";
 
 export const maxTurnText = 20000;
 
@@ -78,18 +83,57 @@ const conversationThread = type({
   participants: type("string > 0").array(),
   turns: turnList,
 });
-/** A question the coordinator paused on; `coordinatorQuestions` decides its status. */
-const conversationQuestion = type({
+/**
+ * What the coordinator paused on, as prompt questions or a screen, each answered in its own way;
+ * `coordinatorQuestions` decides its status.
+ */
+const promptQuestion = type({
   at: "number",
   signalName: "string",
-  asked: AskedQuestion,
+  asked: AskedQuestion.exclude(QuestionScreen),
 }).and(
   type({ status: "'open' | 'closed'" }).or({
     status: "'answered'",
-    answer: QuestionAnswer,
+    answer: QuestionAnswer.exclude({ output: "unknown" }),
   }),
 );
+const screenQuestion = type({
+  at: "number",
+  signalName: "string",
+  asked: QuestionScreen,
+}).and(
+  type({ status: "'open' | 'closed'" }).or({
+    status: "'answered'",
+    answer: QuestionAnswer.exclude({ answers: "unknown" }),
+  }),
+);
+const conversationQuestion = promptQuestion.or(screenQuestion);
 export type ConversationQuestion = typeof conversationQuestion.infer;
+export type PromptQuestion = typeof promptQuestion.infer;
+export type ScreenQuestion = typeof screenQuestion.infer;
+
+export const showsScreen = (
+  question: ConversationQuestion,
+): question is ScreenQuestion => "plugin" in question.asked;
+
+/** `question` with `answer`, which must answer what it asked. */
+export function answeredWith(
+  question: ConversationQuestion,
+  answer: QuestionAnswer,
+): ConversationQuestion {
+  const answered = conversationQuestion({
+    at: question.at,
+    signalName: question.signalName,
+    asked: question.asked,
+    status: "answered",
+    answer,
+  });
+  if (answered instanceof type.errors)
+    throw new Error(
+      `Question ${question.signalName} got an answer that does not fit it: ${answered.summary}`,
+    );
+  return answered;
+}
 export const ConversationEvents = type({
   runId: "string | null",
   events: type({
@@ -117,22 +161,27 @@ export function coordinatorQuestions(
   live: boolean,
 ): ConversationQuestion[] {
   const settled = !live || events.some(({ type: kind }) => runEnds.has(kind));
-  return runQuestions(events).map((question): ConversationQuestion => {
+  return runQuestions(events).flatMap((question): ConversationQuestion[] => {
     const at = Date.parse(question.at);
     const { signalName, asked } = question;
-    if (question.status === "answered")
-      return {
+    if (question.status === "answered") {
+      const answered = conversationQuestion({
         at,
         signalName,
         asked,
         status: "answered",
         answer: question.answer,
-      };
-    return {
+      });
+      // As runQuestions closes a question whose answer it cannot read, one answered in the other
+      // question kind's form is closed.
+      if (!(answered instanceof type.errors)) return [answered];
+    }
+    const waiting = conversationQuestion({
       at,
       signalName,
       asked,
-      status: settled ? "closed" : question.status,
-    };
+      status: question.status === "open" && !settled ? "open" : "closed",
+    });
+    return waiting instanceof type.errors ? [] : [waiting];
   });
 }

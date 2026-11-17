@@ -1,0 +1,85 @@
+{
+  "name": "@corbits-builder/worker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Does any task no other specialist fits: looks things up, reads the project's documents and code, answers or files a document.",
+  "license": "SEE LICENSE IN ../../LICENSE.md",
+  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
+  "type": "module",
+  "dependencies": {
+    "@corbits-builder/plugin": "workspace:*",
+    "@corbits-builder/schemas": "workspace:*",
+    "arktype": "catalog:"
+  },
+  "builder": {
+    "handle": "worker",
+    "runs": "specialist",
+    "groups": [
+      "research",
+      "questions",
+      "documents"
+    ],
+    "when": "The person asks for something no other specialist's action does: research that needs looking things up on the web, a question about the project or its code, or a document such as a competitor analysis, a product comparison or a profit breakdown that needs facts from outside the project.",
+    "unless": "Another specialist has an action made for the request, such as one that writes a particular document from the project's own documents, reviews a filed document, builds or changes code, designs a look, or presents the project to an audience.",
+    "roles": [
+      {
+        "name": "worker",
+        "label": "Worker",
+        "model": "writer",
+        "limits": "document",
+        "tools": [
+          "read_artifact",
+          "write_artifact",
+          "web"
+        ],
+        "status": {
+          "working": "Working on it",
+          "done": "Finished"
+        },
+        "preferences": [
+          "technical"
+        ],
+        "filesDocuments": true
+      }
+    ],
+    "settings": {
+      "writer": {
+        "label": "Writer",
+        "hint": "Writes the documents.",
+        "tier": "medium"
+      }
+    },
+    "budgets": {
+      "document": {
+        "maxOutputTokens": 32768
+      }
+    },
+    "agents": {
+      "worker": {
+        "prompt": "./prompt.md"
+      }
+    },
+    "actions": {
+      "do": {
+        "reads": [
+          "brand.guidelines",
+          "stack.language"
+        ],
+        "writes": [
+          "stack.language"
+        ],
+        "returns": [],
+        "start": {
+          "agent": "worker"
+        }
+      }
+    },
+    "examples": [
+      "research our top three competitors",
+      "compare Stripe and Paddle for us",
+      "what is this repository and is it any good",
+      "is this library still maintained",
+      "break down the profit on the premium plan"
+    ]
+  }
+}

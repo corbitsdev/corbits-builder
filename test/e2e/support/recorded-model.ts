@@ -14,7 +14,8 @@ export const ToolResultExpectation = type({
   "+": "reject",
   callId: "string > 0",
   toolName: "string > 0",
-  isError: "boolean",
+  // Left out when either outcome is expected, such as which of two same-turn calls wins a race.
+  "isError?": "boolean",
   "keys?": "string[]",
   "contains?": "string",
   "bind?": "Record<string, string>",
@@ -136,12 +137,36 @@ export type RecordedRunBundle = Readonly<{
   exchanges: readonly RecordedExchange[];
 }>;
 
+// What the model was sent last in one request: the person's or the host's message, or the results
+// of the tool calls it made the turn before.
+export type ModelReceived =
+  | Readonly<{ user: string }>
+  | Readonly<{
+      toolResults: readonly Readonly<{
+        callId: string;
+        isError: boolean;
+        text: string;
+      }>[];
+    }>;
+
+/** One request the model answered or refused, in the order they arrived. */
+export type ModelExchange = Readonly<{
+  at: number;
+  role: string;
+  runKey?: string;
+  index?: number;
+  received: ModelReceived;
+  responseSse?: string;
+  failure?: string;
+}>;
+
 export type RecordedModelServer = Readonly<{
   url: string;
   scenario: string;
   assertClean: () => void;
   firstFailure: () => Error | undefined;
   onActivity: (listener: () => void) => () => void;
+  exchanges: () => readonly ModelExchange[];
   stop: () => Promise<void>;
 }>;
 
@@ -163,6 +188,28 @@ function messageText(content: OpenAIChatMessage["content"]): string {
     .join("\n");
 }
 
+function receivedIn(messages: readonly OpenAIChatMessage[]): ModelReceived {
+  const last = messages.at(-1);
+  if (last?.role !== "tool") return { user: messageText(last?.content) };
+  const trailing: OpenAIChatMessage[] = [];
+  for (let i = messages.length - 1; i >= 0 && messages[i]!.role === "tool"; i--)
+    trailing.unshift(messages[i]!);
+  return {
+    toolResults: trailing.map((message) => {
+      const text = messageText(message.content);
+      const isError =
+        text.startsWith("<error>\n") && text.endsWith("\n</error>");
+      return {
+        callId: message.tool_call_id ?? "",
+        isError,
+        text: isError
+          ? text.slice("<error>\n".length, -"\n</error>".length)
+          : text,
+      };
+    }),
+  };
+}
+
 function offeredToolNames(req: OpenAIChatRequest): string[] {
   if (!req.tools) return [];
   const names: string[] = [];
@@ -178,9 +225,7 @@ export function classifyRole(
   req: OpenAIChatRequest,
   tools: ReadonlySet<string>,
 ): AgentRole | undefined {
-  if (tools.has("deploy_writer") || tools.has("request_approval")) {
-    return "coordinator";
-  }
+  if (tools.has("execute")) return "coordinator";
   if (tools.has("check_design")) {
     return "designer";
   }
@@ -190,7 +235,7 @@ export function classifyRole(
   if (tools.has("write_deck") || tools.has("file_package")) {
     return "presenter";
   }
-  if (tools.has("write_artifact") && !tools.has("read_artifact")) {
+  if (tools.has("write_artifact")) {
     return "writer";
   }
   const sys = req.messages.find((m) => m.role === "system");
@@ -305,6 +350,7 @@ export async function startRecordedModelServer(
   const cursors = new Map<string, number>(runs.map((r) => [r.runKey, 0]));
   const bindings = new Map<string, string>();
   const listeners = new Set<() => void>();
+  const log: ModelExchange[] = [];
   let failure: Error | undefined;
 
   function cursorFor(runKey: string): number {
@@ -456,7 +502,10 @@ export async function startRecordedModelServer(
           ? rawText.slice("<error>\n".length, -"\n</error>".length)
           : rawText;
 
-        if (actualIsError !== expected.isError) {
+        if (
+          expected.isError !== undefined &&
+          actualIsError !== expected.isError
+        ) {
           throw recordFailure(
             `Recorded model tool result isError mismatch for ${expected.toolName} (${expected.callId}):\n${ctx}\n  expected isError: ${expected.isError}\n  actual isError: ${actualIsError}\n  actual content: ${unwrapped.slice(0, 2000)}`,
           );
@@ -525,6 +574,8 @@ export async function startRecordedModelServer(
       ) {
         return new Response("not found", { status: 404 });
       }
+      let role = "unknown";
+      let received: ModelReceived = { user: "" };
       try {
         const parsedBody = OpenAIChatRequest(await request.json());
         if (parsedBody instanceof type.errors) {
@@ -532,13 +583,15 @@ export async function startRecordedModelServer(
             `Recorded model received invalid OpenAI chat request in scenario "${manifest.scenario}": ${parsedBody.summary}`,
           );
         }
+        received = receivedIn(parsedBody.messages);
         const offered = new Set(offeredToolNames(parsedBody));
-        const role = classifyRole(parsedBody, offered);
-        if (!role) {
+        const classified = classifyRole(parsedBody, offered);
+        if (!classified) {
           throw recordFailure(
             `Recorded model could not classify role from tools [${[...offered].join(", ")}] in scenario "${manifest.scenario}"`,
           );
         }
+        role = classified;
         const run = selectRun(role, parsedBody.messages);
         const cursor = cursorFor(run.runKey);
         const exchange = run.exchanges[cursor];
@@ -555,15 +608,23 @@ export async function startRecordedModelServer(
           exchange: exchange.index,
         });
         cursors.set(run.runKey, cursor + 1);
+        log.push({
+          at: Date.now(),
+          role,
+          runKey: run.runKey,
+          index: exchange.index,
+          received,
+          responseSse: sse,
+        });
         notify();
         return new Response(sse, {
-          status: 200,
           headers: exchange.responseHeaders,
         });
       } catch (error) {
         const err =
           error instanceof Error ? error : recordFailure(String(error));
         if (!failure) failure = err;
+        log.push({ at: Date.now(), role, received, failure: err.message });
         notify();
         return Response.json(
           { error: { message: err.message, type: "recorded_model_mismatch" } },
@@ -577,6 +638,7 @@ export async function startRecordedModelServer(
     url: `http://127.0.0.1:${server.port}`,
     scenario: manifest.scenario,
     firstFailure: () => failure,
+    exchanges: () => log,
     onActivity: (listener) => {
       listeners.add(listener);
       return () => {

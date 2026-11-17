@@ -1,10 +1,12 @@
+import { QuestionOutcomes, type AnswerOutcome } from "./question-outcome.tsx";
+import { wording } from "../../config.ts";
 import { useState } from "react";
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import type { AskedQuestion } from "@corbits-builder/schemas/conversation";
+import type { PromptQuestion } from "@corbits-builder/schemas/conversation";
 import { fn } from "storybook/test";
 import { QuestionsCard } from "./questions-card.tsx";
 
-const ask: AskedQuestion = {
+const ask: PromptQuestion["asked"] = {
   questions: [
     {
       id: "audience",
@@ -55,7 +57,7 @@ const meta = {
   args: {
     question: { at: 0, signalName: "call-1", asked: ask, status: "open" },
     disabled: false,
-    onSend: fn(() => Promise.resolve(true)),
+    onAnswer: fn(() => Promise.resolve(true)),
   },
   decorators: [
     (Story) => (
@@ -115,19 +117,35 @@ type PendingSend = { readonly fail: () => void };
  */
 export const NotSent: Story = {
   render: function NotSentCard(args) {
+    const [outcomes, setOutcomes] = useState<
+      ReadonlyMap<string, AnswerOutcome>
+    >(new Map());
     const [pending, setPending] = useState<PendingSend>();
-    const onSend = () =>
+    const onAnswer = () =>
       new Promise<boolean>((resolve) => {
         setPending({
           fail: () => {
             setPending(undefined);
+            setOutcomes(
+              new Map([
+                [
+                  args.question.signalName,
+                  {
+                    kind: "refused",
+                    fault: wording.questions.answerFault.refused,
+                  },
+                ],
+              ]),
+            );
             resolve(false);
           },
         });
       });
     return (
       <>
-        <QuestionsCard {...args} onSend={onSend} />
+        <QuestionOutcomes value={outcomes}>
+          <QuestionsCard {...args} onAnswer={onAnswer} />
+        </QuestionOutcomes>
         {pending !== undefined && (
           <button type="button" onClick={pending.fail}>
             Fail the send
@@ -187,6 +205,38 @@ export const ClosedOneQuestion: Story = {
       signalName: "call-1",
       asked: { questions: [ask.questions[0]!] },
       status: "closed",
+    },
+  },
+};
+
+/** Sent answers settle the card, as the room shows them, and focus moves onto what was answered. */
+export const SettlesOnSend: Story = {
+  render: function SettlingCard(args) {
+    const [question, setQuestion] = useState<PromptQuestion>(args.question);
+    return (
+      <QuestionsCard
+        {...args}
+        question={question}
+        onAnswer={(answer) => {
+          if (!("output" in answer))
+            setQuestion({
+              at: question.at,
+              signalName: question.signalName,
+              asked: question.asked,
+              status: "answered",
+              answer,
+            });
+          return Promise.resolve(true);
+        }}
+      />
+    );
+  },
+  args: {
+    question: {
+      at: 0,
+      signalName: "call-settles",
+      asked: { questions: [ask.questions[1]!] },
+      status: "open",
     },
   },
 };

@@ -36,6 +36,23 @@ project's app on a port of its own from `LIVE_APP_PORTS` (default `4100-4119`),
 which Compose publishes on loopback beside `PORT`; widen the range when more
 projects than that have their app open at once.
 
+Builds run in a sandbox that reads only the system's own folders, the
+project's workspace and Bun. The coder builds whatever a project is, so a
+project in another language, such as Rust, or one that needs another
+toolchain, such as one from Homebrew, needs its folders listed in
+`SANDBOX_TOOLCHAIN_PATHS`,
+separated by `:`, for example `/opt/homebrew`. Builds and the hub's checks of
+them read those folders and never write them, and name their programs by full
+path. Builder refuses a folder that holds its data folder or sits inside it.
+None is listed by default.
+
+`PLUGIN_HINT`, which `.env.hub.example` does not list, has the hub add a note
+to each message naming the plugin screens its words suggest, so the
+coordinator finds a picker it might otherwise not look for: `triggers` matches
+each plugin's trigger words, `fields` its handle, groups, `when`, examples and
+descriptions, and `off` (the default) adds nothing. Any other value stops
+startup.
+
 `BUILDER_VERSION` picks the published images
 (`ghcr.io/corbitsdev/corbits-builder-hub` and `-sidecar`): `rc` (default, the
 newest release candidate), `latest` (the newest stable release), `main` (every
@@ -119,6 +136,12 @@ docker compose --env-file .env.hub --project-directory . -f deploy/compose.yml -
 
 `bun run docker:up` runs the same.
 
+The plugins are part of the images. The hub reads `plugins/` when it starts,
+and the interface compiles each plugin's screens in when it is built, so a
+published image runs exactly the plugins it was built with. To add, change or
+remove a plugin, make the change in a clone and build the images from it as
+above.
+
 ## Sandboxes
 
 The coder and designer run every command under bubblewrap, which needs a user
@@ -189,8 +212,10 @@ With no endpoint set, nothing is exported.
 - `OTEL_RESOURCE_ATTRIBUTES` names the deployment on every trace, for example
   `deployment.environment.name=staging,service.instance.id=builder-1,vcs.ref.head.revision=<commit>`.
 - `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=true` also sends each
-  model reply and each tool's arguments and result. Leave it off unless the
-  receiver may hold project content.
+  model reply (text, tool calls with names and arguments, and provider-returned
+  reasoning text) and each tool's arguments and result; model inputs are absent
+  because run events do not carry the conversation sent to the model.
+  Leave it off unless the receiver may hold project content.
 
 For Langfuse, the endpoint is `<langfuse>/api/public/otel` and the headers are
 `Authorization=Basic <base64 of public key:secret key>,x-langfuse-ingestion-version=4`.

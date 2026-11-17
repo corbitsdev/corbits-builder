@@ -4,26 +4,48 @@ import { readFile, realpath, stat } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { posix } from "@intx/tools-posix/sidecar-bundle";
 import type { ToolCall, ToolResult, ToolRunner } from "@intx/types/runtime";
+import { ToolDefinition } from "@intx/types/runtime-core";
 import type { RuntimeCapabilities } from "@intx/types/runtime-capabilities";
+import {
+  COMMAND_GRACE_MS,
+  COMMAND_SECONDS,
+} from "@corbits-builder/plugin-host/checks";
+import { CHECK_MS, CheckRan } from "@corbits-builder/schemas/artifact";
 import { resolveWorkflowProjectScope } from "../workflows/project-scope.ts";
-import { WorkflowHttpError } from "../workflows/http-json.ts";
+import {
+  WorkflowHttpError,
+  workflowHttpJson,
+} from "@corbits-builder/plugin/http-json";
 import { savedResultTools } from "../workflows/saved-result-tools.ts";
-import { APP_STATUS_TOOL, createCodingTools } from "./coding-tools.ts";
+import { type } from "arktype";
+import {
+  APP_STATUS_TOOL,
+  AppStatusInput,
+  createCodingTools,
+  startedRun,
+} from "./coding-tools.ts";
 import {
   clearCommandProgress,
   createPosixBuildExecutor,
   noteCommandProgress,
+  type DevApp,
+  type Running,
 } from "./posix-sandbox.ts";
 import { browserTools } from "./browser.ts";
-import type { CheckDetail } from "./check-detail.ts";
+import {
+  DONE_CHECKS_TOOL,
+  DoneChecksCall,
+  type CheckDetail,
+} from "./check-detail.ts";
+import type { DoneChecks } from "@corbits-builder/schemas/activity";
 import type { BrowserCatalog } from "./browser-catalog.ts";
 import {
-  CHECK_APP,
-  WATCH_PAGE,
   prepareWorkspace,
   sharedBrowser,
   syncDesignScreensOnDisk,
+  withoutSplicedScreens,
 } from "./starter.ts";
+import { CATALOG } from "../plugins/catalog.ts";
 import {
   fileApp,
   readFiledDocument,
@@ -34,6 +56,7 @@ import { INPUTS_DIRECTORY } from "../config/inputs.ts";
 import {
   createAppRepository,
   EDIT,
+  readApprovedPackages,
   requestAppPushAccess,
   revokeAppPushAccess,
   signWithSidecarKey,
@@ -44,6 +67,7 @@ import { hasCode } from "@intx/types/has-code";
 import { errorCode, requestErrorMetadata } from "../request-error.ts";
 import {
   PACKAGE_INSTALL_TOOL,
+  PLANNED_INSTALL_TOOL,
   WorkspacePath,
 } from "@corbits-builder/schemas/package-install";
 import { installedPackages } from "./package-install.ts";
@@ -82,6 +106,19 @@ export async function meant(workspace: string, path: string): Promise<string> {
   return "a path relative to the workspace always works";
 }
 
+const WORKSPACE_ROOT = "/workspace";
+// Models name the workspace root /workspace, which is not where it is on the hub. Joined onto the
+// real root, a path that climbs out of it is still refused as outside the workspace.
+export const workspacePath = (workspace: string, path: string) =>
+  path === WORKSPACE_ROOT || path.startsWith(`${WORKSPACE_ROOT}/`)
+    ? join(workspace, path.slice(WORKSPACE_ROOT.length))
+    : path;
+
+// The sandbox refuses an outside write with a bare EPERM, which a model retries verbatim until the
+// doom guard fails the run; the hub names the mistake instead.
+export const outsideWorkspace = (workspace: string, path: string) =>
+  isAbsolute(path) && relative(workspace, path).startsWith("..");
+
 export interface CodingSidecarEnv extends BaseEnv {
   toolCwd: string;
   capabilities: RuntimeCapabilities;
@@ -100,18 +137,15 @@ const backgrounds = (command: string) =>
   BACKGROUND.test(command.replace(/'[^']*'|"(?:\\.|[^"\\])*"/g, "''"));
 
 const WRITES = new Set(["write_file", "edit_file"]);
+// Throwaway files and tests, which the running app does not load.
+const OUTSIDE_APP = /(^|\/)\.scratch\/|\.(test|spec)\.[cm]?[jt]sx?$/;
+/** Whether the running app loads a workspace file, so a package installed for it restarts the app. */
+export const loadedByApp = (workspace: string, path: string) =>
+  !OUTSIDE_APP.test(relative(workspace, resolve(workspace, path)));
 
-// The underlying error's code and message, with what the hub said when it refused.
+// The underlying error's code and message, or what the hub said when it refused.
 function filingFailure(error: unknown) {
-  if (error instanceof WorkflowHttpError)
-    return [
-      error.message,
-      error.refusalCode,
-      error.hint,
-      ...(error.issues ?? []).map((issue) => `${issue.path} ${issue.message}`),
-    ]
-      .filter(Boolean)
-      .join(": ");
+  if (error instanceof WorkflowHttpError) return error.message;
   return error instanceof Error
     ? `${error.name}: ${error.message}`
     : String(error);
@@ -162,22 +196,32 @@ export const designPath = (raw: string) => {
 };
 
 // The calls after which the agent hears what its running app complained of since the last one.
-const REPORTING = new Set([...WRITES, PACKAGE_INSTALL_TOOL]);
+const INSTALLS = new Set([PACKAGE_INSTALL_TOOL, PLANNED_INSTALL_TOOL]);
+const REPORTING = new Set([...WRITES, ...INSTALLS]);
 // run_shell reports a failed command as its output, headed by its exit code.
 const succeeded = (result: ToolResult) =>
   !result.isError && !String(result.content).startsWith("exit code ");
 
 // The calls that can change the app's files.
-const VERSIONED = new Set([...WRITES, "run_shell", PACKAGE_INSTALL_TOOL]);
+const VERSIONED = new Set([
+  ...WRITES,
+  "run_shell",
+  APP_STATUS_TOOL,
+  ...INSTALLS,
+]);
 // Bounds teardown: the wait for the last version, then the revoke.
 const VERSION_CLOSE_MS = 15_000;
-// check-app's verdict heads a line of its output, however the command runs it (timeout, env, a
-// wrapper or a pipe); a command that only names check-app, such as grep -rn check-app, prints none.
-const CHECK_APP_VERDICT = /^check (?:passed|failed):/m;
-// A mockup check passes without building anything; only this verdict says the app built and ran.
-const APP_CHECK_PASSED = /^check passed: built, started,/m;
+// Every coder finishes when check-stack passes. Its verdict heads a line of its output, however the
+// command runs it (timeout, env, a wrapper or a pipe); a command that only names the check, such as
+// grep -rn check-stack, prints none.
+export const FINISH_CHECK = "check-stack";
+const CHECK_VERDICT = /^check (?:passed|failed):/m;
+const CHECK_PASSED = /^check passed: every command in CHECKS\.txt succeeded/m;
 
-/** A check-app run's verdict; check-app && bun test passes only when both do. */
+/**
+ * A run of the finish check and its verdict; check-stack && bun test passes only when both do. Any
+ * other command, check-app run on its own included, is no finish check.
+ */
 export function appCheckDetail(
   call: ToolCall,
   result: ToolResult,
@@ -186,33 +230,125 @@ export function appCheckDetail(
   if (
     call.name !== "run_shell" ||
     typeof command !== "string" ||
-    !command.includes("check-app")
+    !command.includes(FINISH_CHECK)
   )
     return undefined;
   const output = String(result.content);
-  if (!CHECK_APP_VERDICT.test(output)) return undefined;
-  return { checkPassed: succeeded(result) && APP_CHECK_PASSED.test(output) };
+  if (!CHECK_VERDICT.test(output)) return undefined;
+  return { checkPassed: succeeded(result) && CHECK_PASSED.test(output) };
 }
 
-const passedAppCheck = (call: ToolCall, result: ToolResult) =>
-  appCheckDetail(call, result)?.checkPassed === true;
+const CHECKS_FILE = "CHECKS.txt";
+const CHECKS_FIXED = `refused: ${CHECKS_FILE} is read-only in a change, because its commands are the project's checks and the change must pass them as they are.`;
+
+// The app workspace paths the coder reads but never writes. A change is held to the check commands
+// the project already has, so the coder cannot weaken the proof of its own work.
+export async function appReadOnly(workspace: string, firstBuild: boolean) {
+  const fixed =
+    !firstBuild && (await Bun.file(join(workspace, CHECKS_FILE)).exists());
+  return [".builder", INPUTS_DIRECTORY, ...(fixed ? [CHECKS_FILE] : [])];
+}
+
+// The hub ends a check of one command at its default time; the call waits a little longer for it.
+const DONE_CHECK_CALL_MS =
+  CHECK_MS + COMMAND_SECONDS * 1000 + COMMAND_GRACE_MS + 15_000;
+const DONE_CHECK_RESPONSE_BYTES = 65_536;
+// Only the director calls it, so its description is for the audit, not for a model.
+const doneChecksDefinition = {
+  name: DONE_CHECKS_TOOL,
+  description:
+    "Runs the named checks of a plugin through the hub against the project's code as saved, once the workspace's last version is saved.",
+  inputSchema: { ...DoneChecksCall.toJsonSchema() },
+};
+
+// How long app_status waits for a program it starts to print its waitFor line.
+const READY_MS = 60_000;
+const READY_POLL_MS = 250;
+
+/** Starts next, or keeps what runs when next is undefined, and waits until it is ready or ends. */
+async function startUntilReady(
+  executor: Awaited<ReturnType<typeof createPosixBuildExecutor>>,
+  next: Running | undefined,
+  signal: AbortSignal,
+): Promise<DevApp> {
+  let app = await executor.app(next);
+  const deadline = Date.now() + READY_MS;
+  while (app.running && !app.ready && Date.now() < deadline) {
+    signal.throwIfAborted();
+    await Bun.sleep(READY_POLL_MS);
+    app = executor.appState() ?? app;
+  }
+  return app;
+}
+
+/**
+ * What an app_status call starts: nothing named keeps what runs, or starts the project's own
+ * program when nothing does; the project's own command is its program, and any other command runs
+ * with its port variables.
+ */
+function nextRun(
+  input: typeof AppStatusInput.infer,
+  declared: Running | undefined,
+  running: boolean,
+): Running | undefined {
+  if (input.command === undefined) return running ? undefined : declared;
+  if (
+    input.command === declared?.run.command &&
+    (input.port === undefined || input.port === declared.run.port)
+  )
+    return declared;
+  return {
+    run: startedRun(input.command, input, declared?.run),
+    page: false,
+  };
+}
 
 // A cold install; under the executor's own ceiling.
 const SETUP_TIMEOUT_MS = 115_000;
 // What the person reads while the workspace installs its packages, which can take the whole timeout.
 const SETUP_PROGRESS = "installing the app's packages";
 
+// The browser's tools, listed when the packages are built, which build-packages.ts inlines into the
+// package of an agent whose workspace declares a browser.
+export const BrowserTools = type({
+  "+": "reject",
+  definitions: type({ name: "string", "approval?": "'ask'" }).array(),
+  tools: ToolDefinition.array(),
+});
+export type BrowserTools = typeof BrowserTools.infer;
+
 // A source-closure-safe declaration: only explicit policy is captured. The
-// native child supplies the step workspace; the sandbox is built inside it.
+// native child supplies the step workspace; the sandbox is built inside it. What the project's code
+// is, and whether a web app runs in an app workspace, the hub's project scope says when it starts,
+// to a run of the role named here. The plugin hands over what its workspace runs: its commands by
+// name and the modules they share, and for an app workspace the script that watches the app's page
+// and the digest of the component kit its code builds with.
 export function createSidecarCodingTools(policy: {
+  role: string;
   approval: "ask" | "allow";
-  workspace: "app" | "design";
+  workspace:
+    | {
+        kind: "app";
+        commands: Readonly<Record<string, string>>;
+        commandModules: Readonly<Record<string, string>>;
+        pageWatcher: string;
+        kit: string;
+      }
+    | {
+        kind: "design";
+        commands: Readonly<Record<string, string>>;
+        commandModules: Readonly<Record<string, string>>;
+      };
   packageInstall?: "ask" | "allow";
-  browser?: BrowserCatalog;
+  browser?: BrowserCatalog | undefined;
 }) {
   if (!["ask", "allow"].includes(policy.approval))
     throw new Error("invalid_coding_policy");
-  const design = policy.workspace === "design";
+  const design = policy.workspace.kind === "design";
+  const appWorkspace =
+    policy.workspace.kind === "app" ? policy.workspace : undefined;
+  const passedCheck = (call: ToolCall, result: ToolResult) =>
+    appCheckDetail(call, result)?.checkPassed === true;
   const offered = (name: string) => !design || DESIGNER_TOOLS.has(name);
   return defineTool<CodingSidecarEnv>({
     id: "@corbits-builder/coding/sidecar-posix",
@@ -226,14 +362,25 @@ export function createSidecarCodingTools(policy: {
             ? { name: tool.name, approval: "ask" as const }
             : { name: tool.name },
         ),
+      // Installs only what an approved document names, without asking, from the list the hub
+      // reads for each call.
       ...(policy.packageInstall
         ? [
             policy.packageInstall === "ask"
               ? { name: PACKAGE_INSTALL_TOOL, approval: "ask" as const }
               : { name: PACKAGE_INSTALL_TOOL },
+            { name: PLANNED_INSTALL_TOOL },
           ]
         : []),
-      ...(policy.workspace === "app" ? [{ name: APP_STATUS_TOOL }] : []),
+      // It runs the command it is given, so it asks as the shell does.
+      ...(design
+        ? []
+        : [
+            policy.approval === "ask"
+              ? { name: APP_STATUS_TOOL, approval: "ask" as const }
+              : { name: APP_STATUS_TOOL },
+          ]),
+      ...(design ? [] : [{ name: DONE_CHECKS_TOOL }]),
       ...(design ? [{ name: CHECK_DESIGN_TOOL }] : []),
       ...(policy.browser?.definitions ?? []),
     ],
@@ -243,10 +390,68 @@ export function createSidecarCodingTools(policy: {
       const fileWorkspace = async (workspace: string, signal: AbortSignal) =>
         fileApp(
           env.capabilities,
-          await resolveWorkflowProjectScope(env.capabilities, "coder", signal),
+          await resolveWorkflowProjectScope(
+            env.capabilities,
+            policy.role,
+            signal,
+          ),
           workspace,
           signal,
         );
+      // The checks a finished reply waits on, run by the hub as this run against the app as saved,
+      // once the last version of the workspace reached the project's app repository.
+      const runDoneChecks = async (
+        { plugin, checks }: typeof DoneChecksCall.infer,
+        signal: AbortSignal,
+      ): Promise<DoneChecks> => {
+        await repository?.idle();
+        const saved = repository?.status();
+        if (saved === undefined)
+          return {
+            unrun:
+              "the workspace's app repository never opened, so none of its work is saved",
+          };
+        if (saved.state === "failed")
+          return {
+            unrun: `the workspace's latest version did not reach the project's app repository (${saved.error})`,
+          };
+        try {
+          const scope = await resolveWorkflowProjectScope(
+            env.capabilities,
+            policy.role,
+            signal,
+          );
+          const results = [];
+          for (const check of checks) {
+            const ran = CheckRan.assert(
+              await workflowHttpJson({
+                capabilities: env.capabilities,
+                handle: HUB_CREDENTIAL_HANDLE,
+                path: `/api/tenants/${encodeURIComponent(scope.tenantId)}/projects/${encodeURIComponent(scope.projectId)}/check-runs`,
+                body: { plugin, action: check },
+                maxResponseBytes: DONE_CHECK_RESPONSE_BYTES,
+                signal,
+                timeoutMs: DONE_CHECK_CALL_MS,
+              }),
+            );
+            if (!("result" in ran))
+              return {
+                unrun: `${plugin} ${check} keeps trying and has no result yet`,
+              };
+            const { result, summary, evidence } = ran;
+            results.push({ check, result, summary, evidence });
+          }
+          return saved.commit === undefined
+            ? { results }
+            : { commit: saved.commit, results };
+        } catch (error) {
+          log.error("Running the done checks failed: {reason}", {
+            reason: filingFailure(error),
+            ...requestErrorMetadata(error),
+          });
+          return { unrun: filingFailure(error) };
+        }
+      };
       let designSubmission: DesignSubmission | undefined;
       // The project's app repository, once the workspace is prepared. Every call that can change
       // files versions the workspace in the background; the builder waits on a push only for a
@@ -254,6 +459,14 @@ export function createSidecarCodingTools(policy: {
       let repository: AppRepository | undefined;
       // The same repository from the start of setup, so teardown during setup still closes it.
       let opened: AppRepository | undefined;
+      // What a failed setup printed, until a result carries it to the agent.
+      let setupFailure: string | undefined;
+      // Writes the ready marker while setup has not yet succeeded.
+      let markReady: (() => Promise<void>) | undefined;
+      // The web app the project serves, from its stack.run, which the agent opens, checks and
+      // reports on, as the hub said when the workspace started.
+      let declared: Running | undefined;
+      let readOnly: readonly string[] = [];
       let browser:
         | {
             url: string;
@@ -264,53 +477,66 @@ export function createSidecarCodingTools(policy: {
         | undefined;
       async function startSandbox(signal: AbortSignal) {
         try {
-          const role = policy.workspace === "app" ? "coder" : "designer";
           const scope = await resolveWorkflowProjectScope(
             env.capabilities,
-            role,
+            policy.role,
             signal,
           );
           const workspace = await realpath(env.toolCwd);
+          const role = CATALOG.role(policy.role);
+          if (!role) throw new Error(`role_unknown:${policy.role}`);
+          const run = appWorkspace && scope.run;
+          declared = run && { run, page: true };
           const app =
-            policy.workspace === "app"
-              ? (opened ??= createAppRepository({
-                  workspace,
-                  access: (signal) =>
-                    requestAppPushAccess(env.capabilities, scope, signal),
-                  revoke: (signal) =>
-                    revokeAppPushAccess(env.capabilities, scope, signal),
-                  sign: signWithSidecarKey,
-                }))
-              : undefined;
-          const setup = await prepareWorkspace(
-            policy.workspace,
+            appWorkspace &&
+            (opened ??= createAppRepository({
+              workspace,
+              access: (signal) =>
+                requestAppPushAccess(env.capabilities, scope, signal),
+              revoke: (signal) =>
+                revokeAppPushAccess(env.capabilities, scope, signal),
+              sign: signWithSidecarKey,
+            }));
+          const prepared = await prepareWorkspace(
+            role,
             workspace,
             (kind) => readFiledDocument(env.capabilities, scope, kind, signal),
             () => readRunDesignTheme(env.capabilities, scope, signal),
             () => readPreviousDesignDraft(env.capabilities, scope, signal),
-            app && { repository: app, signal },
+            app &&
+              appWorkspace && {
+                repository: app,
+                signal,
+                stack: scope.stack,
+                serves: run !== undefined,
+                kit: appWorkspace.kit,
+              },
           );
           repository = app;
           repository?.schedule("Start");
+          readOnly = design
+            ? [INPUTS_DIRECTORY]
+            : await appReadOnly(workspace, scope.firstBuild);
           const executor = await createPosixBuildExecutor(
             workspace,
             CODER_EXECUTION,
             scope.build,
             {
               openNetwork: scope.openNetwork,
-              commands: { "check-app": CHECK_APP },
+              toolchains: scope.toolchains,
+              commands: policy.workspace.commands,
+              commandModules: policy.workspace.commandModules,
               browser: policy.browser !== undefined,
-              app: policy.workspace === "app",
+              app: !design,
               browsers: await sharedBrowser(),
-              ...(policy.workspace === "app"
-                ? {
-                    readOnly: [".builder", INPUTS_DIRECTORY],
-                    pageWatcher: WATCH_PAGE,
-                  }
-                : { readOnly: [INPUTS_DIRECTORY] }),
+              readOnly,
+              ...(run && appWorkspace
+                ? { pageWatcher: appWorkspace.pageWatcher }
+                : {}),
             },
           );
           try {
+            const { setup } = prepared;
             if (setup) {
               // The install says nothing the hub can relay until it ends, so the person is told what
               // is running for its whole length.
@@ -331,14 +557,18 @@ export function createSidecarCodingTools(policy: {
               } finally {
                 await clearCommandProgress(workspace);
               }
-              if (!succeeded(result))
-                throw new Error(
-                  `workspace_setup_failed: ${String(result.content).slice(-2000)}`,
-                );
-              await setup.done();
+              // A failed setup still opens the workspace, so the agent works on the files as they are
+              // and can repair what failed with its own tools; it is told once, by the call that
+              // started the workspace, and install_packages marks the workspace ready.
+              if (succeeded(result)) await setup.done();
+              else {
+                log.warn("Workspace setup failed: {command}", {
+                  command: setup.command,
+                });
+                markReady = setup.done;
+                setupFailure = `workspace_setup_failed: setup ran ${setup.command} and it did not finish. The files are as saved and every tool works on them. Its output:\n${String(result.content).slice(-2000)}\n${setup.advice}`;
+              }
             }
-            // The coder's app is live from its first call, so it can open it whenever it wants.
-            if (policy.workspace === "app") await executor.app();
           } catch (error) {
             await executor.dispose();
             throw error;
@@ -348,12 +578,23 @@ export function createSidecarCodingTools(policy: {
               workspace,
               (signal) => executor.command("check-app", [DESIGNS], signal),
               (submission, signal) =>
-                fileDesignOption(env.capabilities, submission, signal),
+                fileDesignOption(
+                  env.capabilities,
+                  policy.role,
+                  submission,
+                  signal,
+                ),
             );
           return executor;
         } catch (error) {
-          // A failed setup is retried by the next call rather than failing every later one.
+          // A workspace that failed to start is started again by the next call.
           sandbox = undefined;
+          // The next call meets the same refusal, so the agent is told to stop rather than retry.
+          if (error instanceof WorkflowHttpError && error.refused)
+            throw new Error(
+              `workspace_unprepared: the hub refused to prepare the workspace (${error.message}). No tool can read or save files here, and this will not succeed by trying again: stop and reply with what happened.`,
+              { cause: error },
+            );
           throw error;
         }
       }
@@ -361,8 +602,42 @@ export function createSidecarCodingTools(policy: {
       const lazySandbox: ToolRunner = {
         run: async (call, signal) => {
           const ready = open(signal);
+          const command = (call.arguments as { command?: unknown } | undefined)
+            ?.command;
+          if (
+            (call.name === "run_shell" || call.name === APP_STATUS_TOOL) &&
+            typeof command === "string" &&
+            backgrounds(command)
+          )
+            return {
+              callId: call.id,
+              content:
+                call.name === "run_shell"
+                  ? `refused: nothing runs in the background here, so start a program that keeps running, such as a server, a bot or a desktop app, with ${APP_STATUS_TOOL}.`
+                  : `refused: ${APP_STATUS_TOOL} keeps the program running and stops it and everything it starts itself, so give the command without &, nohup, disown or setsid.`,
+              isError: true,
+            };
           if (call.name === APP_STATUS_TOOL) {
-            const app = await (await ready).app();
+            const executor = await ready;
+            const input = AppStatusInput(call.arguments);
+            if (input instanceof type.errors)
+              return {
+                callId: call.id,
+                content: `invalid_input: ${input.summary}`,
+                isError: true,
+              };
+            const next = nextRun(
+              input,
+              declared,
+              executor.appState() !== undefined,
+            );
+            if (!next && !executor.appState())
+              return {
+                callId: call.id,
+                content: `nothing runs: the project has no stack.run, so it serves nothing to open. Give ${APP_STATUS_TOOL} the command that starts its program.`,
+                isError: true,
+              };
+            const app = await startUntilReady(executor, next, signal);
             const answers = await fetch(app.url, {
               signal: AbortSignal.timeout(3000),
             }).then(
@@ -379,19 +654,6 @@ export function createSidecarCodingTools(policy: {
               ...(app.running ? {} : { isError: true }),
             };
           }
-          const command = (call.arguments as { command?: unknown } | undefined)
-            ?.command;
-          if (
-            call.name === "run_shell" &&
-            typeof command === "string" &&
-            backgrounds(command)
-          )
-            return {
-              callId: call.id,
-              content:
-                "refused: a command must finish before it returns, so nothing runs in the background here. check-app builds the app, starts it and opens its pages itself.",
-              isError: true,
-            };
           const workspace = await realpath(env.toolCwd);
           const path = (call.arguments as { path?: unknown } | undefined)?.path;
           // A result the size cap spilled or compaction trimmed is saved under a tool-output:/// URI;
@@ -404,13 +666,7 @@ export function createSidecarCodingTools(policy: {
           ) {
             return savedResults.run(call, signal);
           }
-          // The sandbox refuses an outside write with a bare EPERM, which a model retries
-          // verbatim until the doom guard fails the run; name the mistake instead.
-          if (
-            typeof path === "string" &&
-            isAbsolute(path) &&
-            relative(workspace, path).startsWith("..")
-          ) {
+          if (typeof path === "string" && outsideWorkspace(workspace, path)) {
             // Setup stages the inputs the corrected path may name.
             await ready;
             return {
@@ -422,6 +678,19 @@ export function createSidecarCodingTools(policy: {
           // A model can drop the long text argument of a write, or send arguments that are not JSON,
           // which the harness passes on as _raw. Retrying the same long call loses it again.
           if (WRITES.has(call.name)) {
+            // The sandbox refuses it with a bare EPERM, which says nothing of why.
+            if (
+              typeof path === "string" &&
+              relative(workspace, resolve(workspace, path)) === CHECKS_FILE
+            ) {
+              await ready;
+              if (readOnly.includes(CHECKS_FILE))
+                return {
+                  callId: call.id,
+                  content: CHECKS_FIXED,
+                  isError: true,
+                };
+            }
             const args = (call.arguments ?? {}) as Record<string, unknown>;
             const field = call.name === "write_file" ? "content" : "new_string";
             if (typeof args[field] !== "string")
@@ -462,7 +731,7 @@ export function createSidecarCodingTools(policy: {
           }
           const ran = await (await ready).run(call, signal);
           const result =
-            policy.workspace === "app" && passedAppCheck(call, ran)
+            !design && passedCheck(call, ran)
               ? {
                   ...ran,
                   content: `${ran.content}\n${await fileCheckedApp(repository, () => fileWorkspace(workspace, signal), signal)}`,
@@ -479,17 +748,20 @@ export function createSidecarCodingTools(policy: {
       };
       // A written file's imports of packages its package.json lacks: those another package of the
       // workspace already installed are added here, and the rest named with the call that adds them.
-      // The app loads packages only when it starts.
+      // The app loads packages only when it starts, so a running app is restarted once for them.
       const restartForPackages = async () => {
         const restart = (await sandbox)?.restartApp();
         if (!restart) return "";
-        void restart.catch((error: unknown) =>
+        try {
+          const app = await restart;
+          return `The app restarted to load the new packages; it answers at ${app.url}.`;
+        } catch (error) {
           log.warn(
             "Restarting the app for new packages failed",
             requestErrorMetadata(error),
-          ),
-        );
-        return "The app restarts to load the new packages.";
+          );
+          return `The app did not restart for the new packages; ${APP_STATUS_TOOL} starts it again.`;
+        }
       };
       const installImports = async (
         call: ToolCall,
@@ -499,7 +771,9 @@ export function createSidecarCodingTools(policy: {
         const workspace = await realpath(env.toolCwd);
         const missing = await undeclaredImports(workspace, path);
         if (!missing?.packages.length) return "";
-        const { directory, packages } = missing;
+        const { packages } = missing;
+        // The project's own package.json sits at the workspace root, named "." to install into.
+        const directory = missing.directory || ".";
         const manifest = join(directory, "package.json");
         if (!WorkspacePath.allows(directory))
           return `${path} imports ${packages.join(", ")}, which ${manifest} does not list.`;
@@ -516,9 +790,13 @@ export function createSidecarCodingTools(policy: {
             },
             signal,
           );
+          const restarted =
+            succeeded(installed) && loadedByApp(workspace, path)
+              ? await restartForPackages()
+              : "";
           notes.push(
             succeeded(installed)
-              ? `${path} imports ${auto.join(", ")}, which ${manifest} did not list, so ${auto.length === 1 ? "it was" : "they were"} installed into ${directory}. ${await restartForPackages()}`.trim()
+              ? `${path} imports ${auto.join(", ")}, which ${manifest} did not list, so ${auto.length === 1 ? "it was" : "they were"} installed into ${directory}. ${restarted}`.trim()
               : `Installing ${auto.join(", ")} into ${directory}, which ${path} imports, failed:\n${String(installed.content).slice(-1500)}`,
           );
         }
@@ -550,94 +828,142 @@ export function createSidecarCodingTools(policy: {
       const native = createCodingTools({
         workspace: env.toolCwd,
         executor: lazySandbox,
+        commands: Object.keys(policy.workspace.commands),
         approval: policy.approval,
-        ...(policy.packageInstall ? { packageInstall: true } : {}),
-        app: policy.workspace === "app",
+        ...(policy.packageInstall
+          ? {
+              approvedPackages: async (signal: AbortSignal) =>
+                readApprovedPackages(
+                  env.capabilities,
+                  await resolveWorkflowProjectScope(
+                    env.capabilities,
+                    policy.role,
+                    signal,
+                  ),
+                  signal,
+                ),
+            }
+          : {}),
+        app: !design,
       }).factory(env);
+      const runCall = async (
+        rawCall: ToolCall,
+        signal: AbortSignal,
+      ): Promise<ToolResult> => {
+        const rawPath = rawCall.arguments?.["path"];
+        const named =
+          typeof rawPath === "string"
+            ? workspacePath(await realpath(env.toolCwd), rawPath)
+            : undefined;
+        const call =
+          named === undefined
+            ? rawCall
+            : {
+                ...rawCall,
+                arguments: {
+                  ...rawCall.arguments,
+                  path: design ? designPath(named) : named,
+                },
+              };
+        if (browserNames.has(call.name)) return runBrowser(call, signal);
+        if (!design && call.name === DONE_CHECKS_TOOL) {
+          const detail = await runDoneChecks(
+            DoneChecksCall.assert(call.arguments),
+            signal,
+          );
+          return {
+            callId: call.id,
+            content: JSON.stringify(detail),
+            detail,
+          };
+        }
+        if (design && call.name === CHECK_DESIGN_TOOL) {
+          await open(signal);
+          if (!designSubmission) throw new Error("design_submission_missing");
+          await syncDesignScreensOnDisk(await realpath(env.toolCwd));
+          return designSubmission.run(call, signal);
+        }
+        if (!offered(call.name))
+          return {
+            callId: call.id,
+            content: `unknown_tool: ${call.name}`,
+            isError: true,
+          };
+        const output = await native.run(call, signal);
+        const ran =
+          call.name === "read_file" && typeof output.content === "string"
+            ? { ...output, content: withoutSplicedScreens(output.content) }
+            : output;
+        const detail = appCheckDetail(call, ran);
+        const result = detail ? { ...ran, detail } : ran;
+        // A passing check was versioned before it was filed.
+        if (
+          repository &&
+          VERSIONED.has(call.name) &&
+          !passedCheck(call, result)
+        )
+          repository.schedule(EDIT);
+        const versioning =
+          typeof result.content === "string"
+            ? repository?.unheard()
+            : undefined;
+        if (
+          result.isError ||
+          typeof result.content !== "string" ||
+          !REPORTING.has(call.name)
+        )
+          return versioning
+            ? {
+                ...result,
+                content: `${String(result.content)}\n\n${versioning}`,
+              }
+            : result;
+        const notes = [];
+        const path = call.arguments["path"];
+        const executor = await sandbox;
+        if (WRITES.has(call.name) && typeof path === "string") {
+          const workspace = await realpath(env.toolCwd);
+          if (policy.packageInstall)
+            notes.push(await installImports(call, path, signal));
+          // After the import scan, so a package it installed resolves.
+          if (!design && executor)
+            notes.push(
+              await typeProbe(executor, workspace, path, call.id, signal),
+            );
+          if (touchesDesigns(workspace, path))
+            await syncDesignScreensOnDisk(workspace);
+        }
+        if (INSTALLS.has(call.name) && succeeded(result)) {
+          // The install rewrote the lockfile to match every package.json, so setup is done.
+          await markReady?.();
+          markReady = undefined;
+          notes.push(await restartForPackages());
+        }
+        if (versioning) notes.push(versioning);
+        const reports = executor?.reports();
+        if (reports?.length)
+          notes.push(
+            `The running app reports:\n${reports.map((report) => `- ${report}`).join("\n")}`,
+          );
+        return {
+          ...result,
+          content: [result.content, ...notes.filter(Boolean)].join("\n\n"),
+        };
+      };
       return {
         ...native,
         definitions: [
           ...native.definitions.filter((tool) => offered(tool.name)),
-          ...(design ? [checkDesignDefinition] : []),
+          ...(design ? [checkDesignDefinition] : [doneChecksDefinition]),
           ...(policy.browser?.tools ?? []),
         ],
-        run: async (rawCall, signal) => {
-          const rawPath = rawCall.arguments?.["path"];
-          const call =
-            design && typeof rawPath === "string"
-              ? {
-                  ...rawCall,
-                  arguments: {
-                    ...rawCall.arguments,
-                    path: designPath(rawPath),
-                  },
-                }
-              : rawCall;
-          if (browserNames.has(call.name)) return runBrowser(call, signal);
-          if (design && call.name === CHECK_DESIGN_TOOL) {
-            await open(signal);
-            if (!designSubmission) throw new Error("design_submission_missing");
-            await syncDesignScreensOnDisk(await realpath(env.toolCwd));
-            return designSubmission.run(call, signal);
-          }
-          if (!offered(call.name))
-            return {
-              callId: call.id,
-              content: `unknown_tool: ${call.name}`,
-              isError: true,
-            };
-          const ran = await native.run(call, signal);
-          const detail = appCheckDetail(call, ran);
-          const result = detail ? { ...ran, detail } : ran;
-          // A passing check was versioned before it was filed.
-          if (
-            repository &&
-            VERSIONED.has(call.name) &&
-            !passedAppCheck(call, result)
-          )
-            repository.schedule(EDIT);
-          const versioning =
-            typeof result.content === "string"
-              ? repository?.unheard()
-              : undefined;
-          if (
-            result.isError ||
-            typeof result.content !== "string" ||
-            !REPORTING.has(call.name)
-          )
-            return versioning
-              ? {
-                  ...result,
-                  content: `${String(result.content)}\n\n${versioning}`,
-                }
-              : result;
-          const notes = [];
-          const path = call.arguments["path"];
-          const executor = await sandbox;
-          if (WRITES.has(call.name) && typeof path === "string") {
-            const workspace = await realpath(env.toolCwd);
-            if (policy.packageInstall)
-              notes.push(await installImports(call, path, signal));
-            // After the import scan, so a package it installed resolves.
-            if (policy.workspace === "app" && executor)
-              notes.push(
-                await typeProbe(executor, workspace, path, call.id, signal),
-              );
-            if (touchesDesigns(workspace, path))
-              await syncDesignScreensOnDisk(workspace);
-          }
-          if (call.name === PACKAGE_INSTALL_TOOL && succeeded(result))
-            notes.push(await restartForPackages());
-          if (versioning) notes.push(versioning);
-          const reports = executor?.reports() ?? [];
-          if (reports.length)
-            notes.push(
-              `The running app reports:\n${reports.map((report) => `- ${report}`).join("\n")}`,
-            );
-          return {
-            ...result,
-            content: [result.content, ...notes.filter(Boolean)].join("\n\n"),
-          };
+        run: async (call, signal) => {
+          const result = await runCall(call, signal);
+          const failure = setupFailure;
+          if (failure === undefined || typeof result.content !== "string")
+            return result;
+          setupFailure = undefined;
+          return { ...result, content: `${failure}\n\n${result.content}` };
         },
         dispose: async () => {
           await opened?.close(AbortSignal.timeout(VERSION_CLOSE_MS));

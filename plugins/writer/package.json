@@ -2,56 +2,231 @@
   "name": "@corbits-builder/writer",
   "version": "0.7.1",
   "private": true,
+  "description": "Writes any document the work needs, has it reviewed and puts documents in front of the person to approve.",
   "license": "SEE LICENSE IN ../../LICENSE.md",
   "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
   "type": "module",
   "exports": {
-    "./skills": "./src/skills.ts",
-    "./task": "./src/task.ts",
-    "./packages/*": "./src/packages/*.ts"
+    "./task": "./src/task.ts"
   },
   "dependencies": {
-    "@corbits-builder/hub": "workspace:*",
+    "@corbits-builder/plugin": "workspace:*",
+    "@corbits-builder/plugin-ui": "workspace:*",
     "@corbits-builder/schemas": "workspace:*",
-    "@intx/agent": "workspace:*",
-    "@intx/workflow": "workspace:*",
-    "arktype": "catalog:"
+    "@corbits/react-ui": "0.5.1",
+    "arktype": "catalog:",
+    "react": "19.3.0"
+  },
+  "devDependencies": {
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "react-dom": "19.3.0"
   },
   "builder": {
+    "handle": "writer",
+    "runs": "specialist",
+    "groups": [
+      "documents",
+      "plan",
+      "review",
+      "approval"
+    ],
+    "when": "A document needs writing or revising, of any kind: requirements, a build plan, a brief, an analysis, a manual or anything else; or a filed document needs a second opinion or the person's approval.",
+    "unless": "The person wants the thing itself built or changed, or only a mockup.",
     "roles": [
       {
         "name": "writer",
+        "label": "Writer",
         "model": "writer",
         "limits": "document",
-        "called": "a writer",
-        "ended": {
-          "failed": "The writer stopped before finishing.",
-          "cancelled": "The writer was stopped.",
-          "task": "The writer writing the {kind} document"
-        }
+        "tools": [
+          "read_artifact",
+          "write_artifact",
+          "input_files"
+        ],
+        "status": {
+          "working": "Writing",
+          "done": "Wrote it"
+        },
+        "preferences": [
+          "technical"
+        ],
+        "filesDocuments": true
+      },
+      {
+        "name": "reviewer",
+        "label": "Reviewer",
+        "model": "reviewer",
+        "limits": "document",
+        "tools": [
+          "input_files"
+        ],
+        "status": {
+          "working": "Reviewing",
+          "done": "Reviewed it"
+        },
+        "preferences": [
+          "technical",
+          "nitpicky"
+        ]
       }
     ],
-    "packages": {
-      "writer-constraints": {
-        "entry": "./src/packages/writer-constraints.ts",
-        "role": "writer",
-        "files": "constraints",
-        "legacyAlias": "writer"
+    "settings": {
+      "writer": {
+        "label": "Writer",
+        "hint": "Writes the documents.",
+        "tier": "medium"
       },
-      "writer-approaches": {
-        "entry": "./src/packages/writer-approaches.ts",
-        "role": "writer",
-        "files": "approaches"
-      },
+      "reviewer": {
+        "label": "Reviewer",
+        "hint": "Reviews documents before you approve them.",
+        "tier": "low"
+      }
+    },
+    "budgets": {
+      "document": {
+        "maxOutputTokens": 32768
+      }
+    },
+    "agents": {
       "writer-product-requirements": {
-        "entry": "./src/packages/writer-product-requirements.ts",
-        "role": "writer",
+        "prompt": "./prompt.md",
+        "skills": "./skills",
         "files": "product_requirements"
       },
       "writer-build-plan": {
-        "entry": "./src/packages/writer-build-plan.ts",
-        "role": "writer",
+        "prompt": "./prompt.md",
+        "skills": "./skills",
         "files": "build_plan"
+      },
+      "writer-document": {
+        "prompt": "./prompt.md",
+        "skills": "./skills"
+      },
+      "reviewer": {
+        "prompt": "./reviewer.md",
+        "role": "reviewer"
+      }
+    },
+    "starters": {
+      "writer-product-requirements": "./src/start.ts",
+      "writer-build-plan": "./src/start.ts",
+      "writer-document": "./src/start-document.ts",
+      "reviewer": "./src/start-review.ts"
+    },
+    "actions": {
+      "write": {
+        "reads": [
+          "brand.guidelines"
+        ],
+        "returns": [
+          "filed:{kind}"
+        ],
+        "start": {
+          "workflow": "writer-document"
+        },
+        "presents": [
+          "approve"
+        ]
+      },
+      "write-requirements": {
+        "reads": [
+          "brand.guidelines"
+        ],
+        "returns": [
+          "filed:product_requirements"
+        ],
+        "start": {
+          "workflow": "writer-product-requirements"
+        },
+        "presents": [
+          "approve"
+        ]
+      },
+      "write-build-plan": {
+        "reads": [
+          "brand.guidelines"
+        ],
+        "requires": [
+          [
+            "filed:product_requirements"
+          ],
+          [
+            "app_exists"
+          ]
+        ],
+        "returns": [
+          "filed:build_plan"
+        ],
+        "start": {
+          "workflow": "writer-build-plan"
+        },
+        "presents": [
+          "approve"
+        ]
+      },
+      "review": {
+        "requires": [
+          [
+            "filed:{kind}"
+          ]
+        ],
+        "returns": [],
+        "start": {
+          "workflow": "reviewer"
+        }
+      },
+      "approve": {
+        "requires": [
+          [
+            "filed:{kinds}"
+          ]
+        ],
+        "returns": [
+          "approved:{kinds}"
+        ],
+        "host": [
+          "documents"
+        ]
+      }
+    },
+    "examples": [
+      "write me a competitor analysis",
+      "do a security review of the plan",
+      "compare our pricing options",
+      "write up what the app should do",
+      "write requirements for a command-line tool",
+      "write a problem brief",
+      "add offline mode to the requirements",
+      "I want to plan an app for my team",
+      "plan how to build it",
+      "plan the data pipeline in Python",
+      "use Postgres in the plan instead",
+      "is this plan any good",
+      "check the requirements for gaps",
+      "I approve the plan",
+      "show me what I need to sign off"
+    ],
+    "facts": {
+      "filed:problem_brief": "the problem brief is filed",
+      "filed:constraints": "the constraints are filed",
+      "filed:approaches": "the approaches are filed",
+      "filed:product_requirements": "the product requirements are filed",
+      "filed:build_plan": "the build plan is filed",
+      "approved:problem_brief": "the person approved a version of the problem brief, or leaves approvals to you",
+      "approved:constraints": "the person approved a version of the constraints, or leaves approvals to you",
+      "approved:approaches": "the person approved a version of the approaches, or leaves approvals to you",
+      "approved:product_requirements": "the person approved a version of the product requirements, or leaves approvals to you",
+      "approved:build_plan": "the person approved a version of the build plan, or leaves approvals to you"
+    },
+    "values": {
+      "brand.guidelines": {
+        "about": "The brand's guidelines: voice, tone, and what to do and avoid, in the person's words, at a link they gave, or in a file they attached.",
+        "type": [
+          "text",
+          "link",
+          "file"
+        ]
       }
     }
   }

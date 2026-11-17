@@ -11,9 +11,6 @@ import documentPane, {
   Loading as loadingDocument,
   ReadError as failedDocument,
 } from "./artifact-pane.stories.tsx";
-import { DesignChoiceView } from "./design-concepts.view.tsx";
-import designThemes from "./design-themes.stories.tsx";
-import { DesignThemesView } from "./design-themes.view.tsx";
 import nextStep, { YourTurn as yourTurn } from "./next-step.stories.tsx";
 import { NextStepLineView } from "./next-step.view.tsx";
 import { LIVE_TAB } from "./tab-follow.ts";
@@ -28,12 +25,12 @@ import thread, {
   Thinking as coordinatorThinking,
 } from "./transcript.stories.tsx";
 
-// Holds what the room asks its host to keep: the words being typed, the pane a narrow screen
-// shows, and the document the pane reads.
+// Holds what the room asks its host to keep: the words being typed, whether the project view is
+// open, and the document it reads.
 function Room(args: RoomViewProps) {
   const { dock, documentPane: pane } = args;
   const [text, setText] = useState(dock.kind === "composer" ? dock.text : "");
-  const [narrowPane, setNarrowPane] = useState(args.layout.narrowPane);
+  const [projectOpen, setProjectOpen] = useState(args.layout.projectOpen);
   const [selectedId, setSelectedId] = useState(pane.selectedId);
   return (
     <div style={{ height: "100vh", display: "flex", flexDirection: "column" }}>
@@ -41,8 +38,8 @@ function Room(args: RoomViewProps) {
         {...args}
         layout={{
           ...args.layout,
-          narrowPane,
-          onNarrowPaneChange: setNarrowPane,
+          projectOpen,
+          onProjectOpenChange: setProjectOpen,
         }}
         dock={
           dock.kind === "composer"
@@ -85,6 +82,7 @@ const composer: RoomComposer & { kind: "composer" } = {
   onCancelCaution: fn(),
   suggestedReplies: [],
   onReply: fn(),
+  sendLabel: null,
 };
 
 // One of the pane's own stories as the room takes it: what the pane shows, and its parts.
@@ -94,23 +92,17 @@ function paneOf(story: Partial<ArtifactPaneProps> = {}) {
 }
 
 const layout: RoomViewProps["layout"] = {
-  chatFirst: true,
-  artifactCount: 0,
-  narrowPane: "conversation",
-  onNarrowPaneChange: fn(),
+  projectReady: false,
+  projectOpen: false,
+  onProjectOpenChange: fn(),
+  pageOpen: false,
 };
 
-const themes = <DesignThemesView {...designThemes.args} />;
-
-// The room once the first documents are filed: the pane opens beside the conversation, with the
-// themes to browse before a design exists.
+// The room once the first documents are filed: the conversation still fills the room, and the
+// project control opens them over it.
 const withDocuments = {
-  layout: {
-    ...layout,
-    chatFirst: false,
-    artifactCount: documentPane.args.documents.length,
-  },
-  ...paneOf({ themes }),
+  layout: { ...layout, projectReady: true },
+  ...paneOf(),
 } satisfies Partial<RoomViewProps>;
 
 const meta = {
@@ -123,13 +115,16 @@ const meta = {
     conversation: {
       thread: thread.args,
       empty: null,
-      designChosen: null,
     },
     dock: composer,
+    plan: [],
+    onDeclineStep: async () => {},
+    onGoAheadStep: async () => {},
+    onAskFirstStep: async () => {},
     ...paneOf(),
     paneRef: createRef(),
     nextStep: <NextStepLineView {...nextStep.args} />,
-    designChoice: null,
+    page: null,
   },
   render: (args) => <Room {...args} />,
 } satisfies Meta<typeof RoomView>;
@@ -164,7 +159,7 @@ export const CoordinatorThinking: Story = {
   },
 };
 
-/** The coordinator asks for a yes on a document, which is there to read beside the ask. */
+/** The coordinator asks for a yes on a document, which opens from the ask. */
 export const ApprovalWaiting: Story = {
   args: {
     ...withDocuments,
@@ -341,46 +336,43 @@ export const ArchivedRestoring: Story = {
   },
 };
 
-/** The filed documents open beside the conversation, with the themes to browse before a design exists. */
+/** Documents are filed; the conversation fills the room and the project control opens them. */
 export const WithDocument: Story = { args: withDocuments };
+
+/** The project view open over the room, the prompt box still at its foot. */
+export const ProjectOpen: Story = {
+  args: {
+    ...withDocuments,
+    layout: { ...withDocuments.layout, projectOpen: true },
+  },
+};
 
 export const DocumentLoading: Story = {
   args: {
     ...withDocuments,
-    ...paneOf({ themes, ...loadingDocument.args }),
+    ...paneOf(loadingDocument.args),
   },
 };
 
 export const DocumentFailed: Story = {
   args: {
     ...withDocuments,
-    ...paneOf({ themes, ...failedDocument.args }),
+    ...paneOf(failedDocument.args),
   },
 };
 
-/** The app is being built: it runs in the pane, beside the plan it is built from and its manual. */
+/** The app is being built: it runs in the open project view, beside the plan it is built from and its manual. */
 export const AppBuilt: Story = {
   args: {
-    ...withDocuments,
+    ...ProjectOpen.args,
     ...paneOf({ ...appAndManual.args, openTab: { value: LIVE_TAB } }),
   },
 };
 
-/** The designers' concepts are filed, a tab each, and the conversation asks which one to build. */
+/** The designers' concepts are filed, a tab each. */
 export const ChoosingADesign: Story = {
   args: {
     ...withDocuments,
     ...paneOf(conceptTabs.args),
-    designChoice: (
-      <DesignChoiceView
-        concepts={[
-          { label: "Paper", direction: undefined },
-          { label: "Quiet", direction: undefined },
-        ]}
-        choosing={false}
-        onShow={fn()}
-        onChoose={fn()}
-      />
-    ),
   },
 };

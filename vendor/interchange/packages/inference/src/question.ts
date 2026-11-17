@@ -3,12 +3,16 @@
 // result. The reactor sets no timer on it; a workflow step's own timeout still
 // ends the wait, as it does an approval's. Only a top-level agent step can ask:
 // a parent run cannot relay a question from a loop or onTrigger body.
+// The host may park any other call the same way, on a screen.
 
 import { type } from "arktype";
 import {
   QUESTION_TOOL_NAME,
   QuestionArguments,
   type BeforeToolExtension,
+  type PendingOperation,
+  QuestionScreen,
+  type ToolCall,
   type ToolDefinition,
 } from "@intx/types/runtime-core";
 
@@ -75,6 +79,79 @@ export function createQuestionExtension(): BeforeToolExtension {
             })),
           },
         },
+      };
+    },
+  };
+}
+
+/**
+ * A screen the host parks a call on, and what the person's answer does:
+ * "result" makes it the call's result, "rerun" runs the parked call once.
+ */
+export type CallPause = QuestionScreen & { resume: "result" | "rerun" };
+
+/**
+ * Asks the host about a call before it runs: undefined runs it, refusal text
+ * blocks it with that text as its result, and a screen parks it like a
+ * question, with the person's `{ output }` or `{ reply }` as its result.
+ * It runs after authz, so a call that needs approval and shares its reply
+ * with other calls is refused as a screen only after the person approved it.
+ */
+export type CallCheck = (
+  call: ToolCall,
+) => Promise<CallPause | string | undefined>;
+
+export function createCallCheckExtension(
+  checkCall: CallCheck,
+): BeforeToolExtension {
+  // A call re-run after the person answered its screen runs without asking
+  // the host again; see `grantOneShot`.
+  const answered = new Set<string>();
+  return {
+    grantOneShot(id) {
+      answered.add(id);
+    },
+    async beforeTool(call, state) {
+      if (answered.delete(call.id)) return { type: "allow" };
+      const decision = await checkCall(call);
+      if (decision === undefined) return { type: "allow" };
+      if (typeof decision === "string") {
+        return { type: "block", reason: decision };
+      }
+      const { resume, ...asked } = decision;
+      const screen = QuestionScreen(asked);
+      if (screen instanceof type.errors) {
+        return { type: "block", reason: `Invalid screen: ${screen.summary}` };
+      }
+      // A parked call waits alone in its reply, as a question does.
+      const turn = state.turns.findLast((t) =>
+        t.content.some((b) => b.type === "tool_call" && b.id === call.id),
+      );
+      if (turn === undefined) {
+        throw new Error(`Parked call ${call.id} is in no assistant turn`);
+      }
+      if (turn.content.filter((b) => b.type === "tool_call").length > 1) {
+        return {
+          type: "block",
+          reason:
+            "A call that shows a screen must be the only tool call in its reply. Make it on its own in your next reply.",
+        };
+      }
+      const correlationId = crypto.randomUUID();
+      const gateId = `pending-${correlationId}`;
+      const pendingOp: PendingOperation = {
+        correlationId,
+        kind: "question",
+        registeredAt: Date.now(),
+        gateId,
+        suspendedCall: call,
+        question: screen,
+      };
+      if (resume === "rerun") pendingOp.rerun = true;
+      return {
+        type: "suspend",
+        gate: { type: "question", gateId, correlationId },
+        pendingOp,
       };
     },
   };

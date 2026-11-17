@@ -1,11 +1,19 @@
-import { pathToFileURL } from "node:url";
-import { workflowStep } from "./spawn-role.ts";
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
-import { CATALOG } from "../plugins/catalog.ts";
+import { pathToFileURL } from "node:url";
+import { projectLiveToInert } from "@intx/workflow/projection";
+import { bundledPlugins } from "@corbits-builder/plugin-host/bundle";
+import {
+  CATALOG,
+  PLUGINS_FOLDER,
+  WORKFLOW_PACKAGES,
+} from "../plugins/catalog.ts";
+import { browserCatalog } from "../builds/browser-catalog.ts";
+import type { AgentPackage } from "@corbits-builder/plugin-host/catalog";
 import { nativePackageName } from "./package-name.ts";
+import { workflowStep } from "./spawn-role.ts";
 import type { RoleInference } from "./role-inference.ts";
 
 // The version follows the bundle bytes, so a rebuilt workflow publishes beside the old one instead of
@@ -14,16 +22,27 @@ function contentVersion(base: string, bundle: string): string {
   return `${base}-sha-${createHash("sha256").update(bundle).digest("hex").slice(0, 8)}`;
 }
 
-export function assertPackageRole(
-  workflow: unknown,
-  role: string,
-  name: string,
-) {
-  if (workflowStep({ projection: workflow })?.role !== role)
-    throw new Error(
-      `The package ${name} declares role ${role}, but its agent tags disagree`,
-    );
-}
+// The package entry an agent a plugin declares is built from, with the agent inlined.
+const AGENT_ENTRY = join(import.meta.dir, "agent-package.ts");
+
+// Each package is the entry a plugin names for it, the agent it declares, else the hub's own under
+// entries/, built on what its role's model binding resolved to.
+const PACKAGES = [...WORKFLOW_PACKAGES].map(([name, role]) => {
+  const plugin = CATALOG.packages.get(name);
+  if (plugin === undefined)
+    return {
+      name,
+      role,
+      entry: join(import.meta.dir, "entries", name + ".ts"),
+    };
+  if ("agent" in plugin)
+    return { name, role, entry: AGENT_ENTRY, agent: plugin.agent };
+  return { name, role, entry: resolve(PLUGINS_FOLDER, plugin.entry) };
+});
+
+// Whether an agent's workspace declares a browser, whose tools its package then lists.
+const hasBrowser = ({ workspace }: AgentPackage) =>
+  workspace?.kind === "app" && workspace.browser;
 
 export async function buildWorkflowPackages(
   destination: string,
@@ -33,21 +52,35 @@ export async function buildWorkflowPackages(
   if (!/^\d+\.\d+\.\d+$/.test(base)) throw new Error("invalid_package_version");
   const output = resolve(destination);
   await mkdir(output, { recursive: true });
+  // Listing the browser's tools starts it, so they are listed once for every package.
+  const browses = PACKAGES.some(
+    (built) => "agent" in built && hasBrowser(built.agent),
+  );
+  const browser = browses ? JSON.stringify(await browserCatalog()) : undefined;
   const manifest = [];
-  for (const [name, { role, entry }] of CATALOG.packages) {
-    const roleInference = inference[role];
-    if (!roleInference) throw new Error(`No inference for the role ${role}`);
+  for (const built of PACKAGES) {
+    const { name, role, entry } = built;
+    const resolved = inference[role];
+    if (!resolved) throw new Error(`role_inference_required:${role}`);
+    const define: Record<string, string> = {
+      "process.env.BUILDER_ROLE_INFERENCE": JSON.stringify(
+        JSON.stringify(resolved),
+      ),
+    };
+    if ("agent" in built)
+      define["process.env.BUILDER_AGENT"] = JSON.stringify(
+        JSON.stringify(built.agent),
+      );
+    if ("agent" in built && hasBrowser(built.agent))
+      define["process.env.BUILDER_BROWSER"] = JSON.stringify(browser);
     const result = await Bun.build({
-      define: {
-        "process.env.BUILDER_ROLE_INFERENCE": JSON.stringify(
-          JSON.stringify(roleInference),
-        ),
-      },
+      define,
       entrypoints: [entry],
       target: "bun",
       format: "esm",
       minify: true,
       conditions: ["intx-src"],
+      plugins: [bundledPlugins(PLUGINS_FOLDER)],
     });
     if (!result.success || result.outputs.length !== 1)
       throw new Error(
@@ -66,8 +99,16 @@ export async function buildWorkflowPackages(
       await mkdir(join(staging, "package", "dist"), { recursive: true });
       const builtEntry = join(staging, "package", "dist", "workflow.mjs");
       await writeFile(builtEntry, bundle);
+      // Inference is chosen by the declared role, but a run is known by its agent's tags.
       const definition = await import(pathToFileURL(builtEntry).href);
-      assertPackageRole(definition.default, role, name);
+      const tagged = workflowStep(
+        { projection: projectLiveToInert(definition.default) },
+        CATALOG,
+      )?.role;
+      if (tagged !== role)
+        throw new Error(
+          `The workflow package ${name} is installed for the role ${role}, but its agent's tags say ${tagged ?? "no one role"}`,
+        );
       await writeFile(
         join(staging, "package", "package.json"),
         JSON.stringify({

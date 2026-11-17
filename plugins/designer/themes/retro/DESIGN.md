@@ -4,7 +4,7 @@
 
 A sample app in the Retro look: a small coffee roaster's wholesale desk,
 where the owner sees what needs attention today and works through café
-orders. It should feel warm, tactile and a little playful, like a well-worn
+orders. It should feel warm and tactile, like a well-worn
 order book from a 70s corner shop, while staying quick to use.
 
 Mockup: `.builder/designs/index.html`. Open it from disk.

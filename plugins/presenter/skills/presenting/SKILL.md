@@ -17,8 +17,10 @@ An approval package gives one audience what they need to understand the project 
 
 ## Per-persona guidance
 
-- **CEO (`ceo`)**: Focus on business outcome, strategic fit, key risks and the resource ask. Keep the deck to 6-8 slides, executive and direct, grounded in the problem brief, approaches and build plan.
-- **CTO (`cto`)**: Focus on architecture, constraints, security boundaries, technical trade-offs and the phased build plan. Keep the deck to 8-12 slides, technical and rigorous, grounded in the problem brief, constraints, approaches and build plan.
-- **Investor (`investor`)**: Focus on problem size, differentiation, user value and traction roadmap. Keep the deck to 8-10 slides, crisp and evidence-led, grounded in the problem brief, approaches and product requirements.
-- **Client (`client`)**: Focus on capabilities, workflow fit, delivery timeline and sign-off scope. Keep the deck to 8-10 slides, clear and collaborative, grounded in the problem brief, product requirements and build plan.
-- **End user (`end_user`)**: Focus on day-to-day experience, screens and key workflows. Keep the deck to 5-7 slides, practical and approachable in plain language, grounded in the problem brief and product requirements.
+Each persona names the documents that usually serve it; draw on whichever of them the project has filed and selected, and on any other selected document that covers the same ground.
+
+- **CEO (`ceo`)**: Focus on business outcome, strategic fit, key risks and the resource ask. Keep the deck to 6-8 slides, executive and direct, usually drawing on the problem brief, approaches and build plan.
+- **CTO (`cto`)**: Focus on architecture, constraints, security boundaries, technical trade-offs and the phased build plan. Keep the deck to 8-12 slides, technical and rigorous, usually drawing on the problem brief, constraints, approaches and build plan.
+- **Investor (`investor`)**: Focus on problem size, differentiation, user value and traction roadmap. Keep the deck to 8-10 slides, crisp and evidence-led, usually drawing on the problem brief, approaches and product requirements.
+- **Client (`client`)**: Focus on capabilities, workflow fit, delivery timeline and sign-off scope. Keep the deck to 8-10 slides, clear and collaborative, usually drawing on the problem brief, product requirements and build plan.
+- **End user (`end_user`)**: Focus on day-to-day experience, what they will see and do, and key workflows. Keep the deck to 5-7 slides, practical and approachable in plain language, usually drawing on the problem brief and product requirements.

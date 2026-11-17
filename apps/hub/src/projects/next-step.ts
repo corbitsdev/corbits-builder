@@ -31,6 +31,8 @@ import type { LiveApps } from "../live-app/runner.ts";
 import { errorCode, requestErrorMetadata } from "../request-error.ts";
 import { actorOf, authorizeProject } from "./authorization.ts";
 import { workflowRoleSql } from "../workflows/spawn-role.ts";
+import { COORDINATOR } from "../workflows/coordinator-role.ts";
+import { CATALOG } from "../plugins/catalog.ts";
 
 const LIVE = [...liveWorkflowRunStatuses];
 const log = getLogger(["corbits-builder", "hub", "next-step"]);
@@ -55,7 +57,7 @@ function newestFailedSpecialist(
   const newest = new Map<string, ProjectRun>();
   for (const run of runs) if (!newest.has(run.role)) newest.set(run.role, run);
   return [...newest.values()].find(
-    (run) => run.role !== "coordinator" && run.status === "failed",
+    (run) => run.role !== COORDINATOR.name && run.status === "failed",
   );
 }
 
@@ -216,7 +218,6 @@ export function createProjectNextStep(
         .select({
           id: approval.id,
           tool: approval.toolDefinition,
-          args: approval.toolArguments,
         })
         .from(approval)
         .innerJoin(workflowRun, eq(workflowRun.id, approval.anchorRunId))
@@ -234,8 +235,10 @@ export function createProjectNextStep(
           limit: 1,
         })
       ).rows;
-      const coderRan = all.some((run) => run.role === "coder");
-      const coderLive = states.some((run) => run.role === "coder");
+      const writesCode = (run: { role: string }) =>
+        CATALOG.role(run.role)?.writesCode === true;
+      const coderRan = all.some(writesCode);
+      const coderLive = states.some(writesCode);
       const app = appStatus(
         projectId,
         coderLive || filed !== undefined,
@@ -284,26 +287,20 @@ export function createProjectNextStep(
         const name = (asked.tool as { name?: unknown } | null)?.name;
         const tool =
           typeof name === "string" && name !== "" ? name : "approval";
-        const kinds = (asked.args as { kinds?: unknown } | null)?.kinds;
         return note({
           working,
           now: now(who),
           waiting: { kind: "approval", approvalId: asked.id, tool },
           app,
           next: {
-            text: text.approval(
-              tool,
-              Array.isArray(kinds)
-                ? kinds.filter((kind) => typeof kind === "string")
-                : [],
-            ),
+            text: text.approval(tool),
           },
         });
       }
-      if (!states.some((run) => run.role === "coordinator"))
+      if (!states.some((run) => run.role === COORDINATOR.name))
         return note({
           working,
-          now: now(text.stopped("coordinator", undefined)),
+          now: now(text.stopped(COORDINATOR.name, undefined)),
           app,
           next: {
             text: text.next.resumeCoordinator,

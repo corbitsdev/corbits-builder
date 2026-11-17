@@ -1,8 +1,8 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import type { AskedQuestion } from "@corbits-builder/schemas/conversation";
+import type { PromptQuestion } from "@corbits-builder/schemas/conversation";
 import { fn } from "storybook/test";
 import { RoomThread, type TranscriptTurn } from "./transcript.tsx";
-import workUnit from "./work-unit-message.stories.tsx";
+import workUnit from "./work-unit-step.stories.tsx";
 
 const BRIEF = { id: "problem_brief", title: "Problem brief" };
 
@@ -24,18 +24,18 @@ const opening: readonly TranscriptTurn[] = [
   },
 ];
 
-const ask: AskedQuestion = {
+const asked: PromptQuestion["asked"] = {
   questions: [
     {
-      id: "audience",
+      id: "5d0c1b8e-2a47-4f3e-8b19-6e7d2c4a9f10",
       header: "Audience",
       question: "Who uses it first?",
       options: [
-        { label: "The owner", description: "" },
+        { label: "The owner (Recommended)", description: "" },
         { label: "Counter staff", description: "" },
       ],
       multiple: false,
-      custom: false,
+      custom: true,
     },
   ],
 };
@@ -101,8 +101,8 @@ export const AskingForApproval: Story = {
     approvals: [
       {
         approvalId: "approval-1",
-        toolName: "request_approval",
-        document: { kind: BRIEF.id, title: BRIEF.title, version: 2 },
+        toolName: "run_shell",
+        subject: "bun run build",
       },
     ],
   },
@@ -114,7 +114,7 @@ export const AskingQuestions: Story = {
       {
         at: 4,
         signalName: "signal:question-1",
-        asked: ask,
+        asked,
         status: "open",
       },
     ],

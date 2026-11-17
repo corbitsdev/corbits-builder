@@ -1,29 +1,41 @@
 # Coordinator
 
-The project coordinator: the one agent a person talks to. It interviews them,
-writes the problem brief, hands each later document, the design and the build
-to a specialist, and asks the person for every decision.
+The project coordinator: the one agent a person talks to, whatever they want
+built, changed, improved or written. It reads the project, works out what the
+person wants and composes the installed plugins to get them there: specialists
+do the work, checks prove it, and screens put each decision in front of the
+person. It decides which action serves the request and what instruction that
+action gets; the hub carries the decision out.
 
 ## Where it fits
 
 This package only declares data. It imports `@intx/agent/authoring` and
 `@intx/workflow/definition`, nothing else from Interchange. The
 [hub's coordinator entry][entry] imports it, supplies the model, director and
-tools, and builds it into the workflow each project deploys. The tools are
-the hub's:
+tools, and builds it into the workflow each project deploys. Its tools are the
+hub's and fixed; everything it can start is a plugin (`plugins/`), so a new
+capability adds no tool:
 
-- `read_artifact`, `write_artifact`: the document list and the brief.
-- `deploy_writer`, `design_app`, `deploy_coder`, `instruct_coder`: start or
-  steer the [writer][writer], [designer][designer] and [coder][coder].
-- `review_artifact`: a second opinion from the [reviewer][reviewer].
-- `request_approval`, `question`: approval and question cards for the
-  person; `question` is Interchange's and waits for the answer.
-- `read_skill`: the problem-brief skill from the writer package.
+- `discover`: finds plugins from the person's wording, with each specialist's
+  actions, whether each can start now and what it needs if not, and the
+  project's values.
+- `execute`: starts a specialist's action, such as the coder's `change`, runs
+  a check, or opens a screen, such as the writer's `approve`, and waits for the
+  person's answer, which the hub records.
+- `plan`: the only way the project's plan is set, from steps it writes or by
+  taking up a ready-made plan such as `build-web-app`.
+- `runs`: lists, waits on and stops the runs it started.
+- `question`: asks the person in words; it is Interchange's and waits for the
+  answer. A choice an action has a screen for goes through `execute` instead.
+- `read_artifact`: the document list and each document; it writes none.
+  `read_file` reads back a tool result that was cut short.
 
 ## Layout
 
 - `src/prompt.ts`: the system prompt, plus an optional versioned
-  calibration appended to it.
+  calibration appended to it. It says what the coordinator is in charge of,
+  the conversation and the choice of action, and that Builder does everything
+  after; what it can find with `discover` stays out of it.
 - `src/agent.ts`: `createCoordinatorAgent`, which requires an explicit
   provider and model and tags the agent with this package's version.
 - `src/workflow.ts`: `createCoordinatorWorkflow`, one durable mail-triggered
@@ -35,8 +47,4 @@ Prompt conventions are in [AGENTS.md][agents]. `bun run typecheck` and `bun run 
 `bun run dev` runs it in a real project.
 
 [entry]: https://github.com/corbitsdev/corbits-builder/blob/main/apps/hub/src/workflows/entries/coordinator.ts
-[writer]: https://github.com/corbitsdev/corbits-builder/tree/main/plugins/writer
-[designer]: https://github.com/corbitsdev/corbits-builder/tree/main/plugins/designer
-[coder]: https://github.com/corbitsdev/corbits-builder/tree/main/plugins/coder
-[reviewer]: https://github.com/corbitsdev/corbits-builder/tree/main/workflows/reviewer
 [agents]: https://github.com/corbitsdev/corbits-builder/blob/main/AGENTS.md

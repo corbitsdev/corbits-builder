@@ -732,6 +732,7 @@ export function createDatabaseSeedDeps(
           payload: {
             projectId,
             tenantId: child.id,
+            actorPrincipalId: workspace.principalId,
             title: input.title,
             problemStatement: input.problemStatement,
           },

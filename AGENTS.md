@@ -1,11 +1,12 @@
 # Contributing to Builder
 
-Builder turns an idea into approved documents, a design and a working web app,
-on a hub built on vendored Interchange. Start with
+Builder is an app in which a person talks to one coordinator that has
+specialists build, write or change what they ask for, on a hub built on
+vendored Interchange. Start with
 [ARCHITECTURE.md](https://github.com/corbitsdev/corbits-builder/blob/main/docs/ARCHITECTURE.md)
 and
 [IMPLEMENTATION.md](https://github.com/corbitsdev/corbits-builder/blob/main/docs/IMPLEMENTATION.md);
-running it is in
+running it and adding a plugin are in
 [DEV.md](https://github.com/corbitsdev/corbits-builder/blob/main/docs/DEV.md)
 and sending a change in
 [CONTRIBUTING.md](https://github.com/corbitsdev/corbits-builder/blob/main/CONTRIBUTING.md).
@@ -22,15 +23,43 @@ These are the ones no check catches:
   reimplementing it, and raise what falls between Interchange, Corbits packages
   and Builder before building it
   ([who owns what](https://github.com/corbitsdev/corbits-builder/blob/main/docs/IMPLEMENTATION.md#who-owns-what)).
+- A specialist lives entirely in its folder under `plugins/`: its manifest,
+  roles, prompt, agent and workflow code, actions, screens, skills, starters
+  and themes. The coordinator is the one agent outside it, in
+  `workflows/coordinator`.
+- The host names no plugin. Code in `apps/`, `packages/` and
+  `workflows/coordinator` never imports a plugin or tests for a handle (tests
+  and stories may load real plugins as fixtures); what it
+  needs to know about a plugin is declared in that plugin's manifest or action
+  definitions and read through `@corbits-builder/plugin-host`, which only the
+  hub imports.
+- A plugin imports the plugin API, the plugin UI kit, the shared schemas and
+  shared packages such as `@corbits-builder/app-checks`. It never imports the
+  hub, the web app, the plugin host or another plugin (`bun run boundaries`
+  checks this), so adding, renaming or removing a plugin changes only its own
+  folder
+  ([plugins](https://github.com/corbitsdev/corbits-builder/blob/main/docs/DEV.md#adding-a-plugin)).
+- The coordinator's tools are fixed. New work is a new plugin action, found
+  with `discover` and started with `execute`, not a new tool. A plan is set
+  only with the `plan` tool.
+- Anything shown to the person for a decision is a screen action, opened with
+  `execute`, and its answer is recorded by the hub's answers route. Never have
+  an agent report a person's decision.
 - Extend the existing module, package, API or component before adding one
   that overlaps it; Builder keeps one way to do each thing. Interface work
   follows [apps/web/AGENTS.md](apps/web/AGENTS.md); end-to-end and integration
   tests follow [test/AGENTS.md](test/AGENTS.md).
 - The interface talks to the hub through `@corbits-builder/client`.
-- A change to `vendor/interchange` is its own `(vendor)` commit that also
-  updates `vendor/interchange.manifest.json`.
+- `vendor/interchange` is only added to, never reworded: a change adds what
+  Builder needs beside Interchange's own code. Each change is its own
+  `(vendor)` commit that also updates `vendor/interchange.manifest.json`, and
+  `bun run vendor:verify` fails on anything unrecorded.
+- A schema change ships as one migration, generated with `bun run
+  db:generate`. Its journal `when` must be later than every migration already
+  merged; regenerate it if another merged first, and never move a merged one.
 - User-visible wording lives in configuration: `apps/hub/src/config/` for the
-  hub and agents, `apps/web/src/config.ts` for the interface.
+  hub and agents, `apps/web/src/config.ts` for the interface, and an action's
+  `definition.ts` for what a person reads of that action.
 - Secrets stay out of responses, logs, documents and prompts; the interface
   shows only whether a secret is set.
 - Conventional Commits (`<type>(<scope>): <description>`), one logical change

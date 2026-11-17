@@ -1,10 +1,10 @@
-import { getLogger } from "@intx/log";
 import { and, eq } from "drizzle-orm";
 import { type } from "arktype";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { listVisibleOfferings, listVisibleProviders, type DB } from "@intx/db";
+import { getLogger } from "@intx/log";
 import {
   asset,
   credential,
@@ -21,9 +21,7 @@ import {
 import {
   InstalledWorkflows,
   INSTALLED_WORKFLOWS_KEY,
-  type WorkflowProjectScope,
 } from "@corbits-builder/schemas/installed-workflows";
-import type { Preferences } from "@corbits-builder/schemas/preferences";
 import type { RoleBinding } from "@corbits-builder/schemas/models";
 import {
   modelProvider,
@@ -37,15 +35,9 @@ import {
   offeringQuirks,
 } from "../inference/oauth-login-quirks.ts";
 import { projectModelChoice } from "../projects/model-choice.ts";
-import { resolvePreferences } from "../config/preferences.ts";
-import {
-  CATALOG,
-  roleModel,
-  runRole,
-  WORKFLOW_PACKAGES,
-} from "../plugins/catalog.ts";
 import { ProjectError } from "../projects/errors.ts";
 import { buildWorkflowPackages } from "./build-packages.ts";
+import { roleModel, runRole, WORKFLOW_PACKAGES } from "../plugins/catalog.ts";
 import { nativePackageName } from "./package-name.ts";
 import { resolveRoleInference, type RoleInference } from "./role-inference.ts";
 import type { Actor } from "../lib/actor.ts";
@@ -105,30 +97,7 @@ function minted(prefix: "mdl_" | "mof_"): string {
   );
 }
 
-export function scopeWorkflows(
-  installed: InstalledWorkflows,
-  preferences: Preferences | null,
-): WorkflowProjectScope["workflows"] {
-  const chosen = resolvePreferences(preferences);
-  const workflows: WorkflowProjectScope["workflows"] = {};
-  const replacing = new Set(
-    [...CATALOG.substitutions.values()].map((each) => each.package),
-  );
-  for (const [name, role] of WORKFLOW_PACKAGES) {
-    if (role === "coordinator" || replacing.has(name)) continue;
-    const substitution = CATALOG.substitutions.get(name);
-    const selected =
-      substitution && chosen[substitution.when] === "yes"
-        ? substitution.package
-        : name;
-    workflows[name] = installed.packages[selected]!;
-    // Frozen coordinators from before the writer split require this name; remove after all are retired.
-    const alias = CATALOG.aliases.get(name);
-    if (alias) workflows[alias] = workflows[name];
-  }
-  return workflows;
-}
-
+/** A tenant's stored record of its installed packages, or why it has none this hub can use. */
 export function installedFrom(
   config: unknown,
 ):
@@ -140,19 +109,16 @@ export function installedFrom(
   if (!(INSTALLED_WORKFLOWS_KEY in config)) return { status: "missing" };
   const record = config[INSTALLED_WORKFLOWS_KEY];
   if (
-    record &&
     typeof record === "object" &&
+    record !== null &&
     "schemaVersion" in record &&
-    Number.isInteger(record.schemaVersion) &&
     typeof record.schemaVersion === "number" &&
-    record.schemaVersion < 3 &&
-    record.schemaVersion > 0
+    record.schemaVersion < 3
   )
     return { status: "older" };
   const parsed = InstalledWorkflows(record);
-  return parsed instanceof type.errors
-    ? { status: "malformed" }
-    : { status: "current", installed: parsed };
+  if (parsed instanceof type.errors) return { status: "malformed" };
+  return { status: "current", installed: parsed };
 }
 
 async function buildAndRead(key: string, inference: Inference) {
@@ -386,7 +352,6 @@ async function isCurrent(
   );
   const packages = [...WORKFLOW_PACKAGES];
   if (
-    Object.keys(installed.packages).length !== packages.length ||
     !packages.every(([name]) => {
       const pin = installed.packages[name]?.pin;
       return pin !== undefined && pins.has(pin);
@@ -481,21 +446,25 @@ export async function installForTenant(
     projectId,
     directory,
   );
-  // Each role runs on the model setting it names.
+  // Each role runs on the model setting it names, with its output budget.
   const bindings: Bindings = (role) =>
     tierBinding(directory, choice, roleModel(runRole(role)));
   const built = await builtPackages(
     Object.fromEntries(
       ROLES.map((role) => [
         role,
-        resolveRoleInference(directory, runRole(role).limits, bindings(role)),
+        resolveRoleInference(
+          directory,
+          roleModel(runRole(role)).budget,
+          bindings(role),
+        ),
       ]),
     ),
   );
   const record = installedFrom(row?.config);
   const existing = record.status === "current" ? record.installed : null;
   if (record.status !== "current")
-    log.info("Reinstalling workflow packages: stored record is {reason}", {
+    log.info("Installing workflow packages: the stored record is {reason}", {
       reason: record.status,
       tenantId: actor.tenantId,
     });
@@ -579,15 +548,14 @@ export async function installForTenant(
       .where(eq(tenant.id, actor.tenantId))
       .for("update");
     if (!current) throw startFailed();
-    const record = installedFrom(current.config);
-    const stored = record.status === "current" ? record.installed : null;
+    const stored = installedFrom(current.config);
     if (
-      stored &&
+      stored.status === "current" &&
       (await isCurrent(
         ports.db,
         directory,
         actor.tenantId,
-        stored,
+        stored.installed,
         built,
         bindings,
       ))

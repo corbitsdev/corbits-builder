@@ -1,0 +1,408 @@
+import { defineTool, type AnnotatedToolFactory } from "@intx/agent/authoring";
+import { HUB_CREDENTIAL_HANDLE } from "@intx/types/credential-delivery";
+import { questionTool } from "@intx/inference";
+import { QUESTION_TOOL_NAME, type ToolCall } from "@intx/types/runtime-core";
+import {
+  CheckList,
+  CheckRan,
+  ProjectRuns,
+  ProjectValues,
+} from "@corbits-builder/schemas/artifact";
+import type { Filed } from "@corbits-builder/plugin";
+import {
+  checkedDiscover,
+  describedSchema,
+  discoverFor,
+  execute,
+  executePause,
+  INPUT_SCHEMAS,
+  managePlan,
+  manageRuns,
+  type Project,
+} from "@corbits-builder/plugin-host/coordinator";
+import { fields } from "@corbits-builder/plugin-host/search/fields";
+import { triggers } from "@corbits-builder/plugin-host/search/triggers";
+import { words } from "@corbits-builder/plugin-host/search/words";
+import {
+  DISCOVER_DYNAMIC_DESCRIPTION,
+  EXECUTE_DESCRIPTION,
+  PLAN_DESCRIPTION,
+  pluginHint,
+  RUNS_DESCRIPTION,
+  waitOrStop,
+} from "@corbits-builder/plugin-host/text";
+import { PlanView } from "@corbits-builder/schemas/project";
+import type { PluginHint } from "../environment.ts";
+import {
+  checkDeployments,
+  projectSession,
+  refusalText,
+  resolveProjectOptions,
+  type DeployEnv,
+  type ProjectListing,
+  type ProjectOptions,
+  type ProjectSession,
+} from "../projects/project-session.ts";
+import { projectScopeFailure } from "../workflows/project-scope.ts";
+import { inputFileName } from "../workflows/input-file-tools.ts";
+import { agentDecidesApprovals } from "../config/preferences.ts";
+import {
+  INPUTS_DIRECTORY,
+  isInputKind,
+  skillPacksIndex,
+  startHere,
+} from "../config/inputs.ts";
+import {
+  CATALOG,
+  projectCatalog,
+  ProjectFollowing,
+  SCREENS,
+  WITH_SCREENS,
+} from "./catalog.ts";
+import { personFacts, projectFacts } from "./facts.ts";
+
+// The least score a plugin needs to be hinted. One trigger word is all triggers can score. For fields,
+// a word found in the handle, when, examples and summary ("font") scores 10, while common words
+// alone ("I want to confront this problem") reach 9.
+const TRIGGERS_HINT_LEAST = 1;
+const FIELDS_HINT_LEAST = 10;
+const HINT_SEARCHES = {
+  triggers: { search: triggers, least: TRIGGERS_HINT_LEAST },
+  fields: { search: fields, least: FIELDS_HINT_LEAST },
+};
+const MAX_HINTED = 3;
+
+// The person's message with a note naming the screens its words suggest, or unchanged when none
+// does: of each plugin its words find, the screens whose when shares one of them.
+export function withPluginHint(hint: PluginHint, message: string): string {
+  if (hint === "off") return message;
+  const { search: hintSearch, least } = HINT_SEARCHES[hint];
+  const asked = words(message);
+  const hinted = hintSearch(message, WITH_SCREENS)
+    .filter(({ score }) => score >= least)
+    .slice(0, MAX_HINTED)
+    .flatMap(({ handle }) =>
+      SCREENS.filter(
+        ({ plugin, when }) =>
+          plugin === handle && [...words(when)].some((word) => asked.has(word)),
+      ),
+    );
+  return hinted.length === 0 ? message : message + pluginHint(hinted);
+}
+
+// Interchange parks any call named question until the person answers, whatever definition offered
+// it, so Builder offers it in its own words. Its input schema is Interchange's own JSON Schema form,
+// since the option rules have none and the call is checked against the full type when it arrives.
+const questionDefinition = {
+  name: QUESTION_TOOL_NAME,
+  description:
+    "Ask the person one or more questions and wait for their answers. Use it only when the work would be done differently depending on the answer, and never for a choice an action has a screen for: open that screen with execute instead. The result is { answers: [{ question, answer: [the chosen labels or what they typed] }] } in the order asked, or { reply } when the person wrote back instead of answering; a reply is their answer in their own words.",
+  inputSchema: describedSchema(
+    { toJsonSchema: () => questionTool.inputSchema },
+    {
+      questions: {
+        about: "The questions to ask, in the order the person reads them.",
+        fields: {
+          question: {
+            about: "The full question, as you would ask it in conversation.",
+          },
+          header: {
+            about:
+              "Two or three words naming the topic, such as Pages or Sign-in, shown above the question.",
+          },
+          options: {
+            about:
+              "The answers to pick from, the one you recommend first. Leave it empty only for an answer that has to be free text, such as a name.",
+            fields: {
+              label: {
+                about:
+                  "The answer in a few words. End the recommended option's label with (Recommended).",
+              },
+              description: {
+                about:
+                  "One plain sentence on what picking it means for the work.",
+              },
+            },
+          },
+          multiple: {
+            about:
+              "Set it to true when several options can all be true at once, such as which features or pages to include. Leave it out when the options rule each other out.",
+          },
+          custom: {
+            about:
+              "On unless set: the person may type their own answer instead, so never add an Other option. Set it to false only when the answer must be one of the options.",
+          },
+        },
+      },
+    },
+  ),
+};
+
+// The project as it stands when a run's assignment is written, from the documents filed in it.
+function filed(
+  session: ProjectSession,
+  { byKind, artifacts }: Pick<ProjectListing, "byKind" | "artifacts">,
+): Filed {
+  return {
+    versions: byKind,
+    approved: (kind) =>
+      artifacts.find(
+        (artifact) => artifact.artifactId === byKind.get(kind)?.artifactId,
+      )?.approvedVersion,
+    document: ({ artifactId }) => {
+      const document = artifacts.find(
+        (artifact) => artifact.artifactId === artifactId,
+      );
+      if (!document) throw new Error(`${artifactId} is not filed`);
+      return {
+        kind: document.kind,
+        title: document.title,
+        path: INPUTS_DIRECTORY + "/" + inputFileName(document),
+      };
+    },
+    design: session.readDesign,
+    startHere: (kinds, design) => {
+      const unknown = kinds.find((kind) => !isInputKind(kind));
+      if (unknown !== undefined)
+        throw new Error(`${unknown} is not a document Builder stages`);
+      const staged = kinds
+        .filter(isInputKind)
+        .filter((kind) => byKind.has(kind));
+      const version = design ? byKind.get("design")?.version : undefined;
+      if (staged.length === 0 && version === undefined) return undefined;
+      return startHere(session.inputs(staged, byKind), version);
+    },
+  };
+}
+
+// A check runs within its action's ms on the hub; the call waits a little longer for its answer.
+const CHECK_CALL_GRACE_MS = 15_000;
+
+// The project as the coordinator's tools act on it, through the hub.
+function project(session: ProjectSession): Project {
+  const path = session.projectPath + "/following";
+  return {
+    appStarters: CATALOG.appStarters,
+    heldBack: waitOrStop,
+    state: async () => {
+      const listed = await session.listed();
+      const { checks } = CheckList.assert(
+        await session.hub(session.projectPath + "/checks"),
+      );
+      return {
+        facts: projectFacts({
+          artifacts: listed.artifacts,
+          preferences: listed.preferences,
+          checks,
+        }),
+        personFacts: personFacts(listed.artifacts),
+        asksApprovals: !agentDecidesApprovals(listed.preferences),
+        checks,
+        preferences: listed.preferences,
+      };
+    },
+    check: async (action, input) =>
+      CheckRan.assert(
+        await session.hub(
+          session.projectPath + "/check-runs",
+          { plugin: action.plugin, action: action.action, input },
+          action.ms + CHECK_CALL_GRACE_MS,
+        ),
+      ),
+    following: async () =>
+      ProjectFollowing.assert(await session.hub(path)).following,
+    setFollowing: (following) => session.hub(path, { following }),
+    values: async (names) =>
+      ProjectValues.assert(
+        await session.hub(
+          `${session.projectPath}/values?${new URLSearchParams({ keys: names.join(",") })}`,
+        ),
+      ).values,
+    start: (action, input, values, step) =>
+      action.starter.run(
+        action.builder.start,
+        input,
+        project(
+          session.forAction({
+            plugin: action.plugin,
+            action: action.action,
+            values,
+            step,
+          }),
+        ),
+        skillPacksIndex(action.packs),
+      ),
+    runs: async () =>
+      ProjectRuns.assert(await session.hub(session.projectPath + "/runs")).runs,
+    stop: (runId) =>
+      session.hub(
+        `${session.projectPath}/runs/${encodeURIComponent(runId)}/stop`,
+        {},
+      ),
+    plan: async () =>
+      PlanView.assert(await session.hub(session.projectPath + "/plan")),
+    savePlan: (steps) =>
+      session.hub(session.projectPath + "/plan", { steps }, undefined, "PUT"),
+    working: async () => (await session.listed()).inFlight,
+    startAlone: ({ workflow, correlation, assignment, busy, keep }) =>
+      session.startAlone(
+        workflow,
+        correlation,
+        async (state) => {
+          const now = filed(session, state);
+          return { content: await assignment(now), kept: await keep?.(now) };
+        },
+        busy,
+      ),
+    deploy: async ({ workflow, correlation, assignment, keep }) => {
+      const { role, spec } = session.installed(workflow);
+      const state = await session.listed();
+      const now = filed(session, state);
+      const content = await assignment(now);
+      return session.deploy(
+        role,
+        spec,
+        state.preferences,
+        correlation,
+        content,
+        { kept: await keep?.(now) },
+      );
+    },
+    startConcepts: ({ workflow, correlation, concepts, assignment, busy }) =>
+      session.startConcepts(
+        workflow,
+        correlation,
+        concepts,
+        (state, concept) => assignment(filed(session, state), concept),
+        busy,
+      ),
+  };
+}
+
+// What the person answers before an execute call goes on, checked against the project as it is
+// before the call runs, so a failed read is thrown.
+async function executeCheck(
+  env: DeployEnv,
+  options: ProjectOptions | undefined,
+  call: ToolCall,
+) {
+  if (call.name !== "execute") return undefined;
+  const signal = new AbortController().signal;
+  const coordinated = project(
+    projectSession(
+      env,
+      options ?? (await resolveProjectOptions(env.capabilities, signal)),
+      signal,
+    ),
+  );
+  return executePause(
+    await projectCatalog(coordinated.values),
+    coordinated,
+    call.arguments,
+  );
+}
+
+/**
+ * The coordinator's way to act: discover finds a plugin, execute starts a specialist's action,
+ * runs a check or opens a screen, whose answer records what it approves, runs lists, waits on and
+ * stops the runs it started, plan keeps the project's plan, and question asks the person in words.
+ */
+export function createExecuteTools(
+  options?: ProjectOptions,
+): AnnotatedToolFactory<DeployEnv> {
+  if (options) checkDeployments(options.workflows);
+  const definitions = [
+    {
+      name: "discover",
+      description: DISCOVER_DYNAMIC_DESCRIPTION,
+      inputSchema: INPUT_SCHEMAS.discover,
+    },
+    {
+      name: "execute",
+      description: EXECUTE_DESCRIPTION,
+      inputSchema: INPUT_SCHEMAS.execute,
+    },
+    {
+      name: "runs",
+      description: RUNS_DESCRIPTION,
+      inputSchema: INPUT_SCHEMAS.runs,
+    },
+    {
+      name: "plan",
+      description: PLAN_DESCRIPTION,
+      inputSchema: INPUT_SCHEMAS.plan,
+    },
+    questionDefinition,
+  ];
+  return defineTool<DeployEnv>({
+    id: "@corbits-builder/plugins/execute",
+    credentials: [{ handle: HUB_CREDENTIAL_HANDLE }],
+    requires: ["capabilities"],
+    definitions: [
+      { name: "discover" },
+      { name: "execute" },
+      { name: "runs" },
+      { name: "plan" },
+      { name: QUESTION_TOOL_NAME },
+    ],
+    factory: (env) => ({
+      definitions,
+      checkCall: (call) => executeCheck(env, options, call),
+      run: async (call, signal) => {
+        if (!options) {
+          try {
+            return createExecuteTools(
+              await resolveProjectOptions(env.capabilities, signal),
+            )(env).run(call, signal);
+          } catch (error) {
+            return projectScopeFailure(call.id, error);
+          }
+        }
+        const session = projectSession(env, options, signal);
+        try {
+          signal.throwIfAborted();
+          // Every tool sees one plugin per handle: the one the person selected for the project.
+          const catalog = await projectCatalog(project(session).values);
+          if (call.name === "discover") {
+            const { input, error } = checkedDiscover(
+              catalog.plugins,
+              call.arguments,
+            );
+            if (!input)
+              return { callId: call.id, content: error, isError: true };
+            return {
+              callId: call.id,
+              content: await discoverFor(catalog, project(session), input),
+            };
+          }
+          if (call.name === "execute")
+            return {
+              callId: call.id,
+              ...(await execute(catalog, project(session), call.arguments)),
+            };
+          if (call.name === "runs")
+            return {
+              callId: call.id,
+              ...(await manageRuns(project(session), call.arguments, signal)),
+            };
+          if (call.name === "plan")
+            return {
+              callId: call.id,
+              ...(await managePlan(catalog, project(session), call.arguments)),
+            };
+          return {
+            callId: call.id,
+            content: "unknown_plugin_tool",
+            isError: true,
+          };
+        } catch (error) {
+          return {
+            callId: call.id,
+            content: refusalText(error),
+            isError: true,
+          };
+        }
+      },
+    }),
+  });
+}

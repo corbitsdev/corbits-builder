@@ -14,7 +14,6 @@ import {
   type ConversationThread,
 } from "@corbits-builder/schemas/conversation";
 
-import { personTurnText } from "../config/specialist-ended.ts";
 import { spawnedWorkflowRole } from "../workflows/spawn-role.ts";
 import { getLogger } from "@intx/log";
 import { requestErrorMetadata } from "../request-error.ts";
@@ -149,7 +148,7 @@ export async function readCoordinatorMailThreads(input: {
       );
     for (const row of rows) {
       const role = spawnedWorkflowRole(row.bundle);
-      if (row.address && role) roles.set(row.address.toLowerCase(), role);
+      if (row.address && role) roles.set(row.address.toLowerCase(), role.name);
     }
   }
   const label = (participant: string) =>
@@ -162,7 +161,7 @@ export async function readCoordinatorMailThreads(input: {
     if (!isRunAddress(message.from))
       return {
         role: "person",
-        text: personTurnText(message.text),
+        text: message.text,
         at: message.at,
       };
     return {

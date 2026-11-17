@@ -6,8 +6,7 @@ import { getLogger } from "@intx/log";
 import { declineNote } from "../config/decline.ts";
 import { projectCoordinator } from "../db/schema.ts";
 import { requestErrorMetadata } from "../request-error.ts";
-import { readJson } from "../lib/json.ts";
-import { isRecord } from "../mail/conversation-turns.ts";
+import { isRecord, readJson } from "../lib/json.ts";
 
 const log = getLogger(["corbits-builder", "hub", "decline-note"]);
 

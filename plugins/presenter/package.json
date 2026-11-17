@@ -1,40 +1,95 @@
 {
   "name": "@corbits-builder/presenter",
-  "version": "0.1.0-rc.3",
+  "version": "0.2.0",
   "private": true,
+  "description": "Builds a slide deck and an approval package for one audience from the project's approved documents and its chosen design.",
   "license": "SEE LICENSE IN ../../LICENSE.md",
   "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
   "type": "module",
-  "exports": {
-    "./skills": "./src/skills.ts",
-    "./personas": "./src/personas.ts",
-    "./packages/*": "./src/packages/*.ts"
-  },
   "dependencies": {
-    "@corbits-builder/hub": "workspace:*",
-    "@intx/agent": "workspace:*",
-    "@intx/tools-mail": "workspace:*",
-    "@intx/workflow": "workspace:*"
+    "@corbits-builder/plugin": "workspace:*",
+    "@corbits-builder/schemas": "workspace:*",
+    "arktype": "catalog:"
   },
   "builder": {
+    "handle": "presenter",
+    "runs": "specialist",
+    "groups": [
+      "present",
+      "share",
+      "approval"
+    ],
+    "when": "The person wants to share or present the project to an audience, such as their CEO, an investor or a client, as a slide deck and an approval package.",
+    "unless": "They want a document written, or the thing itself built or changed.",
     "roles": [
       {
         "name": "presenter",
+        "label": "Presenter",
         "model": "presenter",
         "limits": "presenter",
-        "called": "the presenter",
-        "ended": {
-          "failed": "The presenter stopped before finishing.",
-          "cancelled": "The presentation was stopped.",
-          "task": "The presenter building the approval package"
-        }
+        "tools": [
+          "deck",
+          "input_files"
+        ],
+        "status": {
+          "working": "Making the presentation",
+          "done": "Made the presentation"
+        },
+        "preferences": [
+          "technical"
+        ],
+        "buildsFrom": [
+          "problem_brief",
+          "constraints",
+          "approaches",
+          "product_requirements",
+          "build_plan",
+          "design"
+        ],
+        "files": "approval_package"
       }
     ],
-    "packages": {
+    "settings": {
       "presenter": {
-        "entry": "./src/packages/presenter.ts",
-        "role": "presenter"
+        "label": "Presenter",
+        "hint": "Builds slide decks and approval packages for an audience.",
+        "tier": "medium"
       }
-    }
+    },
+    "budgets": {
+      "presenter": {
+        "maxOutputTokens": 32768
+      }
+    },
+    "agents": {
+      "presenter": {
+        "prompt": "./prompt.md",
+        "skills": "./skills"
+      }
+    },
+    "starters": {
+      "presenter": "./src/start.ts"
+    },
+    "actions": {
+      "present": {
+        "requires": [
+          [
+            "approved:{kinds}"
+          ]
+        ],
+        "returns": [
+          "filed:approval_package"
+        ],
+        "start": {
+          "workflow": "presenter"
+        }
+      }
+    },
+    "examples": [
+      "share this with our CEO",
+      "make a deck for investors",
+      "present the plan to the client",
+      "I need sign-off from my CTO"
+    ]
   }
 }

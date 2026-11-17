@@ -13,7 +13,7 @@ import {
 } from "./approval-package.ts";
 import { mountArtifactRoutes } from "./routes.ts";
 import type { createArtifactService } from "./service.ts";
-import { createCoordinatorArtifactTools } from "./tools.ts";
+import { createReadArtifactTools } from "./tools.ts";
 
 const BRIEF_ID = "11111111-1111-4111-8111-111111111111";
 const BRIEF_SHA = "a".repeat(64);
@@ -129,7 +129,9 @@ function createRouteHarness() {
       };
     },
   } as unknown as ReturnType<typeof createArtifactService>;
-  mountArtifactRoutes(app, service);
+  mountArtifactRoutes(app, service, {
+    answer: async () => {},
+  });
   return { app, filed };
 }
 
@@ -345,15 +347,16 @@ describe("approval package validation and secret scanning", () => {
           domain: "example.invalid",
           role: "coordinator",
           workflows: {
-            "writer-constraints": deployment,
-            "writer-approaches": deployment,
             "writer-product-requirements": deployment,
             "writer-build-plan": deployment,
+            "writer-document": deployment,
             reviewer: deployment,
             coder: deployment,
             designer: deployment,
           },
           openNetwork: false,
+          firstBuild: false,
+          toolchains: { paths: [], dataDir: "/unused" },
           build: {
             assetDirectory: "/tmp/assets",
             browserCli: "/tmp/browser",
@@ -382,7 +385,7 @@ describe("approval package validation and secret scanning", () => {
         resolve: async () => ({ kind: "http", fetch }),
       }),
     } as unknown as RuntimeCapabilities;
-    const tool = createCoordinatorArtifactTools()({ capabilities } as never);
+    const tool = createReadArtifactTools()({ capabilities } as never);
     const result = await tool.run(
       {
         id: "call-1",

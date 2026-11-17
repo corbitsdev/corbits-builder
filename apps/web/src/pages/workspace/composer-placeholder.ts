@@ -7,9 +7,9 @@ import type {
   ProjectWorker,
 } from "@corbits-builder/schemas/project-status";
 import { wording } from "../../config.ts";
+import { roleLabel } from "./roles.ts";
 
 const copy = wording.composer;
-const roleLabel: Partial<Record<string, string>> = copy.role;
 
 function passAlongRole(working: readonly ProjectWorker[]): string | undefined {
   return (
@@ -22,21 +22,23 @@ export function composerPlaceholder(input: {
   approvalOpen: boolean;
   /** The coordinator's questions wait on the person; a message sent instead answers them in its own words. */
   questionsOpen: boolean;
+  /** What the open question's screen asks of the prompt box, when it says. */
+  screenReply: string | undefined;
   /** Absent until project status has loaded. */
   status: ProjectStatus | undefined;
   /** No pane deliverables, design draft, or concepts yet. */
-  chatFirst: boolean;
+  nothingFiled: boolean;
 }): string {
   if (input.approvalOpen) return wording.approval.composerPlaceholder;
-  if (input.questionsOpen) return wording.questions.composerPlaceholder;
+  if (input.questionsOpen)
+    return input.screenReply ?? wording.questions.composerPlaceholder;
   const status = input.status;
   if (status === undefined) return copy.reply;
   const role = passAlongRole(status.working);
-  const label = role === undefined ? undefined : roleLabel[role];
-  if (label !== undefined) return copy.passAlong(label);
+  if (role !== undefined) return copy.passAlong(roleLabel(role).toLowerCase());
   if (status.app.state === "running") return copy.change;
   if (status.app.state === "failed" || status.failedSpecialist !== undefined)
     return copy.fix;
-  if (input.chatFirst) return copy.making;
+  if (input.nothingFiled) return copy.making;
   return copy.reply;
 }

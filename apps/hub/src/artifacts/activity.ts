@@ -2,6 +2,7 @@ import { type } from "arktype";
 import type { SidecarEventEmitter } from "@intx/hub-sessions";
 import { parseAddress } from "@intx/types/agent-address";
 import { parseInferenceEvent } from "@intx/types/runtime";
+import type { ContentBlock } from "@intx/types/runtime-core";
 import type { ActivityTool } from "@corbits-builder/schemas/activity";
 import type { RunProgress } from "@corbits-builder/schemas/artifact";
 
@@ -39,6 +40,9 @@ type RunActivity = {
   // When the run last started or finished a turn: the start of its working or waiting.
   since?: string;
   working: boolean;
+  // The calls and results of the message the run is on, as turns in the shape its saved
+  // conversation gains them once that message is done.
+  unsaved: { timestamp: number; content: ContentBlock[] }[];
 };
 
 const clip = (text: string, max: number) => {
@@ -84,6 +88,7 @@ export function createAgentActivity(events: Pick<SidecarEventEmitter, "on">) {
         files: [],
         turns: 0,
         working: false,
+        unsaved: [],
       };
     runs.set(local, found);
     if (runs.size > MAX_RUNS) runs.delete(runs.keys().next().value ?? local);
@@ -105,6 +110,7 @@ export function createAgentActivity(events: Pick<SidecarEventEmitter, "on">) {
         run.turns += 1;
         run.since = new Date(event.data.receivedAt).toISOString();
         run.tools = [];
+        run.unsaved = [];
         delete run.said;
         return;
       }
@@ -142,7 +148,21 @@ export function createAgentActivity(events: Pick<SidecarEventEmitter, "on">) {
       }
       case "tool.done": {
         const run = entry(local);
-        const { callId, isError } = event.data.result;
+        const { callId, content, isError } = event.data.result;
+        // As Interchange's tool result turn holds it: an object result is saved as its JSON.
+        const text =
+          typeof content === "string" ? content : JSON.stringify(content);
+        run.unsaved.push({
+          timestamp: Date.now(),
+          content: [
+            {
+              type: "tool_result",
+              callId,
+              content: [{ type: "text", text }],
+              isError: isError === true,
+            },
+          ],
+        });
         const call = run.tools.find((tool) => tool.callId === callId);
         if (call) call.running = false;
         const path = run.writing.get(callId);
@@ -152,6 +172,14 @@ export function createAgentActivity(events: Pick<SidecarEventEmitter, "on">) {
         return;
       }
       case "inference.done": {
+        const calls = event.data.turn.content.filter(
+          (block) => block.type === "tool_call",
+        );
+        if (calls.length > 0)
+          entry(local).unsaved.push({
+            timestamp: event.data.turn.timestamp,
+            content: calls,
+          });
         const text = event.data.turn.content
           .flatMap((block) => (block.type === "text" ? [block.text] : []))
           .join(" ");
@@ -193,6 +221,16 @@ export function createAgentActivity(events: Pick<SidecarEventEmitter, "on">) {
         ...(said ? { said } : {}),
         tools: tools.slice(-RECENT_TOOLS),
       };
+    },
+    /**
+     * The turns of the message each of the run's step addresses is on, oldest first. A run saves
+     * its conversation only once a message is done, so these are its calls it has not saved yet.
+     */
+    unsaved(runId: string) {
+      return [...runs]
+        .filter(([local]) => ownsAddress(runId, local))
+        .flatMap(([, run]) => run.unsaved)
+        .toSorted((left, right) => left.timestamp - right.timestamp);
     },
     /** The run's progress across its step addresses, once the hub has seen any of its events. */
     progress(runId: string): RunProgress | undefined {
