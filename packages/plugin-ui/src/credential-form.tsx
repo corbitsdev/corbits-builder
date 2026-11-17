@@ -50,8 +50,9 @@ async function refusal(response: Response): Promise<Error> {
   let body: unknown;
   try {
     body = await response.json();
-  } catch {
+  } catch (error) {
     // A proxy's error page is not JSON; its status is all there is to show.
+    if (!(error instanceof SyntaxError)) throw error;
     return new Error(code);
   }
   return new Error(ErrorResponse.allows(body) ? body.error.code : code);

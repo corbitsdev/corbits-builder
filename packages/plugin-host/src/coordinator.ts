@@ -900,7 +900,7 @@ export async function executePause(
   }
   const { plugin, action, ready } = call;
   if (!isWorkflowAction(action) || ready.own.length > 0) return undefined;
-  const credentials = Object.entries(plugin.builder.credentials ?? {});
+  const credentials = Object.entries(plugin.builder.credentials);
   const saved = await Promise.all(
     credentials.map(([name]) =>
       project.hasCredential(credentialProvider(name)),

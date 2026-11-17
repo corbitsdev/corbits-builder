@@ -459,7 +459,7 @@ export const SpecialistBuilder = Common.merge({
   "appStarters?": { "[string]": AppStarter },
   // What its design workspaces start from and the looks they offer.
   "design?": DesignBuilder,
-  "credentials?": Credentials,
+  credentials: Credentials.default(() => ({})),
   // Each action by its folder's name; its folder says which kind it is, and so which builder its
   // entry is checked against.
   actions: { "[string]": "object" },

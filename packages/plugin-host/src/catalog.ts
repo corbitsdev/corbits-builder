@@ -565,9 +565,7 @@ async function manifested(found: Found) {
         action,
         await declaredAction(found, builder.handle, action, entry),
       );
-    for (const [provider, { screen }] of Object.entries(
-      builder.credentials ?? {},
-    ))
+    for (const [provider, { screen }] of Object.entries(builder.credentials))
       if (actions.get(screen)?.kind !== "screen")
         throw new Error(
           `${builder.handle}'s credential ${provider} shows its form on ${screen}, which is not a screen of ${builder.handle}`,
@@ -1336,7 +1334,7 @@ async function agentPackages(
           ),
         presents: startedPresents(builder.handle, name, starting, actions),
         done: startedDone(builder.handle, name, starting, workspace),
-        credentials: Object.keys(builder.credentials ?? {}),
+        credentials: Object.keys(builder.credentials),
       };
       return [name, { role: role.name, agent }] as const;
     }),

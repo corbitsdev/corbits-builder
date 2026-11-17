@@ -135,7 +135,8 @@ if (process.env.BUILDER_TOOLS !== undefined) {
   const brought: AgentTools = (await import(process.env.BUILDER_TOOLS)).default;
   for (const factory of brought({ role: role.name }).map(hostPluginTool)) {
     factories.push(factory);
-    for (const { handle } of factory.credentials ?? []) {
+    if (factory.credentials === undefined) continue;
+    for (const { handle } of factory.credentials) {
       if (handle === HUB_CREDENTIAL_HANDLE) continue;
       if (!credentials.includes(handle))
         throw new Error(
