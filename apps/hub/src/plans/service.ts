@@ -51,8 +51,11 @@ function savedPlanStep(
   if (marks?.answered) saved.answered = marks.answered;
   return saved;
 }
-const planActionSteps = (steps: readonly StoredPlanStep[]) =>
-  steps.flatMap((step) => ("steps" in step ? step.steps : [step]));
+// A project with no plan saved yet has no steps.
+function planActionSteps(plan: StoredPlan | null | undefined) {
+  if (!plan) return [];
+  return plan.steps.flatMap((step) => ("steps" in step ? step.steps : [step]));
+}
 const newPlanStepId = () => crypto.randomUUID().slice(0, 12);
 
 // The plan as stored, with its project row locked until the transaction ends so that no other write
@@ -98,9 +101,10 @@ export function createPlanService(rawDB: DB["db"]) {
         .where(eq(principal.id, actor.principalId));
       return rawDB.transaction(async (tx) => {
         const before = new Map(
-          planActionSteps((await lockedPlan(tx, projectId))?.steps ?? []).map(
-            (step) => [step.id, step],
-          ),
+          planActionSteps(await lockedPlan(tx, projectId)).map((step) => [
+            step.id,
+            step,
+          ]),
         );
         const marksOf = (step: PlanChildWrite, id: string) =>
           caller?.kind === "user" ? step : before.get(id);
@@ -157,9 +161,7 @@ export function createPlanService(rawDB: DB["db"]) {
         throw new ProjectError(403, "only_a_person_declines");
       const { plan, title, changed } = await rawDB.transaction(async (tx) => {
         const plan = await lockedPlan(tx, projectId);
-        const step = planActionSteps(plan?.steps ?? []).find(
-          ({ id }) => id === stepId,
-        );
+        const step = planActionSteps(plan).find(({ id }) => id === stepId);
         if (!plan || !step)
           throw new ProjectError(404, "plan_step_not_found", { id: stepId });
         if (!step.optional)
@@ -199,7 +201,7 @@ export function createPlanService(rawDB: DB["db"]) {
       await authorizeProject(rawDB, actor, projectId, "manage");
       await rawDB.transaction(async (tx) => {
         const plan = await lockedPlan(tx, projectId);
-        const step = planActionSteps(plan?.steps ?? []).find(
+        const step = planActionSteps(plan).find(
           (each) =>
             each.plugin === screen.plugin &&
             each.action === screen.action &&
@@ -235,9 +237,7 @@ export function createPlanService(rawDB: DB["db"]) {
         throw new ProjectError(403, "only_a_person_decides");
       const { plan, note } = await rawDB.transaction(async (tx) => {
         const plan = await lockedPlan(tx, projectId);
-        const step = planActionSteps(plan?.steps ?? []).find(
-          ({ id }) => id === stepId,
-        );
+        const step = planActionSteps(plan).find(({ id }) => id === stepId);
         if (!plan || !step)
           throw new ProjectError(404, "plan_step_not_found", { id: stepId });
         let note: string;

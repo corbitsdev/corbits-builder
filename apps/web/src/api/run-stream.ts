@@ -22,11 +22,13 @@ const RunStreamEvent = type({
     "partial?": type({
       "text?": "string",
       "thinking?": "string",
-      "toolCalls?": type({
+      toolCalls: type({
         "id?": "unknown",
         "name?": "unknown",
         "partialArguments?": "unknown",
-      }).array(),
+      })
+        .array()
+        .default(() => []),
     }).or("string"),
     "callId?": "unknown",
     "name?": "unknown",

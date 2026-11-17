@@ -51,7 +51,7 @@ export function startedRun(
   declared: AppRun | undefined,
 ): AppRun {
   const variables = declared
-    ? [declared.port, ...(declared.extraPorts ?? [])]
+    ? [declared.port, ...declared.extraPorts]
     : ["PORT"];
   const port = input.port ?? variables[0]!;
   const run: AppRun = {

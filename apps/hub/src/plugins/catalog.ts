@@ -135,7 +135,7 @@ export const savesValues = (role: string) =>
     .some(
       (action) =>
         CATALOG.packages.get(action.workflow)?.role === role &&
-        (action.builder.writes ?? []).length > 0,
+        action.builder.writes.length > 0,
     );
 
 // The ready-made plans a project is following, as the hub stores them: their handles.

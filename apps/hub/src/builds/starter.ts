@@ -281,7 +281,7 @@ async function writeInputs(
   kit: string | undefined,
 ) {
   await rm(join(workspace, INPUTS_DIRECTORY), { recursive: true, force: true });
-  for (const input of (role.buildsFrom ?? []).filter(isInputKind)) {
+  for (const input of role.buildsFrom.filter(isInputKind)) {
     const document = await read(input);
     if (document)
       await writeBundle(workspace, {

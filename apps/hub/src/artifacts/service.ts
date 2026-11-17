@@ -1334,7 +1334,8 @@ export function createArtifactService(
         .select({ following: project.following })
         .from(project)
         .where(eq(project.id, projectId));
-      return row?.following ?? [];
+      if (!row) throw new ProjectError(404, "project_not_found");
+      return row.following;
     },
 
     async setFollowing(

@@ -42,7 +42,7 @@ async function savedLastCalls(
   if (run.address === null) return [];
   try {
     const turns = await readCommittedTurns(repoStore, run.address);
-    return runSteps(turns ?? [])
+    return runSteps(turns)
       .slice(-LAST_CALLS)
       .map(({ name, arguments: input, result }) => {
         let returned = "no result came back";

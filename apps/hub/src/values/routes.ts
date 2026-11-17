@@ -74,14 +74,14 @@ export function mountValueRoutes(
         current,
         projectId,
       );
-      const writes =
-        catalog.actions
-          .filter(isWorkflowAction)
-          .find(
-            (installed) =>
-              installed.plugin === run.plugin &&
-              installed.action === run.action,
-          )?.builder.writes ?? [];
+      const action = catalog.actions
+        .filter(isWorkflowAction)
+        .find(
+          (installed) =>
+            installed.plugin === run.plugin && installed.action === run.action,
+        );
+      if (!action) throw new ProjectError(403, "run_value_not_written");
+      const { writes } = action.builder;
       const refused = Object.keys(input.values).filter(
         (name) => !writes.includes(name),
       );
@@ -173,11 +173,14 @@ export function mountValueRoutes(
           description: "Each named value, or null",
           content: { "application/json": { schema: resolver(ProjectValues) } },
         },
-        400: { description: "A key that no plugin declares" },
+        400: { description: "No keys, or a key that no plugin declares" },
       },
     }),
     async (c) => {
-      const names = c.req.query("keys")?.split(",") ?? [];
+      const keys = c.req.query("keys");
+      if (keys === undefined)
+        throw new ProjectError(400, "project_value_keys_required");
+      const names = keys.split(",");
       const unknown = undeclaredValue(names);
       if (unknown !== undefined)
         throw new ProjectError(400, "unknown_project_value", { key: unknown });

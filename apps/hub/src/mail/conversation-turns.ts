@@ -173,41 +173,46 @@ export function unsavedPersonTurns(
 }
 
 /**
- * Every turn from every agent-state directory in the run repo, undefined before
- * the run committed any.
+ * Every turn from every agent-state directory in the run repo, none before the
+ * run committed any.
  */
 export async function readCommittedTurns(
   repoStore: CoordinatorRepoDirSource,
   address: string,
-): Promise<unknown[] | undefined> {
+): Promise<unknown[]> {
   const repoDir = repoStore.getRepoDir({
     kind: "workflow-run",
     id: deriveWorkflowRunRepoId(address),
   });
-  return withCommittedAgentState(repoDir, async (agentStateRoot) => {
-    const entries = await readdir(agentStateRoot, { withFileTypes: true });
-    const keys = entries
-      .filter((entry) => entry.isDirectory())
-      .map((entry) => entry.name);
-    const collected: unknown[] = [];
-    for (const agentKey of keys) {
-      try {
-        const snapshot = await reconstructDurableConversation(
-          join(agentStateRoot, agentKey),
-          agentKey,
-        );
-        if (snapshot === null) continue;
-        for (const turn of snapshot.turns) collected.push(turn);
-      } catch (error) {
-        // One damaged agent mirror must not drop the other agents' turns.
-        log.error("Agent conversation mirror unreadable", {
-          ...errorCode(error),
-          ...requestErrorMetadata(error),
-        });
+  const turns = await withCommittedAgentState(
+    repoDir,
+    async (agentStateRoot) => {
+      const entries = await readdir(agentStateRoot, { withFileTypes: true });
+      const keys = entries
+        .filter((entry) => entry.isDirectory())
+        .map((entry) => entry.name);
+      const collected: unknown[] = [];
+      for (const agentKey of keys) {
+        try {
+          const snapshot = await reconstructDurableConversation(
+            join(agentStateRoot, agentKey),
+            agentKey,
+          );
+          if (snapshot === null) continue;
+          for (const turn of snapshot.turns) collected.push(turn);
+        } catch (error) {
+          // One damaged agent mirror must not drop the other agents' turns.
+          log.error("Agent conversation mirror unreadable", {
+            ...errorCode(error),
+            ...requestErrorMetadata(error),
+          });
+        }
       }
-    }
-    return collected;
-  });
+      return collected;
+    },
+  );
+  if (turns === undefined) return [];
+  return turns;
 }
 
 /**
@@ -222,7 +227,6 @@ export async function readDurableConversationTurns(input: {
 }): Promise<ConversationTextTurn[]> {
   try {
     const turns = await readCommittedTurns(input.repoStore, input.address);
-    if (turns === undefined) return [];
     return mapMirrorConversationTurns(turns, input.approvalDecisions);
   } catch (error) {
     log.warn("Durable conversation unreadable", {

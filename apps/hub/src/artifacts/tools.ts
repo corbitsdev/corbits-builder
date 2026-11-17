@@ -134,7 +134,7 @@ function valuesRefused(callId: string, error: WorkflowHttpError) {
     callId,
     content: [
       `Nothing was saved (${error.refusalCode ?? "refused"}).`,
-      ...(error.issues ?? []).map(({ path, message }) => `${path}: ${message}`),
+      ...error.issues.map(({ path, message }) => `${path}: ${message}`),
       ...(error.hint ? [error.hint] : []),
       "Call again with only the values your assignment lists, each of the type it names.",
     ].join("\n"),
@@ -149,7 +149,7 @@ export function failure(callId: string, error: unknown) {
       content: JSON.stringify({
         code: error.refusalCode ?? "artifact_api_refused",
         status: error.status,
-        ...(error.issues?.length ? { issues: error.issues } : {}),
+        ...(error.issues.length ? { issues: error.issues } : {}),
         ...(error.hint ? { hint: error.hint } : {}),
       }),
       isError: true,

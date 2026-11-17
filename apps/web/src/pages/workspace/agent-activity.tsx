@@ -210,7 +210,9 @@ const RunningApp = type({ url: "string", running: "boolean", log: "string[]" });
 const DeckIssues = type({
   "slideCount?": "number",
   "passed?": "boolean",
-  "issues?": type({ path: "string", message: "string" }).array(),
+  issues: type({ path: "string", message: "string" })
+    .array()
+    .default(() => []),
 });
 
 const SHOWN_LOG_LINES = 10;
@@ -265,7 +267,7 @@ function doneChecks(content: string): Step["output"] {
 function deckDetail(content: string): string | undefined {
   const deck = readJson(content, DeckIssues);
   if (deck === null) return content;
-  const issues = (deck.issues ?? []).map(
+  const issues = deck.issues.map(
     ({ path, message }) => `✗ ${path}: ${message}`,
   );
   if (deck.slideCount !== undefined)

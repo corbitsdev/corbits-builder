@@ -49,10 +49,10 @@ export const pluginFolder = (path: string) => PLUGIN_FILE.exec(path)?.[1];
 export function byAction<File>(files: Readonly<Record<string, File>>) {
   return new Map<string, File>(
     Object.entries(files).flatMap(([path, file]) => {
-      const [, folder, action] = PLUGIN_FILE.exec(path) ?? [];
-      return folder !== undefined && action !== undefined
-        ? [[`${folder} ${action}`, file] as const]
-        : [];
+      const matched = PLUGIN_FILE.exec(path);
+      return matched?.[2] === undefined
+        ? []
+        : [[`${matched[1]} ${matched[2]}`, file] as const];
     }),
   );
 }
@@ -82,7 +82,7 @@ export function installRoles({
   );
   roles = new Map(
     specialists.flatMap(({ builder }) =>
-      (builder.roles ?? []).map((role) => [role.name, role] as const),
+      builder.roles.map((role) => [role.name, role] as const),
     ),
   );
   actions = new Map(

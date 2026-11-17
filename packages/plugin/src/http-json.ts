@@ -14,7 +14,7 @@ export class WorkflowHttpError extends Error {
     // Public API code only. Refusal bodies stay off the model audit.
     readonly refusalCode?: string,
     // Validation issues are field paths and rule text, never submitted values.
-    readonly issues?: readonly { path: string; message: string }[],
+    readonly issues: readonly { path: string; message: string }[] = [],
     // A hub route's own curated hint for a request the caller was allowed to make.
     readonly hint?: string,
     options?: ErrorOptions,
@@ -37,7 +37,7 @@ function workflowHttpMessage(
   status: number | undefined,
   reason: string,
   refusalCode: string | undefined,
-  issues: readonly { path: string; message: string }[] | undefined,
+  issues: readonly { path: string; message: string }[],
   hint: string | undefined,
 ) {
   if (status === undefined) return "workflow_http_unavailable:" + reason;
@@ -46,9 +46,7 @@ function workflowHttpMessage(
   const code = refusalCode ?? "hub_refused";
   const explanation = hint ?? `the hub refused the call (HTTP ${status})`;
   const parts = [`${code}: ${explanation}`];
-  if (issues) {
-    for (const issue of issues) parts.push(`${issue.path} ${issue.message}`);
-  }
+  for (const issue of issues) parts.push(`${issue.path} ${issue.message}`);
   return parts.join("; ");
 }
 

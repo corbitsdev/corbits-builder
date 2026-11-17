@@ -170,7 +170,7 @@ export function createWorkflowRunStreamRoutes(deps: {
         );
       }
       const turns = await readCommittedTurns(deps.repoStore, record.address);
-      const steps = runSteps(turns ?? []);
+      const steps = runSteps(turns);
       const known = new Set(steps.map((step) => step.callId));
       // A message just done can be in both until the run starts its next one.
       const current = runSteps(deps.activity.unsaved(runId)).filter(

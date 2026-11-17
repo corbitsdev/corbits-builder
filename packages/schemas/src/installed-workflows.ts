@@ -25,7 +25,7 @@ export const AppRun = type({
   command: "string > 0",
   "waitFor?": "string > 0",
   port: PortVariable,
-  "extraPorts?": PortVariable.array(),
+  extraPorts: PortVariable.array().default(() => []),
 });
 export type AppRun = typeof AppRun.infer;
 

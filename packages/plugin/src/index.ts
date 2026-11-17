@@ -187,7 +187,7 @@ export const WorkflowActionBuilder = type({
   // Project values, by name, that Builder puts in the run's assignment.
   "reads?": "string[]",
   // Project values, by name, that the run's agent may save with report_values as it learns them.
-  "writes?": "string[] > 0",
+  writes: type("string[]").default(() => []),
   // The screen actions of the same plugin that can show the finished work to the person; each
   // screen's when says which fits.
   "presents?": "string[] > 0",
@@ -324,7 +324,7 @@ export const Role = type({
   status: { "+": "reject", working: "string > 0", done: "string > 0" },
   "preferences?": "string[]",
   // The document kinds its work builds from, so a message naming one is passed along to it.
-  "buildsFrom?": "string[]",
+  buildsFrom: type("string[]").default(() => []),
   // The kind its finished work is filed as, when that is always the same.
   "files?": "string > 0",
   // It files a document of whatever kind its task names.
@@ -397,7 +397,7 @@ export type AgentBuilder = typeof AgentBuilder.infer;
 export const SpecialistBuilder = Common.merge({
   runs: "'specialist'",
   // The roles this plugin's runs play; no other plugin may declare one of the same name.
-  "roles?": Role.array(),
+  roles: Role.array().default(() => []),
   // The model settings and output budgets its roles name, by name.
   "settings?": { "[string]": ModelSetting },
   "budgets?": { "[string]": OutputBudget },

@@ -301,12 +301,18 @@ test("past a few live runs only the newest stream, so the page keeps a connectio
 });
 
 test("a run's reasoning is its preview until it writes words or a long argument", () => {
-  expect(previewOf({ text: "", thinking: "Comparing the two fonts" })).toEqual({
+  expect(
+    previewOf({ text: "", thinking: "Comparing the two fonts", toolCalls: [] }),
+  ).toEqual({
     kind: "thinking",
     text: "Comparing the two fonts",
   });
   expect(
-    previewOf({ text: "Arial it is.", thinking: "Comparing the two fonts" }),
+    previewOf({
+      text: "Arial it is.",
+      thinking: "Comparing the two fonts",
+      toolCalls: [],
+    }),
   ).toEqual({ kind: "writing", text: "Arial it is." });
   const body = "body { font-family: Arial; }\n".repeat(4);
   expect(
@@ -325,7 +331,7 @@ test("a run's reasoning is its preview until it writes words or a long argument"
 });
 
 test("reasoning that arrives with no words, as encrypted reasoning does, still reads as thinking", () => {
-  expect(previewOf({ text: "", thinking: "" })).toEqual({
+  expect(previewOf({ text: "", thinking: "", toolCalls: [] })).toEqual({
     kind: "thinking",
     text: "",
   });
@@ -477,7 +483,7 @@ test("a call that started a specialist stays with the words it led to when the n
     { type: "inference.start" },
     {
       type: "inference.text.delta",
-      data: { partial: { text: "The coder is on it." } },
+      data: { partial: { text: "The coder is on it.", toolCalls: [] } },
     },
     { type: "inference.done" },
     { type: "message.run.ended" },

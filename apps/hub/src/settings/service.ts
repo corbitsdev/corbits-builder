@@ -31,11 +31,11 @@ import { modelDirectory } from "./custom-providers.ts";
 import { digest } from "../lib/digest.ts";
 import type { Actor } from "../lib/actor.ts";
 
-const record = (
-  fields: SettingsRecord["fields"],
+const record = <Fields extends SettingsRecord["fields"]>(
+  fields: Fields,
   projectId?: string,
   personal = false,
-): SettingsRecord => ({
+): SettingsRecord & { fields: Fields } => ({
   scope: personal ? "personal" : projectId ? "project" : "tenant",
   ...(projectId ? { projectId } : {}),
   fields,

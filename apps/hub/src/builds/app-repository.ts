@@ -796,15 +796,20 @@ export function createAppRepository(options: {
      * repository being unavailable is a failure for status and the next tool result, never a
      * thrown error: the next version retries the clone.
      */
-    prepare: (signal: AbortSignal) =>
-      serial(() => prepare(signal))
-        .catch(async (error: unknown) => {
-          failed(error);
+    async prepare(signal: AbortSignal) {
+      try {
+        await serial(() => prepare(signal));
+      } catch (error) {
+        failed(error);
+        try {
           if (await workspaceHoldsApp(workspace)) return;
           await mkdir(dirname(unattached), { recursive: true });
           await writeFile(unattached, "");
-        })
-        .catch((error: unknown) => failed(error)),
+        } catch (marking) {
+          failed(marking);
+        }
+      }
+    },
 
     /**
      * Versions the workspace in the background; the caller never waits. Requests that arrive while

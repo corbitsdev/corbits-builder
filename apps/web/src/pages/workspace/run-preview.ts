@@ -127,8 +127,7 @@ function longArgument(partialArguments: unknown): string | undefined {
  * is still thinking.
  */
 export function previewOf(partial: Snapshot): RunPreview | undefined {
-  const calls = partial.toolCalls ?? [];
-  for (const call of [...calls].reverse()) {
+  for (const call of [...partial.toolCalls].reverse()) {
     const text = longArgument(call.partialArguments);
     if (text !== undefined) return { kind: "writing", text };
   }
@@ -260,7 +259,9 @@ export function savedTurnSteps(
   for (const step of steps) {
     const reply = sorted.find((at) => at >= step.at);
     if (reply === undefined) continue;
-    byReply.set(reply, [...(byReply.get(reply) ?? []), savedPart(step)]);
+    const same = byReply.get(reply);
+    if (same === undefined) byReply.set(reply, [savedPart(step)]);
+    else same.push(savedPart(step));
   }
   return byReply;
 }

@@ -77,10 +77,10 @@ export function installScreens({
           actions,
           default: isDefault,
         } = SpecialistBuilder.assert(builder);
-        sharing.set(handle, [
-          ...(sharing.get(handle) ?? []),
-          { name: packageName, isDefault: isDefault === true },
-        ]);
+        const shared = { name: packageName, isDefault: isDefault === true };
+        const same = sharing.get(handle);
+        if (same === undefined) sharing.set(handle, [shared]);
+        else same.push(shared);
         return Object.entries(actions).flatMap(([action, entry]) => {
           const files = `${folder} ${action}`;
           const view = viewOf.get(files);
@@ -119,7 +119,8 @@ export const screensFor =
   (values: Readonly<Record<string, unknown>>) =>
   ({ plugin, action }: { plugin: string; action?: string }) => {
     if (action === undefined) return undefined;
-    const sharing = packages.get(plugin) ?? [];
+    const sharing = packages.get(plugin);
+    if (sharing === undefined) return undefined;
     const chosen =
       sharing.find(({ name }) => name === values[selectionName(plugin)]) ??
       sharing.find(({ isDefault }) => isDefault) ??
@@ -135,7 +136,7 @@ export function namesScreen(input: unknown) {
   if (!("plugin" in input) || !("action" in input)) return false;
   const { plugin, action } = input;
   if (typeof plugin !== "string" || typeof action !== "string") return false;
-  return (packages.get(plugin) ?? []).some(({ name }) =>
-    installed.has(key(name, action)),
-  );
+  const sharing = packages.get(plugin);
+  if (sharing === undefined) return false;
+  return sharing.some(({ name }) => installed.has(key(name, action)));
 }

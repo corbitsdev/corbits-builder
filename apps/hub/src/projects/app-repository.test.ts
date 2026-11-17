@@ -114,7 +114,11 @@ test("a project serves a web app by its stack.run, whatever it started from", ()
 
   // Code that began from no starter serves the app its coder reported.
   const reported = { command: "python3 -m http.server $PORT", port: "PORT" };
-  expect(declaredRun({ "stack.run": reported })).toEqual(reported);
+  expect(declaredRun({ "stack.run": reported })).toEqual({
+    command: "python3 -m http.server $PORT",
+    port: "PORT",
+    extraPorts: [],
+  });
   expect(declaredRun({ "stack.checks": "make test" })).toBeUndefined();
   expect(
     declaredRun({ "stack.run": { command: "make serve" } }),

@@ -18,10 +18,12 @@ import type { Actor } from "../lib/actor.ts";
 // The looks that are themes themselves, in the order the plugin lists them, each with its sample
 // design; none when no installed plugin drafts designs.
 const DESIGN = CATALOG.design;
-const THEMES = (DESIGN?.looks ?? []).flatMap((look) => {
-  const files = DESIGN?.themes.get(look.id);
-  return files === undefined ? [] : [{ ...look, files }];
-});
+const THEMES = DESIGN
+  ? DESIGN.looks.flatMap((look) => {
+      const files = DESIGN.themes.get(look.id);
+      return files === undefined ? [] : [{ ...look, files }];
+    })
+  : [];
 
 export function mountDesignThemeRoutes(app: Hono<TenantEnv>, db: DB["db"]) {
   const readable = (actor: Actor, projectId: string) =>

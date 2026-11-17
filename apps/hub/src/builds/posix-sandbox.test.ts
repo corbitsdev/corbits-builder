@@ -277,6 +277,7 @@ sandboxTest(
           command:
             "echo listening on $PORT; (sleep 3; echo child > late.txt) & exec sleep 300",
           port: "PORT",
+          extraPorts: [],
           waitFor: "listening",
         },
         page: false,
@@ -356,6 +357,7 @@ sandboxTest(
           command:
             "echo '@app/shared build: Exited with code 0'; echo listening; exec sleep 300",
           port: "PORT",
+          extraPorts: [],
           waitFor: "listening",
         },
         page: false,
@@ -368,6 +370,7 @@ sandboxTest(
           command:
             "echo '@app/server dev: Exited with code 1'; echo listening; exec sleep 300",
           port: "PORT",
+          extraPorts: [],
           waitFor: "listening",
         },
         page: false,

@@ -17,10 +17,10 @@ export function earlierDocumentRole(
   rolesAtWork: ReadonlySet<string>,
 ): string | undefined {
   for (const role of rolesAtWork) {
-    const kinds = roleOf(role)?.buildsFrom ?? [];
+    const kinds = roleOf(role)?.buildsFrom;
     const named = documents.some(
       (document) =>
-        kinds.includes(document.kind) &&
+        kinds?.includes(document.kind) &&
         (names(text, document.title) ||
           names(text, shortDocumentName(document.kind, document.title))),
     );

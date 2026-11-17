@@ -582,9 +582,12 @@ export function mountArtifactRoutes(
           ({ plugin, action }) =>
             plugin === asked.plugin && action === asked.action,
         );
-        const kinds = (screen?.returns(asked.input) ?? []).flatMap((fact) =>
-          fact.startsWith(APPROVED) ? [fact.slice(APPROVED.length)] : [],
-        );
+        if (!screen) return [];
+        const kinds = screen
+          .returns(asked.input)
+          .flatMap((fact) =>
+            fact.startsWith(APPROVED) ? [fact.slice(APPROVED.length)] : [],
+          );
         return kinds.includes(kind) ? [{ signalName, kinds }] : [];
       });
       if (asking !== undefined) {

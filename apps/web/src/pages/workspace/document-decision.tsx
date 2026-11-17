@@ -21,6 +21,12 @@ function settledLine(approval: DocumentApproval): string {
   );
 }
 
+function settledTitle(approval: DocumentApproval): string | undefined {
+  if (approval.outcome?.status === "approved") return settledLine(approval);
+  if (approval.outcome?.status === "rejected") return text.declined;
+  return undefined;
+}
+
 export function DocumentDecision({
   approval,
   disabled = false,
@@ -42,6 +48,7 @@ export function DocumentDecision({
     if (decision.outcome === "rejected") onNo();
     else onYes();
   };
+  const title = settledTitle(approval);
   return (
     <ToolApproval
       className={styles.decision}
@@ -50,11 +57,7 @@ export function DocumentDecision({
       onDecide={decide}
       disabled={disabled}
       {...(error === undefined ? {} : { error })}
-      {...(approval.outcome?.status === "approved"
-        ? { title: settledLine(approval) }
-        : approval.outcome?.status === "rejected"
-          ? { title: text.declined }
-          : {})}
+      {...(title === undefined ? {} : { title })}
       labels={{
         title: approvalQuestion(approval.toolName, approval.subject),
         approve: text.approve,

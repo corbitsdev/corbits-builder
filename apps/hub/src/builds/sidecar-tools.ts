@@ -940,8 +940,8 @@ export function createSidecarCodingTools(policy: {
           notes.push(await restartForPackages());
         }
         if (versioning) notes.push(versioning);
-        const reports = executor?.reports() ?? [];
-        if (reports.length)
+        const reports = executor?.reports();
+        if (reports?.length)
           notes.push(
             `The running app reports:\n${reports.map((report) => `- ${report}`).join("\n")}`,
           );

@@ -859,7 +859,7 @@ export async function createPosixBuildExecutor(
         try {
           await stopApp();
           const given: Record<string, number> = {};
-          for (const name of [run.port, ...(run.extraPorts ?? [])])
+          for (const name of [run.port, ...run.extraPorts])
             given[name] = await portFor(name);
           const address = given[run.port]!;
           await appRelay.reserve();

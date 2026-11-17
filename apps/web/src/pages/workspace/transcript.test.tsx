@@ -241,7 +241,10 @@ describe("conversation transcript", () => {
     const reply = `${"a".repeat(maxTurnText - 1)}😀 and more`;
     const run = [
       { type: "inference.start" },
-      { type: "inference.text.delta", data: { partial: { text: reply } } },
+      {
+        type: "inference.text.delta",
+        data: { partial: { text: reply, toolCalls: [] } },
+      },
       { type: "inference.done" },
     ].reduce((live, event) => foldLiveRun(live, event, null).run, emptyLiveRun);
     expect(
@@ -288,7 +291,10 @@ describe("conversation transcript", () => {
       [
         { type: "message.run.started" },
         { type: "inference.start" },
-        { type: "inference.delta", data: { partial: { thinking: reasoning } } },
+        {
+          type: "inference.delta",
+          data: { partial: { thinking: reasoning, toolCalls: [] } },
+        },
       ],
       [
         {
@@ -298,11 +304,18 @@ describe("conversation transcript", () => {
         { type: "inference.done" },
         { type: "inference.start" },
       ],
-      [{ type: "inference.delta", data: { partial: { thinking: reasoning } } }],
+      [
+        {
+          type: "inference.delta",
+          data: { partial: { thinking: reasoning, toolCalls: [] } },
+        },
+      ],
       [
         {
           type: "inference.text.delta",
-          data: { partial: { thinking: reasoning, text: reply } },
+          data: {
+            partial: { thinking: reasoning, text: reply, toolCalls: [] },
+          },
         },
       ],
     ];

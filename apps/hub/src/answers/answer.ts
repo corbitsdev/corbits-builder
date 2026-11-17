@@ -60,8 +60,8 @@ export function createAnswer({
       idempotencyKey: crypto.randomUUID(),
       fields: {
         preferences: {
-          value: Object.assign({}, preferences?.value, chosen),
-          baseVersion: preferences?.version ?? 0,
+          value: Object.assign({}, preferences.value, chosen),
+          baseVersion: preferences.version,
         },
       },
     });
