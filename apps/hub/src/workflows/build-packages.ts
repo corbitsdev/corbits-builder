@@ -1,13 +1,12 @@
+import { pathToFileURL } from "node:url";
+import { workflowStep } from "./spawn-role.ts";
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
+import { CATALOG } from "../plugins/catalog.ts";
 import { nativePackageName } from "./package-name.ts";
 import type { RoleInference } from "./role-inference.ts";
-import {
-  WORKFLOW_PACKAGES,
-  type WorkflowRole,
-} from "@corbits-builder/schemas/installed-workflows";
 
 // The version follows the bundle bytes, so a rebuilt workflow publishes beside the old one instead of
 // colliding with a tarball the registry already holds.
@@ -15,29 +14,36 @@ function contentVersion(base: string, bundle: string): string {
   return `${base}-sha-${createHash("sha256").update(bundle).digest("hex").slice(0, 8)}`;
 }
 
-// Each package is an entry under entries/ built on what its role's model binding resolved to.
-const PACKAGES = Object.entries(WORKFLOW_PACKAGES).map(([name, role]) => ({
-  name,
-  role,
-}));
+export function assertPackageRole(
+  workflow: unknown,
+  role: string,
+  name: string,
+) {
+  if (workflowStep({ projection: workflow })?.role !== role)
+    throw new Error(
+      `The package ${name} declares role ${role}, but its agent tags disagree`,
+    );
+}
 
 export async function buildWorkflowPackages(
   destination: string,
   base: string,
-  inference: Record<WorkflowRole, RoleInference>,
+  inference: Readonly<Record<string, RoleInference>>,
 ) {
   if (!/^\d+\.\d+\.\d+$/.test(base)) throw new Error("invalid_package_version");
   const output = resolve(destination);
   await mkdir(output, { recursive: true });
   const manifest = [];
-  for (const { name, role } of PACKAGES) {
+  for (const [name, { role, entry }] of CATALOG.packages) {
+    const roleInference = inference[role];
+    if (!roleInference) throw new Error(`No inference for the role ${role}`);
     const result = await Bun.build({
       define: {
         "process.env.BUILDER_ROLE_INFERENCE": JSON.stringify(
-          JSON.stringify(inference[role]),
+          JSON.stringify(roleInference),
         ),
       },
-      entrypoints: [join(import.meta.dir, "entries", name + ".ts")],
+      entrypoints: [entry],
       target: "bun",
       format: "esm",
       minify: true,
@@ -58,7 +64,10 @@ export async function buildWorkflowPackages(
     const filename = name + "-native-" + version + ".tgz";
     try {
       await mkdir(join(staging, "package", "dist"), { recursive: true });
-      await writeFile(join(staging, "package", "dist", "workflow.mjs"), bundle);
+      const builtEntry = join(staging, "package", "dist", "workflow.mjs");
+      await writeFile(builtEntry, bundle);
+      const definition = await import(pathToFileURL(builtEntry).href);
+      assertPackageRole(definition.default, role, name);
       await writeFile(
         join(staging, "package", "package.json"),
         JSON.stringify({

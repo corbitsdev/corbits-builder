@@ -1,0 +1,40 @@
+{
+  "name": "@corbits-builder/designer",
+  "version": "0.2.0",
+  "private": true,
+  "license": "SEE LICENSE IN ../../LICENSE.md",
+  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
+  "type": "module",
+  "exports": {
+    "./agent": "./src/agent.ts",
+    "./skills": "./src/skills.ts",
+    "./packages/*": "./src/packages/*.ts"
+  },
+  "dependencies": {
+    "@corbits-builder/hub": "workspace:*",
+    "@intx/agent": "workspace:*",
+    "@intx/tools-mail": "workspace:*",
+    "@intx/workflow": "workspace:*"
+  },
+  "builder": {
+    "roles": [
+      {
+        "name": "designer",
+        "model": "designer",
+        "limits": "design",
+        "called": "the designer",
+        "ended": {
+          "failed": "The designer stopped before finishing.",
+          "cancelled": "The design was stopped.",
+          "task": "The designer working on the app's design"
+        }
+      }
+    ],
+    "packages": {
+      "designer": {
+        "entry": "./src/packages/designer.ts",
+        "role": "designer"
+      }
+    }
+  }
+}

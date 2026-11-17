@@ -3,22 +3,13 @@ import { type } from "arktype";
 import { PerCallInferenceOptions } from "@intx/types/runtime-core";
 import { MODEL_PROVIDERS } from "../config/models.ts";
 import { RoleInference, resolveRoleInference } from "./role-inference.ts";
-import type { WorkflowRole } from "@corbits-builder/schemas/installed-workflows";
-
-const roles: WorkflowRole[] = [
-  "coordinator",
-  "writer",
-  "reviewer",
-  "designer",
-  "coder",
-  "presenter",
-];
+import { CATALOG } from "../plugins/catalog.ts";
 
 test("every role gives both xAI connections their longer timeouts and keeps per-call parameters Interchange accepts", () => {
   for (const provider of MODEL_PROVIDERS) {
     for (const model of provider.models) {
-      for (const role of roles) {
-        const inference = resolveRoleInference(MODEL_PROVIDERS, role, {
+      for (const { limits } of CATALOG.roles) {
+        const inference = resolveRoleInference(MODEL_PROVIDERS, limits, {
           provider: provider.id,
           model: model.id,
           effort: "high",

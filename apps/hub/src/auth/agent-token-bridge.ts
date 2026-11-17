@@ -1,10 +1,4 @@
-import { type } from "arktype";
-import {
-  InstalledWorkflows,
-  INSTALLED_WORKFLOWS_KEY,
-  WRITER_PACKAGES,
-  type WorkflowRole,
-} from "@corbits-builder/schemas/installed-workflows";
+import type { InstalledWorkflows } from "@corbits-builder/schemas/installed-workflows";
 import { projectCoordinator } from "../db/schema.ts";
 import { verifyAgentToken } from "@corbits/agent-token";
 import { sha256 } from "@intx/crypto";
@@ -31,11 +25,15 @@ import { createCoordinatorRegistry } from "./coordinator-registry.ts";
 import { projectResource } from "../projects/errors.ts";
 import { spawnedWorkflowRole } from "../workflows/spawn-role.ts";
 import { buildPackageLayout } from "../builds/package-layout.ts";
-import { scopeWorkflows } from "../workflows/project-scope.ts";
+import {
+  installedFrom,
+  scopeWorkflows,
+} from "../workflows/install-for-tenant.ts";
+import { CATALOG } from "../plugins/catalog.ts";
 import { nativePackageName } from "../workflows/package-name.ts";
 import { readJson } from "../lib/json.ts";
 import { coordinatorUpgrading } from "@corbits-builder/schemas/conversation";
-import { installsAnyPackage, opensNetwork } from "../config/preferences.ts";
+import { opensNetwork } from "../config/preferences.ts";
 import { loadSettings } from "../settings/policy.ts";
 
 let layoutPromise: ReturnType<typeof buildPackageLayout> | undefined;
@@ -127,7 +125,7 @@ async function startsWriter(request: Request) {
       : undefined;
   return (
     typeof pin === "string" &&
-    Object.values(WRITER_PACKAGES).some((name) =>
+    Array.from(CATALOG.filers.values()).some((name) =>
       pin.startsWith(nativePackageName(name) + "@"),
     )
   );
@@ -331,7 +329,7 @@ export function createAgentTokenBridge(
     if (runtimeScope) {
       if (!nativeBearer || c.req.method !== "GET") return denied();
       let binding = await registry.boundRun(identity.runId);
-      let role: WorkflowRole = "coordinator";
+      let role: string = "coordinator";
       if (!binding) {
         const launch = await db.query.workflowRunLaunchSpec.findFirst({
           where: eq(workflowRunLaunchSpec.anchorRunId, identity.runId),
@@ -359,17 +357,16 @@ export function createAgentTokenBridge(
         where: eq(tenant.id, identity.tenantId),
       });
       if (!row) return denied();
-      const config = row.config as Record<string, unknown> | null;
-      const stored = InstalledWorkflows(config?.[INSTALLED_WORKFLOWS_KEY]);
+      const stored = installedFrom(row.config);
       const installed =
-        stored instanceof type.errors
+        stored.status !== "current"
           ? upgrades &&
             binding.run.principalId &&
             (await upgrades.install(
               { tenantId: row.id, principalId: binding.run.principalId },
               binding.projectId,
             ))
-          : stored;
+          : stored.installed;
       if (!installed) return denied();
       const { preferences } = await loadSettings(
         db,
@@ -381,10 +378,7 @@ export function createAgentTokenBridge(
         domain: row.domain,
         projectId: binding.projectId,
         role,
-        workflows: scopeWorkflows(
-          installed,
-          installsAnyPackage(preferences.value),
-        ),
+        workflows: scopeWorkflows(installed, preferences.value),
         openNetwork: opensNetwork(preferences.value),
         build: await buildLayout(),
       });

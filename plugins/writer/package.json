@@ -1,0 +1,58 @@
+{
+  "name": "@corbits-builder/writer",
+  "version": "0.7.1",
+  "private": true,
+  "license": "SEE LICENSE IN ../../LICENSE.md",
+  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
+  "type": "module",
+  "exports": {
+    "./skills": "./src/skills.ts",
+    "./task": "./src/task.ts",
+    "./packages/*": "./src/packages/*.ts"
+  },
+  "dependencies": {
+    "@corbits-builder/hub": "workspace:*",
+    "@corbits-builder/schemas": "workspace:*",
+    "@intx/agent": "workspace:*",
+    "@intx/workflow": "workspace:*",
+    "arktype": "catalog:"
+  },
+  "builder": {
+    "roles": [
+      {
+        "name": "writer",
+        "model": "writer",
+        "limits": "document",
+        "called": "a writer",
+        "ended": {
+          "failed": "The writer stopped before finishing.",
+          "cancelled": "The writer was stopped.",
+          "task": "The writer writing the {kind} document"
+        }
+      }
+    ],
+    "packages": {
+      "writer-constraints": {
+        "entry": "./src/packages/writer-constraints.ts",
+        "role": "writer",
+        "files": "constraints",
+        "legacyAlias": "writer"
+      },
+      "writer-approaches": {
+        "entry": "./src/packages/writer-approaches.ts",
+        "role": "writer",
+        "files": "approaches"
+      },
+      "writer-product-requirements": {
+        "entry": "./src/packages/writer-product-requirements.ts",
+        "role": "writer",
+        "files": "product_requirements"
+      },
+      "writer-build-plan": {
+        "entry": "./src/packages/writer-build-plan.ts",
+        "role": "writer",
+        "files": "build_plan"
+      }
+    }
+  }
+}

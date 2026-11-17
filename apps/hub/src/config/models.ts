@@ -4,17 +4,14 @@ import type {
   CustomProfile,
   Effort,
   ModelChoice,
-  ModelRole,
   RoleBinding,
   Tier,
   Tiers,
 } from "@corbits-builder/schemas/models";
-import type { WorkflowRole } from "@corbits-builder/schemas/installed-workflows";
 import type { InferenceError } from "@intx/types/runtime";
 import {
   customModelLimits,
   modelLimits,
-  type AgentRole,
   type ModelLimits,
 } from "../inference/model-limits.ts";
 
@@ -247,66 +244,6 @@ export function bindingLimits(
   const offered = entry.models.find((candidate) => candidate.id === model);
   return offered && customModelLimits(offered);
 }
-
-// Each role a profile binds, the tier it runs on, the workflow that runs it, and the limits record
-// it budgets by. A person picks only a profile; the tier of each role is config.
-export const MODEL_ROLES: readonly Readonly<{
-  id: ModelRole;
-  label: string;
-  hint: string;
-  tier: Tier;
-  workflow: WorkflowRole;
-  limits: AgentRole;
-}>[] = [
-  {
-    id: "coordinator",
-    label: "Coordinator",
-    hint: "Talks with you and plans the work.",
-    tier: "medium",
-    workflow: "coordinator",
-    limits: "coordinator",
-  },
-  {
-    id: "writer",
-    label: "Writer",
-    hint: "Writes the documents.",
-    tier: "medium",
-    workflow: "writer",
-    limits: "document",
-  },
-  {
-    id: "designer",
-    label: "Designer",
-    hint: "Designs the screens.",
-    tier: "high",
-    workflow: "designer",
-    limits: "design",
-  },
-  {
-    id: "builder",
-    label: "App builder",
-    hint: "Builds the app.",
-    tier: "high",
-    workflow: "coder",
-    limits: "coding",
-  },
-  {
-    id: "reviewer",
-    label: "Reviewer",
-    hint: "Reviews documents before you approve them.",
-    tier: "low",
-    workflow: "reviewer",
-    limits: "document",
-  },
-  {
-    id: "presenter",
-    label: "Presenter",
-    hint: "Builds slide decks and approval packages for an audience.",
-    tier: "medium",
-    workflow: "presenter",
-    limits: "presenter",
-  },
-];
 
 export const EFFORTS: readonly Readonly<{ id: Effort; label: string }>[] = [
   { id: "low", label: "Low" },
@@ -614,22 +551,17 @@ export function frozenModelChoice(
   return profile ? frozen(profile) : null;
 }
 
-/** The binding each workflow runs on, from a choice this server can run. */
-export function workflowBindings(
+/**
+ * The binding a model setting runs on, from a choice this server can run: the tier the setting
+ * names, unless the profile assigns that setting another.
+ */
+export function tierBinding(
   directory: ModelDirectory,
   choice: ModelChoice,
-): Record<WorkflowRole, RoleBinding> {
+  model: Readonly<{ setting: string; tier: Tier }>,
+): RoleBinding {
   const profile = chosenProfile(directory, choice);
   if (!profile)
     throw new Error(`model_choice_unrunnable:${choice.profile ?? ""}`);
-  return Object.fromEntries(
-    MODEL_ROLES.map((role) => [
-      role.workflow,
-      profile.tiers[profile.roleTiers?.[role.id] ?? role.tier],
-    ]),
-  ) as Record<WorkflowRole, RoleBinding>;
-}
-
-export function limitsRole(workflow: WorkflowRole): AgentRole {
-  return MODEL_ROLES.find((role) => role.workflow === workflow)!.limits;
+  return profile.tiers[profile.roleTiers?.[model.setting] ?? model.tier];
 }

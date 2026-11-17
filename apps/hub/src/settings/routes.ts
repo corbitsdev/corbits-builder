@@ -38,7 +38,6 @@ import {
   CUSTOM_APIS,
   EFFORTS,
   MODEL_CHOICE_REFUSALS,
-  MODEL_ROLES,
   PROFILES,
   TIERS,
   providerOfRow,
@@ -53,6 +52,7 @@ import {
   updateCustomProvider,
 } from "./custom-providers.ts";
 import { readJson } from "../lib/json.ts";
+import { CATALOG } from "../plugins/catalog.ts";
 import { connectedProviders } from "../projects/model-choice.ts";
 import {
   createAvailabilityProbe,
@@ -321,11 +321,11 @@ export function createSettingsRoutes(
                 name: `${entry.label}${index === 0 ? "" : ` ${index + 1}`}`,
               })),
           })),
-        roles: MODEL_ROLES.map(({ id, label, hint, tier }) => ({
+        roles: Array.from(CATALOG.settings, ([id, setting]) => ({
           id,
-          label,
-          hint,
-          tier,
+          label: setting.label,
+          hint: setting.hint,
+          tier: setting.tier,
         })),
         tiers: [...TIERS],
         efforts: [...EFFORTS],

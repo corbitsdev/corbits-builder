@@ -1,0 +1,56 @@
+import { createDesignerAgent } from "../agent.ts";
+import { createDesignerWorkflow } from "../workflow.ts";
+import { mail, type MailToolEnv } from "@intx/tools-mail/sidecar-bundle";
+import {
+  createSidecarCodingTools,
+  type CodingSidecarEnv,
+} from "@corbits-builder/hub/builds/sidecar-tools";
+import { roleInference } from "@corbits-builder/hub/workflows/role-inference";
+import { compactingDirector } from "@corbits-builder/hub/workflows/director";
+import {
+  dropDegenerateTurn,
+  trimHistory,
+} from "@corbits-builder/hub/workflows/compaction";
+import { nativePackageName } from "@corbits-builder/hub/workflows/package-name";
+
+const compacting = compactingDirector(nativePackageName("designer"));
+
+const { source, contextWindow, timeouts, parameters } =
+  roleInference("designer");
+const agent = createDesignerAgent<CodingSidecarEnv & MailToolEnv>({
+  director: compacting.build({
+    contextWindow,
+    timeouts,
+    compactAt: 0.6,
+    checkBeforeDone: true,
+    fileBeforeDone: true,
+  }),
+  id: "designer",
+  standards: [],
+  inference: { ...source, parameters },
+  tools: [
+    mail,
+    createSidecarCodingTools({ approval: "allow", workspace: "design" }),
+  ],
+});
+const workflow = createDesignerWorkflow({
+  id: "corbits-builder-designer",
+  address: "designer",
+  agent,
+  inference: { literal: parameters },
+  grantRequirements: [
+    { resource: "sb-project:*", action: "read", source: "invoker" },
+    {
+      resource: "sb-artifact:design_option",
+      action: "write",
+      source: "invoker",
+    },
+  ],
+});
+// The directors module of this package: the director the agent names and the compactors it uses.
+export const director = compacting.factory;
+export const historyCompactor = trimHistory(
+  contextWindow - parameters.maxTokens,
+);
+export const degenerateTurnCompactor = dropDegenerateTurn;
+export default workflow;

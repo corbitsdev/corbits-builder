@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { INPUTS_DIRECTORY } from "@corbits-builder/schemas/app-files";
-import { assignmentToWriterMessage } from "./writer-task.ts";
+import { assignmentToWriterMessage } from "@corbits-builder/writer/task";
 import { createInputFileTools, inputFileName } from "./input-file-tools.ts";
 
 test("writer inputs are placed once, confined to their folder, and saved results remain readable", async () => {

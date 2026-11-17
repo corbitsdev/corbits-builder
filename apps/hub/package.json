@@ -6,14 +6,26 @@
   "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
   "type": "module",
   "exports": {
+    "./plugins/bundle": "./src/plugins/bundle.ts",
     "./app": "./src/app.ts",
+    "./artifacts/package-tools": "./src/artifacts/package-tools.ts",
     "./artifacts/service": "./src/artifacts/service.ts",
+    "./artifacts/tools": "./src/artifacts/tools.ts",
+    "./builds/browser-catalog": "./src/builds/browser-catalog.ts",
+    "./builds/sidecar-tools": "./src/builds/sidecar-tools.ts",
     "./environment": "./src/environment.ts",
     "./migrate": "./src/migrate.ts",
     "./projects/app-repository": "./src/projects/app-repository.ts",
     "./signing-key": "./src/signing-key.ts",
+    "./skills/tools": "./src/skills/tools.ts",
+    "./workflows/compaction": "./src/workflows/compaction.ts",
+    "./workflows/director": "./src/workflows/director.ts",
+    "./workflows/input-file-tools": "./src/workflows/input-file-tools.ts",
     "./workflows/install-for-tenant": "./src/workflows/install-for-tenant.ts",
+    "./workflows/package-name": "./src/workflows/package-name.ts",
+    "./workflows/role-inference": "./src/workflows/role-inference.ts",
     "./config/design": "./src/config/design.ts",
+    "./config/mcp": "./src/config/mcp.ts",
     "./config/models": "./src/config/models.ts",
     "./settings/policy": "./src/settings/policy.ts"
   },
@@ -22,6 +34,7 @@
     "@corbits-builder/coder": "workspace:*",
     "@corbits-builder/coordinator": "workspace:*",
     "@corbits-builder/designer": "workspace:*",
+    "@corbits-builder/plugin-host": "workspace:*",
     "@corbits-builder/presenter": "workspace:*",
     "@corbits-builder/reviewer": "workspace:*",
     "@corbits-builder/schemas": "workspace:*",
@@ -75,5 +88,68 @@
   },
   "devDependencies": {
     "@types/nodemailer": "8.0.2"
+  },
+  "builder": {
+    "roles": [
+      {
+        "name": "coordinator",
+        "model": "coordinator",
+        "limits": "coordinator",
+        "called": "the coordinator"
+      },
+      {
+        "name": "reviewer",
+        "model": "reviewer",
+        "limits": "document",
+        "called": "a reviewer",
+        "ended": {
+          "failed": "The reviewer stopped before finishing.",
+          "cancelled": "The review was stopped.",
+          "task": "The reviewer checking the {kind} document"
+        }
+      }
+    ],
+    "settings": {
+      "coordinator": {
+        "label": "Coordinator",
+        "hint": "Talks with you and plans the work.",
+        "tier": "medium"
+      },
+      "writer": {
+        "label": "Writer",
+        "hint": "Writes the documents.",
+        "tier": "medium"
+      },
+      "designer": {
+        "label": "Designer",
+        "hint": "Designs the screens.",
+        "tier": "high"
+      },
+      "builder": {
+        "label": "App builder",
+        "hint": "Builds the app.",
+        "tier": "high"
+      },
+      "reviewer": {
+        "label": "Reviewer",
+        "hint": "Reviews documents before you approve them.",
+        "tier": "low"
+      },
+      "presenter": {
+        "label": "Presenter",
+        "hint": "Builds slide decks and approval packages for an audience.",
+        "tier": "medium"
+      }
+    },
+    "packages": {
+      "coordinator": {
+        "entry": "./src/workflows/entries/coordinator.ts",
+        "role": "coordinator"
+      },
+      "reviewer": {
+        "entry": "./src/workflows/entries/reviewer.ts",
+        "role": "reviewer"
+      }
+    }
   }
 }

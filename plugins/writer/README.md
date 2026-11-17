@@ -1,0 +1,40 @@
+# Writer
+
+The document writer: writes one project document per run, either constraints,
+approaches, product requirements or the build plan, from the documents the
+coordinator hands it.
+
+## Where it fits
+
+This package only declares data. It imports `@intx/agent/authoring` and
+`@intx/workflow/definition` from Interchange, plus arktype. The
+[writer package][entry] imports it, supplies the model, director and
+tools, and builds one workflow per document kind; the
+[coordinator][coordinator]'s `deploy_writer` starts the one for the kind it
+asks for. The writer's tools are the hub's `write_artifact`, which saves only
+its own kind's fields, `read_skill`, `read_file` and `search_files`. Its task names the source
+documents placed in the inputs folder.
+
+## Layout
+
+- `src/prompt.ts`: the system prompt.
+- `src/agent.ts`: `createWriterAgent`, which requires an explicit provider
+  and model.
+- `src/workflow.ts`: `createWriterWorkflow`, a bounded single-step workflow
+  that runs once on its first message.
+- `src/contract.ts`: `writerTaskMessage`, the schema-checked assignment the
+  hub sends.
+- `skills/`: one skill per document kind, each a `SKILL.md` and a reference
+  exemplar, including the coordinator's problem-brief skill.
+- `src/skills.ts`: a Bun macro that inlines `skills/` when an agent bundle
+  is built.
+
+## Working on it
+
+What a document should contain lives in its skill rather than the prompt;
+prompt conventions are in [AGENTS.md][agents]. `bun run typecheck` and `bun run test` cover it, and `bun run dev` runs it in a
+real project.
+
+[entry]: https://github.com/corbitsdev/corbits-builder/blob/main/plugins/writer/src/package.ts
+[coordinator]: https://github.com/corbitsdev/corbits-builder/tree/main/workflows/coordinator
+[agents]: https://github.com/corbitsdev/corbits-builder/blob/main/AGENTS.md

@@ -1,0 +1,50 @@
+{
+  "name": "@corbits-builder/coder",
+  "version": "0.9.0",
+  "private": true,
+  "license": "SEE LICENSE IN ../../LICENSE.md",
+  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
+  "type": "module",
+  "exports": {
+    "./assets": "./src/assets.ts",
+    "./contract": "./src/contract.ts",
+    "./packages/*": "./src/packages/*.ts"
+  },
+  "dependencies": {
+    "@corbits-builder/hub": "workspace:*",
+    "@corbits/mcp": "0.4.1",
+    "@corbits/react-ui": "0.5.1",
+    "@intx/agent": "workspace:*",
+    "@intx/tools-mail": "workspace:*",
+    "@intx/workflow": "workspace:*"
+  },
+  "builder": {
+    "roles": [
+      {
+        "name": "coder",
+        "model": "builder",
+        "limits": "coding",
+        "called": "the app builder",
+        "ended": {
+          "failed": "The app builder stopped before finishing.",
+          "cancelled": "The build was stopped.",
+          "task": "The coder building the app"
+        }
+      }
+    ],
+    "packages": {
+      "coder": {
+        "entry": "./src/packages/coder.ts",
+        "role": "coder"
+      },
+      "coder-any-package": {
+        "entry": "./src/packages/coder-any-package.ts",
+        "role": "coder",
+        "replaces": {
+          "package": "coder",
+          "when": "install_any_package"
+        }
+      }
+    }
+  }
+}

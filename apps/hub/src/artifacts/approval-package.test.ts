@@ -13,7 +13,7 @@ import {
 } from "./approval-package.ts";
 import { mountArtifactRoutes } from "./routes.ts";
 import type { createArtifactService } from "./service.ts";
-import { createArtifactTools } from "./tools.ts";
+import { createCoordinatorArtifactTools } from "./tools.ts";
 
 const BRIEF_ID = "11111111-1111-4111-8111-111111111111";
 const BRIEF_SHA = "a".repeat(64);
@@ -382,7 +382,7 @@ describe("approval package validation and secret scanning", () => {
         resolve: async () => ({ kind: "http", fetch }),
       }),
     } as unknown as RuntimeCapabilities;
-    const tool = createArtifactTools("coordinator")({ capabilities } as never);
+    const tool = createCoordinatorArtifactTools()({ capabilities } as never);
     const result = await tool.run(
       {
         id: "call-1",

@@ -33,7 +33,7 @@ const allEfforts: readonly Effort[] = ["low", "medium", "high", "max"];
 // 30000 tokens plus reasoning, and a degenerate turn runs to the cap, so coding is twice that. The
 // Codex and xAI backends accept neither max_output_tokens nor temperature, and
 // @corbits/codex-provider and @corbits/xai-provider omit both, so there these caps are not sent.
-const sharedRoles: Record<AgentRole, RoleBudget> = {
+export const sharedRoles: Record<AgentRole, RoleBudget> = {
   coordinator: { maxOutputTokens: 24576 },
   document: { maxOutputTokens: 32768 },
   coding: { maxOutputTokens: 65536 },

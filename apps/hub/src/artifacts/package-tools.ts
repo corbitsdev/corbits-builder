@@ -6,7 +6,7 @@ import { defineTool, type BaseEnv } from "@intx/agent/authoring";
 import { HUB_CREDENTIAL_HANDLE } from "@intx/types/credential-delivery";
 import type { RuntimeCapabilities } from "@intx/types/runtime-capabilities";
 import { Deck, DeckError, validateDeck } from "@corbits/slidedeck";
-import { defaultPackageTitle } from "../config/personas.ts";
+import { defaultPackageTitle } from "@corbits-builder/presenter/personas";
 import { resolveWorkflowProjectScope } from "../workflows/project-scope.ts";
 import { workflowHttpJson } from "../workflows/http-json.ts";
 import {

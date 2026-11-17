@@ -164,11 +164,13 @@ async function attach(
   if (!runId) {
     let created: { runId: string };
     try {
-      const installed = await ports.installed(actor, projectId);
+      const { packages } = await ports.installed(actor, projectId);
+      const deployment = packages["coordinator"];
+      if (!deployment) throw startFailed();
       created = await ports.deploy({
         tenantId: actor.tenantId,
         principalId: actor.principalId,
-        deployment: installed.coordinator,
+        deployment,
       });
     } catch (error) {
       if (error instanceof ProjectError) throw error;

@@ -1,12 +1,16 @@
 import { expect, test } from "bun:test";
-import { StoredModelChoice } from "@corbits-builder/schemas/models";
+import {
+  StoredModelChoice,
+  type ModelChoice,
+} from "@corbits-builder/schemas/models";
 import {
   MODEL_PROVIDERS,
-  workflowBindings,
+  tierBinding,
   frozenModelChoice,
   invalidModelChoice,
   resolveModelChoice,
 } from "./models.ts";
+import { CATALOG, roleModel } from "../plugins/catalog.ts";
 
 test("a project runs on the only connected provider's profile, a chosen one, or none", () => {
   expect(
@@ -114,8 +118,11 @@ test("a saved profile keeps role overrides while older projects retain their ass
   const saved = StoredModelChoice.assert(
     JSON.parse(JSON.stringify(selected.choice)),
   );
-  const expected = workflowBindings(MODEL_PROVIDERS, choice);
-  expect(workflowBindings(MODEL_PROVIDERS, saved)).toEqual(expected);
+  const bindings = (kept: ModelChoice) =>
+    CATALOG.roles.map((role) =>
+      tierBinding(MODEL_PROVIDERS, kept, roleModel(role)),
+    );
+  expect(bindings(saved)).toEqual(bindings(choice));
   expect(frozenModelChoice(MODEL_PROVIDERS, saved)).toEqual(saved);
 
   // An older project's shipped id must not opt it into newly introduced overrides.
@@ -126,10 +133,10 @@ test("a saved profile keeps role overrides while older projects retain their ass
   });
   const kept = frozenModelChoice(MODEL_PROVIDERS, older)!;
   expect(kept).toEqual(older);
-  expect(workflowBindings(MODEL_PROVIDERS, kept).writer).toEqual(
-    profile.tiers.medium,
-  );
-  expect(workflowBindings(MODEL_PROVIDERS, saved).writer).toEqual(
-    profile.tiers.low,
-  );
+  expect(
+    tierBinding(MODEL_PROVIDERS, kept, roleModel({ model: "writer" })),
+  ).toEqual(profile.tiers.medium);
+  expect(
+    tierBinding(MODEL_PROVIDERS, saved, roleModel({ model: "writer" })),
+  ).toEqual(profile.tiers.low);
 });

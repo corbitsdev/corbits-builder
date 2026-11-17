@@ -1,14 +1,7 @@
-import type { WorkflowRole } from "@corbits-builder/schemas/installed-workflows";
+import { runRole } from "../plugins/catalog.ts";
 
 // What the person reads about where their project stands and what they do next.
-const ROLE: Record<WorkflowRole, string> = {
-  coordinator: "the coordinator",
-  writer: "a writer",
-  reviewer: "a reviewer",
-  designer: "the designer",
-  coder: "the app builder",
-  presenter: "the presenter",
-};
+const called = (role: string) => runRole(role).called;
 
 const capital = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 const list = (items: readonly string[]) =>
@@ -24,13 +17,13 @@ const APPROVAL: Record<string, string> = {
 
 export const projectStatusWording = {
   archived: "This project is archived.",
-  working: (roles: readonly WorkflowRole[]) =>
+  working: (roles: readonly string[]) =>
     roles.length === 0
       ? "Nobody is working."
-      : `${capital(list(roles.map((role) => ROLE[role])))} ${roles.length === 1 ? "is" : "are"} working.`,
-  starting: (role: WorkflowRole) => `${capital(ROLE[role])} is starting.`,
-  unknown: (role: WorkflowRole) =>
-    `Whether ${ROLE[role]} is working is unknown: its history could not be read.`,
+      : `${capital(list(roles.map(called)))} ${roles.length === 1 ? "is" : "are"} working.`,
+  starting: (role: string) => `${capital(called(role))} is starting.`,
+  unknown: (role: string) =>
+    `Whether ${called(role)} is working is unknown: its history could not be read.`,
   app: {
     not_started: "No app yet.",
     starting: "The app is starting.",
@@ -50,15 +43,15 @@ export const projectStatusWording = {
     tool === "request_approval" && kinds.length > 0
       ? `Approve the ${list(kinds.map((kind) => kind.replaceAll("_", " ")))}`
       : (APPROVAL[tool] ?? "Decide on the open approval"),
-  stopped: (role: WorkflowRole, reason: string | undefined) =>
-    `${capital(ROLE[role])} stopped${reason === undefined ? "." : `: ${reason}`}`,
+  stopped: (role: string, reason: string | undefined) =>
+    `${capital(called(role))} stopped${reason === undefined ? "." : `: ${reason}`}`,
   next: {
     archived: "Restore the project to work on it",
     resumeCoordinator: "Start the coordinator again",
-    wait: (role: WorkflowRole) =>
+    wait: (role: string) =>
       role === "coordinator"
         ? "Wait for the coordinator's reply"
-        : `Wait for ${ROLE[role]} to finish`,
+        : `Wait for ${called(role)} to finish`,
     unknown: "Ask the coordinator where things stand",
     retry: "Ask the coordinator to try again",
     fixApp: "Ask the coordinator to fix the app",

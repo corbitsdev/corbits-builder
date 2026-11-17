@@ -6,6 +6,7 @@ COPY package.json bun.lock tsconfig.json ./
 COPY patches ./patches
 COPY apps ./apps
 COPY packages ./packages
+COPY plugins ./plugins
 COPY workflows ./workflows
 COPY vendor/interchange/package.json vendor/interchange/tsconfig.json vendor/interchange/tsconfig.base.json vendor/interchange/bunfig.toml ./vendor/interchange/
 COPY vendor/interchange/packages ./vendor/interchange/packages
@@ -84,6 +85,7 @@ COPY --from=deps --chown=bun:bun /app/node_modules ./node_modules
 COPY --from=deps --chown=bun:bun /app/apps/hub ./apps/hub
 COPY --from=web --chown=bun:bun /app/apps/web/dist ./apps/web/dist
 COPY --from=deps --chown=bun:bun /app/packages ./packages
+COPY --from=deps --chown=bun:bun /app/plugins ./plugins
 COPY --from=deps --chown=bun:bun /app/workflows ./workflows
 COPY --from=deps --chown=bun:bun /app/vendor/interchange ./vendor/interchange
 RUN mkdir -p /app/data/hub && chown -R bun:bun /app/data

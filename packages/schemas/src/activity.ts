@@ -1,5 +1,5 @@
 import { type } from "arktype";
-import { WorkflowRole } from "./roles.ts";
+import { RoleName } from "./roles.ts";
 
 // A tool call as the run's native tool.start event named it: the tool and its one identifying
 // argument (a path, a skill, a command), never the whole argument object.
@@ -29,7 +29,7 @@ export type CommandProgress = typeof CommandProgress.infer;
 export const AgentActivity = type({
   "+": "reject",
   runId: "string > 0",
-  role: WorkflowRole,
+  role: RoleName,
   since: "string > 0",
   tools: ActivityTool.array().atMostLength(3),
   "said?": "string > 0",

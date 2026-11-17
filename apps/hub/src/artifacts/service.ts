@@ -72,7 +72,6 @@ import {
   type AppVersion,
   type AppVersionList,
 } from "@corbits-builder/schemas/artifact";
-import type { SpawnedRole } from "@corbits-builder/schemas/installed-workflows";
 import { OpenQuestions } from "@corbits-builder/schemas/questions";
 import {
   ApproachesMeta,
@@ -144,7 +143,8 @@ import {
   resolvePreferences,
 } from "../config/preferences.ts";
 import { awaitingApproval } from "../projects/deploy-tools.ts";
-import { frozenModelChoice, workflowBindings } from "../config/models.ts";
+import { frozenModelChoice, tierBinding } from "../config/models.ts";
+import { roleModel, runRole } from "../plugins/catalog.ts";
 import { modelDirectory } from "../settings/custom-providers.ts";
 import { materialRemovedNote, materialsNote } from "../config/materials.ts";
 import { servingOffering } from "../workflows/install-for-tenant.ts";
@@ -411,7 +411,7 @@ export function createArtifactService(
 
   // The role's runs, newest first, each with its warm step, the design concept it works on, if
   // any, whether it is live and when it ended: the live runs, or with ended, every run.
-  async function roleRuns(actor: Actor, role: SpawnedRole, ended: boolean) {
+  async function roleRuns(actor: Actor, role: string, ended: boolean) {
     const runs = await rawDB
       .select({
         runId: workflowRun.id,
@@ -455,7 +455,7 @@ export function createArtifactService(
 
   // The workspaces of the role's live runs that the hub deployed on its local sidecar, newest
   // first, each with the design concept its run works on, if any.
-  async function liveWorkspaces(actor: Actor, role: SpawnedRole) {
+  async function liveWorkspaces(actor: Actor, role: string) {
     if (!sidecarDataDir) return [];
     return (await roleRuns(actor, role, false)).flatMap(
       ({ runId, address, stepId, concept }) =>
@@ -1219,7 +1219,7 @@ export function createArtifactService(
           rawDB,
           directory,
           actor.tenantId,
-          workflowBindings(directory, choice).coordinator,
+          tierBinding(directory, choice, roleModel(runRole("coordinator"))),
         ));
       return acceptedMaterials(offering?.capabilities ?? []);
     },

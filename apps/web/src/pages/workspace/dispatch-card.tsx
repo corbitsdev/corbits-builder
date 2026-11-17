@@ -15,7 +15,17 @@ import type { ApprovalOutcome, DocumentApproval } from "./transcript.tsx";
 
 const text = wording.dispatch;
 
-type Role = InFlightRun["role"];
+const RUN_TOOL = {
+  writer: "deploy_writer",
+  reviewer: "review_artifact",
+  coder: "deploy_coder",
+  designer: "design_app",
+  presenter: "deploy_presenter",
+};
+
+type Role = keyof typeof RUN_TOOL;
+const isDispatchRole = (role: string): role is Role =>
+  Object.hasOwn(RUN_TOOL, role);
 
 const ROLE_OF: Record<string, Role> = {
   deploy_writer: "writer",
@@ -370,19 +380,11 @@ export function subjectOf(dispatch: Dispatch): string | undefined {
   return text.subject[dispatch.tool];
 }
 
-const RUN_TOOL: Record<Role, string> = {
-  writer: "deploy_writer",
-  reviewer: "review_artifact",
-  coder: "deploy_coder",
-  designer: "design_app",
-  presenter: "deploy_presenter",
-};
-
-/** A run at work the conversation has no hand-off for, such as one started before a reload. */
 export function runDispatch(
   run: InFlightRun,
   kind: string | undefined,
-): Dispatch {
+): Dispatch | undefined {
+  if (!isDispatchRole(run.role)) return undefined;
   return {
     key: `run:${run.runId}`,
     call: `run:${run.runId}`,

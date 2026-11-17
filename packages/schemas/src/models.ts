@@ -120,9 +120,7 @@ export type ModelProvider = typeof ModelProvider.infer;
 
 export const Effort = type("'low' | 'medium' | 'high' | 'max'");
 export type Effort = typeof Effort.infer;
-export const ModelRole = type(
-  "'coordinator' | 'writer' | 'designer' | 'builder' | 'reviewer' | 'presenter'",
-);
+export const ModelRole = type("string > 0");
 export type ModelRole = typeof ModelRole.infer;
 export const Tier = type("'low' | 'medium' | 'high' | 'max'");
 export type Tier = typeof Tier.infer;
@@ -144,14 +142,8 @@ export type Tiers = typeof Tiers.infer;
 
 export const ProfileId = type(/^[a-z][a-z0-9_]{0,63}$/);
 
-// A profile may assign a role to a different tier without changing the tier bindings.
-export const RoleTiers = type(
-  Object.fromEntries(
-    ModelRole.select("unit").map((role) => [role.unit, Tier]),
-  ) as Record<ModelRole, typeof Tier>,
-)
-  .partial()
-  .onUndeclaredKey("reject");
+export const RoleTiers = type({ "[string]": Tier });
+export type RoleTiers = typeof RoleTiers.infer;
 
 export const CustomProfile = type({
   "+": "reject",

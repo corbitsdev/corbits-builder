@@ -4,7 +4,8 @@ import type { DB } from "@intx/db";
 import { workflowRun, workflowRunLaunchSpec } from "@intx/db/schema";
 import { project } from "../db/schema.ts";
 import { workflowRoleSql } from "../workflows/spawn-role.ts";
-import { workflowBindings } from "../config/models.ts";
+import { tierBinding } from "../config/models.ts";
+import { roleModel, runRole } from "../plugins/catalog.ts";
 import { modelDirectory } from "../settings/custom-providers.ts";
 import { loadSettings } from "../settings/policy.ts";
 import type { RunContext } from "../telemetry/run-spans.ts";
@@ -58,10 +59,11 @@ export async function runTelemetry(
     const { models } = await loadSettings(db, run.tenantId, run.projectId);
     if (models.value !== null) {
       metadata.profile = models.value.profile;
-      metadata.effort = workflowBindings(
+      metadata.effort = tierBinding(
         await modelDirectory(db, run.tenantId),
         models.value,
-      )[run.role].effort;
+        roleModel(runRole(run.role)),
+      ).effort;
     }
   } catch (error) {
     log.warn("Run effort could not be read", requestErrorMetadata(error));

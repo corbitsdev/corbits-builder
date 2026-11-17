@@ -1,4 +1,3 @@
-import type { WorkflowRole } from "@corbits-builder/schemas/installed-workflows";
 import type {
   PreferenceGroup,
   PreferenceRegistry,
@@ -18,17 +17,8 @@ type PreferenceEntry = Readonly<{
   ends?: Readonly<{ start: string; end: string }>;
   default: string;
   // The roles whose hub-built context carries this preference.
-  roles: readonly WorkflowRole[];
+  roles: "all" | readonly string[];
 }>;
-
-const ALL_ROLES = [
-  "coordinator",
-  "writer",
-  "designer",
-  "coder",
-  "reviewer",
-  "presenter",
-] as const;
 
 const productName = productConfig.naming.productName;
 
@@ -111,7 +101,7 @@ export const PREFERENCES: readonly PreferenceEntry[] = [
       },
     ],
     default: "no",
-    roles: ALL_ROLES,
+    roles: "all",
   },
   {
     id: "next_step_line",
@@ -358,10 +348,7 @@ export function resolvePreferences(chosen: Preferences | null): Preferences {
 }
 
 /** The block a specialist's hub-built assignment carries, empty when no preference applies. */
-export function preferenceBlock(
-  choices: Preferences,
-  role: WorkflowRole,
-): string {
+export function preferenceBlock(choices: Preferences, role: string): string {
   const lines = preferenceGuidance(choices, role);
   return lines.length
     ? "\n\nHow the person wants to work:\n" +
@@ -372,17 +359,17 @@ export function preferenceBlock(
 /** The guidance lines one role works by. */
 export function preferenceGuidance(
   choices: Preferences,
-  role: WorkflowRole,
+  role: string,
 ): string[] {
-  return PREFERENCES.filter((entry) => entry.roles.includes(role)).flatMap(
-    (entry) => {
-      const option =
-        entry.options.find((candidate) => candidate.id === choices[entry.id]) ??
-        entry.options.find((candidate) => candidate.id === entry.default)!;
-      const guidance = option.guidance.trim();
-      return guidance ? [`${entry.topic}: ${option.label}. ${guidance}`] : [];
-    },
-  );
+  return PREFERENCES.filter(
+    (entry) => entry.roles === "all" || entry.roles.includes(role),
+  ).flatMap((entry) => {
+    const option =
+      entry.options.find((candidate) => candidate.id === choices[entry.id]) ??
+      entry.options.find((candidate) => candidate.id === entry.default)!;
+    const guidance = option.guidance.trim();
+    return guidance ? [`${entry.topic}: ${option.label}. ${guidance}`] : [];
+  });
 }
 
 /** The most design concepts at work at once: the largest count the preference offers. What the
@@ -396,10 +383,6 @@ export function designConceptCeiling(): number {
 }
 
 /** Whether the project's coder adds new packages without a person's approval. */
-export function installsAnyPackage(choices: Preferences | null): boolean {
-  return resolvePreferences(choices)["install_any_package"] === "yes";
-}
-
 /** Whether the project's build sandboxes reach any public host rather than only the npm registry. */
 export function opensNetwork(choices: Preferences | null): boolean {
   return resolvePreferences(choices)["internet_while_building"] === "yes";

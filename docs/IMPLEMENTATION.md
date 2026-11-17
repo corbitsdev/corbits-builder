@@ -122,11 +122,13 @@ Environment files, installs and build output never leave the workspace.
 | `packages/client`         | `@corbits-builder/client`      | The typed client for the hub's API.                              |
 | `apps/web`                | `@corbits-builder/web`         | The interface, built only on the client and the schemas.         |
 | `workflows/coordinator`   | `@corbits-builder/coordinator` | The coordinator's agent, prompt and workflow.                    |
-| `workflows/writer`        | `@corbits-builder/writer`      | The document writer and its per-kind skills.                     |
+| `plugins/writer`          | `@corbits-builder/writer`      | The document writer and its per-kind skills.                     |
 | `workflows/reviewer`      | `@corbits-builder/reviewer`    | The document reviewer.                                           |
-| `workflows/designer`      | `@corbits-builder/designer`    | The designer, its starter, themes and skills.                    |
-| `workflows/coder`         | `@corbits-builder/coder`       | The coder, its app starter and `check-app`.                      |
+| `plugins/designer`        | `@corbits-builder/designer`    | The designer, its starter, themes and skills.                    |
+| `plugins/coder`           | `@corbits-builder/coder`       | The coder, its app starter and `check-app`.                      |
 | `packages/schemas`        | `@corbits-builder/schemas`     | Types and schemas shared by the hub, client and workflows.       |
+| `packages/plugin`         | `@corbits-builder/plugin`      | What a plugin's `builder` block may declare.                     |
+| `packages/plugin-host`    | `@corbits-builder/plugin-host` | Reads a plugins folder and checks what each plugin declares.     |
 | `vendor/interchange`      |                                | Interchange at the pinned revision.                              |
 | `deploy/`                 |                                | The Dockerfile and Compose files.                                |
 | `scripts/`                |                                | Dev and verification scripts.                                    |
@@ -144,7 +146,7 @@ never imports the server or the database.
 
 The coder's starter is a Bun workspace: a Vite and React client with
 `@corbits/react-ui`, a Hono server and a shared schema package. Its own
-[AGENTS.md](https://github.com/corbitsdev/corbits-builder/blob/main/workflows/coder/starter/AGENTS.md)
+[AGENTS.md](https://github.com/corbitsdev/corbits-builder/blob/main/plugins/coder/starter/AGENTS.md)
 tells the coder where each kind of code goes.
 
 ## Configuration

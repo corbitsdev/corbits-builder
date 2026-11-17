@@ -26,6 +26,7 @@ import {
 } from "./policy.ts";
 import { invalidPreference } from "../config/preferences.ts";
 import { invalidModelChoice } from "../config/models.ts";
+import { undeclaredSetting } from "../plugins/catalog.ts";
 import { connectedProviders } from "../projects/model-choice.ts";
 import { modelDirectory } from "./custom-providers.ts";
 import { digest } from "../lib/digest.ts";
@@ -94,7 +95,11 @@ export function createSettingsService(db: DB["db"]) {
     if (models) {
       const directory = await modelDirectory(db, actor.tenantId);
       const connected = await connectedProviders(db, directory, actor.tenantId);
-      const refused = invalidModelChoice(directory, models, connected);
+      const refused =
+        invalidModelChoice(directory, models, connected) ??
+        models.custom
+          ?.map(({ roleTiers }) => undeclaredSetting(roleTiers))
+          .find((setting) => setting !== undefined);
       if (refused)
         throw new ProjectError(400, "unknown_model_choice", {
           choice: refused,

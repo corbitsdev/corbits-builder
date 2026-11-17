@@ -21,7 +21,6 @@ import {
   WriterDocumentKind,
   type ArtifactListItem,
 } from "@corbits-builder/schemas/artifact";
-import type { WorkflowRole } from "@corbits-builder/schemas/installed-workflows";
 
 type InputDocument = Pick<ArtifactListItem, "artifactId" | "kind" | "title">;
 
@@ -55,7 +54,7 @@ interface InputFileEnv extends BaseEnv {
 }
 async function filedDocuments(
   env: InputFileEnv,
-  role: WorkflowRole,
+  role: string,
   signal: AbortSignal,
 ) {
   const scope = await resolveWorkflowProjectScope(
@@ -106,7 +105,7 @@ async function filedDocuments(
   );
 }
 export function createInputFileTools(
-  role: "writer" | "reviewer" | "presenter",
+  role: string,
   fetchDocuments: (
     env: InputFileEnv,
     signal: AbortSignal,
