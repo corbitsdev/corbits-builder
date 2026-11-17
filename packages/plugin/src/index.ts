@@ -1,4 +1,5 @@
 import { scope, type, type ArkErrors, type Type } from "arktype";
+import { ToolCredentialHandle } from "@intx/types/package-json";
 import { WriterDocumentKind } from "@corbits-builder/schemas/artifact";
 import { AppRun } from "@corbits-builder/schemas/installed-workflows";
 import { Tier } from "@corbits-builder/schemas/models";
@@ -395,6 +396,45 @@ export const AgentBuilder = type({
 });
 export type AgentBuilder = typeof AgentBuilder.infer;
 
+// Plain http only to this machine, so an end-to-end test can stand up its upstream locally.
+const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1"]);
+
+// An API key a plugin's tools send: what it is, the origin it may be sent to, how it is sent (a
+// bearer token through Interchange's http provider, or a named header through its http-header
+// provider) and the plugin's screen action that shows its form.
+export const CredentialDeclaration = type({
+  "+": "reject",
+  about: "string > 0",
+  origin: type("string.url").narrow((origin, ctx) => {
+    const url = new URL(origin);
+    return (
+      (url.origin === origin &&
+        (url.protocol === "https:" ||
+          (url.protocol === "http:" && LOCAL_HOSTS.has(url.hostname)))) ||
+      ctx.mustBe("an https origin, such as https://api.example.com")
+    );
+  }),
+  sends: type("'bearer'").or({
+    "+": "reject",
+    header: type(/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/).describe(
+      "an HTTP header name",
+    ),
+    "prefix?": "string > 0",
+  }),
+  screen: "string > 0",
+});
+export type CredentialDeclaration = typeof CredentialDeclaration.infer;
+
+// Each credential by the Interchange provider it is saved under, which is also the handle the
+// plugin's tools declare it by.
+export const Credentials = type
+  .Record(ToolCredentialHandle, CredentialDeclaration)
+  .onUndeclaredKey("reject");
+
+// Interchange finds a credential by its provider's name up to the root tenant, where model
+// providers live; a plugin's names stay apart from those so a plugin is never handed their keys.
+export const credentialProvider = (name: string) => `plugin.${name}`;
+
 // A specialist the coordinator composes into its plan, and the actions it can be started on.
 export const SpecialistBuilder = Common.merge({
   runs: "'specialist'",
@@ -419,6 +459,7 @@ export const SpecialistBuilder = Common.merge({
   "appStarters?": { "[string]": AppStarter },
   // What its design workspaces start from and the looks they offer.
   "design?": DesignBuilder,
+  "credentials?": Credentials,
   // Each action by its folder's name; its folder says which kind it is, and so which builder its
   // entry is checked against.
   actions: { "[string]": "object" },

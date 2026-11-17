@@ -90,6 +90,40 @@ test("a screen that reads a project value the hub does not have stops the hub", 
   ).rejects.toThrow("look.colour-primary");
 });
 
+test("a credential sent to a plain http origin, in a header that is no header name, or with its form on no screen of its plugin stops the hub", async () => {
+  const { builder } = await Bun.file(
+    join(PLUGINS_FOLDER, "designer", "package.json"),
+  ).json();
+  const declaring = (origin: string, header: string, screen: string) => {
+    builder.credentials = {
+      "example-api": {
+        about: "The Example API key",
+        origin,
+        sends: { header, prefix: "Key" },
+        screen,
+      },
+    };
+    return loadCatalog(
+      [
+        ...folders.filter(({ folder }) => folder !== "designer"),
+        withBuilder("designer", builder),
+      ],
+      HOST,
+    );
+  };
+  await expect(
+    declaring("http://api.example.com", "x-api-key", "pick-colours"),
+  ).rejects.toThrow("origin must be an https origin");
+  await expect(
+    declaring("https://api.example.com", "x api key", "pick-colours"),
+  ).rejects.toThrow("header must be an HTTP header name");
+  await expect(
+    declaring("https://api.example.com", "x-api-key", "mockup"),
+  ).rejects.toThrow(
+    "designer's credential example-api shows its form on mockup, which is not a screen of designer",
+  );
+});
+
 test("a workflow action that requires a fact Builder cannot work out, or templates a field it does not take, stops the hub", async () => {
   const specialist = (requires: string[][]) =>
     loadCatalog(
