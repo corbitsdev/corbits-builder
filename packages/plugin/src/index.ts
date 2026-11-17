@@ -406,15 +406,15 @@ export const SpecialistBuilder = Common.merge({
   // The workflow packages the host builds and installs from this plugin, by package name: entry is
   // the module whose default export is the workflow and whose named exports are its directors, and
   // role the one of the plugin's roles its runs play, its handle's unless stated.
-  "packages?": {
+  packages: type({
     "[string]": { "+": "reject", entry: "string > 0", "role?": "string > 0" },
-  },
+  }).default(() => ({})),
   // The module that starts each workflow its actions' start blocks name, by that name; its default
   // export is a starter, as plugin-host's defineStarter makes one.
   "starters?": { "[string]": "string > 0" },
   // The agents the host builds and installs for this plugin with no code of its own, by package
   // name; an action starts one with start: { agent }.
-  "agents?": { "[string]": AgentBuilder },
+  agents: type({ "[string]": AgentBuilder }).default(() => ({})),
   // The code a first build of the project can start from, by name.
   "appStarters?": { "[string]": AppStarter },
   // What its design workspaces start from and the looks they offer.
