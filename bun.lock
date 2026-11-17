@@ -246,6 +246,21 @@
       "name": "@corbits-builder/build-web-app-express",
       "version": "0.1.0-rc.3",
     },
+    "plugins/chat-bot-skills": {
+      "name": "@corbits-builder/chat-bot-skills",
+      "version": "0.1.0-rc.3",
+    },
+    "plugins/cloudflare": {
+      "name": "@corbits-builder/cloudflare",
+      "version": "0.1.0-rc.3",
+      "dependencies": {
+        "@corbits-builder/plugin": "workspace:*",
+      },
+    },
+    "plugins/cloudflare-publish": {
+      "name": "@corbits-builder/cloudflare-publish",
+      "version": "0.1.0-rc.3",
+    },
     "plugins/coder": {
       "name": "@corbits-builder/coder",
       "version": "0.9.0",
@@ -276,6 +291,10 @@
         "react-dom": "19.3.0",
       },
     },
+    "plugins/desktop-app-skills": {
+      "name": "@corbits-builder/desktop-app-skills",
+      "version": "0.1.0-rc.3",
+    },
     "plugins/presenter": {
       "name": "@corbits-builder/presenter",
       "version": "0.2.0",
@@ -298,6 +317,26 @@
       "devDependencies": {
         "@types/react": "19.3.0",
       },
+    },
+    "plugins/react-router-skills": {
+      "name": "@corbits-builder/react-router-skills",
+      "version": "0.1.0-rc.3",
+    },
+    "plugins/rust-skills": {
+      "name": "@corbits-builder/rust-skills",
+      "version": "0.1.0-rc.3",
+    },
+    "plugins/sveltekit-skills": {
+      "name": "@corbits-builder/sveltekit-skills",
+      "version": "0.1.0-rc.3",
+    },
+    "plugins/web-app-skills": {
+      "name": "@corbits-builder/web-app-skills",
+      "version": "0.1.0-rc.3",
+    },
+    "plugins/web-app-starter-skills": {
+      "name": "@corbits-builder/web-app-starter-skills",
+      "version": "0.1.0-rc.3",
     },
     "plugins/worker": {
       "name": "@corbits-builder/worker",
@@ -821,13 +860,21 @@
 
     "@corbits-builder/build-web-app-express": ["@corbits-builder/build-web-app-express@workspace:plugins/build-web-app-express"],
 
+    "@corbits-builder/chat-bot-skills": ["@corbits-builder/chat-bot-skills@workspace:plugins/chat-bot-skills"],
+
     "@corbits-builder/client": ["@corbits-builder/client@workspace:packages/client"],
+
+    "@corbits-builder/cloudflare": ["@corbits-builder/cloudflare@workspace:plugins/cloudflare"],
+
+    "@corbits-builder/cloudflare-publish": ["@corbits-builder/cloudflare-publish@workspace:plugins/cloudflare-publish"],
 
     "@corbits-builder/coder": ["@corbits-builder/coder@workspace:plugins/coder"],
 
     "@corbits-builder/coordinator": ["@corbits-builder/coordinator@workspace:workflows/coordinator"],
 
     "@corbits-builder/designer": ["@corbits-builder/designer@workspace:plugins/designer"],
+
+    "@corbits-builder/desktop-app-skills": ["@corbits-builder/desktop-app-skills@workspace:plugins/desktop-app-skills"],
 
     "@corbits-builder/hub": ["@corbits-builder/hub@workspace:apps/hub"],
 
@@ -841,9 +888,19 @@
 
     "@corbits-builder/project": ["@corbits-builder/project@workspace:plugins/project"],
 
+    "@corbits-builder/react-router-skills": ["@corbits-builder/react-router-skills@workspace:plugins/react-router-skills"],
+
+    "@corbits-builder/rust-skills": ["@corbits-builder/rust-skills@workspace:plugins/rust-skills"],
+
     "@corbits-builder/schemas": ["@corbits-builder/schemas@workspace:packages/schemas"],
 
+    "@corbits-builder/sveltekit-skills": ["@corbits-builder/sveltekit-skills@workspace:plugins/sveltekit-skills"],
+
     "@corbits-builder/web": ["@corbits-builder/web@workspace:apps/web"],
+
+    "@corbits-builder/web-app-skills": ["@corbits-builder/web-app-skills@workspace:plugins/web-app-skills"],
+
+    "@corbits-builder/web-app-starter-skills": ["@corbits-builder/web-app-starter-skills@workspace:plugins/web-app-starter-skills"],
 
     "@corbits-builder/worker": ["@corbits-builder/worker@workspace:plugins/worker"],
 

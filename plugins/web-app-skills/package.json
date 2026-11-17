@@ -1,0 +1,16 @@
+{
+  "name": "@corbits-builder/web-app-skills",
+  "version": "0.1.0-rc.3",
+  "private": true,
+  "description": "How the coder builds a web app's pages, data and forms, whatever its framework.",
+  "license": "SEE LICENSE IN ../../LICENSE.md",
+  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
+  "type": "module",
+  "builder": {
+    "handle": "web-app-skills",
+    "runs": "skills",
+    "extends": "coder",
+    "when": "The work adds or changes pages, navigation, data loading or forms in a web app.",
+    "skills": "./skills"
+  }
+}
