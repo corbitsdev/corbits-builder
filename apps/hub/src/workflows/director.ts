@@ -8,7 +8,7 @@ import type {
   ReactorDirector,
   RetryPolicy,
 } from "@intx/types/runtime";
-import type { Timeouts } from "../config/models.ts";
+import { MODEL_FAILURE_REPLIES, type Timeouts } from "../config/models.ts";
 import { SIGN_IN_REJECTED } from "../config/specialist-ended.ts";
 import { REPETITION_ABORT } from "../inference/repetition.ts";
 import { readCheckDetail, type CheckDetail } from "../builds/check-detail.ts";
@@ -120,7 +120,7 @@ const withBackoff =
 
 /**
  * Every inference retries on backoffRetryPolicy, under the source's timeouts; once it gives up,
- * with failRun the run fails.
+ * with failRun the run fails, and otherwise the reply says in the hub's words what failed.
  */
 const withRetryPolicy = (
   director: ReactorDirector,
@@ -149,7 +149,20 @@ const withRetryPolicy = (
     }
     const actions = await director.decide(event, state, caps);
     const stamp = withBackoff(timeouts);
-    return Array.isArray(actions) ? actions.map(stamp) : stamp(actions);
+    const finish = (action: ReactorAction): ReactorAction => {
+      if (
+        failRun ||
+        event.type !== "inference.error" ||
+        action.type !== "reply"
+      )
+        return stamp(action);
+      let failure: keyof typeof MODEL_FAILURE_REPLIES = event.error.category;
+      if (signInRejected) failure = "sign_in_rejected";
+      if (event.error.message.startsWith(REPETITION_ABORT))
+        failure = "repeated";
+      return caps.reply(MODEL_FAILURE_REPLIES[failure]);
+    };
+    return Array.isArray(actions) ? actions.map(finish) : finish(actions);
   },
 });
 
@@ -317,7 +330,7 @@ function holdReply(
  * startAfterApproval, a reply after an approval that starts and asks nothing is held once. A reply
  * after a Builder tool refused the agent's access is never held. Every inference retries an
  * overloaded, slow or rate-limited model a few times; once that gives up, the run fails, or with
- * replyOnFailure the error is the reply. The model-specific numbers come from the agent
+ * replyOnFailure the reply says what failed. The model-specific numbers come from the agent
  * definition's director config.
  */
 export const compactingDirector = (packageName: string) =>

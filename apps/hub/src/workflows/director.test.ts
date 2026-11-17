@@ -23,6 +23,7 @@ import {
   createDesignSubmission,
 } from "../builds/design-submission.ts";
 import { designCheckRunning } from "../config/design.ts";
+import { MODEL_FAILURE_REPLIES } from "../config/models.ts";
 import { REPETITION_ABORT } from "../inference/repetition.ts";
 import { trimHistory } from "./compaction.ts";
 import { compactingDirector } from "./director.ts";
@@ -154,15 +155,45 @@ test("every inference retries a busy model on a bounded backoff", async () => {
   }
 });
 
-test("a model error that outlasts the retries fails a specialist and is the coordinator's reply", async () => {
+test("a model error that outlasts the retries fails a specialist", async () => {
   await expect(decide(director(false), failed(overloaded))).rejects.toThrow(
     "model_unavailable",
   );
-  const reply = (await decide(director(true), failed(overloaded))).find(
+});
+
+test("a coordinator whose model keeps repeating itself says so, not that its provider failed", async () => {
+  const subject = director(true);
+  const repeated = failed({
+    category: "protocol_mismatch",
+    message: `${REPETITION_ABORT} repeated`,
+  });
+  await decide(subject, repeated);
+  await decide(subject, repeated);
+  const reply = (await decide(subject, repeated)).find(
     (action) => action.type === "reply",
   );
-  expect(reply?.type === "reply" ? reply.content : "").toContain("overloaded");
+  expect(reply?.type === "reply" ? reply.content : "").toBe(
+    MODEL_FAILURE_REPLIES.repeated,
+  );
 });
+
+test.each([
+  [403, "credential_failure", "credential_failure"],
+  [529, "retryable", "retryable"],
+] as const)(
+  "a coordinator's failed model call (%d %s) gets the %s reply",
+  async (statusCode, category, failure) => {
+    const reply = (
+      await decide(
+        director(true),
+        failed({ category, message: "invalid api key", statusCode }),
+      )
+    ).find((action) => action.type === "reply");
+    expect(reply?.type === "reply" ? reply.content : "").toBe(
+      MODEL_FAILURE_REPLIES[failure],
+    );
+  },
+);
 
 test("a refused model is still a specialist's reply, not a rejected sign-in", async () => {
   const refused: InferenceError = {
