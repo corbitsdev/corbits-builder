@@ -1,0 +1,4 @@
+bun install --frozen-lockfile
+bun run typecheck
+bun run test
+bun run build

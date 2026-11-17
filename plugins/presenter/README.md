@@ -5,27 +5,26 @@ persona from the project's approved documents and filed design tokens.
 
 ## Where it fits
 
-This package only declares data. It imports `@intx/agent/authoring` and
-`@intx/workflow/definition` from Interchange. The
-[presenter entry][entry] imports it, supplies the model, director and
-tools, and builds it into the workflow the [coordinator][coordinator] starts
-with `deploy_presenter`. The presenter's tools are the hub's `write_deck`,
-`check_deck`, `file_package`, `mail` and `read_skill`; it has no project read
-tool, because its assignment carries the selected documents and design tokens
-in full.
+This folder is the whole presenter plugin. Its `package.json` `builder` block
+declares its role, its one action, `present`, which needs the documents it
+presents approved, the agent the hub builds and installs from its prompt,
+skills and role (`agents`) and the starter that starts its runs (`starters`). The
+[coordinator][coordinator] starts it with `execute`. The presenter's tools are
+the hub's `write_deck`, `check_deck`, `file_package`, `read_skill`,
+`read_file` and `search_files` over the documents laid in its workspace, and
+`report_blocked`; it has no project read tool, because its assignment carries
+the selected documents and design tokens.
 
 ## Layout
 
-- `src/prompt.ts`: the system prompt.
-- `src/agent.ts`: `createPresenterAgent`, which requires an explicit provider
-  and model.
-- `src/workflow.ts`: `createPresenterWorkflow`, a bounded single-step workflow
-  that runs once on its first message.
+- `src/present/definition.ts`: the `present` action's input and how the
+  coordinator fills it.
+- `src/start.ts`: the starter, which writes the run's assignment from the
+  approved documents and the design's tokens.
+- `prompt.md`: the system prompt.
 - `skills/presenting/`: the `presenting` skill (`SKILL.md`), covering the core
   deck rules and per-persona guidance (`ceo`, `cto`, `investor`, `client`,
   `end_user`).
-- `src/skills.ts`: a Bun macro that inlines `skills/` when an agent bundle
-  is built.
 
 ## Working on it
 
@@ -33,6 +32,5 @@ What a presentation should contain lives in its skill rather than the prompt;
 prompt conventions are in [AGENTS.md][agents]. `bun run typecheck` and `bun run test` cover it, and `bun run dev` runs it in a
 real project.
 
-[entry]: https://github.com/corbitsdev/corbits-builder/blob/main/plugins/presenter/src/packages/presenter.ts
 [coordinator]: https://github.com/corbitsdev/corbits-builder/tree/main/workflows/coordinator
 [agents]: https://github.com/corbitsdev/corbits-builder/blob/main/AGENTS.md

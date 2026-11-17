@@ -1,4 +1,4 @@
-# Product requirements exemplar
+# Product requirements exemplar: a web app
 
 A compact excerpt of the shape and tone, for a small gym's class booking
 app. A real document lists every requirement; take every fact from the
@@ -9,19 +9,47 @@ project's own documents.
 
 - The first version lets **members book, cancel and see their classes**,
   and **staff run rosters and check-in**.
-- **14 must requirements**, each with an acceptance criterion.
+- **Payments stay at the front desk**; nobody pays in the app in this
+  version.
 - I decided **cancellation closes two hours before class**; correct it if
   your rule differs.
 
-## Purpose
+## Problem
 
-Give members a place they can trust to be theirs, and give staff a roster
-that is right without copying.
+Members book by messaging the front desk, and staff copy those messages
+into a spreadsheet, so rosters are wrong and a full class gets
+double-booked. The fix is a booking place members trust and a roster staff
+no longer copy by hand (the problem brief).
 
 ## Users
 
-- Members: find a class with space, book it, cancel it.
-- Staff: see who is booked, mark who came, edit the timetable.
+- Members, about 300: find a class with space, book it, cancel it.
+- Staff, four: see who is booked, mark who came, edit the timetable.
+
+## Success
+
+- A full class refuses the next booking at the moment it fills.
+- Staff open a roster with no copying.
+- A member sees their own bookings and no one else's.
+
+## Bounds
+
+- Form: a hosted web app; a phone app is left out (the constraints).
+- Runs: current phone browsers and the front-desk laptop's Chrome.
+- Data: the timetable is imported once from the gym's spreadsheet; bookings
+  live in the app's own database.
+- Access: members see only their own bookings; staff see every roster.
+- Outside: a Resend account the gym creates, for confirmation emails.
+- Budget: under $20 a month to run; no date named.
+
+## Approach
+
+One web app with its own database, because a full class must refuse the
+next booking, which the spreadsheet cannot promise (approaches, Approach A
+chosen).
+
+- A booking form over the existing spreadsheet: quicker, but
+  double-booking stays possible.
 
 ## Scope
 

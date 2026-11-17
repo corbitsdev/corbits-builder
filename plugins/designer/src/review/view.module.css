@@ -1,0 +1,278 @@
+/* The whole page the host gives it: the mockup and the comments above, the bar beneath. */
+.review {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.stage {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* A fixed width, so what it holds grows down and never moves the mockup. */
+.sidebar {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: 18rem;
+  padding: var(--space-3);
+  border-inline-start: 1px solid var(--border);
+  overflow-y: auto;
+  font-size: 0.875rem;
+}
+
+.heading {
+  margin: var(--space-2) 0 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.note,
+.hint {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--muted-foreground);
+}
+
+.compose {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  font-weight: 600;
+}
+
+/* The place's own short name, as quiet context beside the pin's number. */
+.name {
+  overflow: hidden;
+  font-weight: 400;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* Matches the pin the frame draws, so a number reads as the same mark in both places. */
+.badge {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  padding-inline: var(--space-1);
+  border-radius: 999px;
+  background: var(--foreground);
+  color: var(--background);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-1);
+  border-radius: var(--radius-md);
+}
+
+.item[data-selected] {
+  background: var(--muted);
+}
+
+.said {
+  display: flex;
+  flex: 1;
+  align-items: flex-start;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-1) var(--space-2);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.said > .badge {
+  margin-block-start: 0.0625rem;
+}
+
+.said:focus-visible {
+  outline: 2px solid var(--wb-ring);
+  outline-offset: -2px;
+}
+
+.remove {
+  width: 1.75rem;
+  height: 1.75rem;
+  color: var(--muted-foreground);
+}
+
+.remove svg {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+.past {
+  padding-inline: var(--space-2);
+  color: var(--muted-foreground);
+  overflow-wrap: anywhere;
+}
+
+/* The view controls, then the outcome, on one row whose height holds as the outcome changes; the
+   screen picker gives way first. On a narrow page each takes a row of its own. */
+.bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-2) var(--space-3);
+  border-block-start: 1px solid var(--border);
+}
+
+.controls {
+  display: flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.controls > select {
+  flex: 0 1 auto;
+  min-width: 5rem;
+  max-width: 14rem;
+  height: 2rem;
+  font: inherit;
+  font-size: 0.875rem;
+}
+
+/* Desktop and Phone as one control, the one shown filled. */
+.segments {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.segments > button,
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: 1.75rem;
+  padding-inline: var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--muted-foreground);
+  font: inherit;
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+.segments > button:hover,
+.toggle:hover {
+  color: var(--foreground);
+}
+
+.segments > button[aria-pressed="true"] {
+  background: var(--muted);
+  color: var(--foreground);
+}
+
+.segments svg,
+.toggle svg {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+.segments > button:focus-visible,
+.toggle:focus-visible {
+  outline: 2px solid var(--wb-ring);
+  outline-offset: 1px;
+}
+
+/* Off it reads as an outlined control; on, as filled with the brand, since clicks then pin. */
+.toggle {
+  height: 2rem;
+  padding-inline: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.toggle[aria-pressed="true"] {
+  border-color: var(--wb-primary);
+  background: color-mix(in srgb, var(--wb-primary) 14%, transparent);
+  color: var(--primary-emphasis);
+}
+
+.bar > [data-slot="screen-actions"] {
+  flex: 0 0 auto;
+}
+
+@media (max-width: 48rem) {
+  .bar {
+    flex-wrap: wrap;
+  }
+
+  .controls,
+  .bar > [data-slot="screen-actions"] {
+    flex-basis: 100%;
+  }
+
+  /* Too narrow for the comments beside the mockup: they sit under it, the mockup keeping most of
+     the height. */
+  .body {
+    flex-direction: column;
+  }
+
+  .stage {
+    flex: 3 1 0;
+  }
+
+  .sidebar {
+    flex: 2 1 0;
+    width: auto;
+    border-inline-start: 0;
+    border-block-start: 1px solid var(--border);
+  }
+}

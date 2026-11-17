@@ -2,38 +2,323 @@
   "name": "@corbits-builder/designer",
   "version": "0.2.0",
   "private": true,
+  "description": "Designs how an interface could look, such as a web app, a mobile app's screens, a dashboard or a marketing page, as clickable mockups the person compares, tries and approves, and lets the person choose its fonts and colours.",
   "license": "SEE LICENSE IN ../../LICENSE.md",
   "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
   "type": "module",
   "exports": {
-    "./agent": "./src/agent.ts",
+    "./contract": "./src/contract.ts",
     "./skills": "./src/skills.ts",
-    "./packages/*": "./src/packages/*.ts"
+    "./mockup": "./src/mockup/definition.ts",
+    "./pick-fonts": "./src/pick-fonts/definition.ts",
+    "./pick-fonts/schema": "./src/pick-fonts/schema.ts",
+    "./pick-fonts/view": "./src/pick-fonts/view.tsx",
+    "./pick-fonts/data": "./src/pick-fonts/data.json",
+    "./pick-colours": "./src/pick-colours/definition.ts",
+    "./pick-colours/schema": "./src/pick-colours/schema.ts",
+    "./pick-colours/view": "./src/pick-colours/view.tsx",
+    "./review": "./src/review/definition.ts",
+    "./review/schema": "./src/review/schema.ts",
+    "./review/view": "./src/review/view.tsx",
+    "./choose": "./src/choose/definition.ts",
+    "./choose/schema": "./src/choose/schema.ts",
+    "./choose/view": "./src/choose/view.tsx",
+    "./looks": "./src/looks/definition.ts",
+    "./looks/schema": "./src/looks/schema.ts",
+    "./looks/view": "./src/looks/view.tsx"
   },
   "dependencies": {
-    "@corbits-builder/hub": "workspace:*",
-    "@intx/agent": "workspace:*",
-    "@intx/tools-mail": "workspace:*",
-    "@intx/workflow": "workspace:*"
+    "@corbits-builder/app-checks": "workspace:*",
+    "@corbits-builder/plugin": "workspace:*",
+    "@corbits-builder/plugin-ui": "workspace:*",
+    "@corbits-builder/schemas": "workspace:*",
+    "@corbits/react-ui": "0.5.1",
+    "arktype": "catalog:",
+    "lucide-react": "0.545.0",
+    "react": "19.3.0"
+  },
+  "devDependencies": {
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "react-dom": "19.3.0"
   },
   "builder": {
+    "handle": "designer",
+    "runs": "specialist",
+    "groups": [
+      "look",
+      "design",
+      "type",
+      "colour"
+    ],
+    "when": "The person wants to see how something they are making could look, to try or approve a design, or to choose its fonts or colours.",
+    "unless": "They want something already built changed in a way they already stated exactly.",
     "roles": [
       {
         "name": "designer",
+        "label": "Designer",
         "model": "designer",
         "limits": "design",
-        "called": "the designer",
-        "ended": {
-          "failed": "The designer stopped before finishing.",
-          "cancelled": "The design was stopped.",
-          "task": "The designer working on the app's design"
-        }
+        "tools": [],
+        "status": {
+          "working": "Making a mockup",
+          "done": "Made a mockup"
+        },
+        "preferences": [
+          "replies",
+          "technical"
+        ],
+        "buildsFrom": [
+          "problem_brief",
+          "constraints",
+          "approaches",
+          "product_requirements"
+        ],
+        "files": "design",
+        "designs": true
       }
     ],
-    "packages": {
+    "settings": {
       "designer": {
-        "entry": "./src/packages/designer.ts",
-        "role": "designer"
+        "label": "Designer",
+        "hint": "Designs the screens.",
+        "tier": "high"
+      }
+    },
+    "budgets": {
+      "design": {
+        "maxOutputTokens": 32768,
+        "thinking": 65536
+      }
+    },
+    "agents": {
+      "designer": {
+        "prompt": "./src/prompt.ts",
+        "workspace": "./src/workspace.ts"
+      }
+    },
+    "starters": {
+      "designer": "./src/start.ts"
+    },
+    "actions": {
+      "mockup": {
+        "reads": [
+          "brand.guidelines",
+          "look.font-primary",
+          "look.font-secondary",
+          "look.color-primary",
+          "look.color-background"
+        ],
+        "returns": [
+          "filed:design_option"
+        ],
+        "start": {
+          "workflow": "designer"
+        },
+        "presents": [
+          "choose",
+          "review"
+        ]
+      },
+      "looks": {},
+      "review": {
+        "requires": [
+          [
+            "filed:design_option"
+          ]
+        ],
+        "returns": [
+          "design_chosen"
+        ],
+        "place": "page",
+        "host": [
+          "design",
+          "mockupFrame",
+          "earlierAnswer"
+        ]
+      },
+      "choose": {
+        "requires": [
+          [
+            "filed:design_option"
+          ]
+        ],
+        "returns": [
+          "design_chosen"
+        ],
+        "place": "page",
+        "host": [
+          "designConcepts",
+          "mockupFrame"
+        ]
+      },
+      "pick-fonts": {
+        "reads": [
+          "look.font-primary",
+          "look.font-secondary"
+        ]
+      },
+      "pick-colours": {
+        "reads": [
+          "look.color-primary",
+          "look.color-background"
+        ]
+      }
+    },
+    "examples": [
+      "make me a mockup for a dog-walking app",
+      "design the screens for my phone app",
+      "mock up a landing page for my product",
+      "show me a few different looks",
+      "can I see what it would look like",
+      "redesign it",
+      "let me see the mockup",
+      "I want to give feedback on the design",
+      "the design looks good, approve it",
+      "the font is ugly",
+      "can we use a different typeface",
+      "I'm not sure about the font, what else could work",
+      "the writing looks boring, can it be more elegant",
+      "make it look like a newspaper with a serif",
+      "the colours clash",
+      "can we make it less orange",
+      "I don't know which colour would suit us",
+      "the background is too bright",
+      "the buttons don't look right"
+    ],
+    "triggers": [
+      "font",
+      "fonts",
+      "typeface",
+      "lettering",
+      "colour",
+      "color",
+      "colours",
+      "colors",
+      "palette"
+    ],
+    "facts": {
+      "filed:design_option": "a design option is filed",
+      "design_chosen": "the person chose a design from the design options"
+    },
+    "design": {
+      "starter": "./starter",
+      "themes": "./themes",
+      "looks": [
+        {
+          "id": "modern-sleek",
+          "label": "Modern and sleek",
+          "theme": "modern-sleek",
+          "direction": "Crisp cool neutrals, one cobalt accent, generous whitespace, system sans-serif type and subtle depth."
+        },
+        {
+          "id": "rounded-enterprise",
+          "label": "Rounded enterprise",
+          "theme": "modern-sleek",
+          "direction": "Friendly large radii (--radius about 1rem), a calm mid-blue primary and soft cool greys."
+        },
+        {
+          "id": "boxy-enterprise",
+          "label": "Boxy enterprise",
+          "theme": "modern-sleek",
+          "direction": "Square corners (--radius 0), a deep navy primary and a sober, high-contrast palette of near-black text on white with hairline grey borders."
+        },
+        {
+          "id": "dark-technical",
+          "label": "Dark and technical",
+          "theme": "modern-sleek",
+          "direction": "A dark canvas in both :root and .dark (near-black background, slate cards), a neon cyan primary and --font-sans set to ui-monospace, monospace."
+        },
+        {
+          "id": "bold-colourful",
+          "label": "Bold and colourful",
+          "theme": "retro",
+          "direction": "Saturated colour: an electric magenta primary, bright yellow secondary and cyan accent on a white background."
+        },
+        {
+          "id": "liquid-glass",
+          "label": "Liquid glass",
+          "theme": "liquid-glass",
+          "direction": "iOS-like frosted surfaces with background blur over vivid solid colour fields blurred into soft light, fluid curves and system type."
+        },
+        {
+          "id": "pastel-soft",
+          "label": "Pastel and soft",
+          "theme": "modern-sleek",
+          "direction": "Muted pastel tints for the primary, secondary and accent, an off-white background, gentle contrast and large radii (--radius about 1rem)."
+        },
+        {
+          "id": "editorial",
+          "label": "Editorial",
+          "theme": "modern-sleek",
+          "direction": "Magazine-like: --font-sans set to ui-serif, Georgia, serif, an ink-black primary on a warm off-white background and restrained colour."
+        },
+        {
+          "id": "warm-organic",
+          "label": "Warm and organic",
+          "theme": "retro",
+          "direction": "Earthy tones: a terracotta or olive primary, a cream background, soft brown borders and --font-sans set to Optima, Candara, \"Segoe UI\", sans-serif."
+        },
+        {
+          "id": "minimal-monochrome",
+          "label": "Minimal monochrome",
+          "theme": "modern-sleek",
+          "direction": "Black, white and greys only: a near-black primary with white text on it, grey secondary and accent."
+        },
+        {
+          "id": "retro",
+          "label": "Retro",
+          "theme": "retro",
+          "direction": "A nostalgic cream, tomato, mustard and teal palette, chunky ink outlines, 70s display type and tactile, toy-like controls."
+        },
+        {
+          "id": "trading-desk",
+          "label": "Dense trading desk",
+          "theme": "modern-sleek",
+          "direction": "For experts: a dark slate canvas in both :root and .dark, a muted blue primary, small radii (--radius 0.25rem), and --success and --destructive kept for gains and losses."
+        },
+        {
+          "id": "enthusiast-forum",
+          "label": "Enthusiast forum",
+          "theme": "retro",
+          "direction": "A long-running hobby forum: a faded navy primary on parchment, small radii (--radius 0.25rem) and --font-sans set to \"Arial Narrow\", \"Roboto Condensed\", sans-serif."
+        }
+      ]
+    },
+    "values": {
+      "look.font-primary": {
+        "about": "The font for headings and text.",
+        "type": "text",
+        "pattern": "^[A-Za-z0-9 -]{1,40}$",
+        "style": {
+          "token": "font-sans",
+          "leads": true
+        }
+      },
+      "look.font-secondary": {
+        "about": "The font for code and figures.",
+        "type": "text",
+        "pattern": "^[A-Za-z0-9 -]{1,40}$",
+        "style": {
+          "token": "font-mono",
+          "leads": true
+        }
+      },
+      "look.color-primary": {
+        "about": "The brand colour of buttons and links.",
+        "type": "text",
+        "pattern": "^#[0-9a-fA-F]{6}$",
+        "style": {
+          "token": "primary"
+        }
+      },
+      "look.color-background": {
+        "about": "The page colour behind everything.",
+        "type": "text",
+        "pattern": "^#[0-9a-fA-F]{6}$",
+        "style": {
+          "token": "background"
+        }
       }
     }
   }

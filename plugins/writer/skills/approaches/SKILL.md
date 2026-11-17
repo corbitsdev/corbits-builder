@@ -1,14 +1,15 @@
 ---
 name: approaches
-description: Use when writing or revising an approaches document - two or three genuinely different ways to build the app within the constraints, each with how it works, fit against the brief, trade-offs, risks and effort, a side-by-side table and a recommendation, or the person's chosen approach with the others kept as set aside.
+description: Use when writing or revising an approaches document, for any kind of work - two or three genuinely different ways to do it, each with how it works, fit against what was asked, trade-offs, risks and effort, a side-by-side table and a recommendation, or the person's chosen approach with the others kept as set aside.
 ---
 
 # Approaches
 
-The approaches document lets the person choose how the app gets built. Each
-approach is a genuinely different way to meet the brief inside the
-constraints: a different architecture, a different way to keep the data, or
-a smaller first version. The comparison carries the decision.
+The approaches document lets the person choose how the thing gets built or
+done, whether it is an app, a tool, a pipeline or a piece of research. Each
+approach is a genuinely different way to meet what was asked: a different
+architecture, a different way to keep the data, a different tool, or a
+smaller first version. The comparison carries the decision.
 
 ## Sections, in order
 
@@ -21,8 +22,9 @@ a smaller first version. The comparison carries the decision.
 3. `## Approach A: <short name>`, then B, and C when a third is genuinely
    different, each with:
    - `### How it works`: the parts and how data moves, concretely.
-   - `### Fit against the brief`: which success criteria and constraints it
-     meets, cited by name.
+   - `### Fit against what was asked`: which of the person's goals, a
+     brief's success criteria and any constraints it meets, each cited by
+     name.
    - `### Trade-offs`: what it does well and what it gives up.
    - `### Risks`: what could go wrong and how you would notice.
    - `### Effort and cost`: the agent's time and inference cost to build;
@@ -35,17 +37,13 @@ a smaller first version. The comparison carries the decision.
 
 ## What makes it good
 
-- Start from the approaches: the reader has the constraints, so cite a
-  bound by name where an approach depends on it.
-- Keep every approach inside the constraints; when one needs a bound
-  relaxed, name the bound and what relaxing it costs.
+- Start from the approaches: the reader has the other documents, so cite a
+  goal or a bound by name where an approach depends on it.
+- Keep every approach inside any constraints the project has; when one
+  needs a bound relaxed, name the bound and what relaxing it costs.
 - Price building in agent time (minutes or hours) and inference spend, plus
-  what the app costs to run.
+  what it costs to run.
 - After a choice, keep every other approach in full with the reason it was
   set aside, and keep the side-by-side table.
-- File the same approaches as write_artifact's `approaches` with the
-  document, so the person sees them side by side: the comparison's names,
-  pros, cons, risks and effort match the prose, and `recommended` names the
-  one in your Recommendation.
 
 `read_skill approaches file reference/exemplar.md` shows the shape.

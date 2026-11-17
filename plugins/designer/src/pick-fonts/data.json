@@ -1,0 +1,443 @@
+[
+  {
+    "name": "Abril Fatface",
+    "lists": ["serif", "display"],
+    "license": "free"
+  },
+  {
+    "name": "Acumin Pro",
+    "lists": ["sans"],
+    "license": "paid",
+    "needs": "adobe_fonts_connected"
+  },
+  {
+    "name": "Adobe Garamond Pro",
+    "lists": ["serif"],
+    "license": "paid",
+    "needs": "adobe_fonts_connected"
+  },
+  {
+    "name": "Alegreya",
+    "lists": ["serif"],
+    "license": "free"
+  },
+  {
+    "name": "Alfa Slab One",
+    "lists": ["serif", "display"],
+    "license": "free"
+  },
+  {
+    "name": "Anton",
+    "lists": ["sans", "display"],
+    "license": "free"
+  },
+  {
+    "name": "Archivo",
+    "lists": ["sans"],
+    "license": "free"
+  },
+  {
+    "name": "Archivo Black",
+    "lists": ["sans", "display"],
+    "license": "free"
+  },
+  {
+    "name": "Arial",
+    "lists": ["sans"],
+    "license": "free"
+  },
+  {
+    "name": "Barlow",
+    "lists": ["sans"],
+    "license": "free"
+  },
+  {
+    "name": "Bebas Neue",
+    "lists": ["sans", "display"],
+    "license": "free"
+  },
+  {
+    "name": "Bitter",
+    "lists": ["serif"],
+    "license": "free"
+  },
+  {
+    "name": "Brandon Grotesque",
+    "lists": ["sans"],
+    "license": "paid",
+    "needs": "adobe_fonts_connected"
+  },
+  {
+    "name": "Cormorant Garamond",
+    "lists": ["serif", "display"],
+    "license": "free"
+  },
+  {
+    "name": "Courier New",
+    "lists": ["mono"],
+    "license": "free"
+  },
+  {
+    "name": "Courier Prime",
+    "lists": ["mono"],
+    "license": "free"
+  },
+  {
+    "name": "Crimson Pro",
+    "lists": ["serif"],
+    "license": "free"
+  },
+  {
+    "name": "Dancing Script",
+    "lists": ["display"],
+    "license": "free"
+  },
+  {
+    "name": "DM Mono",
+    "lists": ["mono"],
+    "license": "free"
+  },
+  {
+    "name": "DM Sans",
+    "lists": ["sans"],
+    "license": "free"
+  },
+  {
+    "name": "DM Serif Display",
+    "lists": ["serif", "display"],
+    "license": "free"
+  },
+  {
+    "name": "Domine",
+    "lists": ["serif"],
+    "license": "free"
+  },
+  {
+    "name": "EB Garamond",
+    "lists": ["serif"],
+    "license": "free"
+  },
+  {
+    "name": "Figtree",
+    "lists": ["sans"],
+    "license": "free"
+  },
+  {
+    "name": "Fira Code",
+    "lists": ["mono"],
+    "license": "free"
+  },
+  {
+    "name": "Fira Sans",
+    "lists": ["sans"],
+    "license": "free"
+  },
+  {
+    "name": "Fraunces",
+    "lists": ["serif", "display"],
+    "license": "free"
+  },
+  {
+    "name": "Freight Text Pro",
+    "lists": ["serif"],
+    "license": "paid",
+    "needs": "adobe_fonts_connected"
+  },
+  {
+    "name": "Futura PT",
+    "lists": ["sans"],
+    "license": "paid",
+    "needs": "adobe_fonts_connected"
+  },
+  {
+    "name": "Georgia",
+    "lists": ["serif"],
+    "license": "free"
+  },
+  {
+    "name": "IBM Plex Mono",
+    "lists": ["mono"],
+    "license": "free"
+  },
+  {
+    "name": "IBM Plex Sans",
+    "lists": ["sans"],
+    "license": "free"
+  },
+  {
+    "name": "IBM Plex Serif",
+    "lists": ["serif"],
+    "license": "free"
+  },
+  {
+    "name": "Inconsolata",
+    "lists": ["mono"],
+    "license": "free"
+  },
+  {
+    "name": "Inter",
+    "lists": ["sans"],
+    "license": "free"
+  },
+  {
+    "name": "JetBrains Mono",
+    "lists": ["mono"],
+    "license": "free"
+  },
+  {
+    "name": "Josefin Sans",
+    "lists": ["sans"],
+    "license": "free"
+  },
+  {
+    "name": "Karla",
+    "lists": ["sans"],
+    "license": "free"
+  },
+  {
+    "name": "Lato",
+    "lists": ["sans"],
+    "license": "free"
+  },
+  {
+    "name": "Libre Baskerville",
+    "lists": ["serif"],
+    "license": "free"
+  },
+  {
+    "name": "Libre Caslon Text",
+    "lists": ["serif"],
+    "license": "free"
+  },
+  {
+    "name": "Lobster",
+    "lists": ["display"],
+    "license": "free"
+  },
+  {
+    "name": "Lora",
+    "lists": ["serif"],
+    "license": "free"
+  },
+  {
+    "name": "Manrope",
+    "lists": ["sans"],
+    "license": "free"
+  },
+  {
+    "name": "Merriweather",
+    "lists": ["serif"],
+    "license": "free"
+  },
+  {
+    "name": "Minion Pro",
+    "lists": ["serif"],
+    "license": "paid",
+    "needs": "adobe_fonts_connected"
+  },
+  {
+    "name": "Montserrat",
+    "lists": ["sans"],
+    "license": "free"
+  },
+  {
+    "name": "Mulish",
+    "lists": ["sans"],
+    "license": "free"
+  },
+  {
+    "name": "Museo Sans",
+    "lists": ["sans"],
+    "license": "paid",
+    "needs": "adobe_fonts_connected"
+  },
+  {
+    "name": "Myriad Pro",
+    "lists": ["sans"],
+    "license": "paid",
+    "needs": "adobe_fonts_connected"
+  },
+  {
+    "name": "Neue Haas Grotesk Display",
+    "lists": ["sans", "display"],
+    "license": "paid",
+    "needs": "adobe_fonts_connected"
+  },
+  {
+    "name": "Noto Sans",
+    "lists": ["sans"],
+    "license": "free"
+  },
+  {
+    "name": "Noto Serif",
+    "lists": ["serif"],
+    "license": "free"
+  },
+  {
+    "name": "Nunito",
+    "lists": ["sans"],
+    "license": "free"
+  },
+  {
+    "name": "Open Sans",
+    "lists": ["sans"],
+    "license": "free"
+  },
+  {
+    "name": "Oswald",
+    "lists": ["sans", "display"],
+    "license": "free"
+  },
+  {
+    "name": "Outfit",
+    "lists": ["sans"],
+    "license": "free"
+  },
+  {
+    "name": "Pacifico",
+    "lists": ["display"],
+    "license": "free"
+  },
+  {
+    "name": "Permanent Marker",
+    "lists": ["display"],
+    "license": "free"
+  },
+  {
+    "name": "Playfair Display",
+    "lists": ["serif", "display"],
+    "license": "free"
+  },
+  {
+    "name": "Plus Jakarta Sans",
+    "lists": ["sans"],
+    "license": "free"
+  },
+  {
+    "name": "Poppins",
+    "lists": ["sans"],
+    "license": "free"
+  },
+  {
+    "name": "Proxima Nova",
+    "lists": ["sans"],
+    "license": "paid",
+    "needs": "adobe_fonts_connected"
+  },
+  {
+    "name": "PT Sans",
+    "lists": ["sans"],
+    "license": "free"
+  },
+  {
+    "name": "PT Serif",
+    "lists": ["serif"],
+    "license": "free"
+  },
+  {
+    "name": "Public Sans",
+    "lists": ["sans"],
+    "license": "free"
+  },
+  {
+    "name": "Quicksand",
+    "lists": ["sans"],
+    "license": "free"
+  },
+  {
+    "name": "Raleway",
+    "lists": ["sans"],
+    "license": "free"
+  },
+  {
+    "name": "Righteous",
+    "lists": ["display"],
+    "license": "free"
+  },
+  {
+    "name": "Roboto",
+    "lists": ["sans"],
+    "license": "free"
+  },
+  {
+    "name": "Roboto Mono",
+    "lists": ["mono"],
+    "license": "free"
+  },
+  {
+    "name": "Roboto Slab",
+    "lists": ["serif"],
+    "license": "free"
+  },
+  {
+    "name": "Rubik",
+    "lists": ["sans"],
+    "license": "free"
+  },
+  {
+    "name": "Source Code Pro",
+    "lists": ["mono"],
+    "license": "free"
+  },
+  {
+    "name": "Source Sans 3",
+    "lists": ["sans"],
+    "license": "free"
+  },
+  {
+    "name": "Source Serif 4",
+    "lists": ["serif"],
+    "license": "free"
+  },
+  {
+    "name": "Space Grotesk",
+    "lists": ["sans"],
+    "license": "free"
+  },
+  {
+    "name": "Space Mono",
+    "lists": ["mono"],
+    "license": "free"
+  },
+  {
+    "name": "Spectral",
+    "lists": ["serif"],
+    "license": "free"
+  },
+  {
+    "name": "Times New Roman",
+    "lists": ["serif"],
+    "license": "free"
+  },
+  {
+    "name": "Trajan Pro",
+    "lists": ["serif", "display"],
+    "license": "paid",
+    "needs": "adobe_fonts_connected"
+  },
+  {
+    "name": "Ubuntu",
+    "lists": ["sans"],
+    "license": "free"
+  },
+  {
+    "name": "Ubuntu Mono",
+    "lists": ["mono"],
+    "license": "free"
+  },
+  {
+    "name": "Verdana",
+    "lists": ["sans"],
+    "license": "free"
+  },
+  {
+    "name": "Work Sans",
+    "lists": ["sans"],
+    "license": "free"
+  },
+  {
+    "name": "Zilla Slab",
+    "lists": ["serif"],
+    "license": "free"
+  }
+]

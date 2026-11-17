@@ -1,0 +1,17 @@
+.choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.choices > [aria-pressed="true"] {
+  border-color: var(--primary);
+  background: var(--wb-selected);
+}
+
+/* On a phone every choice is a finger's height. */
+@media (max-width: 30rem) {
+  .choices > * {
+    min-height: var(--target);
+  }
+}
