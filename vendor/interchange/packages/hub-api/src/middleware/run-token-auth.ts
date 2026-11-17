@@ -70,6 +70,10 @@ export const RUN_TOKEN_ROUTES: readonly RunTokenRoute[] = [
   { method: "GET", path: "/api/tenants/:tenantId/assets" },
   { method: "GET", path: "/api/tenants/:tenantId/assets/:assetId" },
   { method: "GET", path: "/api/tenants/:tenantId/assets/:assetId/tarballs" },
+  {
+    method: "GET",
+    path: "/api/tenants/:tenantId/credentials/resolve/:name",
+  },
 ];
 
 /**
