@@ -1122,10 +1122,8 @@ export const wording = {
     workspace: "Workspace",
     workspaceNote: "Every project",
     projectNote: "This project only",
-    usedBy: (plugins: readonly string[]) =>
-      plugins.length === 0
-        ? "No plugin uses it"
-        : `Used by ${plugins.join(", ")}`,
+    usedBy: (plugins: readonly string[]) => `Used by ${plugins.join(", ")}`,
+    unused: "No plugin uses it",
     options: (label: string) => `Options for ${label}`,
     replace: "Replace",
     revoke: "Revoke…",
@@ -1133,6 +1131,8 @@ export const wording = {
     save: "Save",
     saving: "Saving…",
     cancel: "Cancel",
+    refused: (code: string) => `Not saved (${code})`,
+    notRevoked: (code: string) => `Not revoked (${code})`,
   },
   providers: {
     section: "Providers",

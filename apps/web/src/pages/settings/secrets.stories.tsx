@@ -30,14 +30,12 @@ const groups: readonly SecretGroup[] = [
       {
         id: "secret-exa",
         label: "Exa API key",
-        plugins: ["Exa search"],
-        host: "api.exa.ai",
+        usedBy: { plugins: ["Exa search"], host: "api.exa.ai" },
       },
       {
         id: "secret-firecrawl",
         label: "Firecrawl API key",
-        plugins: ["Firecrawl scrape"],
-        host: "api.firecrawl.dev",
+        usedBy: { plugins: ["Firecrawl scrape"], host: "api.firecrawl.dev" },
       },
     ],
   },
@@ -48,14 +46,12 @@ const groups: readonly SecretGroup[] = [
       {
         id: "secret-context7",
         label: "Context7 API key",
-        plugins: ["Context7 docs"],
-        host: "context7.com",
+        usedBy: { plugins: ["Context7 docs"], host: "context7.com" },
       },
       {
         id: "secret-serpapi",
-        label: "SerpApi key",
-        plugins: [],
-        host: "serpapi.com",
+        label: "serpapi",
+        usedBy: null,
       },
     ],
   },
@@ -96,7 +92,7 @@ export const ReadFailed: Story = {
   args: { fault: "The server did not answer. Try again." },
 };
 
-/** Revoking the Firecrawl key is on its way to the hub, so its menu waits. */
+/** Revoking the Firecrawl key is on its way to the hub, so every menu waits. */
 export const Revoking: Story = {
   args: { pending: "secret-firecrawl" },
 };

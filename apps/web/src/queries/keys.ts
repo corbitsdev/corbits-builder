@@ -88,6 +88,8 @@ export const keys = {
     of: (projectId: string) => ["project", projectId] as const,
   },
   modelCatalog: ["modelCatalog"] as const,
+  /** The keys plugins saved in the workspace and its projects, with the plugins that declare them. */
+  secrets: ["secrets"] as const,
   /** One subscription login the hub is waiting on. */
   modelLogin: (loginId: string) => ["modelLogin", loginId] as const,
   /** The person's own model choice. */

@@ -329,7 +329,7 @@ async function driven(
 
   /** A hub call as the person, or with the headers given instead; a refusal is returned, not thrown. */
   const callHub = async (
-    method: "GET" | "POST",
+    method: "GET" | "POST" | "DELETE",
     target: string,
     body?: unknown,
     headers: Record<string, string> = {

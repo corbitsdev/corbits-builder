@@ -53,8 +53,7 @@ export type SettingsSlots = {
   providers: ReactNode;
   profiles: ReactNode;
   collaborators: ReactNode;
-  /** Its tab shows only when it is given. */
-  secrets?: ReactNode;
+  secrets: ReactNode;
   /** The Preferences tab's groups above Appearance and Account. */
   workingPreferences: ReactNode;
 };
@@ -151,11 +150,7 @@ export function SettingsView({
     <div className={styles.page} data-slot="settings-page">
       <h1>{wording.settings.title}</h1>
       <Tabs
-        tabs={
-          secrets === undefined
-            ? SETTINGS_TABS.filter((entry) => entry.id !== "secrets")
-            : SETTINGS_TABS
-        }
+        tabs={SETTINGS_TABS}
         active={tab}
         onChange={onTabChange}
         label={wording.settings.sections}

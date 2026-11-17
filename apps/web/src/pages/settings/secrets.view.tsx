@@ -21,10 +21,9 @@ const copy = wording.secrets;
 export type SavedSecret = {
   id: string;
   label: string;
-  /** The plugins that use it, by title; empty when none installed does. */
-  plugins: readonly string[];
-  /** The host it may be sent to. */
-  host: string;
+  /** The installed plugins that declare it, by title, and the host it may be sent to; null when
+   * none does. */
+  usedBy: { plugins: readonly string[]; host: string } | null;
 };
 
 /** The secrets saved in one place: the workspace, or one project. */
@@ -89,7 +88,7 @@ export function SecretsSectionView({
               <ReplaceSecret
                 key={secret.id}
                 secret={secret}
-                saving={pending === secret.id}
+                pending={pending}
                 refused={replacing.refused}
                 onSave={(key) => onReplace(secret.id, key)}
                 onCancel={() => onReplacing(null)}
@@ -105,8 +104,9 @@ export function SecretsSectionView({
                   editLabel={copy.replace}
                   dangerLabel={copy.revoke}
                   confirmLabel={copy.confirmRevoke}
-                  editable
-                  busy={pending === secret.id}
+                  // Only a plugin's declaration says how a key is sent, so one no plugin uses is only revoked.
+                  editable={secret.usedBy !== null}
+                  busy={pending !== null}
                   autoFocus={returnTo === secret.id}
                   onEdit={() => {
                     setReturnTo(secret.id);
@@ -124,28 +124,32 @@ export function SecretsSectionView({
 }
 
 function hint(secret: SavedSecret) {
-  return `${copy.usedBy(secret.plugins)} · ${secret.host}`;
+  if (secret.usedBy === null) return copy.unused;
+  return `${copy.usedBy(secret.usedBy.plugins)} · ${secret.usedBy.host}`;
 }
 
-/** The row while its key is being replaced; what is typed stays in this form's state. */
+/** The row while its key is being replaced; what is typed stays in this form's state. It waits
+ * while any secret's action is on its way, and says it is saving only for its own. */
 function ReplaceSecret({
   secret,
-  saving,
+  pending,
   refused,
   onSave,
   onCancel,
 }: {
   secret: SavedSecret;
-  saving: boolean;
+  pending: string | null;
   refused: string | null;
   onSave: (key: string) => void;
   onCancel: () => void;
 }) {
   const id = useId();
   const [key, setKey] = useState("");
+  const saving = pending === secret.id;
+  const waiting = pending !== null;
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    onSave(key.trim());
+    if (!waiting) onSave(key.trim());
   };
   return (
     <form onSubmit={submit}>
@@ -169,20 +173,20 @@ function ReplaceSecret({
             spellCheck={false}
             autoFocus
             value={key}
-            disabled={saving}
+            disabled={waiting}
             onChange={(event) => setKey(event.target.value)}
             onKeyDown={(event) => {
-              if (event.key === "Escape" && !saving) onCancel();
+              if (event.key === "Escape" && !waiting) onCancel();
             }}
           />
-          <Button onClick={onCancel} disabled={saving}>
+          <Button onClick={onCancel} disabled={waiting}>
             {copy.cancel}
           </Button>
           <Button
             type="submit"
             variant="primary"
             loading={saving}
-            disabled={key.trim() === ""}
+            disabled={waiting || key.trim() === ""}
           >
             {saving ? copy.saving : copy.save}
           </Button>

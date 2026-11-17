@@ -124,6 +124,53 @@ test("a credential sent to a plain http origin, in a header that is no header na
   );
 });
 
+// The designer and the writer, each declaring example-api sent to its origin, its form on a screen
+// of its own.
+async function sharingCredential(designerOrigin: string, writerOrigin: string) {
+  const declaring = async (folder: string, origin: string, screen: string) => {
+    const { builder } = await Bun.file(
+      join(PLUGINS_FOLDER, folder, "package.json"),
+    ).json();
+    builder.credentials = {
+      "example-api": {
+        about: "The Example API key",
+        origin,
+        sends: "bearer",
+        screen,
+      },
+    };
+    return withBuilder(folder, builder);
+  };
+  return loadCatalog(
+    [
+      ...folders.filter(
+        ({ folder }) => folder !== "designer" && folder !== "writer",
+      ),
+      await declaring("designer", designerOrigin, "pick-colours"),
+      await declaring("writer", writerOrigin, "approve"),
+    ],
+    HOST,
+  );
+}
+
+test("two plugins that declare one credential sent to different origins stop the hub, naming both", async () => {
+  await expect(
+    sharingCredential("https://api.example.com", "https://other.example.com"),
+  ).rejects.toThrow(
+    "@corbits-builder/writer and @corbits-builder/designer both declare the credential example-api, sent to a different origin or a different way",
+  );
+});
+
+test("two plugins that declare one credential alike share it as one key, used by both", async () => {
+  const catalog = await sharingCredential(
+    "https://api.example.com",
+    "https://api.example.com",
+  );
+  expect(
+    catalog.credentials.find(({ name }) => name === "example-api")?.plugins,
+  ).toHaveLength(2);
+});
+
 test("a workflow action that requires a fact Builder cannot work out, or templates a field it does not take, stops the hub", async () => {
   const specialist = (requires: string[][]) =>
     loadCatalog(
