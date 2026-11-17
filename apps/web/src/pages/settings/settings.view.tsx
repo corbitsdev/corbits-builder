@@ -18,11 +18,8 @@ import {
   SettingsSectionBody,
   SettingsSubhead,
 } from "./settings-section.tsx";
-import {
-  ChoiceSegments,
-  PictureChoice,
-  ThemePicture,
-} from "./preference-choice.tsx";
+import { ChoiceSegments } from "@corbits-builder/plugin-ui/choice-segments";
+import { PictureChoice, ThemePicture } from "./preference-choice.tsx";
 import { Banner, BannerAction, Button, QuietState } from "../../components.jsx";
 import { openSourceNotices } from "../../open-source.ts";
 import { Credit } from "../../flourish.tsx";

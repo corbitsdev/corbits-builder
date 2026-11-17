@@ -8,7 +8,8 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Banner, QuietState } from "../../components.jsx";
 import { SettingsRow } from "./settings-row.tsx";
 import { SettingsGroup } from "./settings-section.tsx";
-import { ChoiceScale, ChoiceSegments } from "./preference-choice.tsx";
+import { ChoiceSegments } from "@corbits-builder/plugin-ui/choice-segments";
+import { ChoiceScale } from "./preference-choice.tsx";
 
 export type PreferenceRow = {
   id: string;
