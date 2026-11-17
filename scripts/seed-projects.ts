@@ -17,6 +17,7 @@ import {
 } from "@corbits-builder/schemas/approval-round";
 import {
   AppBundle,
+  AppVersionMetadata,
   ApprovalPackageBundle,
   DesignBundle,
   DocumentWrite,
@@ -759,10 +760,20 @@ export function createDatabaseSeedDeps(
         DocumentWrite.assert(input);
       }
 
-      const metadata = {
-        ...(input.openQuestions ? { openQuestions: input.openQuestions } : {}),
-        ...(input.approaches ? { approaches: input.approaches } : {}),
-      };
+      // A seeded app stands for one a coder's passing check filed, so it records that source as
+      // the hub does; without one the project's code would be of unknown origin.
+      const metadata =
+        input.kind === "app"
+          ? AppVersionMetadata.assert({
+              source: "check",
+              bytes: Buffer.byteLength(input.content),
+            })
+          : {
+              ...(input.openQuestions
+                ? { openQuestions: input.openQuestions }
+                : {}),
+              ...(input.approaches ? { approaches: input.approaches } : {}),
+            };
       const origin =
         input.kind === "design_option" ||
         input.kind === "app" ||

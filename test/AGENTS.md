@@ -15,7 +15,10 @@ fail when real behaviour breaks.
   in process, migrated onto a fresh database, never served or started, with a
   signed-up person who calls it and helpers that seed projects and runs
   straight into its database. `hub.ts` creates the throwaway database and
-  signs up the person the in-process hub uses.
+  signs up the person the in-process hub uses. `scripted-project.ts` drives
+  one project through a served hub with every model turn scripted.
+- `test/e2e/builds/`: tests whose runs build an app in the sandbox; CI runs
+  them in their own job, which installs the sandbox's system libraries.
 - `test/seed/`: the dummy projects `bun run dev:seed` files, which the import
   skill also uses as finished examples.
 

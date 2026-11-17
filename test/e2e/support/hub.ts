@@ -17,7 +17,11 @@ export type TestHubHandle = Readonly<{
   client: ProductApiClient;
   // The signed-up person's session, for a hub call the client has no method for.
   cookie: string;
+  // The hub's environment, for a script that writes to its database as the hub would.
+  env: Readonly<Record<string, string>>;
   db: DB["db"];
+  // Stops the hub and starts it again on the same port, database and data folder.
+  restart: () => Promise<void>;
   close: () => Promise<void>;
 }>;
 
@@ -183,8 +187,7 @@ export async function startTestHub(
   let runtime: Awaited<ReturnType<typeof createHubRuntime>> | undefined;
   let server: ReturnType<typeof Bun.serve> | undefined;
 
-  try {
-    await migrateDatabase(hubEnv);
+  const boot = async () => {
     runtime = await createHubRuntime(hubEnv);
     server = Bun.serve({
       hostname: runtime.hostname,
@@ -193,6 +196,17 @@ export async function startTestHub(
       websocket: runtime.websocket,
     });
     runtime.start();
+  };
+  const halt = async () => {
+    if (server) await server.stop(true);
+    if (runtime) await runtime.close();
+    server = undefined;
+    runtime = undefined;
+  };
+
+  try {
+    await migrateDatabase(hubEnv);
+    await boot();
 
     const cookie = await signUpSessionCookie(
       fetch,
@@ -271,18 +285,21 @@ export async function startTestHub(
       workspaceTenantId,
       client,
       cookie,
+      env: hubEnv,
       db: handle.db,
+      restart: async () => {
+        await halt();
+        await boot();
+      },
       close: async () => {
-        if (server) await server.stop(true);
-        if (runtime) await runtime.close();
+        await halt();
         await handle.close();
         await rm(dataDir, { recursive: true, force: true });
         await database.drop();
       },
     };
   } catch (error) {
-    if (server) await server.stop(true);
-    if (runtime) await runtime.close();
+    await halt();
     await handle.close();
     await rm(dataDir, { recursive: true, force: true });
     await database.drop();
