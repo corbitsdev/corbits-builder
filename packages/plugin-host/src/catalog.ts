@@ -798,10 +798,10 @@ function declaredCredentials(manifests: readonly Manifested[]) {
     if (builder.runs !== "specialist") continue;
     // A plugin is named to a person by its own agent, as the page names it while it works.
     const named =
-      builder.roles?.find((role) => role.name === builder.handle)?.label ??
+      builder.roles.find((role) => role.name === builder.handle)?.label ??
       builder.handle;
     for (const [name, { about: what, origin, sends }] of Object.entries(
-      builder.credentials ?? {},
+      builder.credentials,
     )) {
       const earlier = credentials.get(name);
       if (!earlier) {
