@@ -1,9 +1,13 @@
 # Builder user manual
 
-Builder turns an idea into a working web app. You describe what you want. A
-coordinator talks it through with you and writes short planning documents. A
-designer draws the screens. An app builder writes the app. You approve each step
-before the next one starts.
+Builder lets you build, write, edit or improve almost anything: an app, a
+command-line tool, a library, a document, research, an analysis, or a small
+change to something that already exists. You talk to one assistant, the
+coordinator. It talks the work through with you, then brings in specialists
+such as a writer, a designer, a coder, a presenter and others that are
+installed, and ready-made plans, as the work needs them. There is no fixed
+path: what happens depends on what you ask for. You approve what needs your
+approval before the work goes on.
 
 This guide follows what you see in the browser, in the order you meet it.
 
@@ -41,8 +45,9 @@ in** and finish signing in in the new browser tab.
 ### Pick a profile
 
 A profile decides which models do the work. It sets a model and effort for four
-tiers (Low, Medium, High and Max), and each role runs on one tier: the
-Coordinator, the Writer, the Designer, the App builder and the Reviewer.
+tiers (Low, Medium, High and Max), and each kind of work runs on one tier: the
+Coordinator, the Writer, the Reviewer, the Designer, the App builder and the
+Presenter.
 
 Open **Settings → Profiles**:
 
@@ -63,54 +68,70 @@ start. Each project keeps the profile it started with.
 
 ### Set how Builder works with you
 
-**Settings → Preferences** holds **How Builder works with you**. Each change
-saves on its own. What you say in a project's conversation always wins over
-these settings.
+**Settings → Preferences** says "New projects start with these. What you say in
+a project wins." Each change saves on its own. The settings, with their
+defaults first:
 
-The defaults come first:
+Under **Conversation**:
 
-- **How much should Builder ask you?**: Ask only the essentials, Walk me
-  through every decision, or Just build it — decide for me.
+- **Questions**: Only essentials, Every decision, or Decide for me.
 - **Replies**: Concise or Detailed.
-- **Technical detail**: Off keeps everything in plain language.
-- **Design concepts to compare**: Three, or One to Five.
-- **Nitpicky review**: Off; On makes reviews raise small polish too.
-- **Let the agent decide approvals**: Off means you approve each document. On
-  lets each document go ahead once it is written.
-- **Ask open questions before approval**: On means a document reaches you for
-  approval only once its open questions are answered.
-- **Install any package without asking**: Off means you approve each new
-  package the app builder wants to add.
-- **Internet while building**: On lets the app builder download packages and
-  reach public websites while it works. Off limits it to the npm registry, so
-  it can still install packages.
-- **What's next in each project**: Off. On pins a line at the top of each
-  project's conversation saying who is working and what you do next.
+- **Language**: Plain, or Technical to name code, files and jargon.
+- **Next step line**: Hidden, or Shown for a line above the conversation
+  saying who is working and what you do next.
+
+Under **Reviews and approvals**:
+
+- **Documents**: You approve each, or Builder goes ahead, which lets each
+  document go ahead once it is written.
+- **Open questions**: Answered first, so a document reaches you for approval
+  only once its open questions are answered, or Can stay open.
+- **Reviews raise**: Real problems, or Problems and polish.
+- **Design concepts**: 3, or 1 to 5: how many looks the designers make when
+  you explore.
+
+Under **Building the app**:
+
+- **New packages**: Ask me first, so you approve each new package the coder
+  wants to add, or Install freely.
+- **Internet**: Any website, or npm registry only, so the coder can still
+  install packages but reach nothing else.
+
+Under **Stakeholder approvals**, marked Experimental: **Approval packages**, Not
+used or Share with reviewers.
 
 A project keeps the preferences its creator had when it started; a later
-change applies to new projects. **What's next in each project** is the
-exception: it changes the line in every project at once.
+change applies to new projects.
 
-The same tab also has **Appearance** (light, dark or system theme, and **Show
-tips**) and your **Account**, with **Sign out**.
+The same tab also has **Appearance** (a Light, System or Dark theme, and
+whether **Document tips** are shown) and your **Account**, with **Sign out**.
 
 ## 2. Start a project
 
-From **New project** in the sidebar you see "What do you want to build today?"
+From **New project** in the sidebar you see "What do you want to make today?"
 
-1. Type your idea in the box that says "Describe the thing you want built…".
-   You can also dictate with the microphone.
+1. Type what you want in the box that says "Describe what you want to make or
+   change…". It can be anything: a new thing, a change to something that
+   exists, or a piece of writing or research. You can also dictate with the
+   microphone.
 2. The **Model profile** picker in the box shows the profile the project will
    use. Change it here if you want a different one.
 3. Send it. You see "Starting your project…" and then the project opens.
 
-The project has two sides. The conversation is on the left. Documents, designs
-and the app appear as tabs on the right.
+The project opens on the conversation. **Project** opens everything the
+project has, its documents, design and preview, over the conversation, and
+**Back to the conversation** returns.
 
-The coordinator replies first. It welcomes your idea and explains how you will
-work together: talk it through, write a short plan you approve, design how it
-looks, then build it. Then it asks you questions. How many depends on your
-**How much should Builder ask you?** setting.
+The coordinator replies first. It welcomes what you asked for, asks what it
+needs to know and lays out a plan, which may bring in a writer, a designer, a
+coder or other specialists. How many questions it asks depends on your
+**Questions** setting.
+
+You can ask for anything, and the work fits what you ask. An idea for an app
+gets requirements, a design and a build plan before it is built. A small
+change, such as "make the buttons green", goes straight to the work without
+reopening any document. A question about your project, or research, comes back
+as an answer or a document.
 
 You can reply in your own words at any time. When a reply ends with a short list
 of options, they also appear as buttons above the message box; choose one to
@@ -153,35 +174,55 @@ says "This question is no longer open" and lists its questions as not answered.
 The card stays in the conversation when a new coordinator takes over, and the
 new coordinator is told the question was left unanswered.
 
-## 4. Documents and approvals
+### Screens
 
-### Which documents get written
+Some decisions come as a screen made for them instead of a list of options:
+approving documents, reviewing or choosing a design, how many looks to compare,
+picking fonts or colours, or whether Builder should stop to ask you. A screen
+sits in the conversation, or opens over the whole page with the message box
+still at the bottom. Whatever a screen shows, you can type what you want in the
+message box instead, and that is your answer. **Cancel** closes it without
+choosing.
 
-Documents come in this order. Each one builds on the ones before it.
+If an answer cannot be saved, you see "Your answer was not accepted. Your
+choice is kept." and can try again.
 
-1. **Brief**: who the app is for, what it must do and what done looks like.
-   The coordinator writes it.
-2. **Constraints**: the limits, such as budget, devices, data and privacy, and
-   what the first version includes. A writer writes it.
-3. **Approaches**: two or three ways to build it, with one recommended. A
-   writer writes it.
-4. **Requirements**: what the app does for whom, built the chosen way. A writer
-   writes it.
-5. **Design Plan** and **Design Mockup**: the chosen design, as notes and as
-   clickable screens. A designer makes it.
-6. **Build Plan**: the chosen approach and the order of the work. A writer
-   writes it.
+## 4. The plan, documents and approvals
 
-Before the constraints are written, the coordinator asks you about the limits
-that are yours to decide, such as who can use the app and what you are willing
-to spend.
+### The plan
+
+**Show the plan** opens the plan beside the conversation: the steps the
+coordinator intends, each marked with where it stands, such as done, running,
+waiting or needing you. A step that waits for your approval says **needs your
+approval** or **asks for your approval**, and one you may leave out says
+**optional**. The button shows how far along the plan is, and says when a step
+failed or needs you.
+
+On a step that has not started you can turn on **Ask me first**, so it waits
+for you; it then shows **Go ahead**, which lets it start. On an optional step,
+**Skip** leaves it out, and turning **Skip** off brings it back. The
+coordinator is told each time.
+
+### What gets written
+
+There is no fixed set of documents and no fixed order. The coordinator and its
+specialists write what the work needs, and a document may build on others. The
+kinds you may see include:
+
+- **Requirements**: what it does, and for whom.
+- **Build plan**: how it is built, in what order, and the acceptance
+  checklist.
+- **Brief**, **Constraints** and **Approaches**, when the work calls for them.
+- **User manual**, research, an analysis, an approval package, or anything
+  else you ask for.
 
 A reviewer may also check a document and advise the coordinator. That review
 is advice, never an approval.
 
 ### Reading a document
 
-Choose a tab on the right to open a document. A dot on a tab means a new
+Open **Project** and choose a document's tab, or choose the document where it
+appears in the conversation. A dot on a tab means a new
 version you have not opened yet. Hover over a tab to see whether it is
 **Drafted** or **Approved**, and at which version.
 
@@ -202,149 +243,156 @@ see a warning that it may cost more and restart some of their work. Choose
 
 ### Approving a document
 
-When a document is ready, an approval card appears in the conversation, for
-example "Happy with the brief? It's open on the right." It says exactly what you
-approve, such as "Approving Weather App Brief v2, written by the Coordinator."
-It also says what comes next, such as "Next on approval: Constraints."
+When documents are ready for you, the **Approve the documents** screen appears
+in the conversation, asking "Approve the product requirements?" or "Approve these 2
+documents?". It shows each document with its version and summary; choose a
+document's title to read it in full.
 
-- **Yes, go ahead** approves it. The card becomes "Approved · …" and the next
-  document starts.
-- **Not yet** declines it. The card becomes "Not yet · …" and the cursor moves
-  to the message box. Say what should change.
+- **Approve** approves exactly the versions shown. The card becomes "Approved,
+  version …" and the work goes on.
+- To ask for changes, type what should change in the message box and send it.
+  That is your answer, and the coordinator has the document revised.
 
-One card can cover several documents. It then reads "Happy with the …?" and
-**Covers N documents** lists each one with its version.
-
-While a card is open, typing a plain "yes", "ok", "go ahead" or similar approves
-it after a short countdown ("Approving in 3s"). Choose **Undo** to send your
-words as an ordinary message instead.
+You can also approve a document you are reading without being asked. If the
+coordinator was waiting for that approval, the screen closes with it.
 
 ### What approval means
 
 An approval covers one exact version of a document. If the document changes
-afterwards, it needs your approval again. The next document's writer starts only
-from versions you approved.
+afterwards, the coordinator decides whether to put it to you again. Work that
+builds on a document uses the version you approved.
 
 By default a document reaches you for approval only once its open questions are
-answered (**Ask open questions before approval**). If you turn on **Let the
-agent decide approvals**, documents go ahead once written and the coordinator
-tells you about each one instead.
+answered (**Open questions**). If you set **Documents** to **Builder goes
+ahead**, documents go ahead once written and the coordinator tells you about
+each one instead.
 
-## 5. Choose an approach
+### Letting Builder go ahead without asking
 
-The **Approaches** document opens with **Approaches side by side**: one card per
-approach. Each card shows its name, a summary, the effort (**Low effort**,
-**Medium effort** or **High effort**), **Best for**, **Pros**, **Cons** and
-**Risks**. One card is marked **Recommended**.
+Tell the coordinator to just build it, or to stop asking, and it shows **Ask
+before each step?** Choose **Go ahead without asking** to hand your approvals
+to Builder for this project: each step then starts as soon as the one before it
+is filed, and the coordinator tells you what was filed instead of asking.
+**Keep asking me** leaves things as they are. Ask again later and the same
+screen offers **Ask me again**. A step the plan marks as needing your approval
+still waits for you.
 
-Choose **Choose this one** on the approach you want. This approves that version
-of the approaches if it is waiting for your approval, and sends the coordinator
-"I choose the … approach." Your pick is marked **Your choice**. If you pick a
-different one from the recommendation, the coordinator has the document updated
-to record your choice.
+## 5. Approaches
+
+When the coordinator has had ways of doing the work compared, the
+**Approaches** document opens with **Approaches side by side**: one card per
+approach, with its name, a summary, the effort (**Low effort**, **Medium
+effort** or **High effort**), **Best for**, **Pros**, **Cons** and **Risks**.
+One card is marked **Recommended**.
+
+**Pick this one** on the approach you want sends the coordinator "I choose the …
+approach." Your pick is marked **Your choice**.
 
 ## 6. Design
 
-Once the brief, constraints, approaches and requirements exist, the coordinator
-checks in. It asks whether you want one design it suggests or to explore
-several looks, and whether you have a look in mind: apps you like, colours or a
-feel.
+When the work has something to look at, the coordinator checks in. It may ask
+**How many looks do you want to compare?**, with **One**, **Two** and
+**Three** to choose from and a button to go on, such as **Compare three looks**,
+and whether you have a look in mind:
+examples you like, colours or a feel. If you did not say how many, you get as
+many as your **Design concepts** setting says. Each look starts from one of
+Builder's five themes, or from a theme made for your brand or your own
+description.
 
-### Design themes
+### Following a design
 
-Until a design exists, a **Design Themes** tab shows example mockups of each
-ready-made look. Open one to click through it and tweak it. **Use this theme**
-puts a message such as "Design it in the … theme." in your message box; send it
-to design in that theme.
-
-### Starting the design
-
-Before any designer starts, a card asks **Ready to start the design?** and lists
-the **Design concepts to compare** it will make.
-
-- **Start the design** lets it begin.
-- **Not yet** stops it so you can say what to change.
-
-If you asked to explore, you get as many concepts as you asked for, up to five
-at a time. If you did not say how many, you get as many as **Design concepts to
-compare** says (three by default). What you say in the conversation wins over
-that setting.
-
-### Comparing concepts
-
-Each concept gets a tab such as **Design mockup 1 · Retro**. A live dot means
-its designer is still sketching. The tab shows the draft as it takes shape.
-
+Each concept gets a tab in the project view, such as **Design mockup 1 ·
+Workbench**, which shows the draft as its designer works.
 In a mockup you can switch **Screen**, try its states, **Switch light and
 dark**, view it as **Desktop** or **Phone**, and **Expand to full screen**.
 **Tweak the look** opens **Primary colour**, **Background**, **Corner radius**
 and **Font**. **Save these** keeps your tweaks; saving does not approve the
 design.
 
-### Choosing one
+### Reviewing a design
 
-When every concept is ready, the coordinator says what sets each apart and
-which it recommends. Below that, the conversation asks you to confirm:
+With one design ready, **Review the mockup** opens it over the whole page. Try
+it, and to comment on a place, turn on **Tag** and click there to pin a comment.
+**Approve** approves the design and files it as the project's design. With
+comments pinned, or a note typed in the message box, Send sends them back to
+the designer instead, and approving then asks you to confirm that the comments
+will be discarded.
 
-- With one concept, choose **Confirm**.
-- With several, each concept's name opens its mockup; choose **Confirm** beside
-  the one you want.
+### Choosing between designs
 
-The choice shows as "✓ Using …". That design is filed and approved, and the
-build plan is written from it next. If you want two concepts blended, or none
-fits, say so in the conversation instead.
+With several designs ready, **Choose a design** opens them side by side over the
+whole page. **Choose this design** picks one, and you may **Comment** on any of
+them as you go. The one you choose is filed as the project's design. If you
+want two blended, or none fits, type that instead.
+
+### Fonts and colours
+
+Ask to change the fonts or the colours and the coordinator opens a picker.
+**Choose your fonts** searches the font list for a **Primary** font, for
+headings and body text, and a **Secondary** font, for code and figures; some
+fonts are marked **Paid**. **Choose your colours** sets the **Primary** colour
+of buttons and links and the **Background**. When the coordinator proposes a
+change you can use it or choose your own. **Change my fonts** or **Change my
+colours** saves your choice as the project's, in its design once it has one;
+**Keep my fonts** or **Keep my colours** leaves them as they were.
 
 ## 7. Build
 
-Once the build plan is ready and approved, the coordinator says the app looks
-ready to build and that you can ask anything first. It then starts the app builder.
+When there is something to build, the coordinator hands it to the coder. The
+coder builds whatever the project is: a web app, a command-line tool, a
+library or something else. You can ask anything first.
 
 ### The live preview
 
-A **Live Preview** tab appears next to **Build Plan**. It shows:
+When the coder has something that opens in a browser, a **Live Preview**
+appears among the project's views. A command-line tool, a library or anything
+else that does not open in a browser has no preview; its code is still checked
+and can be downloaded. The preview shows:
 
-- "The app builder is setting up your app…" with the time elapsed, until its first
+- "The coder is setting this up…" with the time elapsed, until its first
   changes run.
-- **Installing the app's packages**, then **Starting the app**.
-- The running app itself, which you can click through as it is built.
+- **Installing the packages it needs**, then **Starting it**.
+- The running result itself, which you can click through as it is built.
 
-The bar above the app offers **Open in a new tab**, and the demo login when the
-app has one. **Show the acceptance checklist** lists what the app must do and
-how much is "Checked" so far. Use **Hide the controls** to give the app more
-room.
+The bar above it offers **Open in a new tab**, and the demo login when it has
+one. **Show the acceptance checklist** lists what it must do and how much is
+"Checked" so far. Use **Hide the controls** to give the preview more room.
 
 ### While it builds
 
 The conversation shows who is working and what they are doing. You do not need
 to do anything except answer what is asked of you:
 
-- **Packages**: a card may ask "Install … into your app?" Choose **Yes, go
-  ahead**, **Always allow** (for the rest of this build or change; the next
-  change asks again) or **Decline**. Turn on **Install any package without
-  asking** in Settings to skip these cards.
-- **Questions**: the app builder never asks you directly. The coordinator passes
-  its questions on when they need you.
+- **Packages**: a card may ask "Install … into your project?" for packages
+  that no approved build plan names. Choose **Yes, go ahead**, **Always allow**
+  (for the rest of this build or change; the next change asks again) or
+  **Decline**. While the card is open, typing a plain "yes", "ok" or "go ahead"
+  approves it after a short countdown ("Approving in 5s"); **Undo** sends your
+  words as an ordinary message instead. Set **New packages** to **Install
+  freely** in Settings to skip these cards.
+- **Questions**: the coder never asks you directly. The coordinator passes its
+  questions on when they need you.
+
+A working specialist's row has **Stop**, which asks once before it stops the
+run; what it saved before stopping is kept.
 
 ### Asking for changes
 
-Try the app, then describe any change in the conversation. The coordinator sends
-it to the app builder, after a card asks **Send this change to the app builder?** with
-the change written out. Choose **Yes, go ahead** or **Not yet**. Each change is
-made by a fresh app builder starting from the saved app, once the one before it
-has finished.
+Try it, then describe any change in the conversation. The coordinator sends it
+to the coder. Each change is made by a fresh coder starting from the saved
+code, once the one before it has finished.
 
 ## 8. Download your work
 
-- **The app**: in **Live Preview**, choose **Download the app** for a zip of its
-  code. It works during the build too and says which version you got. **Share
-  the app** sends it through your device's share menu where available.
+- **The code**: in **Live Preview**, choose **Download the code** for a zip of
+  it. It works during the build too and says which version you got. **Share the
+  code** sends it through your device's share menu where available.
 - **A document**: choose **Download as Markdown** or **Share as Markdown** in
   the document's bar. Right-click a document's tab and choose **Save as PDF or
   print** to print it.
 - **The design**: choose **Download the design** on the design.
 - **The whole project**: open the project's menu and choose **Export**. Tick
-  **Planning documents**, **Design documents and mockups** and **Build**, then
-  **Export**. You get a zip that always includes a `project.json` file.
+  **Documents**, **Designs and mockups** and **Code**, then **Export**. You get a zip that always includes a `project.json` file.
 
 To bring a project back, choose **Import project** on the new-project page and
 pick the `project.json` file from an export. If the file marks documents as
@@ -353,15 +401,15 @@ exactly those versions) or **Import without approvals**.
 
 To make a project from code you already have, choose **Import a folder** on
 the new-project page and pick the folder, usually a git repository. Builder
-reads it the way it reads its own exports: the code becomes the app, and any
-planning documents or design kept in the folder are filed with it. Dependencies,
+reads it the way it reads its own exports: the code becomes the project's code, and any
+documents or design kept in the folder are filed with it. Dependencies,
 build output, environment files and whatever the folder's `.gitignore` files
 leave out are never read. A card then shows what was found, what Builder still
 has to write with you, and files you may want to leave out: those whose names
 suggest a secret, and lockfiles of package managers Builder does not use, start
-out left out, and you can keep any of them. Choose **Import**. The coordinator reads the code, asks you what you want to do and
-what the code cannot tell it, and writes the missing documents for your
-approval, one at a time, before any building starts.
+out left out, and you can keep any of them. Choose **Import**. The coordinator
+reads what was imported, asks you what you want to do and what the code cannot
+tell it, and has only the documents written that the work you ask for needs.
 
 ## 9. Manage projects
 
@@ -372,7 +420,7 @@ which lists your open projects that are not archived or shipped.
 
 **Projects** shows every project in the workspace. Filter by **All**, **Idea**,
 **Building**, **Shipped** or **Archived**. A project is an **Idea** until the
-builder has started, **Building** after that, and **Shipped** once you mark it
+coder has started, **Building** after that, and **Shipped** once you mark it
 so.
 
 Each project has a menu (the "…" beside it, or its title at the top):
@@ -385,8 +433,8 @@ Each project has a menu (the "…" beside it, or its title at the top):
 
 ### Archived projects
 
-An archived project says "This project is archived." Its documents, design and
-app stay open to read and download, but its conversation is closed. Choose
+An archived project says "This project is archived." Everything it
+made stays open to read and download, but its conversation is closed. Choose
 **Restore** to work on it again.
 
 ### Reopening a project
@@ -413,8 +461,8 @@ provider's status in **Settings → Providers**, then send your message again.
   whoever runs it to restart it.
 - **"Builder is responding slowly"**: everything waits on the server. If it
   stays slow, restart it.
-- **"Describe what you want built to start a project."**: the box is empty;
-  type your idea first.
+- **"Describe what you want to make or change to start a project."**: the box
+  is empty; type what you want first.
 - **"No model provider connected"**: choose **Connect a model provider**.
 - **"The provider refused this key."**: check the key and test again.
 - **"The provider did not answer with a model list."**: check the **Base URL**
@@ -424,23 +472,26 @@ provider's status in **Settings → Providers**, then send your message again.
 - **"The coordinator for this project did not start."**: choose **Retry**.
 - **"The coordinator stopped before it replied."**: check your provider in
   Settings, then send your message again.
-- **"Your answers were not sent."**: your choices are kept. Choose **Send
-  answers** again.
-- **"Your choice was not sent. Try again."**: choose **Choose this one** again.
-- **"The design could not be chosen."**: choose **Confirm** again.
-- **"Not started — the go-ahead ran out of time"** (or **expired**): ask the
-  coordinator to try again.
+- **"Your answer could not be sent. Try again."**: your choices are kept;
+  send them again.
+- **"Your answer was not accepted. Your choice is kept."**: the screen is still
+  open; answer it again.
+- **"This question cannot be shown here. Answer it in your own words below."**:
+  type your answer in the message box.
+- **"Your choice was not sent. Try again."**: choose **Pick this one** again.
 - **"Did not finish: …"** on a hand-off: ask the coordinator to try again.
-- **A quiet "Status update" line saying a specialist ended**: it gives the
+- **"Blocked"** at the end of a specialist's row: it hit something it could
+  not get past, and says why underneath. Deal with what it names, or ask the
+  coordinator to try another way.
+- **A quiet line saying a specialist ended**: it gives the
   reason, such as "it ran out of time". The coordinator can start it again; ask the
   coordinator to carry on.
-- **"The app could not start."**: open **The app's last output** to see why,
-  and ask the coordinator to fix the app. It starts again when the app's files
-  next change.
-- **"The app is stopped."**: nothing is running it right now. Ask the
-  coordinator to fix the app.
-- **"No app preview here"**: this server cannot run apps, so the app cannot be
-  shown.
+- **"It could not start."**: open **Its last output** to see why, and ask the
+  coordinator to fix it. It starts again when its files next change.
+- **"It is stopped."**: nothing is running it right now. Ask the coordinator to
+  fix it.
+- **"No preview here"**: this server cannot run what the coder makes, so it
+  cannot be shown.
 - **"This project is archived. Restore it to make changes."**: choose
   **Restore**.
 - **"The coordinator cannot read that kind of file."**: attach a different kind

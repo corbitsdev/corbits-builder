@@ -52,8 +52,8 @@ import {
   updateCustomProvider,
 } from "./custom-providers.ts";
 import { readJson } from "../lib/json.ts";
-import { CATALOG } from "../plugins/catalog.ts";
 import { connectedProviders } from "../projects/model-choice.ts";
+import { CATALOG } from "../plugins/catalog.ts";
 import {
   createAvailabilityProbe,
   probeKey,
@@ -321,11 +321,11 @@ export function createSettingsRoutes(
                 name: `${entry.label}${index === 0 ? "" : ` ${index + 1}`}`,
               })),
           })),
-        roles: Array.from(CATALOG.settings, ([id, setting]) => ({
+        roles: [...CATALOG.settings].map(([id, { label, hint, tier }]) => ({
           id,
-          label: setting.label,
-          hint: setting.hint,
-          tier: setting.tier,
+          label,
+          hint,
+          tier,
         })),
         tiers: [...TIERS],
         efforts: [...EFFORTS],

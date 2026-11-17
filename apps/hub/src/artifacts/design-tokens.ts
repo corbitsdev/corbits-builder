@@ -7,7 +7,7 @@ const DIMENSION = /^(-?\d*\.?\d+)(px|rem)$/;
 // The mockup leaves the root font size at the CSS initial value, so 1rem is 16px.
 const PX_PER_REM = 16;
 
-function declarations(css: string, selector: string) {
+export function declarations(css: string, selector: string) {
   for (const [, prelude = "", body = ""] of css.matchAll(RULE)) {
     if (prelude.replace(COMMENT, "").split(/[;}]/).at(-1)?.trim() !== selector)
       continue;

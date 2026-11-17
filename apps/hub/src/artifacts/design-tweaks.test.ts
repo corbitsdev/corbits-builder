@@ -1,5 +1,11 @@
 import { expect, test } from "bun:test";
+import { DesignTweaks } from "@corbits-builder/schemas/artifact";
 import { setThemeTokens } from "./design-tweaks.ts";
+import { CATALOG } from "../plugins/catalog.ts";
+import {
+  projectValueWrites,
+  readProjectValues,
+} from "../values/project-values.ts";
 
 test("a saved primary reaches every dark rule of a shipped theme", async () => {
   const css = await Bun.file(
@@ -22,4 +28,30 @@ test("a commented declaration is left alone", () => {
       primary: "#f00",
     }),
   ).toBe(":root { /* --primary: red; */ --primary: #f00; }");
+});
+
+test("a chosen secondary font is saved as font-mono, ahead of the stylesheet's fallbacks", async () => {
+  const styles = await Bun.file(
+    new URL(
+      "../../../../plugins/designer/starter/.builder/designs/styles.css",
+      import.meta.url,
+    ),
+  ).text();
+  const written = projectValueWrites(
+    { "look.font-secondary": "JetBrains Mono" },
+    { styles, stored: {}, materials: [] },
+    CATALOG.values,
+  );
+  const { tokens } = DesignTweaks.assert({ tokens: written.tokens });
+  const saved = setThemeTokens(styles, tokens);
+  expect(saved).toContain(
+    '--font-mono: "JetBrains Mono", "Fira Code", Monaco, Consolas, monospace;',
+  );
+  expect(
+    readProjectValues(
+      ["look.font-secondary"],
+      { styles: saved, stored: {}, materials: [] },
+      CATALOG.values,
+    ),
+  ).toEqual({ "look.font-secondary": "JetBrains Mono" });
 });

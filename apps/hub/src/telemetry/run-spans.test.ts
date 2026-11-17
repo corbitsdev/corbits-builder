@@ -239,6 +239,88 @@ describe("run spans", () => {
     }
   });
 
+  test("captures structured tool-only replies and thinking only when enabled", () => {
+    const cases = [
+      {
+        content: [
+          {
+            type: "tool_call",
+            id: "call",
+            name: "read_file",
+            arguments: { path: secret },
+            signature: "opaque-tool-signature",
+          },
+        ],
+        parts: [
+          {
+            type: "tool_call",
+            id: "call",
+            name: "read_file",
+            arguments: { path: secret },
+          },
+        ],
+      },
+      {
+        content: [
+          { type: "thinking", thinking: secret, signature: "opaque-signature" },
+          { type: "redacted_thinking", data: "opaque-redacted-data" },
+          { type: "text", text: "reply" },
+        ],
+        parts: [
+          { type: "reasoning", content: secret },
+          { type: "text", content: "reply" },
+        ],
+      },
+    ];
+    for (const captureContent of [false, true]) {
+      for (const example of cases) {
+        const tracker = createRunSpans({ captureContent });
+        tracker.accept(agent.address, agent.runId, agent, events[0], 0);
+        tracker.accept(agent.address, agent.runId, agent, events[1], 1);
+        const spans = tracker.accept(
+          agent.address,
+          agent.runId,
+          agent,
+          {
+            type: "inference.done",
+            seq: 3,
+            data: {
+              turn: {
+                role: "assistant",
+                model: "actual",
+                timestamp: 1,
+                content: example.content,
+              },
+              usage: {
+                input: 12,
+                output: 34,
+                cacheRead: 0,
+                cacheWrite: 0,
+                thinking: 0,
+              },
+              source: {
+                provider: "provider",
+                model: "actual",
+                sourceId: "source",
+              },
+            },
+          },
+          2,
+        );
+        expect(spans).toHaveLength(1);
+        const output = spans[0]?.attributes["gen_ai.output.messages"];
+        if (captureContent)
+          expect(output).toBe(
+            JSON.stringify([{ role: "assistant", parts: example.parts }]),
+          );
+        else {
+          expect(output).toBeUndefined();
+          expect(JSON.stringify(spans)).not.toContain(secret);
+        }
+      }
+    }
+  });
+
   test("marks failed model calls, tools and turns", () => {
     const tracker = createRunSpans({ captureContent: false });
     tracker.accept(agent.address, agent.runId, agent, events[0], 0);

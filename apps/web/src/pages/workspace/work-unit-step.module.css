@@ -1,0 +1,206 @@
+/* The row, with what the person can open beside it on the same line. */
+.header {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.row {
+  flex: 1 1 0%;
+  min-width: 0;
+}
+
+/* The phrase says what the specialist did, so it wraps rather than being cut short. */
+.row > span:first-of-type {
+  overflow: visible;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* A run held on the person reads in the attention colour, and what it asked wraps rather than
+   pushing the row's words aside. */
+.waiting > span:last-of-type {
+  flex-shrink: 1;
+  color: var(--wb-primary);
+  text-align: end;
+}
+
+/* On a phone what it asked takes a line of its own under the title, so neither is squeezed into a
+   column one word wide. */
+@media (max-width: 30rem) {
+  .waiting {
+    flex-wrap: wrap;
+  }
+
+  .waiting > span:last-of-type {
+    order: 1;
+    flex-basis: 100%;
+    padding-inline-start: calc(1rem + var(--space-2));
+    text-align: start;
+  }
+}
+
+.count {
+  margin-inline-start: var(--space-2);
+  color: var(--wb-muted-foreground);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.action {
+  flex: none;
+  height: auto;
+  padding: 0;
+}
+
+/* Asking once before a stop, in the row: the question, then its two answers. */
+.ask {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--wb-muted-foreground);
+  font-size: 0.8125rem;
+}
+
+/* What the specialist did sits one level in, under its row's words. */
+.work {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding-inline-start: var(--space-4);
+}
+
+/* The document the work filed, first under its row and set apart from how the work went. */
+.document {
+  min-width: 0;
+  margin-block-end: var(--space-2);
+  font-size: 0.875rem;
+}
+
+.failed {
+  margin: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--wb-muted-foreground);
+  font-size: 0.875rem;
+}
+
+/* What blocked the run, in the agent's words, wrapped rather than cut short. */
+.blocked {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--wb-muted-foreground);
+  font-size: 0.875rem;
+}
+
+/* A working row's one live slot: four lines tall from the first frame to the last, whatever it
+   holds, so nothing below it moves while the run works. */
+.slot {
+  height: calc(4 * 1.5 * 0.8125rem);
+  min-width: 0;
+}
+
+/* What follows the work in a row that held a slot: at least the slot's height, so the work's end
+   never pulls the page up; a report or a reason takes the slot's place. */
+.outcome {
+  display: flex;
+  min-width: 0;
+  min-height: calc(4 * 1.5 * 0.8125rem);
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+/* What the run is writing as it writes it, filling the slot, the newest kept in view. */
+.preview {
+  height: 100%;
+  overflow-y: auto;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--wb-border);
+  border-radius: var(--radius-md);
+  background: var(--wb-muted);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+/* What the specialist was asked to do, three lines until opened. */
+.goal {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.goalLabel {
+  color: var(--wb-muted-foreground);
+  font-size: 0.8125rem;
+}
+
+/* A finished specialist's last report, two lines until opened. */
+.report {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  min-width: 0;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+/* Held to the column: under the start-aligned report a box takes its text's width, so a long word
+   or link would otherwise carry it past the column's edge. */
+.reportText {
+  align-self: stretch;
+  overflow-wrap: anywhere;
+  font-size: 0.9375rem;
+  line-height: 1.7;
+  /* Clamped by lines, not height: the space between paragraphs is not a whole line, so a height
+     would cut a line of the next paragraph through the middle. */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  color: var(--wb-muted-foreground);
+}
+
+.goal .reportText {
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+}
+
+.reportText[data-open] {
+  display: block;
+  -webkit-line-clamp: none;
+  line-clamp: none;
+}
+
+.thinking {
+  margin: 0;
+  color: var(--wb-muted-foreground);
+  font-size: 0.8125rem;
+}
+
+/* The model's reasoning as it streams, in the slot: its newest two lines. Short text sits at the
+   top; longer text keeps its newest two lines, cut off above. */
+.reasoning {
+  height: calc(2 * 1.5 * 0.8125rem);
+  overflow: hidden;
+  color: var(--wb-muted-foreground);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.reasoningText {
+  display: flex;
+  max-height: 100%;
+  flex-direction: column;
+  justify-content: flex-end;
+  margin: 0;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}

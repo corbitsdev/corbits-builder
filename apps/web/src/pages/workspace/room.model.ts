@@ -1,3 +1,4 @@
+import type { AnswerOutcome } from "./question-outcome.tsx";
 /**
  * What the project room does.
  *
@@ -16,6 +17,7 @@ import {
   queryOptions,
   skipToken,
   usePrefetchQuery,
+  useQueries,
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
@@ -35,23 +37,43 @@ import {
 } from "./project-activity.ts";
 import {
   dispatchLive,
+  filedDispatches,
   noteDispatch,
   partsDispatches,
   runDispatch,
   type DispatchRoom,
+  type RunEnd,
 } from "./dispatch-card.tsx";
 import { earlierDocumentRole } from "./earlier-document.ts";
 import { ProductApiError, type ProjectArtifact } from "@corbits-builder/client";
-import type { InFlightRun } from "@corbits-builder/schemas/artifact";
+import {
+  isDocumentKind,
+  type InFlightRun,
+} from "@corbits-builder/schemas/artifact";
 import { toast } from "sonner";
 import { sendMessage } from "../../api/conversation.ts";
 import { subscribeWorkflowRun } from "../../api/run-stream.ts";
+import {
+  runStepsQuery,
+  savedResults,
+  savedRunIds,
+  savedTurnSteps,
+  useRunStreams,
+  useSavedRunSteps,
+} from "./run-preview.ts";
+import { stopRun } from "../../api/activity.ts";
 import { refusalBody } from "../../api/transport.ts";
 import {
   acceptedMaterials,
+  approveDocument,
   attachMaterials,
+  declinePlanStep,
+  goAheadPlanStep,
+  restorePlanStep,
+  setPlanStepAskFirst,
   removeMaterial,
   readArtifact,
+  readProjectValues,
 } from "../../api/artifacts.ts";
 import { documentsForPane } from "./document-read.ts";
 import {
@@ -60,11 +82,13 @@ import {
   startProjectCoordinator,
 } from "../../api/projects.ts";
 import type { ChatMessage, Wait } from "../../api/types.ts";
-import { deliveredText } from "@corbits-builder/schemas/conversation";
+import {
+  deliveredText,
+  showsScreen,
+} from "@corbits-builder/schemas/conversation";
 import { keys } from "../../queries/keys.ts";
 import { turnItemId } from "./transcript.tsx";
 import { useQuestions } from "./questions.model.ts";
-import { cardDocuments } from "./collaboration.ts";
 import { useFiledVersions } from "./filed-versions.tsx";
 import { threadUpdates } from "./specialist-updates.ts";
 import { useSettledApprovals, type OpenApproval } from "./settled-approvals.ts";
@@ -73,8 +97,9 @@ import {
   deliverWithOpenApproval,
   useTypedYes,
 } from "./typed-yes.tsx";
-import { asksAbout, chosenApproach } from "./approach-choice.ts";
+import { chosenApproach } from "./approach-choice.ts";
 import {
+  DRAFT_TAB,
   followDeliverableId,
   LIVE_TAB,
   shownDeliverableId,
@@ -106,7 +131,7 @@ import type { DeliverableState } from "./deliverable-block.tsx";
 import { formatPassageQuote, type PassageQuote } from "./passage-note.tsx";
 import { humanFault, humanFaultWithCode, responseCode } from "./human-fault.ts";
 import { suggestedReplies } from "./suggested-replies.ts";
-import { participantLabel, visibleChatText } from "./visible-chat.ts";
+import { visibleChatText } from "./visible-chat.ts";
 import {
   loadProjectRoom,
   reloadProjectDocument,
@@ -116,13 +141,9 @@ import {
 } from "./load-room.ts";
 import { designDraftFiled, useDesignDraft } from "./design-preview.model.ts";
 import { useUserManual } from "./user-manual.model.ts";
-import { workUnitStanding } from "./work-unit-message.model.ts";
+import { workUnitStanding } from "./work-unit-step.model.ts";
 import { conceptOfTab, conceptTab } from "./design-concept.ts";
-import {
-  designConcepts,
-  DESIGN_OPTION,
-  type DesignChoiceProps,
-} from "./design-concepts.model.ts";
+import { designConcepts, DESIGN_OPTION } from "./design-concepts.model.ts";
 import { useLiveAppPresence } from "./live-app.model.ts";
 import { usePreference } from "../../queries/preferences.ts";
 import {
@@ -142,10 +163,28 @@ import {
 } from "../model-setup.model.ts";
 import { useModelCatalog } from "../settings/model-catalog.ts";
 import type { RoomContent, RoomDock } from "./room.view.tsx";
+import { parseBundle } from "./design-bundle.ts";
+import { MockupFrame } from "./mockup-frame.tsx";
+import type {
+  ChoosableConcept,
+  HostSupplies,
+  ReviewedDesign,
+  ScreenQuestionProps,
+  ShownDocument,
+} from "./screen-question.tsx";
+import { inShort } from "@corbits-builder/schemas/in-short";
+import { roleLabel, roleOf, screenWords } from "./roles.ts";
+import { screensFor, selectionNames } from "./screens.ts";
 
 // The stream says when the room moved. This read covers what it cannot see,
 // such as a coordinator run replaced while its old stream stays quiet.
 const FALLBACK_RELOAD_MS = 30_000;
+// A coder at work can report how the project's program starts at any time.
+const RUN_POLL_MS = 5_000;
+const RUN_VALUE = "stack.run";
+// A run whose role writes the project's code, whose app the room previews.
+const writesCode = (run: { readonly role: string }) =>
+  roleOf(run.role)?.writesCode === true;
 // No coordinator's stream announces the next one binding, so an unbound room reads again until it does.
 const BIND_POLL_MS = 1_000;
 // A handoff binds within seconds; past this the room starts the coordinator itself, so a start the
@@ -163,21 +202,22 @@ function acceptedMaterialsQuery(projectId: string) {
   });
 }
 
-// Only an active project has a coordinator whose decisions can be open.
+// Only an active project has a coordinator whose decisions can be open. The one room read never
+// shown from an earlier visit, saved or in memory: a card answered since would be offered again,
+// and the person could act on it.
 function openDecisionsQuery(projectId: string, active: boolean) {
   return queryOptions({
     queryKey: keys.openDecisions.of(projectId),
     retry: false,
     staleTime: 0,
+    gcTime: 0,
+    meta: { persist: false },
     refetchOnWindowFocus: false,
     queryFn: active ? () => openDecisions(projectId) : skipToken,
   });
 }
 
-function documentApprovalsFrom(
-  waits: readonly Wait[],
-  artifacts: readonly ProjectArtifact[],
-): OpenApproval[] {
+function documentApprovalsFrom(waits: readonly Wait[]): OpenApproval[] {
   return waits.flatMap((wait): OpenApproval[] => {
     if (wait.approvalId === undefined || wait.tenantId === undefined) return [];
     const at =
@@ -187,18 +227,32 @@ function documentApprovalsFrom(
         approvalId: wait.approvalId,
         tenantId: wait.tenantId,
         ...(Number.isNaN(at) ? {} : { at }),
-        ...cardDocuments(wait, artifacts),
         ...(wait.toolName === undefined ? {} : { toolName: wait.toolName }),
-        ...(wait.kinds === undefined ? {} : { kinds: wait.kinds }),
-        ...(wait.instruction === undefined
-          ? {}
-          : { instruction: wait.instruction }),
         ...(wait.subject === undefined ? {} : { subject: wait.subject }),
         ...(wait.packages === undefined ? {} : { packages: wait.packages }),
-        ...(wait.concepts === undefined ? {} : { concepts: wait.concepts }),
       },
     ];
   });
+}
+
+/** What each run held on an open approval asked the person, by run id: its packages, else its tool. */
+function askedOf(waits: readonly Wait[] | undefined): Map<string, string> {
+  const asked = new Map<string, string>();
+  for (const wait of waits ?? []) {
+    if (wait.approvalId === undefined) continue;
+    if (wait.packages !== undefined)
+      asked.set(wait.runId, wording.dispatch.asked.install(wait.packages));
+    else if (wait.toolName !== undefined)
+      asked.set(
+        wait.runId,
+        wording.dispatch.asked.tool(
+          wait.toolName
+            .slice(wait.toolName.lastIndexOf(".") + 1)
+            .replaceAll("_", " "),
+        ),
+      );
+  }
+  return asked;
 }
 
 function openingDraft(
@@ -218,19 +272,6 @@ function openingDraft(
   ];
 }
 
-// The hand-offs that name the document their run works on, by the role they start.
-const HANDOFF_ROLE: Record<string, InFlightRun["role"]> = {
-  deploy_writer: "writer",
-  review_artifact: "reviewer",
-};
-
-// The documents the coordinator waits for before design_app.
-const DESIGN_INPUTS = [
-  "problem_brief",
-  "constraints",
-  "approaches",
-  "product_requirements",
-];
 // Every material shares one kind, but each file is its own tab, so the pane names it by its artifact.
 const MATERIAL = "material";
 const MATERIAL_TAB = `${MATERIAL}:`;
@@ -257,17 +298,31 @@ export function tabbedArtifacts(
   );
 }
 
-/** A filed artifact as its tab shows it, unread while this viewer has not opened its version. */
-function paneDocument(item: ProjectArtifact, seen: SeenVersions): PaneDocument {
+/**
+ * A filed artifact as its tab shows it, at its newest version, unread while this viewer has not
+ * opened that version.
+ */
+export function paneDocument(
+  item: ProjectArtifact,
+  seen: SeenVersions,
+): PaneDocument {
   return {
     id: item.kind,
     title: item.title,
     status:
       item.approvedVersion === undefined
         ? wording.documentStatus.drafted(item.version)
-        : wording.documentStatus.approved(item.approvedVersion),
+        : wording.documentStatus.approved(item.version),
     unread: seen[item.artifactId] !== item.version,
     removable: item.kind.startsWith(MATERIAL_TAB),
+    ...(isDocumentKind(item.kind)
+      ? {
+          approval: {
+            approvedVersion: item.approvedVersion,
+            approvedAt: item.approvedAt,
+          },
+        }
+      : {}),
   };
 }
 
@@ -276,6 +331,18 @@ function documentKey(projectId: string, item: ProjectArtifact): string {
     projectId,
     item.kind.startsWith(MATERIAL_TAB) ? { ...item, kind: MATERIAL } : item,
   );
+}
+
+/** A filed document as an approval lists it, with its In short section once its body has loaded. */
+function shownDocument(
+  item: ProjectArtifact,
+  state: DeliverableState | undefined,
+): ShownDocument {
+  const summary =
+    state?.status === "ready" && state.document.mediaType === "text/markdown"
+      ? inShort(state.document.content)
+      : undefined;
+  return summary === undefined ? item : { ...item, summary };
 }
 
 function rejectionText(
@@ -372,12 +439,12 @@ export function useRoomGate({
     refetchOnWindowFocus: false,
     queryFn: () => getProject(projectId),
   });
-  // A status restored from the saved cache may predate an archive, so only a read made since
-  // opening counts. The project list learns of an archive first, so it wins while the read catches up.
-  const project = projectRead.isFetchedAfterMount
-    ? projectRead.data
-    : undefined;
+  // The saved copy paints the room at once. The project list learns of an archive first, so it
+  // wins while the read catches up.
+  const project = projectRead.data;
   const status = listedArchived ? "archived" : project?.status;
+  // A saved status may predate an archive, so only a read made since opening starts or stops work.
+  const confirmed = projectRead.isFetchedAfterMount ? status : undefined;
   const archived = status === "archived";
   const listedBefore = useRef(listedArchived);
   useEffect(() => {
@@ -416,10 +483,10 @@ export function useRoomGate({
   // Opening an active project starts its coordinator when it is not running; a running one is
   // left alone. A project archived while open drops the conversation it can no longer read.
   useEffect(() => {
-    if (status === "active") void startCoordinator();
-    else if (status === "archived" && room.data !== undefined)
+    if (confirmed === "active") void startCoordinator();
+    else if (confirmed === "archived" && room.data !== undefined)
       void room.refetch();
-  }, [projectId, status]);
+  }, [projectId, confirmed]);
   const catalog = useModelCatalog();
   const providerConnected =
     catalog.data !== undefined && !needsModelSetup(catalog.data.providers);
@@ -437,6 +504,22 @@ export function useRoomGate({
   // A prefetch cannot wait on the project's status, so this read observes the decisions instead.
   useQuery(openDecisionsQuery(projectId, status === "active"));
   useLiveAppPresence(projectId);
+  // The coordinator's saved calls give its replies their steps back, so the room waits on them
+  // rather than drawing its rows twice.
+  const coordinatorSteps = useSavedRunSteps(
+    project?.tenantId,
+    archived ? null : (room.data?.conversation.runId ?? null),
+  );
+  // The saved records of the runs those calls started say how each ended, so a row is drawn ended.
+  const tenantId = project?.tenantId;
+  const startedRuns = useQueries({
+    queries:
+      tenantId === undefined
+        ? []
+        : savedRunIds(coordinatorSteps.steps).map((started) =>
+            runStepsQuery(tenantId, started, false),
+          ),
+  });
 
   if (status === undefined) {
     if (projectRead.isError)
@@ -444,7 +527,11 @@ export function useRoomGate({
     return { state: "loading" };
   }
   const snapshot = room.data;
-  if (!roomSnapshotReady(projectId, snapshot)) {
+  if (
+    !roomSnapshotReady(projectId, snapshot) ||
+    coordinatorSteps.pending ||
+    startedRuns.some((read) => read.isPending)
+  ) {
     if (room.isError)
       return { state: "failed", onRetry: () => void room.refetch() };
     return { state: "loading" };
@@ -483,13 +570,12 @@ export function useRoom({
   view: RoomContent;
   /** The line above the conversation; null on an archived project, which has none. */
   nextStep: NextStepLineProps | null;
-  /** The ask to choose among the filed concepts; null while there is none to ask. */
-  designChoice: DesignChoiceProps | null;
   enableAi: EnableAiDialogProps;
   /** The app the build plan builds, once one is filed. */
   liveApp: { projectId: string; builder: InFlightRun | undefined } | null;
-  /** The theme gallery, from the point the coordinator may start the design until one exists. */
-  themes: { projectId: string; onUse: (message: string) => void } | null;
+  /** The coordinator's open question when its screen is placed over the whole room. */
+  pageScreen: ScreenQuestionProps | null;
+  questionOutcomes: ReadonlyMap<string, AnswerOutcome>;
 } {
   const queryClient = useQueryClient();
   const archived = status === "archived";
@@ -500,12 +586,49 @@ export function useRoom({
   const events = snapshot.conversation.events;
   const mirror = snapshot.conversation.turns;
   const runId = archived ? null : snapshot.conversation.runId;
+  const selectionKeys = selectionNames();
+  const selection = useQuery({
+    queryKey: keys.projectValues.selection(projectId),
+    retry: false,
+    refetchOnWindowFocus: false,
+    queryFn:
+      selectionKeys.length === 0
+        ? skipToken
+        : ({ signal }) => readProjectValues(projectId, selectionKeys, signal),
+  });
+  const screenOf = useMemo(
+    () => screensFor(selection.data ?? {}),
+    [selection.data],
+  );
+  // The page screen the person closed to read the conversation, by its question's signal.
+  const [closedPage, setClosedPage] = useState<string | null>(null);
+  // What the open screen's decision sends back when the person presses Send, given what they typed.
+  const stagedSend = useRef<
+    ((message: string | undefined) => Promise<boolean>) | null
+  >(null);
+  // The items that send carries, such as "2 comments", which Send sends with nothing typed.
+  const [stagedItems, setStagedItems] = useState<string | null>(null);
+  const stagedReply =
+    stagedItems === null
+      ? undefined
+      : wording.questions.sendBackReply(stagedItems);
   // The coder's filed app source is the resume point for a later coder, not a document to read.
   const artifacts = snapshot.artifacts
     .filter((item) => item.kind !== "app")
     .map(paneArtifact);
   const documents = snapshot.documents;
+  const shownDocuments = artifacts.map((item) =>
+    shownDocument(item, documents[documentKey(projectId, item)]),
+  );
   const [liveRun, setLiveRun] = useState<LiveRun>(emptyLiveRun);
+  // Kept stable, so an open screen reads the project's values once rather than on every render.
+  const projectValues = useMemo(
+    () => ({
+      read: (keys: readonly string[], signal: AbortSignal) =>
+        readProjectValues(projectId, keys, signal),
+    }),
+    [projectId],
+  );
   const stakeholderApprovals =
     usePreference("experimental_approvals") === "yes" ? "on" : "off";
   const seen = useSeenVersions();
@@ -515,27 +638,20 @@ export function useRoom({
     null,
   );
   const [paneTab, setPaneTab] = useState<{ value: string } | null>(null);
-  // The design the person chose here, by the hub's receipt, and when, so the outcome keeps its place.
-  const [designChosen, setDesignChosen] = useState<{
-    concept: string;
-    at: number;
-  } | null>(null);
   const documentPaneRef = useRef<HTMLElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   // Each committed reply's thinking and tool work, as this session watched it.
   const stepsByAt = useRef(new Map<number, readonly ConversationPart[]>());
   // When this session first saw each hand-off, so the document it files reads as its result.
   const dispatchSeen = useRef<DispatchRoom["seen"]>(new Map());
-  const handoffCalls = useRef(
-    new Map<string, { role: InFlightRun["role"]; kind: string; at: number }>(),
-  );
-  const runKinds = useRef(new Map<string, string>());
-  const usedCalls = useRef(new Set<string>());
   // Every specialist run this session saw, so its card keeps its result after the run ends.
   const runCards = useRef(new Map<string, InFlightRun>());
-  const [mobilePane, setMobilePane] = useState<"conversation" | "artifacts">(
-    "conversation",
+  // The runs the person stopped here, which read as stopped before they have wound down.
+  const [stoppedHere, setStoppedHere] = useState<ReadonlySet<string>>(
+    () => new Set(),
   );
+  // The project view open over the conversation.
+  const [projectOpen, setProjectOpen] = useState(false);
   const [sent, setSent] = useState<SentMessage[]>(() =>
     openingDraft(projectId, openingMessage),
   );
@@ -603,25 +719,33 @@ export function useRoom({
     };
   }, [projectId, queryClient, status]);
   const notSent = "That message was not sent.";
-  const { questions, openQuestion, answer } = useQuestions({
+  const { questions, openQuestion, answer, outcomes } = useQuestions({
     projectId,
+    runId,
     loaded: snapshot.conversation.questions,
     archived,
-    notSent,
     reload: () => reloadRef.current(),
     onChanged,
     setSending,
-    setSendFailed,
-    setSendFault,
   });
+  const pageQuestion =
+    openQuestion !== undefined &&
+    showsScreen(openQuestion) &&
+    screenOf(openQuestion.asked)?.page === true
+      ? {
+          signalName: openQuestion.signalName,
+          asked: openQuestion.asked,
+        }
+      : undefined;
+  const pageOpen =
+    pageQuestion !== undefined && closedPage !== pageQuestion.signalName;
 
   useEffect(() => {
     setApprovalBusy(false);
     setApprovalError(null);
     setDocumentChoice(null);
     setPaneTab(null);
-    setDesignChosen(null);
-    setMobilePane("conversation");
+    setProjectOpen(false);
     setSent(openingDraft(projectId, openingMessage));
     setSendFailed(false);
     setSendFault(null);
@@ -631,10 +755,8 @@ export function useRoom({
     setAttachFault(null);
     stepsByAt.current.clear();
     dispatchSeen.current.clear();
-    handoffCalls.current.clear();
-    runKinds.current.clear();
-    usedCalls.current.clear();
     runCards.current.clear();
+    setStoppedHere(new Set());
   }, [projectId, openingMessage]);
 
   // The durable mirror is the committed transcript. The stream fills the gap
@@ -677,6 +799,11 @@ export function useRoom({
       queryKey: keys.openDecisions.of(projectId),
     });
   }, [projectId, queryClient, snapshot, gateDone, awaitingApproval]);
+  // The plan and who is at work are read with the room, so a run parking on an approval, or
+  // leaving one, reads the room again for its step to say so.
+  useEffect(() => {
+    reloadRef.current();
+  }, [awaitingApproval]);
 
   const settling = awaitingCommit(liveRun, mirror);
   useEffect(() => {
@@ -716,24 +843,30 @@ export function useRoom({
 
   for (const [at, parts] of committedSteps(liveRun, mirror))
     stepsByAt.current.set(at, parts);
-  const turns = useMemo(
-    () =>
-      withPendingSends(mirror, sent).map((turn) => {
-        if (turn.parts !== undefined) return turn;
-        const steps =
-          turn.role === "assistant"
-            ? stepsByAt.current.get(turn.at)
-            : undefined;
-        return steps === undefined
-          ? turn
-          : {
-              ...turn,
-              parts: [...steps, { kind: "text" as const, text: turn.text }],
-            };
-      }),
+  // What this session watched the coordinator do wins; a reply from before it has its saved calls.
+  const coordinatorSteps = useSavedRunSteps(runTenantId, runId);
+  const turns = useMemo(() => {
+    const saved = savedTurnSteps(
+      coordinatorSteps.steps,
+      mirror.flatMap((turn) => (turn.role === "assistant" ? [turn.at] : [])),
+    );
+    return withPendingSends(mirror, sent).map((turn) => {
+      if (turn.parts !== undefined || turn.role !== "assistant") return turn;
+      const steps = stepsByAt.current.get(turn.at) ?? saved.get(turn.at);
+      return steps === undefined
+        ? turn
+        : {
+            ...turn,
+            parts: [...steps, { kind: "text" as const, text: turn.text }],
+          };
+    });
     // The steps map only grows as the live run commits, which re-renders with a new mirror.
-    [mirror, sent],
-  );
+  }, [mirror, sent, coordinatorSteps.steps]);
+  // What each of the coordinator's calls returned, saved or as this session watched it.
+  const coordinatorResults = new Map([
+    ...savedResults(coordinatorSteps.steps),
+    ...liveRun.results,
+  ]);
   const mailThreads = snapshot.conversation.threads;
   const specialistUpdates = useMemo(
     () => threadUpdates(mailThreads),
@@ -743,15 +876,14 @@ export function useRoom({
     .reverse()
     .find((turn) => turn.role === "assistant")?.text;
   const documentApprovals =
-    waits === undefined ? undefined : documentApprovalsFrom(waits, artifacts);
+    waits === undefined ? undefined : documentApprovalsFrom(waits);
   const { settled: settledApprovals, settle } = useSettledApprovals(
     projectId,
     documentApprovals,
-    artifacts,
   );
   // A card decided here is already its settled line; the pending read lags behind it.
   const pendingFrom = (list: readonly Wait[]): OpenApproval[] =>
-    documentApprovalsFrom(list, artifacts).filter(
+    documentApprovalsFrom(list).filter(
       (approval) =>
         !settledApprovals.some(
           (item) => item.approvalId === approval.approvalId,
@@ -948,7 +1080,6 @@ export function useRoom({
     setValue((current) =>
       current.trim().length === 0 ? text : `${current.trimEnd()}\n\n${text}`,
     );
-    setMobilePane("conversation");
     composerRef.current?.focus();
   };
   const addToPrompt = (passage: PassageQuote) =>
@@ -997,11 +1128,27 @@ export function useRoom({
       toast.error(humanFault(cause, wording.removeAttachment.failed));
     }
   };
+  // The person approves the document they read; the next room read shows it approved.
+  const approveRead = async (id: string, version: number) => {
+    const item = paneDeliverables.find((entry) => entry.kind === id);
+    if (item === undefined) return;
+    try {
+      await approveDocument(projectId, item.artifactId, version);
+      reloadRef.current();
+      onChanged();
+    } catch (cause) {
+      toast.error(
+        await humanFaultWithCode(cause, wording.documentApproval.failed),
+      );
+    }
+  };
+  const openProject = (tab: string) => {
+    setPaneTab({ value: tab });
+    setProjectOpen(true);
+  };
   const openDocument = (id: string) => {
-    setPaneTab({ value: id });
+    openProject(id);
     if (conceptOfTab(id) === undefined) chooseDocument(id);
-    setMobilePane("artifacts");
-    queueMicrotask(() => documentPaneRef.current?.focus());
   };
   // "settled" is a 409: someone already decided the ask, or its run moved on; the page reads
   // where it stands.
@@ -1032,7 +1179,7 @@ export function useRoom({
       documentApprovals?.find((item) => item.approvalId === approvalId) ??
       (cachedWaits === undefined
         ? undefined
-        : documentApprovalsFrom(cachedWaits, artifacts).find(
+        : documentApprovalsFrom(cachedWaits).find(
             (item) => item.approvalId === approvalId,
           ));
     try {
@@ -1106,29 +1253,14 @@ export function useRoom({
   const openApproval = pendingApprovals?.find(
     (approval) => approval.packages === undefined,
   );
-  // Choosing an approach is the person's yes to the version's open ask; the message names the pick.
-  // Resolves to the fault the person sees, or null once the choice is sent.
-  const chooseApproach = async (
-    message: string,
-    version: number,
-  ): Promise<string | null> => {
+  // The message names the pick. Resolves to the fault the person sees, or null once it is sent.
+  const chooseApproach = async (message: string): Promise<string | null> => {
     const currentApprovals = await readPendingApprovals();
     const currentOpen = currentApprovals?.find(
       (approval) => approval.packages === undefined,
     );
-    const kind = selected?.kind;
-    const asked =
-      kind === undefined
-        ? undefined
-        : currentApprovals?.find(
-            (approval) =>
-              approval.packages === undefined &&
-              asksAbout(approval, kind, version),
-          );
     return chooseApproachWithOpenApproval({
-      askedApprovalId: asked?.approvalId,
       openApprovalId: currentOpen?.approvalId,
-      decide: onDecideApproval,
       deliver: () => deliverMail(message),
       decline: (approvalId) =>
         deliverMail(message, false, declineWith(approvalId)),
@@ -1185,8 +1317,16 @@ export function useRoom({
     onUndo: (message) => void undoTypedYes(message),
     onDropped: restoreToComposer,
   });
+  const sendStaged = async (
+    staged: (message: string | undefined) => Promise<boolean>,
+  ) => {
+    if (sending) return;
+    const message = value.trim();
+    if (await staged(message.length === 0 ? undefined : message)) setValue("");
+  };
   // A change to a document a specialist is already building from waits for one more yes.
   const send = () => {
+    if (stagedSend.current !== null) return void sendStaged(stagedSend.current);
     if (files.length > 0) return void sendFiles();
     if (typedYes.hold(value)) return setValue("");
     // Without a read of who is at work there is no one to warn about.
@@ -1200,7 +1340,6 @@ export function useRoom({
   // The composer is disabled while the decline saves, so the cursor goes there once it can take it.
   const [changesAsked, setChangesAsked] = useState(false);
   const requestChanges = () => {
-    setMobilePane("conversation");
     setChangesAsked(true);
   };
   const unbound = events === null;
@@ -1278,53 +1417,11 @@ export function useRoom({
     ),
   );
   const inFlight = snapshot.inFlight;
-  const dispatchRoom: DispatchRoom = {
-    artifacts: snapshot.artifacts,
-    inFlight,
-    failed: snapshot.failed,
-    seen: dispatchSeen.current,
-    approvals: shownApprovals,
-    activity: agents,
-    onOpenDocument: (kind) =>
-      openDocument(
-        kind.startsWith("concept:") ? conceptTab(kind.slice(8)) : kind,
-      ),
-  };
   const dispatches = shownTurns.flatMap((turn) =>
     turn.role === "assistant" && turn.parts !== undefined
-      ? partsDispatches(turn.parts, liveRun.results)
+      ? partsDispatches(turn.parts, coordinatorResults)
       : [],
   );
-  for (const dispatch of dispatches) noteDispatch(dispatchRoom, dispatch);
-  // The document a writer or reviewer run works on, from the coordinator's own hand-off call as
-  // the hub's activity read saw it start: the latest such call made before the run started.
-  if (coordinator !== undefined)
-    for (const tool of coordinator.tools) {
-      const role = HANDOFF_ROLE[tool.name];
-      if (role !== undefined && tool.subject !== undefined)
-        handoffCalls.current.set(`${tool.at}:${tool.name}`, {
-          role,
-          kind: tool.subject,
-          at: Date.parse(tool.at),
-        });
-    }
-  const handoffKind = (run: InFlightRun): string | undefined => {
-    const known = runKinds.current.get(run.runId);
-    if (known !== undefined) return known;
-    const started = Date.parse(run.startedAt);
-    const call = [...handoffCalls.current]
-      .filter(
-        ([key, item]) =>
-          item.role === run.role &&
-          item.at <= started &&
-          !usedCalls.current.has(key),
-      )
-      .sort(([, left], [, right]) => right.at - left.at)[0];
-    if (call === undefined) return undefined;
-    usedCalls.current.add(call[0]);
-    runKinds.current.set(run.runId, call[1].kind);
-    return call[1].kind;
-  };
   // A run with no hand-off in this session's view, such as after a reload, still gets its card.
   for (const run of inFlight)
     if (!runCards.current.has(run.runId)) runCards.current.set(run.runId, run);
@@ -1337,11 +1434,131 @@ export function useRoom({
             : dispatch.runId === run.runId,
         ),
     )
-    .flatMap((run) => {
-      const dispatch = runDispatch(run, handoffKind(run));
-      return dispatch ? [{ at: Date.parse(run.startedAt), dispatch }] : [];
-    });
+    .map((run) => ({
+      at: Date.parse(run.startedAt),
+      dispatch: runDispatch(run),
+    }));
+  // Every card with a run streams its steps and what it is producing from the moment the call that
+  // started it returns, rather than once the room's next read lists it at work, and a step it takes
+  // reads the room again so its state moves with it.
+  const {
+    previews,
+    steps: runSteps,
+    results: runResults,
+    ended: runsEnded,
+  } = useRunStreams(
+    runTenantId,
+    [...dispatches, ...unseenRuns.map(({ dispatch }) => dispatch)].flatMap(
+      (dispatch) => (dispatch.runId === undefined ? [] : [dispatch.runId]),
+    ),
+    new Set(
+      inFlight.flatMap((run) =>
+        run.state === "waiting" && run.since !== undefined ? [run.runId] : [],
+      ),
+    ),
+    () => reloadRef.current(),
+  );
+  // A run no longer at work has saved how it ended, which the last read of its record predates.
+  const atWork = inFlight.map((run) => run.runId).join("\n");
+  const wasAtWork = useRef<readonly string[]>([]);
+  useEffect(() => {
+    const now = atWork.split("\n");
+    if (runTenantId !== undefined)
+      for (const left of wasAtWork.current)
+        if (!now.includes(left))
+          void queryClient.invalidateQueries({
+            queryKey: keys.runSteps(runTenantId, left),
+          });
+    wasAtWork.current = now;
+  }, [atWork, runTenantId]);
+  const dispatchRoom: DispatchRoom = {
+    artifacts: snapshot.artifacts,
+    inFlight,
+    failed: snapshot.failed,
+    seen: dispatchSeen.current,
+    summaries: new Map(
+      shownDocuments.flatMap(({ kind, summary }): [string, string][] =>
+        summary === undefined ? [] : [[kind, summary]],
+      ),
+    ),
+    previews,
+    steps: runSteps,
+    asked: askedOf(waits),
+    ended: new Map([
+      ...runsEnded,
+      ...[...stoppedHere].map((stopped): [string, RunEnd] => [
+        stopped,
+        { status: "cancelled" },
+      ]),
+    ]),
+    onOpenDocument: (kind) => {
+      // The app's source is read as the running app.
+      if (kind === "app") return openProject(LIVE_TAB);
+      openDocument(
+        kind.startsWith("concept:") ? conceptTab(kind.slice(8)) : kind,
+      );
+    },
+    onWatch: (dispatch) => {
+      if (roleOf(dispatch.role)?.writesCode) return openProject(LIVE_TAB);
+      openProject(
+        dispatch.concept === undefined
+          ? DRAFT_TAB
+          : conceptTab(dispatch.concept),
+      );
+    },
+    onStop: async (stopped) => {
+      try {
+        await stopRun(projectId, stopped);
+        setStoppedHere((before) => new Set(before).add(stopped));
+        reloadRef.current();
+      } catch (cause) {
+        toast.error(humanFault(cause, wording.dispatch.notStopped));
+      }
+    },
+  };
+  for (const dispatch of dispatches) noteDispatch(dispatchRoom, dispatch);
+  for (const { dispatch } of unseenRuns) noteDispatch(dispatchRoom, dispatch);
+  const cards = filedDispatches(dispatchRoom, dispatches, unseenRuns);
   const design = artifacts.find((item) => item.kind === "design");
+  // The design a review screen shows: the live draft while a designer works, else the newest design
+  // option, else the filed design. Only an option is approved there: the hub records the choice
+  // from the answer.
+  const reviewed = options.at(-1) ?? design;
+  const reviewedState =
+    reviewed === undefined ? undefined : documentState(reviewed);
+  const reviewedContent =
+    reviewedState?.status === "ready"
+      ? reviewedState.document.content
+      : undefined;
+  const reviewedFiles = useMemo(
+    () => (reviewedContent === undefined ? null : parseBundle(reviewedContent)),
+    [reviewedContent],
+  );
+  const reviewApproval = (
+    item: ProjectArtifact,
+  ): ReviewedDesign["approval"] => {
+    if (item.kind === DESIGN_OPTION) return { option: item.artifactId };
+    return {
+      unavailable:
+        item.approvedVersion === item.version
+          ? wording.designReview.approved
+          : wording.designReview.noOption,
+    };
+  };
+  const reviewedDesign = (): ReviewedDesign | null => {
+    if (designDraft !== null)
+      return {
+        files: designDraft,
+        version: "draft",
+        approval: { unavailable: wording.designReview.draftNotApprovable },
+      };
+    if (reviewed === undefined || reviewedFiles === null) return null;
+    return {
+      files: reviewedFiles,
+      version: reviewed.version,
+      approval: reviewApproval(reviewed),
+    };
+  };
   // Concepts stay to compare until the chosen one is filed as the design, or a new round starts.
   const concepts =
     design !== undefined && !inFlight.some((run) => run.concept !== undefined)
@@ -1349,9 +1566,10 @@ export function useRoom({
       : designConcepts(
           options,
           inFlight,
-          // An ask that names no concepts adds none.
-          shownApprovals.flatMap((approval) =>
-            approval.concepts === undefined ? [] : approval.concepts,
+          dispatches.flatMap(({ concept, direction }) =>
+            concept === undefined || direction === undefined
+              ? []
+              : [{ label: concept, direction }],
           ),
           (option) => {
             const state = documentState(option);
@@ -1363,48 +1581,103 @@ export function useRoom({
             ? design.title
             : undefined,
         );
-  // Filed concepts wait on the person's choice, asked last in the conversation; a choice made here
-  // keeps its outcome where it was made.
+  // Filed concepts wait on the person's choice on the designer's choose screen.
   const choosable = concepts.some((concept) => concept.chosen)
     ? []
     : concepts.filter((concept) => concept.option !== undefined);
-  const designAsk = (): DesignChoiceProps | null => {
-    if (archived || designChosen !== null || choosable.length === 0)
-      return null;
-    return {
-      projectId,
-      concepts: choosable,
-      onShowConcept: openDocument,
-      onChosen: (concept) => {
-        setDesignChosen({ concept, at: Date.now() });
-        onChanged();
+  // Each filed concept's bundle, parsed once per version it is filed at rather than on every
+  // render of the room; the key names exactly the contents parsed.
+  const choosableKey = choosable
+    .map(
+      ({ option }) => `${option?.artifactId ?? ""}@${String(option?.version)}`,
+    )
+    .join("\n");
+  const choosableFiles = useMemo(
+    () => choosable.map((concept) => parseBundle(concept.content ?? "")),
+    [choosableKey],
+  );
+  const choosableConcepts = (): ChoosableConcept[] =>
+    choosable.flatMap((concept, index) => {
+      const files = choosableFiles[index];
+      const filed = options.find(
+        (option) => option.artifactId === concept.option?.artifactId,
+      );
+      if (files === undefined || files === null || filed === undefined)
+        return [];
+      return [
+        {
+          label: concept.label,
+          direction: concept.direction,
+          files,
+          version: filed.version,
+          approval: reviewApproval(filed),
+        },
+      ];
+    });
+  const supplies: HostSupplies = {
+    design: reviewedDesign(),
+    designConcepts: choosableConcepts(),
+    mockupFrame: MockupFrame,
+    // The last round's answer on the same screen, so the person sees what they asked for before.
+    earlierAnswer:
+      pageQuestion === undefined
+        ? undefined
+        : questions
+            .flatMap((question) =>
+              question.signalName !== pageQuestion.signalName &&
+              showsScreen(question) &&
+              question.asked.plugin === pageQuestion.asked.plugin &&
+              question.asked.action === pageQuestion.asked.action &&
+              question.status === "answered" &&
+              "output" in question.answer
+                ? [question.answer.output]
+                : [],
+            )
+            .at(-1),
+    documents: {
+      list: shownDocuments,
+      open: openDocument,
+    },
+    reply: {
+      drafted: value.trim().length > 0,
+      stage: (staged) => {
+        stagedSend.current = staged?.send ?? null;
+        setStagedItems(staged?.pending ?? null);
       },
-    };
+    },
   };
-  // The themes join the pane at the point the coordinator may start the design.
-  const designReached =
-    DESIGN_INPUTS.every((kind) =>
-      artifacts.some((item) => item.kind === kind),
-    ) ||
-    options.length > 0 ||
-    inFlight.some((run) => run.concept !== undefined);
+  const pageHost = {
+    close: () => setClosedPage(pageQuestion?.signalName ?? null),
+  };
   const appFiled = snapshot.artifacts.some((item) => item.kind === "app");
-  const firstBuilder = appFiled
-    ? undefined
-    : inFlight.find((run) => run.role === "coder");
-  const liveApp = paneDeliverables.some((item) => item.kind === "build_plan")
-    ? { projectId, builder: firstBuilder }
-    : null;
+  const firstBuilder = appFiled ? undefined : inFlight.find(writesCode);
+  // There is an app to preview once one is filed, built here or imported, or a coder is building
+  // it; a filed build plan shows where it will appear.
+  const appComing =
+    appFiled ||
+    firstBuilder !== undefined ||
+    paneDeliverables.some((item) => item.kind === "build_plan");
+  // Only a project that says how its program starts, its stack.run, serves something to preview,
+  // whatever its stack; a command-line tool has none.
+  const run = useQuery({
+    queryKey: keys.projectValues.run(projectId),
+    retry: false,
+    refetchOnWindowFocus: false,
+    refetchInterval: inFlight.some(writesCode) ? RUN_POLL_MS : false,
+    queryFn: appComing
+      ? ({ signal }) => readProjectValues(projectId, [RUN_VALUE], signal)
+      : skipToken,
+  });
+  const servesApp = (run.data?.[RUN_VALUE] ?? null) !== null;
+  const liveApp =
+    appComing && servesApp ? { projectId, builder: firstBuilder } : null;
   // The manual follows the app, so it is read again while the coder works.
   const userManual = useUserManual(
     projectId,
     liveApp !== null,
-    rolesAtWork?.has("coder") === true,
+    rolesAtWork !== undefined &&
+      [...rolesAtWork].some((role) => writesCode({ role })),
   );
-  // While an approval is open the pane follows the document it approves.
-  const approvalDeliverableId =
-    pendingApprovals?.find((approval) => approval.document !== undefined)
-      ?.document?.kind ?? null;
   const filed = useFiledVersions({
     projectId,
     documents: artifacts.map((item) =>
@@ -1424,7 +1697,6 @@ export function useRoom({
       filed: true,
     })),
     {
-      approvalDeliverableId,
       filedDeliverableId: filed.at(-1)?.kind ?? null,
       working: streaming || thinking,
       liveText: `${liveTurn?.text ?? ""}\n${latestAssistant ?? ""}`,
@@ -1439,12 +1711,12 @@ export function useRoom({
     paneDeliverables.find((item) => item.kind === shownId) ?? null;
   const selectedState = selected === null ? undefined : documentState(selected);
 
-  // Until the first document is filed there is nothing to read beside the conversation, so it
-  // takes the whole width; the document pane arrives with that document.
-  const chatFirst =
+  // Until the first document is filed, drafted or there is an app, the project view has nothing to show.
+  const nothingYet =
     paneDeliverables.length === 0 &&
     designDraft === null &&
-    concepts.length === 0;
+    concepts.length === 0 &&
+    liveApp === null;
   const dock = (): RoomDock => {
     if (archived)
       return {
@@ -1479,8 +1751,16 @@ export function useRoom({
       placeholder: composerPlaceholder({
         approvalOpen: openApproval !== undefined,
         questionsOpen: openQuestion !== undefined,
+        screenReply:
+          stagedReply ??
+          (openQuestion !== undefined && showsScreen(openQuestion)
+            ? screenWords(
+                openQuestion.asked.plugin,
+                openQuestion.asked.action ?? "",
+              )?.reply
+            : undefined),
         status: projectStatus.data,
-        chatFirst,
+        nothingFiled: nothingYet,
       }),
       inputRef: composerRef,
       working: working || sending,
@@ -1499,8 +1779,9 @@ export function useRoom({
         onRemove: (id) =>
           setFiles((current) => current.filter((held) => held.id !== id)),
       },
-      sendFault: sendFailed && sendFault ? sendFault : null,
-      caution: caution === null ? null : participantLabel(caution),
+      sendFault:
+        questionFault(outcomes) ?? (sendFailed && sendFault ? sendFault : null),
+      caution: caution === null ? null : roleLabel(caution),
       onSendAnyway: sendNow,
       onCancelCaution: () => {
         setCaution(null);
@@ -1508,6 +1789,8 @@ export function useRoom({
       },
       suggestedReplies: replies,
       onReply: (reply) => void deliver(reply),
+      sendLabel:
+        stagedItems === null ? null : wording.questions.sendBack(stagedItems),
     };
   };
   const emptyConversation = () => {
@@ -1519,10 +1802,10 @@ export function useRoom({
     view: {
       title: projectTitle,
       layout: {
-        chatFirst,
-        artifactCount: paneDeliverables.length + concepts.length,
-        narrowPane: mobilePane,
-        onNarrowPaneChange: setMobilePane,
+        projectReady: !nothingYet,
+        projectOpen,
+        onProjectOpenChange: setProjectOpen,
+        pageOpen,
       },
       conversation: {
         thread: {
@@ -1534,10 +1817,9 @@ export function useRoom({
             title: item.title,
           })),
           onOpenDocument: openDocument,
-          shownDocument: chatFirst ? null : (selected?.kind ?? null),
           approvals: shownApprovals,
-          results: liveRun.results,
-          runs: unseenRuns,
+          results: new Map([...coordinatorResults, ...runResults]),
+          runs: cards,
           live: (dispatch) => dispatchLive(dispatch, dispatchRoom),
           standing: (unit) => workUnitStanding(unit, dispatchRoom),
           onDecide: onDecideApproval,
@@ -1556,11 +1838,42 @@ export function useRoom({
           questions,
           onAnswerQuestion: answer,
           questionsDisabled: sending || archived,
+          projectValues,
+          screenOf,
+          screenSupplies: supplies,
+          onOpenPageScreen: () => setClosedPage(null),
         },
         empty: emptyConversation(),
-        designChosen: archived ? null : designChosen,
       },
       dock: dock(),
+      plan: snapshot.plan,
+      onDeclineStep: async (stepId, declined) => {
+        try {
+          await (declined ? declinePlanStep : restorePlanStep)(
+            projectId,
+            stepId,
+          );
+          reloadRef.current();
+        } catch (cause) {
+          toast.error(humanFault(cause, wording.conversation.plan.notChanged));
+        }
+      },
+      onGoAheadStep: async (stepId) => {
+        try {
+          await goAheadPlanStep(projectId, stepId);
+          reloadRef.current();
+        } catch (cause) {
+          toast.error(humanFault(cause, wording.conversation.plan.notChanged));
+        }
+      },
+      onAskFirstStep: async (stepId, askFirst) => {
+        try {
+          await setPlanStepAskFirst(projectId, stepId, askFirst);
+          reloadRef.current();
+        } catch (cause) {
+          toast.error(humanFault(cause, wording.conversation.plan.notChanged));
+        }
+      },
       documentPane: {
         projectId,
         projectTitle,
@@ -1602,6 +1915,7 @@ export function useRoom({
           : {
               onAddToPrompt: addToPrompt,
               onDeliverMessage: (message: string) => deliver(message),
+              onApprove: approveRead,
             }),
       },
       paneRef: documentPaneRef,
@@ -1616,19 +1930,35 @@ export function useRoom({
             ...(liveApp === null
               ? {}
               : {
-                  open_app: () => {
-                    setPaneTab({ value: LIVE_TAB });
-                    setMobilePane("artifacts");
-                  },
+                  open_app: () => openProject(LIVE_TAB),
                 }),
           },
         },
-    designChoice: designAsk(),
     enableAi: { open: enablingAi, onOpenChange: setEnablingAi },
     liveApp,
-    themes:
-      designReached && design === undefined && !archived
-        ? { projectId, onUse: addToComposer }
-        : null,
+    questionOutcomes: outcomes,
+    pageScreen:
+      pageQuestion === undefined
+        ? null
+        : {
+            signalName: pageQuestion.signalName,
+            host: screenOf(pageQuestion.asked)?.host,
+            input: pageQuestion.asked.input,
+            projectValues,
+            answer: undefined,
+            disabled: sending || archived,
+            onAnswer: (given) => answer(pageQuestion.signalName, given),
+            supplies,
+            page: pageHost,
+          },
   };
+}
+
+function questionFault(
+  outcomes: ReadonlyMap<string, AnswerOutcome>,
+): string | null {
+  const latest = Array.from(outcomes.values()).at(-1);
+  if (latest !== undefined && "fault" in latest && latest.fault !== undefined)
+    return latest.fault;
+  return null;
 }

@@ -291,11 +291,11 @@ function shipped(
   return profile;
 }
 
-// Both xAI profiles share agent assignments while keeping their full reasoning ladders.
+// Both xAI profiles share model-setting assignments while keeping their full reasoning ladders.
 const GROK_ROLE_TIERS = {
   coordinator: "medium",
   writer: "low",
-  designer: "low",
+  designer: "medium",
   builder: "medium",
   reviewer: "medium",
 } as const satisfies NonNullable<CustomProfile["roleTiers"]>;
@@ -356,7 +356,7 @@ export const PROFILES: readonly Profile[] = [
     "xai",
     "xai",
     "xAI",
-    "Grok 4.7 throughout. Writer and designer use Low; coordinator, reviewer and app builder use Medium. All four tiers remain available.",
+    "Grok 4.7 throughout. Writer uses Low; coordinator, designer, reviewer and app builder use Medium. All four tiers remain available.",
     {
       low: ["grok-4.7", "low"],
       medium: ["grok-4.7", "medium"],
@@ -369,7 +369,7 @@ export const PROFILES: readonly Profile[] = [
     "xai_api",
     "xai-api",
     "xAI API",
-    "Grok 4.7 throughout. Writer and designer use Low; coordinator, reviewer and app builder use Medium. Max uses xhigh effort.",
+    "Grok 4.7 throughout. Writer uses Low; coordinator, designer, reviewer and app builder use Medium. Max uses xhigh effort.",
     {
       low: ["grok-4.7", "low"],
       medium: ["grok-4.7", "medium"],

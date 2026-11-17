@@ -53,7 +53,8 @@ export const emptyLiveRun: LiveRun = {
   results: new Map(),
 };
 
-function resultOf(
+/** A `tool.done` frame's call result, from the coordinator's stream or a specialist's. */
+export function resultOf(
   event: RunStreamEvent,
 ): (CallResult & { callId: string }) | undefined {
   const result = (event.data as { result?: unknown } | undefined)?.result;
@@ -99,10 +100,13 @@ export function foldLiveRun(
 ): { run: LiveRun; reload: boolean } {
   const reload = reloadAfter.has(event.type);
   if (event.type === "message.run.started") {
+    // Tool work after the last words never commits, so it goes; tool work before words stays, as
+    // those words may commit only after this run starts and the work is theirs.
+    const words = run.segments.findLastIndex((item) => item.text.length > 0);
     return {
       run: {
         ...run,
-        segments: run.segments.filter((item) => item.text.length > 0),
+        segments: run.segments.slice(0, words + 1),
         ended: false,
         running: true,
       },

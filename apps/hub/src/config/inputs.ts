@@ -1,6 +1,7 @@
 // A warmed designer or coder workspace holds the filed documents it works from as read-only files,
-// and its hub-built assignment opens by naming them, so it starts from them instead of fetching
-// each one (a kept trace's coder made 54 document reads in 107 turns).
+// and its hub-built assignment opens by naming them, so it starts from them instead of spending
+// turns fetching each one.
+import type { SkillPack } from "@corbits-builder/plugin-host/catalog";
 import { INPUTS_DIRECTORY } from "@corbits-builder/schemas/app-files";
 export { INPUTS_DIRECTORY };
 
@@ -11,7 +12,7 @@ const INPUTS = {
   },
   constraints: {
     file: "constraints.md",
-    use: "the bounds the app works within and why",
+    use: "the bounds the project works within and why",
   },
   approaches: {
     file: "approaches.md",
@@ -19,29 +20,23 @@ const INPUTS = {
   },
   product_requirements: {
     file: "requirements.md",
-    use: "what the app must do and for whom",
+    use: "what the project must do and for whom",
   },
   build_plan: {
     file: "build-plan.md",
-    use: "the stack, the build phases and the acceptance checklist",
+    use: "how it is built, in what phases, and the acceptance checklist",
   },
 } as const;
 export type InputKind = keyof typeof INPUTS;
-
-export const DESIGNER_INPUTS = [
-  "problem_brief",
-  "constraints",
-  "approaches",
-  "product_requirements",
-] as const;
-export const CODER_INPUTS = [...DESIGNER_INPUTS, "build_plan"] as const;
+export const isInputKind = (kind: string): kind is InputKind =>
+  Object.hasOwn(INPUTS, kind);
 
 export const inputPath = (kind: InputKind) =>
   `${INPUTS_DIRECTORY}/${INPUTS[kind].file}`;
 
 export const KIT_DIGEST = `${INPUTS_DIRECTORY}/react-ui.md`;
 
-// Only the coder has read_artifact; the designer's documents are these files.
+// A role whose plugin grants read_artifact is told it can fetch a newer version; the designer has only these files.
 export const inputFile = (
   document: { kind: string; version: number; content: string },
   readable: boolean,
@@ -64,6 +59,16 @@ export function startHere(
   return `Start here, read-only in your workspace:\n${lines.join("\n")}\n\n`;
 }
 
-// A later change starts a fresh coder on the saved app, so its assignment says so after the documents.
-export const APP_CHANGE_NOTE =
-  "The app is already built: your workspace holds it as last saved. This is a change to it, not a new build.\n\n";
+// Each skill pack's files sit in its own folder here, a narrowing pack's inside the one it narrows.
+export const SKILLS_DIRECTORY = `${INPUTS_DIRECTORY}/skills`;
+
+// One line per pack, so an assignment stays short however many are installed; the agent opens a
+// pack's files only when its work calls for them.
+export function skillPacksIndex(packs: readonly SkillPack[]) {
+  if (packs.length === 0) return "";
+  const lines = packs.map(
+    ({ builder, path, depth }) =>
+      `${"  ".repeat(depth)}- ${builder.handle} (${SKILLS_DIRECTORY}/${path}/): ${builder.when}`,
+  );
+  return `Skill packs, read-only in your workspace: short guides for one kind of work each; a pack indented under another narrows it. Open a pack only when your work calls for it, and leave the rest unread:\n${lines.join("\n")}\n\n`;
+}

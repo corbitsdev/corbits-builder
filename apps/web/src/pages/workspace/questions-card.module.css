@@ -1,6 +1,6 @@
 .card {
   position: relative;
-  max-width: 100%;
+  max-width: var(--wb-question-width);
   min-width: 0;
 }
 
@@ -25,6 +25,11 @@
   color: var(--muted-foreground);
 }
 
+/* While the card takes no input its choices fade back, as a screen's do. */
+:global([inert]) > .thread {
+  opacity: 0.55;
+}
+
 .thread {
   display: flex;
   flex-direction: column;
@@ -32,6 +37,7 @@
   margin: 0;
   padding: 0;
   list-style: none;
+  transition: opacity 150ms ease-out;
 }
 
 .row {
@@ -203,7 +209,7 @@
 
 .choice[data-checked] {
   border-color: var(--primary);
-  background: color-mix(in oklab, var(--primary) 10%, var(--background));
+  background: var(--wb-selected);
 }
 
 .choiceText {
@@ -312,12 +318,12 @@
     color-mix(in oklab, var(--primary-emphasis) 20%, transparent);
 }
 
-/* Kept in place on the first question so Continue never jumps. */
-.back[data-hidden] {
-  visibility: hidden;
+/* Why the answers did not send, just above the buttons that send them again. */
+.fault {
+  margin-top: var(--space-3);
 }
 
-.next {
+.cancel {
   margin-left: auto;
 }
 
@@ -332,65 +338,9 @@
   height: 0.875rem;
 }
 
-/* The open card's frame, quiet: done, not waiting on anyone. */
-.settled {
-  max-width: 100%;
-  min-width: 0;
-  padding: 0.625rem 0.875rem;
-  border: 1px solid var(--border);
-  /* GateBlock's rounded-lg, so the corners hold as the open card settles. */
-  border-radius: calc(var(--radius) + 2px);
-}
-
-/* The mark sits on the title's first line, so a title that wraps keeps it there. */
-.settledTitle {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-2);
-  margin: 0;
-  font-size: 0.875rem;
-  font-weight: 500;
-  line-height: 1.25rem;
-}
-
-.settledMark {
-  flex: none;
-  width: 1rem;
-  height: 1rem;
-  margin-top: 0.125rem;
-  color: var(--muted-foreground);
-}
-
-.settledMark[data-ok] {
-  color: var(--ok);
-}
-
 .reply {
-  margin: var(--space-3) 0 0;
+  margin: 0;
   font-size: 0.875rem;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
-}
-
-.answers {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  margin: var(--space-3) 0 0;
-  font-size: 0.875rem;
-}
-
-.answers dt {
-  color: var(--muted-foreground);
-  overflow-wrap: anywhere;
-}
-
-.answers dd {
-  margin: 0;
-  overflow-wrap: anywhere;
-}
-
-/* An absence, muted so it never reads as an answer. */
-.answers .notAnswered {
-  color: var(--muted-foreground);
 }

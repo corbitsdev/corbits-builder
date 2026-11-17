@@ -16,8 +16,12 @@ import {
   bundleContent,
   excludedFile,
 } from "@corbits-builder/schemas/app-files";
-import { WorkflowHttpError, workflowHttpJson } from "../workflows/http-json.ts";
+import {
+  WorkflowHttpError,
+  workflowHttpJson,
+} from "@corbits-builder/plugin/http-json";
 import { spliceDesignScreens } from "./starter.ts";
+import { linkOrGone } from "./app-workspace.ts";
 
 // The rules for which files are the app's and how they pack live with the schemas, so the UI's
 // repository import and the import script pack a person's code the way the hub packs a workspace.
@@ -27,15 +31,11 @@ export {
   bundleContent,
   bundleFiles,
   excludedFile,
+  holdsApp,
 } from "@corbits-builder/schemas/app-files";
 
 // Byte-order marks stay in the text, so a file reads back exactly as it was.
 const utf8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
-
-export const linkOrGone = (error: unknown) =>
-  error instanceof Error &&
-  "code" in error &&
-  (error.code === "ELOOP" || error.code === "ENOENT");
 
 // A path's real location is still the one the walk reached it by: no directory on its way was
 // swapped for a symlink since it was listed.

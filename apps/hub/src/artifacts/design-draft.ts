@@ -6,6 +6,7 @@ import { workflowRunRepoIdForAddress } from "@intx/hub-sessions";
 import { hasCode } from "@intx/types";
 import {
   DesignBundle,
+  DesignDraft,
   type UserManual,
 } from "@corbits-builder/schemas/artifact";
 import { packApp } from "../builds/app-snapshot.ts";
@@ -53,7 +54,8 @@ export function withoutUnusedStarterHome(
           ),
         }
       : files;
-  if (next["designs/screens/home.html"] !== STARTER_HOME_SCREEN) return next;
+  const home = next["designs/screens/home.html"];
+  if (home === undefined || home !== STARTER_HOME_SCREEN) return next;
   const index = next["designs/index.html"];
   const hasOtherScreen =
     Object.entries(next).some(
@@ -160,7 +162,11 @@ export type PreparedDesignSubmission = ReturnType<
 
 const isStarterPages = (files: Readonly<Record<string, string>>) => {
   const index = files["designs/index.html"];
-  if (index !== STARTER_INDEX && index !== STARTER_SPLICED_INDEX) return false;
+  if (
+    index === undefined ||
+    (index !== STARTER_INDEX && index !== STARTER_SPLICED_INDEX)
+  )
+    return false;
   const otherPages = Object.keys(files).filter(
     (path) =>
       path.endsWith(".html") &&
@@ -224,6 +230,27 @@ export async function readDesignBundle(workspace: string) {
   );
   if (doc === null) throw new ProjectError(409, "design_doc_too_large");
   return doc === undefined ? files : { ...files, "DESIGN.md": doc };
+}
+
+/**
+ * A draft as the hub serves it. One over the limit is refused, saying what is largest and, when
+ * given, what a designer starts from instead.
+ */
+export function designDraftOf(files: Record<string, string>, instead?: string) {
+  const draft = DesignDraft.assert({ files });
+  const issue = designSizeIssue(
+    draft.files,
+    serializeDesign(draft.files).bytes,
+  );
+  if (issue)
+    throw new ProjectError(409, "design_draft_too_large", {
+      bytes: issue.bytes,
+      limit: issue.limit,
+      hint: [`The draft cannot be loaded. ${issue.hint}`, instead]
+        .filter(Boolean)
+        .join(" "),
+    });
+  return draft;
 }
 
 const MAX_ACCEPTANCE_BYTES = 64 * 1024;

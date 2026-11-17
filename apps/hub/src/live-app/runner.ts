@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { getLogger } from "@intx/log";
 import { errorCode, requestErrorMetadata } from "../request-error.ts";
 import { liveAppWording } from "../config/live-app.ts";
+import type { AppRun } from "@corbits-builder/schemas/installed-workflows";
 import type { HostSource } from "./host.ts";
 import { hostReports, type HostReport } from "./host-report.ts";
 import type { createLiveAppProxy } from "./proxy.ts";
@@ -13,6 +14,13 @@ const HOST = fileURLToPath(new URL("./host.ts", import.meta.url));
 // The workspace page says it is open every few seconds; an app no one has opened for this long stops.
 const GRACE_MS = 60_000;
 const SWEEP_MS = 5_000;
+
+/** A sandbox host's environment: none of the hub's, which holds its secrets. */
+export const hostEnv = () => ({
+  PATH: `${dirname(process.execPath)}:/usr/local/bin:/usr/bin:/bin`,
+  ...(process.env["HOME"] ? { HOME: process.env["HOME"] } : {}),
+  ...(process.env["TMPDIR"] ? { TMPDIR: process.env["TMPDIR"] } : {}),
+});
 
 // A source the host already follows is not sent again: a directory by its path, a bundle by its hash.
 export type LiveAppSource = { key: string; source: HostSource };
@@ -109,7 +117,7 @@ export function createLiveAppRunner(options: {
       };
   }
 
-  function spawn(projectId: string, key: string) {
+  function spawn(projectId: string, key: string, program: AppRun) {
     const workspace = resolve(
       options.dataDir,
       "live-apps",
@@ -118,14 +126,15 @@ export function createLiveAppRunner(options: {
     );
     mkdirSync(workspace, { recursive: true });
     const child = Bun.spawn(
-      [process.execPath, ...process.execArgv, HOST, workspace],
+      [
+        process.execPath,
+        ...process.execArgv,
+        HOST,
+        workspace,
+        JSON.stringify(program),
+      ],
       {
-        // The host and the app see none of the hub's environment, which holds its secrets.
-        env: {
-          PATH: `${dirname(process.execPath)}:/usr/local/bin:/usr/bin:/bin`,
-          ...(process.env["HOME"] ? { HOME: process.env["HOME"] } : {}),
-          ...(process.env["TMPDIR"] ? { TMPDIR: process.env["TMPDIR"] } : {}),
-        },
+        env: hostEnv(),
         stdin: "pipe",
         stdout: "pipe",
         stderr: "pipe",
@@ -146,8 +155,12 @@ export function createLiveAppRunner(options: {
   }
 
   return {
-    /** The project is open: its app runs from this source, started if it is not running. */
-    async keepAlive(projectId: string, { key, source }: LiveAppSource) {
+    /** The project is open: its app runs from this source as program says, started if it is not running. */
+    async keepAlive(
+      projectId: string,
+      { key, source }: LiveAppSource,
+      program: AppRun,
+    ) {
       let run = runs.get(projectId);
       if (run && run.child.exitCode !== null) {
         stop(projectId);
@@ -157,7 +170,7 @@ export function createLiveAppRunner(options: {
         run.lastSeen = Date.now();
         if (run.key === key) return;
         run.key = key;
-      } else run = spawn(projectId, key);
+      } else run = spawn(projectId, key, program);
       run.child.stdin.write(JSON.stringify(source) + "\n");
       await run.child.stdin.flush();
     },

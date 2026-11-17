@@ -1,0 +1,4 @@
+/* Only carries the screen's inert state: the view lays itself out as if this box were not there. */
+.screen {
+  display: contents;
+}

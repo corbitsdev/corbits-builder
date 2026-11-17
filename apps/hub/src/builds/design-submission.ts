@@ -6,6 +6,7 @@ import {
 } from "../artifacts/design-draft.ts";
 import { relative, resolve, sep } from "node:path";
 import type { ToolCall, ToolResult } from "@intx/types/runtime";
+import type { CheckDetail } from "./check-detail.ts";
 import {
   checkDesignDefinition,
   DESIGN_DOC,
@@ -17,11 +18,13 @@ import {
 type Run = (
   signal: AbortSignal,
 ) => Promise<{ exitCode: number | null; output: string }>;
+// designChosen: the hub chose the filed option as the design itself, approvals being left to Builder.
+type Filed = { artifact: ArtifactRef; designChosen?: true };
 type FileDesign = (
   submission: PreparedDesignSubmission,
   signal: AbortSignal,
-) => Promise<ArtifactRef>;
-type Submitted = { passed: true; checklist: string; artifact: ArtifactRef };
+) => Promise<Filed>;
+type Submitted = { passed: true; checklist: string; filed: Filed };
 type Result = Submitted | { passed: false; checklist: string };
 export type DesignSubmission = ReturnType<typeof createDesignSubmission>;
 
@@ -98,11 +101,11 @@ export function createDesignSubmission(
       if (!Bun.deepEquals(await readDesignFiles(workspace), files, true))
         return { passed: false, checklist: designChangedDuringCheck };
       signal.throwIfAborted();
-      const artifact = await file(submission, signal);
+      const filed = await file(submission, signal);
       const result: Submitted = {
         passed: true,
-        artifact,
-        checklist: checklist(checked.output, { artifact }),
+        filed,
+        checklist: checklist(checked.output, { artifact: filed.artifact }),
       };
       lastSuccess = { files, result };
       return result;
@@ -131,11 +134,13 @@ export function createDesignSubmission(
       // the director keeps judging the reply by the check that ran.
       if (active) return { callId: call.id, content: designCheckRunning };
       const result = await submit(signal);
-      return {
-        callId: call.id,
-        content: result.checklist,
-        detail: { checkPassed: result.passed, filed: result.passed },
+      const detail: CheckDetail = {
+        checkPassed: result.passed,
+        filed: result.passed,
       };
+      if (result.passed && result.filed.designChosen)
+        detail.designChosen = true;
+      return { callId: call.id, content: result.checklist, detail };
     },
     dispose() {
       active?.abort();

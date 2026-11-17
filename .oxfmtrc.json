@@ -4,6 +4,8 @@
   "ignorePatterns": [
     "vendor/**",
     "plugins/designer/skills/react-ui/reference/api-*.md",
+    "plugins/*/prompt.md",
+    "plugins/writer/reviewer.md",
     "**/node_modules/**",
     "**/dist/**",
     "bun.lock",

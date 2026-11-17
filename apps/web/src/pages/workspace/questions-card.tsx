@@ -1,29 +1,32 @@
+import { useQuestionOutcome } from "./question-outcome.tsx";
 /**
  * The coordinator's open question as a card the person answers one question at a time. The run log
  * holds the question and, once sent, the answer, so the card reads the same after a reload.
  */
 import {
+  useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
-  type Dispatch,
   type KeyboardEvent,
-  type SetStateAction,
 } from "react";
 import {
   Check,
   ChevronDown,
   ChevronLeft,
-  CirclePause,
   CornerDownLeft,
   Pencil,
   Plus,
 } from "lucide-react";
 import { Button, Checkbox, GateBlock } from "@corbits/react-ui";
 import { Tooltip } from "@corbits/react-ui/ui/tooltip";
+import {
+  SettledAnswers,
+  SettledFrame,
+} from "@corbits-builder/plugin-ui/screen-card";
 import type {
-  AskedQuestion,
-  ConversationQuestion,
+  PromptQuestion,
   QuestionAnswer,
 } from "@corbits-builder/schemas/conversation";
 import { type } from "arktype";
@@ -34,7 +37,8 @@ import styles from "./questions-card.module.css";
 
 const text = wording.questions;
 
-type Question = AskedQuestion["questions"][number];
+type Asked = PromptQuestion["asked"];
+type Question = Asked["questions"][number];
 
 /** The options picked, by label, plus the person's own words; typing those is the "Something else" answer. */
 type Answer = { readonly chosen: readonly string[]; readonly own: string };
@@ -47,22 +51,77 @@ const SavedProgress = type({
   answers: type({ chosen: "string[]", own: "string" }).array(),
 });
 
-function readProgress(raw: string, questions: readonly Question[]): Progress {
-  if (raw !== "") {
-    try {
-      const parsed: unknown = JSON.parse(raw);
-      const result = SavedProgress(parsed);
-      if (
-        !(result instanceof type.errors) &&
-        result.answers.length === questions.length &&
-        result.step < questions.length
-      )
-        return result;
-    } catch (error) {
-      if (!(error instanceof SyntaxError)) throw error;
-    }
-  }
-  return { step: 0, answers: questions.map(startingAnswer) };
+// Saved progress fits only the questions it was saved for.
+const progressFor =
+  (questions: readonly Question[]) =>
+  (saved: unknown): Progress | undefined => {
+    const result = SavedProgress(saved);
+    return !(result instanceof type.errors) &&
+      result.answers.length === questions.length &&
+      result.step < questions.length
+      ? result
+      : undefined;
+  };
+
+const startingProgress = (questions: readonly Question[]): Progress => ({
+  step: 0,
+  answers: questions.map(startingAnswer),
+});
+
+/**
+ * An open question's answer as the person builds it and sends it, the same for the question card
+ * and every screen. What they chose so far is kept for this tab under `key`, so a reload and a
+ * switch between the conversation and the page keep it; a stored draft `read` does not accept is
+ * dropped before anything draws it. Sending holds from the press until the question settles; a
+ * send that failed keeps the draft and says so.
+ */
+export function useAnswer<Draft>(
+  key: string,
+  read: (saved: unknown) => Draft | undefined,
+  onAnswer: (answer: QuestionAnswer) => Promise<boolean>,
+) {
+  const [saved, setSaved] = useUnsent(key);
+  const parse = useCallback(
+    (raw: string): Draft | undefined => {
+      if (raw === "") return undefined;
+      try {
+        return read(JSON.parse(raw));
+      } catch (error) {
+        if (!(error instanceof SyntaxError)) throw error;
+        return undefined;
+      }
+    },
+    [read],
+  );
+  const draft = useMemo(() => parse(saved), [saved, parse]);
+  const unfit = saved !== "" && draft === undefined;
+  useEffect(() => {
+    if (unfit) setSaved("");
+  }, [unfit, setSaved]);
+  const [sending, setSending] = useState(false);
+  const inFlight = useRef(false);
+  return {
+    /** What the person chose so far; undefined until they choose anything. */
+    draft,
+    /** Each change starts from what is saved, so two in one tick both land. */
+    change: (next: (current: Draft | undefined) => Draft) =>
+      setSaved((raw) => JSON.stringify(next(parse(raw)))),
+    sending,
+    /** Whether the hub took the answer. */
+    send: async (answer: QuestionAnswer) => {
+      if (inFlight.current) return false;
+      inFlight.current = true;
+      setSending(true);
+      try {
+        const accepted = await onAnswer(answer);
+        if (accepted) setSaved("");
+        return accepted;
+      } finally {
+        inFlight.current = false;
+        setSending(false);
+      }
+    },
+  };
 }
 
 /** The coordinator marks the option it recommends by ending its label with this. */
@@ -155,7 +214,7 @@ export type KeyTarget = "option" | "own" | "button" | "other";
  * Enter continues (or sends, on the last question), with the focused option on a pick-one
  * question; → moves on without ever sending; ← goes back;
  * ↑↓ move between the options; Space and 1–9 pick. ← → and digits are left to the own-words field
- * for typing, and Enter to a focused button so Back and the answered rows still click.
+ * for typing, and Enter to a focused button so Back, Cancel and the answered rows still click.
  */
 export function keyIntent(
   key: string,
@@ -188,66 +247,67 @@ function keyTarget(element: EventTarget): KeyTarget {
 function Settled({
   ask,
   answer,
+  sent,
 }: {
-  ask: AskedQuestion;
-  answer: QuestionAnswer;
+  ask: Asked;
+  answer: Extract<PromptQuestion, { status: "answered" }>["answer"];
+  /** Answered from this card a moment ago. */
+  sent: boolean;
 }) {
   if ("reply" in answer)
-    return (
-      <section className={styles.settled} aria-label={text.answeredInChat}>
-        <p className={styles.settledTitle}>
-          <Check className={styles.settledMark} data-ok="" aria-hidden />
-          {text.answeredInChat}
-        </p>
-        <p className={styles.reply}>{answer.reply}</p>
-      </section>
-    );
-  const { questions } = ask;
+    return <SettledReply reply={answer.reply} sent={sent} />;
   return (
-    <section className={styles.settled} aria-label={text.answered}>
-      <p className={styles.settledTitle}>
-        <Check className={styles.settledMark} data-ok="" aria-hidden />
-        {text.answered}
-      </p>
-      <dl className={styles.answers}>
-        {questions.map((question) => {
+    <SettledFrame title={text.answered} ended="answered" focus={sent}>
+      <SettledAnswers
+        answers={ask.questions.map((question) => {
           const given = answer.answers[question.id];
-          return (
-            <div key={question.id}>
-              <dt>{question.question}</dt>
-              {given !== undefined && given.length > 0 ? (
-                <dd>{given.map(shownLabel).join(", ")}</dd>
-              ) : (
-                <dd className={styles.notAnswered}>{text.notAnswered}</dd>
-              )}
-            </div>
-          );
+          return given !== undefined && given.length > 0
+            ? {
+                asked: question.question,
+                answer: given.map(shownLabel).join(", "),
+              }
+            : {
+                asked: question.question,
+                answer: text.notAnswered,
+                absent: true,
+              };
         })}
-      </dl>
-    </section>
+      />
+    </SettledFrame>
   );
 }
 
-/** The card once its coordinator stopped unanswered: each question, which no answer reaches now. */
-function Closed({ ask }: { ask: AskedQuestion }) {
+/** Any question once the person wrote back instead of answering it, a plugin's screen included. */
+export function SettledReply({
+  reply,
+  sent,
+}: {
+  reply: string;
+  /** Answered from this card a moment ago. */
+  sent: boolean;
+}) {
   return (
-    <section
-      className={styles.settled}
-      aria-label={text.closed(ask.questions.length)}
-    >
-      <p className={styles.settledTitle}>
-        <CirclePause className={styles.settledMark} aria-hidden />
-        {text.closed(ask.questions.length)}
-      </p>
-      <dl className={styles.answers}>
-        {ask.questions.map((question) => (
-          <div key={question.id}>
-            <dt>{question.question}</dt>
-            <dd className={styles.notAnswered}>{text.notAnswered}</dd>
-          </div>
-        ))}
-      </dl>
-    </section>
+    <SettledFrame title={text.answeredInChat} ended="answered" focus={sent}>
+      <p className={styles.reply}>{reply}</p>
+    </SettledFrame>
+  );
+}
+
+/**
+ * Any question once its coordinator stopped unanswered, a plugin's screen included: what it asked,
+ * which no answer reaches now.
+ */
+export function ClosedQuestions({ asks }: { asks: readonly string[] }) {
+  return (
+    <SettledFrame title={text.closed(asks.length)} ended="closed">
+      <SettledAnswers
+        answers={asks.map((asked) => ({
+          asked,
+          answer: text.notAnswered,
+          absent: true,
+        }))}
+      />
+    </SettledFrame>
   );
 }
 
@@ -264,12 +324,10 @@ function ThreadMark({ mark }: { mark: Mark }) {
 function AnsweredRow({
   question,
   answer,
-  disabled,
   onOpen,
 }: {
   question: Question;
   answer: Answer;
-  disabled: boolean;
   onOpen: () => void;
 }) {
   const labels = answerLabels(question, answer).map(shownLabel).join(", ");
@@ -279,7 +337,6 @@ function AnsweredRow({
       <button
         type="button"
         className={styles.answered}
-        disabled={disabled}
         aria-label={text.changeAnswer(question.question, labels)}
         onClick={onOpen}
       >
@@ -308,7 +365,6 @@ function Choices({
   question,
   answer,
   ruleId,
-  disabled,
   onPick,
   onOwn,
 }: {
@@ -316,7 +372,6 @@ function Choices({
   question: Question;
   answer: Answer;
   ruleId: string;
-  disabled: boolean;
   onPick: (index: number) => void;
   onOwn: (own: string) => void;
 }) {
@@ -327,7 +382,6 @@ function Choices({
   return (
     <fieldset
       className={styles.question}
-      disabled={disabled}
       aria-describedby={typed ? undefined : ruleId}
     >
       <legend className={styles.prompt}>{question.question}</legend>
@@ -420,43 +474,41 @@ function nextLabel(last: boolean, sending: boolean): string {
   return sending ? text.sending : text.send;
 }
 
-type Draft = {
-  readonly failed: boolean;
-  /**
-   * The card takes focus only once the person has stepped or sent, never as it appears, so keys
-   * meant for the composer stay there; from then on focus follows the open question.
-   */
-  readonly focusFollows: boolean;
-};
-
 function OpenCard({
   id,
   ask,
   blocked,
+  sending,
+  fault,
   onSend,
   step,
   answers,
   onStep,
   onAnswer,
-  draft,
-  onDraft,
+  focusFollows,
+  onFocusFollows,
 }: {
   id: string;
-  ask: AskedQuestion;
+  ask: Asked;
   /** Closed to answers for now, such as while another message is sending. */
   blocked: boolean;
-  onSend: (answers: Record<string, string[]>) => Promise<boolean>;
+  sending: boolean;
+  /** The last answer did not reach the hub. */
+  fault: string | undefined;
+  onSend: (answer: QuestionAnswer) => void;
   step: number;
   answers: readonly Answer[];
   onStep: (to: number) => void;
   onAnswer: (at: number, answer: Answer) => void;
-  draft: Draft;
-  onDraft: Dispatch<SetStateAction<Draft>>;
+  /**
+   * The card takes focus only once the person has stepped or sent, never as it appears, so keys
+   * meant for the composer stay there; from then on focus follows the open question.
+   */
+  focusFollows: boolean;
+  onFocusFollows: () => void;
 }) {
   const { questions } = ask;
-  const { failed, focusFollows } = draft;
   const [earlierShown, setEarlierShown] = useState(false);
-  const [sending, setSending] = useState(false);
   const card = useRef<HTMLDivElement>(null);
   const choices = useRef<HTMLDivElement>(null);
   /** The option the person last moved to with ↑↓, which Enter may carry forward. */
@@ -464,10 +516,11 @@ function OpenCard({
 
   const question = questions[step];
   useEffect(() => {
-    // While blocked the options are disabled and take no focus; this runs again once they open.
+    // While the card is inert its options take no focus; this runs again once it opens.
     if (
       !focusFollows ||
       blocked ||
+      sending ||
       card.current === null ||
       choices.current === null
     )
@@ -486,7 +539,7 @@ function OpenCard({
       ) ??
       inputs[0];
     target?.focus();
-  }, [step, focusFollows, blocked]);
+  }, [step, focusFollows, blocked, sending]);
   if (question === undefined) return null;
 
   const answerOf = (index: number): Answer =>
@@ -498,27 +551,26 @@ function OpenCard({
   const setAnswer = (next: Answer) => onAnswer(step, next);
   const go = (to: number) => {
     onStep(Math.max(0, Math.min(to, questions.length - 1)));
-    onDraft((current) => ({ failed: current.failed, focusFollows: true }));
+    onFocusFollows();
   };
-  const send = async (current: Answer) => {
-    setSending(true);
-    onDraft((draft) => ({ ...draft, failed: false, focusFollows: true }));
-    const sent = await onSend(
-      Object.fromEntries(
+  const deliver = (answer: QuestionAnswer) => {
+    onFocusFollows();
+    onSend(answer);
+  };
+  const send = (current: Answer) =>
+    deliver({
+      answers: Object.fromEntries(
         questions.map((item, index) => [
           item.id,
           answerLabels(item, index === step ? current : answerOf(index)),
         ]),
       ),
-    );
-    setSending(false);
-    onDraft((draft) => ({ ...draft, failed: !sent }));
-  };
+    });
   /** On to the next question with `current` as this one's answer, or send on the last. */
   const next = (current: Answer) => {
     if (disabled || !answered(current)) return;
     if (current !== answer) setAnswer(current);
-    if (last) void send(current);
+    if (last) send(current);
     else go(step + 1);
   };
   // A pick-one question moves on once picked, except the last: only the person sends.
@@ -582,7 +634,6 @@ function OpenCard({
         key={item.id}
         question={item}
         answer={answerOf(index)}
-        disabled={disabled}
         onOpen={() => go(index)}
       />
     );
@@ -593,8 +644,9 @@ function OpenCard({
       className={styles.card}
       gate={{ kind: "form", title: text.title(questions.length) }}
     >
-      {/* Keys act anywhere in the card, from the options to the buttons, and nowhere else. */}
-      <div ref={card} onKeyDown={onKeyDown}>
+      {/* Keys act anywhere in the card, from the options to the buttons, and nowhere else. While
+          an answer is on its way, or answers are closed for now, the whole card takes no input. */}
+      <div ref={card} onKeyDown={onKeyDown} inert={disabled}>
         {questions.length > 1 ? (
           <p className={styles.position} aria-live="polite">
             {text.position(step + 1, questions.length)}
@@ -627,7 +679,6 @@ function OpenCard({
                 question={question}
                 answer={answer}
                 ruleId={ruleId}
-                disabled={disabled}
                 onPick={choose}
                 onOwn={(own) => setAnswer({ ...answer, own })}
               />
@@ -643,29 +694,43 @@ function OpenCard({
             </li>
           )}
         </ol>
+        {fault !== undefined ? (
+          <div className={styles.fault}>
+            <Fault>{fault}</Fault>
+          </div>
+        ) : null}
         <div className={styles.footer}>
-          <Tooltip label={text.backKeys}>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className={styles.back}
-              data-hidden={step === 0 ? "" : undefined}
-              disabled={disabled}
-              aria-keyshortcuts="ArrowLeft"
-              onClick={() => go(step - 1)}
-            >
-              <ChevronLeft aria-hidden />
-              {text.back}
-            </Button>
-          </Tooltip>
-          {failed ? <Fault>{text.notSent}</Fault> : null}
+          {step === 0 ? null : (
+            <Tooltip label={text.backKeys}>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className={styles.back}
+                aria-keyshortcuts="ArrowLeft"
+                onClick={() => go(step - 1)}
+              >
+                <ChevronLeft aria-hidden />
+                {text.back}
+              </Button>
+            </Tooltip>
+          )}
+          {/* Cancel and Continue keep the end of the row, so neither moves as Back comes and goes. */}
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className={styles.cancel}
+            onClick={() => deliver({ reply: text.cancelReply })}
+          >
+            {text.cancel}
+          </Button>
           <Tooltip label={last ? text.sendKeys : text.nextKeys}>
             <Button
               type="button"
               size="sm"
               className={styles.next}
-              aria-disabled={disabled || !ready}
+              aria-disabled={!ready}
               aria-describedby={
                 question.options.length === 0 ? undefined : ruleId
               }
@@ -685,27 +750,30 @@ function OpenCard({
 export function QuestionsCard({
   question,
   disabled,
-  onSend,
+  onAnswer,
 }: {
-  question: ConversationQuestion;
+  question: PromptQuestion;
   /** Closed to answers for now, such as while another message is sending. */
   disabled: boolean;
-  /** Sends each question's answer under its id. */
-  onSend: (answers: Record<string, string[]>) => Promise<boolean>;
+  /** Sends each question's answer under its id, or Cancel's reply; whether the hub took it. */
+  onAnswer: (answer: QuestionAnswer) => Promise<boolean>;
 }) {
   const { signalName, asked } = question;
-  const [saved, setSaved] = useUnsent(`unsent:questions:${signalName}`);
-  const progress = readProgress(saved, asked.questions);
-  // Each change starts from what is saved, so a pick and the step after it in one tick both land.
-  const update = (change: (current: Progress) => Progress) =>
-    setSaved((raw) =>
-      JSON.stringify(change(readProgress(raw, asked.questions))),
-    );
-  // Held above the open card: sending settles it at once, and a failed send reopens it as it was.
-  const [draft, setDraft] = useState<Draft>(() => ({
-    failed: false,
-    focusFollows: false,
-  }));
+  const outcome = useQuestionOutcome(signalName);
+  const readProgress = useMemo(
+    () => progressFor(asked.questions),
+    [asked.questions],
+  );
+  const { draft, change, sending, send } = useAnswer(
+    `unsent:questions:${signalName}`,
+    readProgress,
+    onAnswer,
+  );
+  const progress = draft ?? startingProgress(asked.questions);
+  const update = (next: (current: Progress) => Progress) =>
+    change((current) => next(current ?? startingProgress(asked.questions)));
+  // Held above the open card, so a failed send reopens it with focus where it was.
+  const [focusFollows, setFocusFollows] = useState(false);
   switch (question.status) {
     case "open":
       return (
@@ -713,11 +781,13 @@ export function QuestionsCard({
           id={signalName}
           ask={asked}
           blocked={disabled}
-          onSend={async (answers) => {
-            const sent = await onSend(answers);
-            if (sent) setSaved("");
-            return sent;
-          }}
+          sending={sending || outcome?.kind === "sending"}
+          fault={
+            outcome !== undefined && "fault" in outcome
+              ? outcome.fault
+              : undefined
+          }
+          onSend={(answer) => void send(answer)}
           step={progress.step}
           answers={progress.answers}
           onStep={(to) =>
@@ -731,14 +801,20 @@ export function QuestionsCard({
               ),
             }))
           }
-          draft={draft}
-          onDraft={setDraft}
+          focusFollows={focusFollows}
+          onFocusFollows={() => setFocusFollows(true)}
         />
       );
     case "answered":
-      return <Settled ask={asked} answer={question.answer} />;
+      return (
+        <Settled ask={asked} answer={question.answer} sent={focusFollows} />
+      );
     case "closed":
-      return <Closed ask={asked} />;
+      return (
+        <ClosedQuestions
+          asks={asked.questions.map(({ question: ask }) => ask)}
+        />
+      );
     default:
       return question satisfies never;
   }

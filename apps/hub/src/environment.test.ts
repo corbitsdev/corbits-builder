@@ -4,6 +4,7 @@ import {
   readHubEnvironment,
   readLiveAppPorts,
   readMigrationDatabaseConfig,
+  readToolchainPaths,
 } from "./environment.ts";
 
 const environment = {
@@ -152,5 +153,20 @@ describe("live-app port range", () => {
         "LIVE_APP_PORTS",
       );
     expect(readHubEnvironment(environment).liveAppPorts).toBeUndefined();
+  });
+});
+
+describe("sandbox toolchain folders", () => {
+  test("reads absolute folders, none unless set", () => {
+    expect(readHubEnvironment(environment).toolchainPaths).toEqual([]);
+    expect(
+      readToolchainPaths({
+        SANDBOX_TOOLCHAIN_PATHS: "/opt/homebrew:/Applications/Xcode.app",
+      }),
+    ).toEqual(["/opt/homebrew", "/Applications/Xcode.app"]);
+    for (const raw of ["opt/homebrew"])
+      expect(() =>
+        readToolchainPaths({ SANDBOX_TOOLCHAIN_PATHS: raw }),
+      ).toThrow("SANDBOX_TOOLCHAIN_PATHS");
   });
 });

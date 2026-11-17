@@ -21,13 +21,12 @@ import {
   approvalDecisionLine,
   withoutResumeContext,
 } from "../config/resume.ts";
-import { personTurnText } from "../config/specialist-ended.ts";
 import { declinedWords } from "../config/decline.ts";
 import { readCoordinatorMailThreads } from "./conversation-threads.ts";
 import { withCommittedAgentState } from "./committed-agent-state.ts";
 import { getLogger } from "@intx/log";
 import { errorCode, requestErrorMetadata } from "../request-error.ts";
-import { parseJson } from "../lib/json.ts";
+import { isRecord, parseJson } from "../lib/json.ts";
 
 const log = getLogger(["corbits-builder", "hub", "conversation-turns"]);
 
@@ -42,9 +41,6 @@ const mirrorRole = (role: unknown): "inbound" | "assistant" | undefined => {
   if (role === "assistant") return "assistant";
   return undefined;
 };
-
-export const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
 
 const textFromContent = (content: unknown): string | undefined => {
   if (!Array.isArray(content)) return undefined;
@@ -95,7 +91,7 @@ function approvalText(
 function personText(body: string): string | undefined {
   const text = withoutResumeContext(deliveredText(body));
   if (text === undefined || text.trim() === "") return undefined;
-  return clippedTurnText(personTurnText(text));
+  return clippedTurnText(text);
 }
 
 // A missing or corrupt turn list is empty; it does not throw.
@@ -177,6 +173,44 @@ export function unsavedPersonTurns(
 }
 
 /**
+ * Every turn from every agent-state directory in the run repo, undefined before
+ * the run committed any.
+ */
+export async function readCommittedTurns(
+  repoStore: CoordinatorRepoDirSource,
+  address: string,
+): Promise<unknown[] | undefined> {
+  const repoDir = repoStore.getRepoDir({
+    kind: "workflow-run",
+    id: deriveWorkflowRunRepoId(address),
+  });
+  return withCommittedAgentState(repoDir, async (agentStateRoot) => {
+    const entries = await readdir(agentStateRoot, { withFileTypes: true });
+    const keys = entries
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name);
+    const collected: unknown[] = [];
+    for (const agentKey of keys) {
+      try {
+        const snapshot = await reconstructDurableConversation(
+          join(agentStateRoot, agentKey),
+          agentKey,
+        );
+        if (snapshot === null) continue;
+        for (const turn of snapshot.turns) collected.push(turn);
+      } catch (error) {
+        // One damaged agent mirror must not drop the other agents' turns.
+        log.error("Agent conversation mirror unreadable", {
+          ...errorCode(error),
+          ...requestErrorMetadata(error),
+        });
+      }
+    }
+    return collected;
+  });
+}
+
+/**
  * Person and assistant text from every agent-state directory in the run repo.
  * A missing or corrupt mirror is an empty list so the events read can still
  * return the committed native projection.
@@ -187,37 +221,7 @@ export async function readDurableConversationTurns(input: {
   approvalDecisions: ApprovalDecisionTurns;
 }): Promise<ConversationTextTurn[]> {
   try {
-    const repoDir = input.repoStore.getRepoDir({
-      kind: "workflow-run",
-      id: deriveWorkflowRunRepoId(input.address),
-    });
-    const turns = await withCommittedAgentState(
-      repoDir,
-      async (agentStateRoot) => {
-        const entries = await readdir(agentStateRoot, { withFileTypes: true });
-        const keys = entries
-          .filter((entry) => entry.isDirectory())
-          .map((entry) => entry.name);
-        const collected: unknown[] = [];
-        for (const agentKey of keys) {
-          try {
-            const snapshot = await reconstructDurableConversation(
-              join(agentStateRoot, agentKey),
-              agentKey,
-            );
-            if (snapshot === null) continue;
-            for (const turn of snapshot.turns) collected.push(turn);
-          } catch (error) {
-            // One damaged agent mirror must not drop the other agents' turns.
-            log.error("Agent conversation mirror unreadable", {
-              ...errorCode(error),
-              ...requestErrorMetadata(error),
-            });
-          }
-        }
-        return collected;
-      },
-    );
+    const turns = await readCommittedTurns(input.repoStore, input.address);
     if (turns === undefined) return [];
     return mapMirrorConversationTurns(turns, input.approvalDecisions);
   } catch (error) {

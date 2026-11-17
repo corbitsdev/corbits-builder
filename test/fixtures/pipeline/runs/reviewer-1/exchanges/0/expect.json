@@ -1,6 +1,0 @@
-{
-  "lastMessageRole": "user",
-  "userTextContains": "\"artifact\":\"engineering_review\"",
-  "requiredTools": ["mail_search", "mail_reply", "mail_send"],
-  "toolResults": []
-}

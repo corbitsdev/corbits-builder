@@ -6,6 +6,7 @@ import {
 } from "@corbits/artifacts";
 import {
   ApprovalPackageBundle,
+  PackageAssignmentRecord,
   type ApprovalPackageSource,
 } from "@corbits-builder/schemas/artifact";
 import { parseJson } from "../lib/json.ts";
@@ -58,6 +59,22 @@ export type SealedPackageAssignment = {
     sha256: string;
   }[];
 };
+
+/**
+ * The assignment a run that files a package was given, from the record its start kept for it; a run
+ * whose record holds none files no package.
+ */
+export function sealedAssignment(
+  runId: string,
+  record: unknown,
+): SealedPackageAssignment {
+  const kept = PackageAssignmentRecord(record);
+  if (kept instanceof type.errors)
+    throw new ProjectError(403, "approval_package_assignment_mismatch", {
+      runId,
+    });
+  return kept.assignment;
+}
 
 export type StoredSourceReader = (
   artifactId: string,

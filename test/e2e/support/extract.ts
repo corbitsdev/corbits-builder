@@ -98,19 +98,20 @@ async function loadStoredTurns(
       `Refusing to read non-weather-app run directory: ${runDir}`,
     );
   }
+  const repoDir = join(runsRoot, runDir);
   const dest = await mkdtemp(join(tmpdir(), "builder-extract-"));
   try {
     const proc = Bun.spawn(
       [
         "sh",
         "-c",
-        `git -C "${join(runsRoot, runDir)}" archive --format=tar refs/heads/main agent-state | tar -x -C "${dest}"`,
+        `git -C "${repoDir}" archive --format=tar refs/heads/main agent-state | tar -x -C "${dest}"`,
       ],
       { stdout: "ignore", stderr: "pipe" },
     );
     if ((await proc.exited) !== 0) {
       throw new Error(
-        `Failed to unpack ${runDir}: ${await new Response(proc.stderr).text()}`,
+        `Failed to unpack ${repoDir}: ${await new Response(proc.stderr).text()}`,
       );
     }
     const conv = await reconstructDurableConversation(
@@ -118,7 +119,7 @@ async function loadStoredTurns(
       step,
     );
     if (!conv) {
-      throw new Error(`No durable conversation found in ${runDir} (${step})`);
+      throw new Error(`No durable conversation found in ${repoDir} (${step})`);
     }
     return conv.turns;
   } finally {
@@ -1274,7 +1275,7 @@ export async function extractWeatherAppFixture(options?: {
         text: "Engineering review of constraints: All constraints (C-1 through C-14) and non-goals (NG-1 through NG-8) align with the Problem Brief's Open-Meteo proxy, 60fps canvas animation, WCAG AA contrast, and browser-only persistence requirements. Ready for approval.",
         expect: {
           lastMessageRole: "user",
-          userTextContains: '"artifact":"engineering_review"',
+          userTextContains: '"artifact":"review"',
           requiredTools: ["mail_search", "mail_reply", "mail_send"],
           toolResults: [],
         },
@@ -1448,7 +1449,7 @@ export async function extractWeatherAppFixture(options?: {
           {
             id: "coder_check_v1",
             name: "run_shell",
-            arguments: { command: "check-app" },
+            arguments: { command: "check-stack" },
           },
         ],
         expect: {
@@ -1518,7 +1519,7 @@ export async function extractWeatherAppFixture(options?: {
           {
             id: "coder_check_v2",
             name: "run_shell",
-            arguments: { command: "check-app" },
+            arguments: { command: "check-stack" },
           },
         ],
         expect: {

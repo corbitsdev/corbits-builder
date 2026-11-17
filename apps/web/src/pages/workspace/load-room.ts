@@ -9,8 +9,13 @@ import { wording } from "../../config.ts";
 import type { QueryClient } from "@tanstack/react-query";
 import type { ProjectArtifact } from "@corbits-builder/client";
 import type { FailedRun, InFlightRun } from "@corbits-builder/schemas/artifact";
+import type { PlanView } from "@corbits-builder/schemas/project";
 import type { ConversationQuestion } from "@corbits-builder/schemas/conversation";
-import { listProjectArtifacts, readArtifact } from "../../api/artifacts.ts";
+import {
+  listProjectArtifacts,
+  readArtifact,
+  readProjectPlan,
+} from "../../api/artifacts.ts";
 import {
   readConversationEvents,
   type ConversationEvent,
@@ -37,6 +42,8 @@ export type RoomSnapshot = {
     questions: ConversationQuestion[];
   };
   artifacts: ProjectArtifact[];
+  /** The project's plan steps, none while it has no plan. */
+  plan: PlanView["steps"];
   /** The specialist runs at work, which name the design concept a designer works on. */
   inFlight: InFlightRun[];
   /** Specialist runs Interchange settled as failed, with the error their terminal event carries. */
@@ -176,6 +183,7 @@ function snapshotFrom(fresh: RoomSnapshot, projectId: string): RoomSnapshot {
   return {
     conversation: fresh.conversation,
     artifacts: fresh.artifacts,
+    plan: fresh.plan,
     inFlight: fresh.inFlight,
     failed: fresh.failed,
     documents,
@@ -239,10 +247,12 @@ export async function loadProjectRoom(
   remember(client, projectId);
   let fresh: RoomSnapshot;
   try {
-    const [conversation, { artifacts, inFlight, failed }] = await Promise.all([
-      withConversation ? readConversationEvents(projectId) : null,
-      listProjectArtifacts(projectId),
-    ]);
+    const [conversation, { artifacts, inFlight, failed }, plan] =
+      await Promise.all([
+        withConversation ? readConversationEvents(projectId) : null,
+        listProjectArtifacts(projectId),
+        readProjectPlan(projectId),
+      ]);
     fresh = {
       conversation: {
         events:
@@ -255,6 +265,7 @@ export async function loadProjectRoom(
         questions: conversation === null ? [] : conversation.questions,
       },
       artifacts,
+      plan: plan.steps,
       inFlight,
       failed,
       documents: {},

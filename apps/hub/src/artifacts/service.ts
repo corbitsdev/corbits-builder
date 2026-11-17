@@ -51,6 +51,7 @@ import {
   DesignDraft,
   ArtifactRead,
   DesignTweaks,
+  isDocumentKind,
   type AcceptanceChecklist,
   type AcceptedMaterials,
   type UserManual,
@@ -66,12 +67,15 @@ import {
   type DecidedApprovalList,
   type FailedRun,
   type InFlightRun,
+  type ProjectRun,
   type ArtifactRef,
   type AppSnapshotReceipt,
   type AppSnapshotState,
   type AppVersion,
   type AppVersionList,
 } from "@corbits-builder/schemas/artifact";
+import type { AppRun } from "@corbits-builder/schemas/installed-workflows";
+import type { Fact, Role, Shown } from "@corbits-builder/plugin";
 import { OpenQuestions } from "@corbits-builder/schemas/questions";
 import {
   ApproachesMeta,
@@ -89,18 +93,21 @@ import {
   CommandProgress,
   type AgentActivity,
   type ProjectActivity,
+  type RunBlock,
 } from "@corbits-builder/schemas/activity";
 import {
+  answeredQuestion,
   artifactApproval,
   artifactImportApproval,
   designConcept,
   project,
-  projectCoordinator,
-  settingsRecord,
+  runAction,
 } from "../db/schema.ts";
 import type { AgentActivityTracker } from "./activity.ts";
+import { approvedVersion } from "./approvals.ts";
 import type { Actor } from "../lib/actor.ts";
 import { parseJson } from "../lib/json.ts";
+import { activeCoordinator } from "../auth/coordinator-registry.ts";
 import { authorizeProject } from "../projects/authorization.ts";
 import {
   ProjectError,
@@ -122,15 +129,21 @@ import {
   readDemoLogin,
   readDesignBundle,
   readDesignDraft,
+  designDraftOf,
   readUserManual,
   manualPictures,
   warmStepWorkspace,
-  serializeDesign,
   designSizeIssue,
 } from "./design-draft.ts";
 import type { LiveApps } from "../live-app/runner.ts";
+import { declaredRun } from "@corbits-builder/plugin";
+import { projectValueStore, readStoredValues } from "../values/store.ts";
+import { roleModel } from "../plugins/catalog.ts";
 import { appContent, bundleFiles } from "../builds/app-snapshot.ts";
+import { workspaceHoldsApp } from "../builds/app-workspace.ts";
 import { DESIGN_STYLES, setThemeTokens } from "./design-tweaks.ts";
+import type { ProjectState } from "../values/project-values.ts";
+import { storeValues } from "../values/service.ts";
 import {
   coordinatorTweaksNote,
   designerTweaksNote,
@@ -139,12 +152,12 @@ import { designChosenNote } from "../config/design.ts";
 import { loadSettings } from "../settings/policy.ts";
 import {
   agentDecidesApprovals,
+  awaitingApproval,
   preferenceGuidance,
   resolvePreferences,
 } from "../config/preferences.ts";
-import { awaitingApproval } from "../projects/deploy-tools.ts";
 import { frozenModelChoice, tierBinding } from "../config/models.ts";
-import { roleModel, runRole } from "../plugins/catalog.ts";
+import { COORDINATOR } from "../workflows/coordinator-role.ts";
 import { modelDirectory } from "../settings/custom-providers.ts";
 import { materialRemovedNote, materialsNote } from "../config/materials.ts";
 import { servingOffering } from "../workflows/install-for-tenant.ts";
@@ -157,8 +170,8 @@ import {
 import {
   parseApprovalPackageBundle,
   readProjectPackageSource,
+  sealedAssignment,
   validateApprovalPackage,
-  verifySourcePin,
 } from "./approval-package.ts";
 import {
   createApprovalRoundService,
@@ -178,6 +191,8 @@ const APPROVAL_COVERS: Record<string, (kind: string) => boolean> = {
   instruct_coder: (kind) => kind !== "app" && kind !== "design_option",
 };
 const RECENT_FAILURES = 5;
+// How many of the coordinator's ended runs its runs list keeps, newest first.
+const RECENT_RUNS = 10;
 // A command's progress line older than this was left by a command that died; it is not shown.
 const COMMAND_PROGRESS_STALE_MS = 5 * 60_000;
 // A run held on an approval is mid-turn, so its activity reads as work; the pending record is what
@@ -295,6 +310,9 @@ const documentMetadataOf = (metadata: unknown) =>
 const openQuestionsOf = (metadata: unknown) =>
   documentMetadataOf(metadata).openQuestions ?? [];
 
+// The cancellation reason Interchange keeps for a run that ended blocked.
+const BLOCKED_CANCELLATION = "blocked";
+
 // The failed step's error names the cause; RunFailed only says a step failed.
 // A run the hub failed itself, such as on lost capacity, records why on its row.
 export async function runFailure(
@@ -339,6 +357,24 @@ async function* everyVersion(db: ArtifactDb, artifactId: string) {
 }
 
 /**
+ * The project's document of the kind an agent asked for, by its exact kind. The refusal names what
+ * is filed so the agent can choose: a model that re-reads to confirm a miss trips the doom loop,
+ * and tool wrappers relay only the hint.
+ */
+async function documentOfKind(db: ArtifactDb, tenantId: string, kind: string) {
+  const [exact] = (await listArtifacts(db, tenantId, { kind, limit: 1 })).rows;
+  if (exact) return exact;
+  const { rows } = await listArtifacts(db, tenantId, { limit: MAX_LIST_LIMIT });
+  const filed = rows.filter((row) => row.contentSha256);
+  const listed = filed.map((row) => `${row.kind} ("${row.title}")`).join(", ");
+  throw new ProjectError(404, "artifact_not_found", {
+    hint: filed.length
+      ? `no document of kind ${kind} is filed; call again with the kind of one of the filed documents: ${listed}`
+      : `no document of kind ${kind} is filed; this project has no documents yet`,
+  });
+}
+
+/**
  * Whether the project's app has had its first build: a version filed after a coder's passing
  * check, where an import is recorded as one.
  */
@@ -374,17 +410,26 @@ export function createArtifactService(
     throw new Error("Artifacts require postgres-js");
   const db: ArtifactDb = rawDB;
 
-  async function activeCoordinator(projectId: string) {
-    const [row] = await rawDB
-      .select({ runId: projectCoordinator.runId })
-      .from(projectCoordinator)
+  // The specialist run the calling principal is, with the plugin action it was started for.
+  async function callingRun(actor: Actor, projectId: string) {
+    const [run] = await rawDB
+      .select({
+        runId: runAction.runId,
+        plugin: runAction.plugin,
+        action: runAction.action,
+        blocked: runAction.blocked,
+      })
+      .from(runAction)
+      .innerJoin(principal, eq(principal.refId, runAction.runId))
       .where(
         and(
-          eq(projectCoordinator.projectId, projectId),
-          eq(projectCoordinator.active, true),
+          eq(principal.id, actor.principalId),
+          eq(principal.kind, "workflow"),
+          eq(runAction.tenantId, actor.tenantId),
+          eq(runAction.projectId, projectId),
         ),
       );
-    return row;
+    return run;
   }
 
   async function archiveName(projectId: string) {
@@ -409,9 +454,76 @@ export function createArtifactService(
     return (await authorizeProject(rawDB, actor, projectId, action)).allowed;
   }
 
-  // The role's runs, newest first, each with its warm step, the design concept it works on, if
-  // any, whether it is live and when it ended: the live runs, or with ended, every run.
-  async function roleRuns(actor: Actor, role: string, ended: boolean) {
+  const writesCode = (role: Role) => role.writesCode === true;
+  const designs = (role: Role) => role.designs === true;
+
+  // Tokens written into the design's styles.css :root wherever the design lives: the live
+  // designer's workspace for the concept, and the filed design's next version; then the coordinator
+  // and that designer are told.
+  async function writeDesignTokens(
+    actor: Actor,
+    projectId: string,
+    tokens: Readonly<Record<string, string>>,
+    concept: string | undefined,
+    mailRun: (runId: string, content: string) => Promise<void>,
+  ): Promise<DesignTweaksReceipt> {
+    let designer: { runId: string; role: string } | undefined;
+    for (const workspace of await liveWorkspaces(actor, designs)) {
+      if ((workspace.concept ?? undefined) !== concept) continue;
+      if ((await readDesignDraft(workspace.dir)) === undefined) continue;
+      await editDesignStyles(workspace.dir, (css) =>
+        setThemeTokens(css, tokens),
+      );
+      designer = workspace;
+      break;
+    }
+    let artifact: ArtifactRef | undefined;
+    const filed = await filedDesign(actor, concept);
+    if (!filed && designer === undefined)
+      throw new ProjectError(404, "design_not_found");
+    if (filed) {
+      const bundle = await filed.files();
+      const files = {
+        ...bundle,
+        [DESIGN_STYLES]: setThemeTokens(bundle[DESIGN_STYLES] ?? "", tokens),
+      };
+      const written = await writeArtifactVersion(db, {
+        scope: actor,
+        artifactId: filed.artifactId,
+        title: filed.title,
+        content: JSON.stringify({ files }),
+      });
+      artifact = {
+        artifactId: written.artifactId,
+        kind: filed.kind,
+        version: written.version,
+        sha256: written.contentSha256!,
+      };
+    }
+    const updated: DesignTweaksReceipt["updated"] = [
+      ...(designer === undefined ? [] : ["workspace" as const]),
+      ...(artifact ? ["version" as const] : []),
+    ];
+    const notified: DesignTweaksReceipt["notified"] = [];
+    const coordinator = await activeCoordinator(rawDB, projectId);
+    if (coordinator) {
+      await mailRun(coordinator.runId, coordinatorTweaksNote(tokens, updated));
+      notified.push(COORDINATOR.name);
+    }
+    if (designer) {
+      await mailRun(designer.runId, designerTweaksNote(tokens));
+      notified.push(designer.role);
+    }
+    return { updated, ...(artifact ? { artifact } : {}), notified };
+  }
+
+  // The runs of the roles that match, newest first, each with its warm step, the design concept it
+  // works on, if any, whether it is live and when it ended: the live runs, or with ended, every run.
+  async function roleRuns(
+    actor: Actor,
+    matches: (role: Role) => boolean,
+    ended: boolean,
+  ) {
     const runs = await rawDB
       .select({
         runId: workflowRun.id,
@@ -438,10 +550,11 @@ export function createArtifactService(
       .orderBy(desc(workflowRun.createdAt));
     return runs.flatMap((run) => {
       const step = spawnedWorkflowStep(run.bundle);
-      return step?.role === role
+      return step && matches(step.role)
         ? [
             {
               runId: run.runId,
+              role: step.role.name,
               address: run.address,
               stepId: step.stepId,
               concept: run.concept,
@@ -453,17 +566,21 @@ export function createArtifactService(
     });
   }
 
-  // The workspaces of the role's live runs that the hub deployed on its local sidecar, newest
-  // first, each with the design concept its run works on, if any.
-  async function liveWorkspaces(actor: Actor, role: string) {
+  // The workspaces of the matching roles' live runs that the hub deployed on its local sidecar,
+  // newest first, each with the design concept its run works on, if any.
+  async function liveWorkspaces(
+    actor: Actor,
+    matches: (role: Role) => boolean,
+  ) {
     if (!sidecarDataDir) return [];
-    return (await roleRuns(actor, role, false)).flatMap(
-      ({ runId, address, stepId, concept }) =>
+    return (await roleRuns(actor, matches, false)).flatMap(
+      ({ runId, role, address, stepId, concept }) =>
         address === null
           ? []
           : [
               {
                 runId,
+                role,
                 dir: warmStepWorkspace(sidecarDataDir, address, stepId),
                 concept,
               },
@@ -478,7 +595,7 @@ export function createArtifactService(
   ): Promise<
     { runId: string; dir: string } | Exclude<AppSnapshotState, { ready: true }>
   > {
-    const [run] = await roleRuns(actor, "coder", true);
+    const [run] = await roleRuns(actor, writesCode, true);
     if (!run) return { ready: false, code: "coder_run_not_found" };
     const unavailable = (
       reason: NonNullable<
@@ -495,8 +612,7 @@ export function createArtifactService(
       return unavailable("not_on_local_sidecar");
     const dir = warmStepWorkspace(sidecarDataDir, run.address, run.stepId);
     if (!(await isDirectory(dir))) return unavailable("workspace_missing");
-    if (!(await Bun.file(join(dir, "package.json")).exists()))
-      return unavailable("package_json_missing");
+    if (!(await workspaceHoldsApp(dir))) return unavailable("workspace_empty");
     return { runId: run.runId, dir };
   }
 
@@ -620,8 +736,8 @@ export function createArtifactService(
   // The project's current files: a coder's workspace while it builds, read where it lies, else
   // the saved app; undefined while the project has no app files at all.
   async function appSource(actor: Actor, projectId: string) {
-    for (const { dir } of await liveWorkspaces(actor, "coder"))
-      if (await Bun.file(join(dir, "package.json")).exists()) {
+    for (const { dir } of await liveWorkspaces(actor, writesCode))
+      if (await workspaceHoldsApp(dir)) {
         const login = await readDemoLogin(dir);
         return {
           key: dir,
@@ -647,12 +763,27 @@ export function createArtifactService(
     };
   }
 
-  // The project's current files to run, or the app's state when there are none to run.
-  async function runnableApp(actor: Actor, projectId: string) {
+  // The project's current files and how its stack.run starts them, or the app's state when there
+  // are none to run. A project with no stack.run, such as a command-line tool, serves nothing here.
+  async function runnableApp(
+    actor: Actor,
+    projectId: string,
+  ): Promise<
+    | { app: NonNullable<Awaited<ReturnType<typeof appSource>>>; run: AppRun }
+    | { readonly state: "not_built" }
+  > {
     await requireProject(actor, projectId, "read");
+    const run = declaredRun(
+      await readStoredValues(
+        projectValueStore(rawDB, actor.tenantId, projectId),
+      ),
+    );
+    if (!run) throw new ProjectError(409, "no_web_app");
+    if (run instanceof type.errors)
+      throw new ProjectError(409, "invalid_stack_run", { issues: run });
     if (!liveApps) throw new ProjectError(503, "live_app_unavailable");
     const current = await appSource(actor, projectId);
-    if (current) return current;
+    if (current) return { app: current, run };
     liveApps.runner.stop(projectId);
     return { state: "not_built" } as const;
   }
@@ -721,7 +852,7 @@ export function createArtifactService(
     read: (workspace: string) => Promise<Record<string, string> | undefined>,
     skip?: string,
   ) {
-    const [newest] = (await roleRuns(actor, "designer", true)).filter(
+    const [newest] = (await roleRuns(actor, designs, true)).filter(
       (run) => run.runId !== skip && (run.concept ?? undefined) === concept,
     );
     if (!newest || !sidecarDataDir || newest.address === null) return undefined;
@@ -739,14 +870,80 @@ export function createArtifactService(
       : undefined;
   }
 
-  function designDraftOf(files: Record<string, string>) {
-    const draft = DesignDraft.assert({ files });
-    const issue = designSizeIssue(
-      draft.files,
-      serializeDesign(draft.files).bytes,
+  // A chosen design option's content is filed as the design, approved by actor as the chooser: the
+  // person, or the designer's run when approvals are left to Builder. The other concepts' designers
+  // would file options nobody compares and hold their slots, so they stop.
+  async function fileChosenDesign(
+    actor: Actor,
+    projectId: string,
+    concept: string,
+    content: string,
+  ): Promise<ArtifactRef> {
+    const [existing] = (
+      await listArtifacts(db, actor.tenantId, { kind: "design", limit: 1 })
+    ).rows;
+    const written = existing
+      ? await writeArtifactVersion(db, {
+          scope: actor,
+          artifactId: existing.id,
+          title: concept,
+          content,
+        })
+      : await db.transaction((tx) =>
+          createArtifact(tx, {
+            scope: actor,
+            ownerPrincipalId: actor.principalId,
+            kind: "design",
+            title: concept,
+            content,
+            source: { origin: "manual" },
+          }),
+        );
+    const design: ArtifactRef = {
+      artifactId: "artifactId" in written ? written.artifactId : written.id,
+      kind: "design",
+      version: written.version,
+      sha256: written.contentSha256!,
+    };
+    await rawDB.insert(artifactImportApproval).values({
+      ...design,
+      tenantId: actor.tenantId,
+      projectId,
+      principalId: actor.principalId,
+    });
+    const others = await rawDB
+      .select({ runId: designConcept.runId })
+      .from(designConcept)
+      .innerJoin(workflowRun, eq(workflowRun.id, designConcept.runId))
+      .where(
+        and(
+          eq(designConcept.tenantId, actor.tenantId),
+          eq(designConcept.projectId, projectId),
+          ne(designConcept.label, concept),
+          inArray(workflowRun.status, ["deployed", "running"]),
+        ),
+      );
+    await Promise.allSettled(
+      others.map(({ runId }) =>
+        cancelRun?.(actor.tenantId, runId, "design_concept_not_picked"),
+      ),
     );
-    if (issue) throw new ProjectError(409, "design_draft_too_large", issue);
-    return draft;
+    return design;
+  }
+
+  // With approvals left to Builder nobody is asked to pick a design, so a concept's option is chosen
+  // as it is filed, its designer's run recorded as the chooser. Whether the write was so chosen.
+  async function chosenByBuilder(
+    actor: Actor,
+    projectId: string,
+    written: { kind: string; content: string },
+    concept: string | undefined,
+  ) {
+    if (written.kind !== "design_option" || !concept) return false;
+    const settings = await loadSettings(rawDB, actor.tenantId, projectId);
+    if (!agentDecidesApprovals(settings.preferences.value)) return false;
+    await fileChosenDesign(actor, projectId, concept, written.content);
+    return true;
   }
 
   // The concept of the designer run writing as actor: a workflow principal's ref is its run.
@@ -778,7 +975,7 @@ export function createArtifactService(
       .select({ bundle: workflowRunLaunchSpec.frozenApprovalBundle })
       .from(workflowRunLaunchSpec)
       .where(eq(workflowRunLaunchSpec.anchorRunId, writer.refId));
-    if (!run || spawnedWorkflowRole(run.bundle) !== "coder")
+    if (!run || !spawnedWorkflowRole(run.bundle)?.writesCode)
       throw new ProjectError(403, "app_write_not_coder");
     return AppVersionMetadata.assert({
       source: "check",
@@ -803,39 +1000,13 @@ export function createArtifactService(
     return row.createdAt;
   }
 
-  async function approvedVersion(tenantId: string, artifactId: string) {
-    const deployed = await rawDB
-      .select({
-        version: artifactApproval.version,
-        sha256: artifactApproval.sha256,
-      })
-      .from(artifactApproval)
-      .where(
-        and(
-          eq(artifactApproval.tenantId, tenantId),
-          eq(artifactApproval.artifactId, artifactId),
-        ),
-      );
-    const imported = await rawDB
-      .select({
-        version: artifactImportApproval.version,
-        sha256: artifactImportApproval.sha256,
-      })
-      .from(artifactImportApproval)
-      .where(
-        and(
-          eq(artifactImportApproval.tenantId, tenantId),
-          eq(artifactImportApproval.artifactId, artifactId),
-        ),
-      );
-    const covered = [...deployed, ...imported].sort(
-      (a, b) => b.version - a.version,
-    );
-    for (const row of covered) {
-      const stored = await getArtifactVersion(db, artifactId, row.version);
-      if (stored?.contentSha256 === row.sha256) return row.version;
-    }
-    return undefined;
+  // What a run's start kept as the run's record; undefined for a run that kept none.
+  async function runRecord(tenantId: string, runId: string) {
+    const [row] = await rawDB
+      .select({ record: runAction.record })
+      .from(runAction)
+      .where(and(eq(runAction.runId, runId), eq(runAction.tenantId, tenantId)));
+    return row?.record ?? undefined;
   }
 
   return {
@@ -891,7 +1062,7 @@ export function createArtifactService(
           const progress = tracker?.progress(run.runId);
           inFlight.push({
             runId: run.runId,
-            role,
+            role: role.name,
             startedAt: run.startedAt.toISOString(),
             status: run.status,
             state: inFlightState(heldOnApproval.has(run.runId), seen?.working),
@@ -903,7 +1074,7 @@ export function createArtifactService(
           const error = await runFailure(runs, run);
           failed.push({
             runId: run.runId,
-            role,
+            role: role.name,
             endedAt: run.endedAt.toISOString(),
             ...(error ? { error } : {}),
           });
@@ -915,7 +1086,20 @@ export function createArtifactService(
       const artifacts: ArtifactListItem[] = [];
       for (const row of rows) {
         if (!row.contentSha256) continue;
-        const approved = await approvedVersion(actor.tenantId, row.id);
+        const approved = await approvedVersion(db, actor.tenantId, row.id);
+        // When the person recorded it; an approval given through a deploy's ask has no such record.
+        const [record] =
+          approved === undefined
+            ? []
+            : await rawDB
+                .select({ at: artifactImportApproval.createdAt })
+                .from(artifactImportApproval)
+                .where(
+                  and(
+                    eq(artifactImportApproval.artifactId, row.id),
+                    eq(artifactImportApproval.version, approved),
+                  ),
+                );
         const openQuestionCount = openQuestionsOf(row.metadata).length;
         artifacts.push({
           artifactId: row.id,
@@ -925,6 +1109,9 @@ export function createArtifactService(
           sha256: row.contentSha256,
           filedAt: await filedAt(row.id, row.version),
           ...(approved === undefined ? {} : { approvedVersion: approved }),
+          ...(record === undefined
+            ? {}
+            : { approvedAt: record.at.toISOString() }),
           ...(openQuestionCount ? { openQuestionCount } : {}),
         });
       }
@@ -939,7 +1126,7 @@ export function createArtifactService(
         ),
         appBuilt: await appBuilt(db, actor.tenantId),
         preferences,
-        preferenceGuidance: preferenceGuidance(preferences, "coordinator"),
+        preferenceGuidance: preferenceGuidance(preferences, COORDINATOR),
       };
     },
 
@@ -978,7 +1165,7 @@ export function createArtifactService(
         return progress;
       };
       const agents: AgentActivity[] = [];
-      const coordinator = await activeCoordinator(projectId);
+      const coordinator = await activeCoordinator(rawDB, projectId);
       const seen = coordinator && tracker?.of(coordinator.runId);
       if (coordinator && seen?.working && seen.since)
         agents.push({
@@ -1016,7 +1203,7 @@ export function createArtifactService(
         const command = await commandProgress(run.address, run.bundle);
         agents.push({
           runId: run.runId,
-          role,
+          role: role.name,
           since: shown.since,
           tools: shown.tools,
           ...(shown.said ? { said: shown.said } : {}),
@@ -1115,8 +1302,14 @@ export function createArtifactService(
         readDesignBundle,
         self.runId,
       );
-      if (left !== undefined) return designDraftOf(left);
       const filed = await filedDesign(actor, concept);
+      // The refusal comes before this run writes a draft, so the concept's next designer finds none
+      // from it and starts from what stands without one.
+      if (left !== undefined)
+        return designDraftOf(
+          left,
+          `This designer run cannot continue it; a new design task for this concept starts from ${filed ? "the filed design" : "the design starter"} instead.`,
+        );
       if (filed) return designDraftOf(await filed.files());
       throw new ProjectError(404, "design_draft_not_found");
     },
@@ -1132,6 +1325,294 @@ export function createArtifactService(
       if (files === undefined)
         throw new ProjectError(404, "design_draft_not_found");
       return designDraftOf(files);
+    },
+
+    // The ready-made plans the project is following.
+    async projectFollowing(actor: Actor, projectId: string) {
+      await requireProject(actor, projectId, "read");
+      const [row] = await rawDB
+        .select({ following: project.following })
+        .from(project)
+        .where(eq(project.id, projectId));
+      return row?.following ?? [];
+    },
+
+    async setFollowing(
+      actor: Actor,
+      projectId: string,
+      handles: readonly string[],
+    ) {
+      await requireProject(actor, projectId, "manage");
+      const followed = [...new Set(handles)];
+      await rawDB
+        .update(project)
+        .set({ following: followed })
+        .where(eq(project.id, projectId));
+      return followed;
+    },
+
+    // Records that the person answered the question, once; false when it was answered already.
+    async claimQuestion(actor: Actor, projectId: string, signalName: string) {
+      await requireProject(actor, projectId, "manage");
+      const claimed = await rawDB
+        .insert(answeredQuestion)
+        .values({ projectId, signalName })
+        .onConflictDoNothing()
+        .returning({ signalName: answeredQuestion.signalName });
+      return claimed.length > 0;
+    },
+
+    // Takes back an answer the run never got, so the person can answer again.
+    async releaseQuestion(actor: Actor, projectId: string, signalName: string) {
+      await requireProject(actor, projectId, "manage");
+      await rawDB
+        .delete(answeredQuestion)
+        .where(
+          and(
+            eq(answeredQuestion.projectId, projectId),
+            eq(answeredQuestion.signalName, signalName),
+          ),
+        );
+    },
+
+    // Records the plugin action the coordinator just started a specialist run for, before the
+    // run's assignment reaches it, with the record its start keeps for the run and the values it
+    // saves, both already checked against the action.
+    async recordRunAction(
+      actor: Actor,
+      projectId: string,
+      input: {
+        runId: string;
+        plugin: string;
+        action: string;
+        role: string | undefined;
+        step: string | undefined;
+        record: unknown;
+      },
+      values: Record<string, unknown>,
+    ) {
+      await requireProject(actor, projectId, "manage");
+      const [run] = await rawDB
+        .select({ bundle: workflowRunLaunchSpec.frozenApprovalBundle })
+        .from(workflowRun)
+        .innerJoin(
+          workflowRunLaunchSpec,
+          eq(workflowRunLaunchSpec.anchorRunId, workflowRun.id),
+        )
+        .where(
+          and(
+            eq(workflowRun.id, input.runId),
+            eq(workflowRun.tenantId, actor.tenantId),
+          ),
+        );
+      const role = run && spawnedWorkflowRole(run.bundle);
+      if (!role)
+        throw new ProjectError(404, "specialist_run_not_found", {
+          runId: input.runId,
+        });
+      // The recorded plugin decides which credentials the run may read, so it must be the one
+      // whose role the hub tagged the run's agent with when it built it.
+      if (role.name !== input.role)
+        throw new ProjectError(400, "run_not_started_for_action", {
+          runId: input.runId,
+          plugin: input.plugin,
+          action: input.action,
+        });
+      await rawDB
+        .insert(runAction)
+        .values({
+          runId: input.runId,
+          tenantId: actor.tenantId,
+          projectId,
+          plugin: input.plugin,
+          action: input.action,
+          planStep: input.step ?? null,
+          record: input.record ?? null,
+        })
+        .onConflictDoNothing();
+      await storeValues(rawDB, projectId, values);
+      return {
+        runId: input.runId,
+        plugin: input.plugin,
+        action: input.action,
+        step: input.step,
+      };
+    },
+
+    // The runs the coordinator started in the project: every one still at work, and the latest
+    // that ended.
+    async runs(actor: Actor, projectId: string): Promise<ProjectRun[]> {
+      await requireProject(actor, projectId, "read");
+      const rows = await rawDB
+        .select({
+          runId: runAction.runId,
+          plugin: runAction.plugin,
+          action: runAction.action,
+          step: runAction.planStep,
+          concept: designConcept.label,
+          status: workflowRun.status,
+          address: workflowRun.address,
+          startedAt: workflowRun.createdAt,
+          endedAt: workflowRun.endedAt,
+          failureCode: workflowRun.failureCode,
+          failureMessage: workflowRun.failureMessage,
+          blocked: runAction.blocked,
+        })
+        .from(runAction)
+        .innerJoin(workflowRun, eq(workflowRun.id, runAction.runId))
+        .leftJoin(designConcept, eq(designConcept.runId, runAction.runId))
+        .where(
+          and(
+            eq(runAction.tenantId, actor.tenantId),
+            eq(runAction.projectId, projectId),
+          ),
+        )
+        .orderBy(desc(workflowRun.createdAt))
+        .limit(RECENT_RUNS * 4);
+      const heldOnApproval = new Set(
+        (
+          await rawDB
+            .select({ runId: approval.anchorRunId })
+            .from(approval)
+            .where(
+              and(
+                eq(approval.tenantId, actor.tenantId),
+                eq(approval.status, "pending"),
+              ),
+            )
+        ).map((row) => row.runId),
+      );
+      let ended = 0;
+      const listed: ProjectRun[] = [];
+      for (const row of rows) {
+        const live = row.status === "deployed" || row.status === "running";
+        if (!live) ended += 1;
+        if (!live && ended > RECENT_RUNS) continue;
+        const progress = tracker?.progress(row.runId);
+        // The latest call with what it was given, as far as its turn's calls are kept.
+        const latest = tracker?.of(row.runId).tools.at(-1);
+        let lastActivity = progress?.recent.at(-1);
+        if (latest) lastActivity = latest.name;
+        if (latest?.subject) lastActivity = `${latest.name} ${latest.subject}`;
+        const error =
+          row.status === "failed" ? await runFailure(runs, row) : undefined;
+        const run: ProjectRun = {
+          runId: row.runId,
+          plugin: row.plugin,
+          action: row.action,
+          status: row.status,
+          startedAt: row.startedAt.toISOString(),
+        };
+        if (row.step !== null) run.step = row.step;
+        if (row.concept !== null) run.concept = row.concept;
+        if (live)
+          run.state = inFlightState(
+            heldOnApproval.has(row.runId),
+            tracker?.of(row.runId)?.working,
+          );
+        // The hub has seen nothing of a run that has not begun its first turn.
+        if (live && run.state === "waiting" && !progress)
+          run.state = "starting";
+        if (row.endedAt) run.endedAt = row.endedAt.toISOString();
+        if (lastActivity) run.lastActivity = lastActivity;
+        if (progress) run.lastActivityAt = progress.lastActivityAt;
+        if (error) run.error = error.message;
+        if (row.blocked !== null) run.blocked = row.blocked;
+        listed.push(run);
+      }
+      return listed;
+    },
+
+    // Stops a run the coordinator started in the project, through Interchange's own cancellation,
+    // recording who stopped it so the coordinator's note says so.
+    async stopRun(
+      actor: Actor,
+      projectId: string,
+      runId: string,
+      stoppedBy: "person" | "coordinator",
+    ) {
+      await requireProject(actor, projectId, "manage");
+      const [run] = await rawDB
+        .select({ status: workflowRun.status })
+        .from(runAction)
+        .innerJoin(workflowRun, eq(workflowRun.id, runAction.runId))
+        .where(
+          and(
+            eq(runAction.runId, runId),
+            eq(runAction.tenantId, actor.tenantId),
+            eq(runAction.projectId, projectId),
+          ),
+        );
+      if (!run) throw new ProjectError(404, "run_not_found", { runId });
+      if (!isLiveWorkflowRunStatus(run.status))
+        throw new ProjectError(409, "run_ended", { runId, status: run.status });
+      if (!cancelRun) throw new ProjectError(503, "run_stop_unavailable");
+      await cancelRun(actor.tenantId, runId, `stopped_by_${stoppedBy}`);
+      return { runId };
+    },
+
+    // The plugin action the calling specialist run was started for: it saves only the values that
+    // action writes. A run holds no project write of its own; saveRunValues is its one way to save.
+    async valuesRun(actor: Actor, projectId: string) {
+      await requireProject(actor, projectId, "read");
+      const run = await callingRun(actor, projectId);
+      if (!run)
+        throw new ProjectError(403, "run_saves_no_values", {
+          hint: "This run was not started for a plugin action that saves project values, so it saves none.",
+        });
+      return run;
+    },
+
+    // Records what stops the calling specialist run, the agent's own report or Builder's for it.
+    async recordBlock(actor: Actor, projectId: string, block: RunBlock) {
+      await requireProject(actor, projectId, "read");
+      const run = await callingRun(actor, projectId);
+      if (!run)
+        throw new ProjectError(403, "run_not_started_for_an_action", {
+          hint: "This run was not started for a plugin action, so Builder has nowhere to record its block.",
+        });
+      await rawDB
+        .update(runAction)
+        .set({ blocked: block })
+        .where(eq(runAction.runId, run.runId));
+      return { runId: run.runId };
+    },
+
+    // Ends the calling run once its block is recorded, through Interchange's cancellation as a stop
+    // does: a specialist parks after it replies rather than ending, and an end with its assignment
+    // unanswered is what sends the coordinator its note.
+    async endBlockedRun(actor: Actor, projectId: string) {
+      await requireProject(actor, projectId, "read");
+      const run = await callingRun(actor, projectId);
+      if (!run?.blocked)
+        throw new ProjectError(409, "run_not_blocked", {
+          hint: "Report the block before the run ends as blocked.",
+        });
+      if (!cancelRun) throw new ProjectError(503, "run_stop_unavailable");
+      await cancelRun(actor.tenantId, run.runId, BLOCKED_CANCELLATION);
+      return { runId: run.runId };
+    },
+
+    // What project values are read from: the filed design at its latest version, with the look
+    // the person saved, the project's plain store, and the files attached, which a file value names.
+    async projectState(actor: Actor, projectId: string): Promise<ProjectState> {
+      await requireProject(actor, projectId, "read");
+      const stored = await readStoredValues(
+        projectValueStore(rawDB, actor.tenantId, projectId),
+      );
+      const filed = await filedDesign(actor, undefined);
+      const { rows: materials } = await listArtifacts(db, actor.tenantId, {
+        kind: MATERIAL_KIND,
+        limit: MAX_LIST_LIMIT,
+      });
+      return {
+        styles: filed && (await filed.files())[DESIGN_STYLES],
+        stored,
+        materials: materials.map((material) => ({
+          artifactId: material.id,
+          name: material.title,
+        })),
+      };
     },
 
     // The person's saved look tokens, written deterministically wherever the design lives: the
@@ -1150,58 +1631,25 @@ export function createArtifactService(
           issues: input,
         });
       await requireProject(actor, projectId, "manage");
-      const tokens: Record<string, string> = input.tokens;
-      let designerRunId: string | undefined;
-      for (const workspace of await liveWorkspaces(actor, "designer")) {
-        if ((workspace.concept ?? undefined) !== input.concept) continue;
-        if ((await readDesignDraft(workspace.dir)) === undefined) continue;
-        await editDesignStyles(workspace.dir, (css) =>
-          setThemeTokens(css, tokens),
-        );
-        designerRunId = workspace.runId;
-        break;
-      }
-      let artifact: ArtifactRef | undefined;
-      const filed = await filedDesign(actor, input.concept);
-      if (!filed && designerRunId === undefined)
-        throw new ProjectError(404, "design_not_found");
-      if (filed) {
-        const bundle = await filed.files();
-        const files = {
-          ...bundle,
-          [DESIGN_STYLES]: setThemeTokens(bundle[DESIGN_STYLES] ?? "", tokens),
-        };
-        const written = await writeArtifactVersion(db, {
-          scope: actor,
-          artifactId: filed.artifactId,
-          title: filed.title,
-          content: JSON.stringify({ files }),
-        });
-        artifact = {
-          artifactId: written.artifactId,
-          kind: filed.kind,
-          version: written.version,
-          sha256: written.contentSha256!,
-        };
-      }
-      const updated: DesignTweaksReceipt["updated"] = [
-        ...(designerRunId === undefined ? [] : ["workspace" as const]),
-        ...(artifact ? ["version" as const] : []),
-      ];
-      const notified: DesignTweaksReceipt["notified"] = [];
-      const coordinator = await activeCoordinator(projectId);
-      if (coordinator) {
-        await mailRun(
-          coordinator.runId,
-          coordinatorTweaksNote(tokens, updated),
-        );
-        notified.push("coordinator");
-      }
-      if (designerRunId) {
-        await mailRun(designerRunId, designerTweaksNote(tokens));
-        notified.push("designer");
-      }
-      return { updated, ...(artifact ? { artifact } : {}), notified };
+      return writeDesignTokens(
+        actor,
+        projectId,
+        input.tokens,
+        input.concept,
+        mailRun,
+      );
+    },
+
+    // Project values whose home is the design's styles, as their tokens, written as the person's
+    // tweaks are, to the filed design.
+    async saveStyleTokens(
+      actor: Actor,
+      projectId: string,
+      tokens: Readonly<Record<string, string>>,
+      mailRun: (runId: string, content: string) => Promise<void>,
+    ): Promise<DesignTweaksReceipt> {
+      await requireProject(actor, projectId, "manage");
+      return writeDesignTokens(actor, projectId, tokens, undefined, mailRun);
     },
 
     // What the coordinator's model reads, by the capabilities its catalog offering declares.
@@ -1219,7 +1667,7 @@ export function createArtifactService(
           rawDB,
           directory,
           actor.tenantId,
-          tierBinding(directory, choice, roleModel(runRole("coordinator"))),
+          tierBinding(directory, choice, roleModel(COORDINATOR)),
         ));
       return acceptedMaterials(offering?.capabilities ?? []);
     },
@@ -1263,7 +1711,7 @@ export function createArtifactService(
           mimeType: refused.mimeType,
           accepted: mimeTypes,
         });
-      const coordinator = await activeCoordinator(projectId);
+      const coordinator = await activeCoordinator(rawDB, projectId);
       if (!coordinator) throw new ProjectError(409, "coordinator_not_running");
       const materials: ArtifactRef[] = [];
       for (const input of inputs) {
@@ -1313,7 +1761,7 @@ export function createArtifactService(
         throw new ProjectError(404, "material_not_found", { artifactId });
       if (row.archivedAt !== null)
         return { artifactId: row.id, title: row.title, told: false };
-      const coordinator = await activeCoordinator(projectId);
+      const coordinator = await activeCoordinator(rawDB, projectId);
       if (coordinator)
         await mailRun(coordinator.runId, materialRemovedNote(row.title));
       await setArtifactArchived(db, row, true);
@@ -1364,8 +1812,8 @@ export function createArtifactService(
       projectId: string,
     ): Promise<LiveApp> {
       const current = await runnableApp(actor, projectId);
-      if ("state" in current) return current;
-      return liveAppState(routeTenantId, projectId, current.shown);
+      if (!("app" in current)) return current;
+      return liveAppState(routeTenantId, projectId, current.app.shown);
     },
 
     // The project is open: its app runs from the project's current files until no one has had it
@@ -1376,9 +1824,16 @@ export function createArtifactService(
       projectId: string,
     ): Promise<LiveApp> {
       const current = await runnableApp(actor, projectId);
-      if ("state" in current) return current;
-      await liveApps!.runner.keepAlive(projectId, current);
-      return liveAppState(routeTenantId, projectId, current.shown);
+      if (!("app" in current)) return current;
+      await liveApps!.runner.keepAlive(projectId, current.app, current.run);
+      return liveAppState(routeTenantId, projectId, current.app.shown);
+    },
+
+    // The project's saved app, never a coder's work in progress: the commit at the tip of its app
+    // repository's main, or its main-line filed version; undefined while it has none.
+    async savedApp(actor: Actor, projectId: string) {
+      await requireProject(actor, projectId, "read");
+      return savedApp(actor, projectId);
     },
 
     async acceptance(
@@ -1386,7 +1841,7 @@ export function createArtifactService(
       projectId: string,
     ): Promise<AcceptanceChecklist> {
       await requireProject(actor, projectId, "read");
-      for (const { dir } of await liveWorkspaces(actor, "coder")) {
+      for (const { dir } of await liveWorkspaces(actor, writesCode)) {
         const markdown = await readAcceptance(dir);
         if (markdown !== undefined) return { markdown };
       }
@@ -1401,7 +1856,7 @@ export function createArtifactService(
     // ends, the one saved with the app, whose pictures the bundle carries as binaries.
     async manual(actor: Actor, projectId: string): Promise<UserManual> {
       await requireProject(actor, projectId, "read");
-      for (const { dir } of await liveWorkspaces(actor, "coder")) {
+      for (const { dir } of await liveWorkspaces(actor, writesCode)) {
         const manual = await readUserManual(dir);
         if (manual !== undefined) return manual;
       }
@@ -1436,33 +1891,15 @@ export function createArtifactService(
         (input.artifactId && !pinned && !isUuid(input.artifactId)
           ? input.artifactId
           : undefined);
-      const artifactId = pinned
-        ? pinned[1]
-        : byKind
-          ? (
-              await listArtifacts(db, actor.tenantId, {
-                kind: byKind,
-                limit: 1,
-              })
-            ).rows[0]?.id
-          : input.artifactId;
-      if (!artifactId) {
-        if (!byKind)
-          throw new ProjectError(404, "artifact_not_found", {
-            hint: "call read_artifact with no arguments to list artifactIds and kinds",
-          });
-        // The hint names what is filed, so a missing kind needs no second call; a model that
-        // re-reads to confirm a miss trips the doom loop. Tool wrappers relay only the hint.
-        const { rows } = await listArtifacts(db, actor.tenantId, {
-          limit: MAX_LIST_LIMIT,
-        });
-        const filed = rows
-          .filter((row) => row.contentSha256)
-          .map((row) => row.kind);
+      const named =
+        pinned || !byKind
+          ? undefined
+          : await documentOfKind(db, actor.tenantId, byKind);
+      const artifactId = pinned?.[1] ?? named?.id ?? input.artifactId;
+      if (!artifactId)
         throw new ProjectError(404, "artifact_not_found", {
-          hint: `no ${byKind} document has been written yet; filed kinds: ${filed.join(", ") || "none"}`,
+          hint: "call read_artifact with no arguments to list artifactIds and kinds",
         });
-      }
       // readArtifact is the model-facing chunked reader (8000-character budget);
       // the hub serves whole documents, so it reads the stored version directly.
       const row = await getArtifact(db, artifactId);
@@ -1471,7 +1908,7 @@ export function createArtifactService(
       // The app by its kind is the main line; snapshots are read by their version.
       const resolved =
         version ??
-        (byKind === "app" && !pinned
+        (named?.kind === "app"
           ? (await mainLineVersion(artifactId))?.version
           : row.version);
       if (resolved === undefined)
@@ -1511,7 +1948,7 @@ export function createArtifactService(
       actor: Actor,
       projectId: string,
       raw: unknown,
-    ): Promise<{ artifact: ArtifactRef }> {
+    ): Promise<{ artifact: ArtifactRef; designChosen?: true }> {
       const input = ArtifactKindWrite(raw);
       if (input instanceof type.errors)
         throw new ProjectError(400, "invalid_artifact_write", {
@@ -1530,61 +1967,14 @@ export function createArtifactService(
       if (input.kind === "approval_package") {
         const settings = await loadSettings(rawDB, actor.tenantId, projectId);
         const preferences = resolvePreferences(settings.preferences.value);
-        let sealed:
-          | {
-              audience: string;
-              decisionNeeded?: string;
-              sources: {
-                artifactId: string;
-                kind: string;
-                version: number;
-                sha256: string;
-              }[];
-            }
-          | undefined;
-        if (active?.kind === "workflow" && active.refId) {
-          const [row] = await rawDB
-            .select({ fields: settingsRecord.fields })
-            .from(settingsRecord)
-            .where(
-              and(
-                eq(settingsRecord.tenantId, actor.tenantId),
-                eq(settingsRecord.scopeKey, `presenter:${active.refId}`),
-              ),
-            );
-          const rawAssignment =
-            row && typeof row.fields === "object" && row.fields !== null
-              ? (row.fields as unknown as Record<string, unknown>)["assignment"]
-              : undefined;
-          if (
-            typeof rawAssignment === "object" &&
-            rawAssignment !== null &&
-            "audience" in rawAssignment &&
-            typeof rawAssignment.audience === "string" &&
-            "sources" in rawAssignment &&
-            Array.isArray(rawAssignment.sources)
-          ) {
-            sealed = {
-              audience: rawAssignment.audience,
-              ...("decisionNeeded" in rawAssignment &&
-              typeof rawAssignment.decisionNeeded === "string"
-                ? { decisionNeeded: rawAssignment.decisionNeeded }
-                : {}),
-              sources: rawAssignment.sources as {
-                artifactId: string;
-                kind: string;
-                version: number;
-                sha256: string;
-              }[],
-            };
-          } else {
-            throw new ProjectError(
-              403,
-              "approval_package_assignment_mismatch",
-              { runId: active.refId },
-            );
-          }
-        }
+        // A run files packages only for the assignment its start kept as the run's record.
+        const sealed =
+          active?.kind === "workflow" && active.refId
+            ? sealedAssignment(
+                active.refId,
+                await runRecord(actor.tenantId, active.refId),
+              )
+            : undefined;
         await validateApprovalPackage(
           input.content,
           readProjectPackageSource(
@@ -1594,7 +1984,8 @@ export function createArtifactService(
               if (kind !== "design" && agentDecidesApprovals(preferences))
                 return true;
               return (
-                (await approvedVersion(actor.tenantId, artifactId)) === version
+                (await approvedVersion(db, actor.tenantId, artifactId)) ===
+                version
               );
             },
           ),
@@ -1614,7 +2005,8 @@ export function createArtifactService(
               };
       // A design option belongs to the concept its writing designer run was deployed for, and the
       // concept's label is its title, so each concept keeps one option of its own. A concept's
-      // designer never files the design itself: the person's pick among the options does.
+      // designer never files the design itself: the person's pick among the options does, or Builder's
+      // when the person handed approvals over.
       const concept =
         input.kind === "design" || input.kind === "design_option"
           ? await runConcept(actor)
@@ -1643,6 +2035,7 @@ export function createArtifactService(
         existing &&
         (await unchangedWrite(existing, input.kind, title, input.content));
       if (unchanged) return { artifact: unchanged };
+      let artifact: ArtifactRef;
       if (existing) {
         const written = await writeArtifactVersion(db, {
           scope: actor,
@@ -1651,34 +2044,36 @@ export function createArtifactService(
           content: input.content,
           ...(metadata ? { metadata } : {}),
         });
-        return {
-          artifact: {
-            artifactId: written.artifactId,
-            kind: input.kind,
-            version: written.version,
-            sha256: written.contentSha256!,
-          },
-        };
-      }
-      const created = await db.transaction((tx) =>
-        createArtifact(tx, {
-          scope: actor,
-          ownerPrincipalId: actor.principalId,
+        artifact = {
+          artifactId: written.artifactId,
           kind: input.kind,
-          title,
-          content: input.content,
-          source: { origin: active?.kind === "user" ? "manual" : "workflow" },
-          ...(metadata ? { metadata } : {}),
-        }),
-      );
-      return {
-        artifact: {
+          version: written.version,
+          sha256: written.contentSha256!,
+        };
+      } else {
+        const created = await db.transaction((tx) =>
+          createArtifact(tx, {
+            scope: actor,
+            ownerPrincipalId: actor.principalId,
+            kind: input.kind,
+            title,
+            content: input.content,
+            source: {
+              origin: active?.kind === "user" ? "manual" : "workflow",
+            },
+            ...(metadata ? { metadata } : {}),
+          }),
+        );
+        artifact = {
           artifactId: created.id,
           kind: created.kind,
           version: created.version,
           sha256: created.contentSha256!,
-        },
-      };
+        };
+      }
+      if (await chosenByBuilder(actor, projectId, input, concept))
+        return { artifact, designChosen: true };
+      return { artifact };
     },
 
     async export(actor: Actor, projectId: string): Promise<ProjectExport> {
@@ -1711,7 +2106,7 @@ export function createArtifactService(
           title: stored.title,
           content: stored.content,
           approved:
-            (await approvedVersion(actor.tenantId, artifact.id)) ===
+            (await approvedVersion(db, actor.tenantId, artifact.id)) ===
             stored.version,
         });
       }
@@ -1935,8 +2330,70 @@ export function createArtifactService(
       };
     },
 
-    // The import route calls this for each document its file marks approved,
-    // right after writing it; the importing person is the approver.
+    // A person's answer to a screen approves what it was shown: a document at that version, or a
+    // design option, which is chosen as the design. Each must make one of the facts the question
+    // allows and still be the newest version, or nothing is recorded.
+    async approveShown(
+      actor: Actor,
+      projectId: string,
+      shown: readonly Shown[],
+      allowed: readonly Fact[],
+      mailRun: (runId: string, content: string) => Promise<void>,
+    ) {
+      await requireProject(actor, projectId, "manage");
+      const [approver] = await rawDB
+        .select({ kind: principal.kind })
+        .from(principal)
+        .where(eq(principal.id, actor.principalId));
+      if (approver?.kind !== "user")
+        throw new ProjectError(403, "approval_person_only");
+      const approvals: ArtifactRef[] = [];
+      for (const { artifactId, version } of shown) {
+        const row = await getArtifact(db, artifactId);
+        if (!row || row.tenantId !== actor.tenantId)
+          throw new ProjectError(404, "artifact_not_found", { artifactId });
+        let fact: Fact | undefined;
+        if (row.kind === "design_option") fact = "design_chosen";
+        else if (isDocumentKind(row.kind)) fact = `approved:${row.kind}`;
+        if (fact === undefined || !allowed.includes(fact))
+          throw new ProjectError(409, "approval_not_asked", {
+            kind: row.kind,
+            allowed: allowed.join(", "),
+          });
+        const [newest] = (
+          await listArtifactVersions(db, artifactId, { limit: 1 })
+        ).versions;
+        const stored = await getArtifactVersion(db, artifactId, version);
+        if (!stored?.contentSha256 || newest?.version !== version)
+          throw new ProjectError(409, "artifact_ref_stale", {
+            artifactId,
+            version,
+          });
+        approvals.push({
+          artifactId,
+          kind: row.kind,
+          version,
+          sha256: stored.contentSha256,
+        });
+      }
+      for (const ref of approvals) {
+        if (ref.kind === "design_option")
+          await this.chooseDesign(
+            actor,
+            projectId,
+            { artifactId: ref.artifactId, version: ref.version },
+            mailRun,
+          );
+        else if (
+          (await approvedVersion(db, actor.tenantId, ref.artifactId)) !==
+          ref.version
+        )
+          await this.recordImportApproval(actor, projectId, ref);
+      }
+    },
+
+    // The import route calls this for each document its file marks approved, and a screen's
+    // answer for each document it approves; the person is the approver.
     async recordImportApproval(
       actor: Actor,
       projectId: string,
@@ -1957,7 +2414,7 @@ export function createArtifactService(
       });
     },
 
-    // The coordinator names the concept of a designer run it just deployed, before its assignment.
+    // The coordinator names the concept of a run it just deployed, before its assignment.
     async recordDesignConcept(actor: Actor, projectId: string, raw: unknown) {
       const input = DesignConceptRecord(raw);
       if (input instanceof type.errors)
@@ -1978,8 +2435,8 @@ export function createArtifactService(
             eq(workflowRun.tenantId, actor.tenantId),
           ),
         );
-      if (!run || spawnedWorkflowRole(run.bundle) !== "designer")
-        throw new ProjectError(404, "designer_run_not_found", {
+      if (!run || spawnedWorkflowRole(run.bundle) === undefined)
+        throw new ProjectError(404, "spawned_run_not_found", {
           runId: input.runId,
         });
       try {
@@ -2028,78 +2485,6 @@ export function createArtifactService(
         runId: input.runId,
         concept: { label: stored.label, direction: stored.direction },
       };
-    },
-
-    async recordPresenterAssignment(
-      actor: Actor,
-      projectId: string,
-      raw: unknown,
-    ) {
-      const PresenterAssignmentRecord = type({
-        "+": "ignore",
-        runId: "string > 0",
-        assignment: {
-          "+": "ignore",
-          audience: "string > 0",
-          decisionNeeded: "string > 0",
-          "tone?": "string",
-          "length?": "string",
-          sources: type({
-            "+": "ignore",
-            artifactId: "string > 0",
-            kind: "string > 0",
-            title: "string > 0",
-            version: "number.integer > 0",
-            sha256: /^[a-f0-9]{64}$/,
-          })
-            .array()
-            .atLeastLength(1),
-        },
-      });
-      const input = PresenterAssignmentRecord(raw);
-      if (input instanceof type.errors)
-        throw new ProjectError(400, "invalid_presenter_assignment", {
-          issues: input.summary,
-        });
-      await requireProject(actor, projectId, "manage");
-      const settings = await loadSettings(rawDB, actor.tenantId, projectId);
-      const preferences = resolvePreferences(settings.preferences.value);
-      const readSource = readProjectPackageSource(
-        db,
-        actor.tenantId,
-        async (artifactId, kind, version) => {
-          if (kind !== "design" && agentDecidesApprovals(preferences))
-            return true;
-          return (
-            (await approvedVersion(actor.tenantId, artifactId)) === version
-          );
-        },
-      );
-      for (const source of input.assignment.sources)
-        await verifySourcePin(source, readSource, "assignment.sources");
-      const sealedAssignment = {
-        ...input.assignment,
-        sealed: true as const,
-      };
-      await rawDB
-        .insert(settingsRecord)
-        .values({
-          tenantId: actor.tenantId,
-          scopeKey: `presenter:${input.runId}`,
-          projectId,
-          fields: {
-            assignment: sealedAssignment,
-          } as unknown as typeof settingsRecord.$inferInsert.fields,
-        })
-        .onConflictDoUpdate({
-          target: [settingsRecord.tenantId, settingsRecord.scopeKey],
-          set: {
-            fields: {
-              assignment: sealedAssignment,
-            } as unknown as typeof settingsRecord.$inferInsert.fields,
-          },
-        });
-      return { runId: input.runId, assignment: sealedAssignment };
     },
 
     // Called by an asking tool after its native approval resolved. The hub
@@ -2247,57 +2632,13 @@ export function createArtifactService(
           artifactId: input.artifactId,
           version: input.version,
         });
-      const [existing] = (
-        await listArtifacts(db, actor.tenantId, { kind: "design", limit: 1 })
-      ).rows;
-      const written = existing
-        ? await writeArtifactVersion(db, {
-            scope: actor,
-            artifactId: existing.id,
-            title: stored.title,
-            content: stored.content,
-          })
-        : await db.transaction((tx) =>
-            createArtifact(tx, {
-              scope: actor,
-              ownerPrincipalId: actor.principalId,
-              kind: "design",
-              title: stored.title,
-              content: stored.content,
-              source: { origin: "manual" },
-            }),
-          );
-      const design: ArtifactRef = {
-        artifactId: "artifactId" in written ? written.artifactId : written.id,
-        kind: "design",
-        version: written.version,
-        sha256: written.contentSha256!,
-      };
-      await rawDB.insert(artifactImportApproval).values({
-        ...design,
-        tenantId: actor.tenantId,
+      const design = await fileChosenDesign(
+        actor,
         projectId,
-        principalId: actor.principalId,
-      });
-      // The other concepts' designers would file options nobody compares and hold their slots.
-      const others = await rawDB
-        .select({ runId: designConcept.runId })
-        .from(designConcept)
-        .innerJoin(workflowRun, eq(workflowRun.id, designConcept.runId))
-        .where(
-          and(
-            eq(designConcept.tenantId, actor.tenantId),
-            eq(designConcept.projectId, projectId),
-            ne(designConcept.label, stored.title),
-            inArray(workflowRun.status, ["deployed", "running"]),
-          ),
-        );
-      await Promise.allSettled(
-        others.map(({ runId }) =>
-          cancelRun?.(actor.tenantId, runId, "design_concept_not_picked"),
-        ),
+        stored.title,
+        stored.content,
       );
-      const coordinator = await activeCoordinator(projectId);
+      const coordinator = await activeCoordinator(rawDB, projectId);
       if (coordinator)
         await mailRun(
           coordinator.runId,

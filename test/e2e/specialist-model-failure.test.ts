@@ -7,8 +7,8 @@ import {
   OpenAIChatRequest,
 } from "./support/recorded-model.ts";
 
-// A coordinator that files a brief, asks for its approval and starts a writer, whose every model
-// call is refused as a bad login, the way a provider answers a revoked key.
+// A coordinator that starts a writer, whose every model call is refused as a bad login, the way a
+// provider answers a revoked key.
 function modelWithRejectedWriter() {
   const coordinatorRequests: string[] = [];
   const server = Bun.serve({
@@ -48,33 +48,18 @@ function modelWithRejectedWriter() {
         });
       const call = (name: string, args: Record<string, unknown>) =>
         reply({ toolCalls: [{ id: `coord_${name}`, name, arguments: args }] });
-      if (
-        last?.role === "tool" &&
-        last.tool_call_id === "coord_deploy_writer"
-      ) {
+      if (last?.role === "tool" && last.tool_call_id === "coord_execute") {
         return reply({ text: "The writer has started." });
       }
-      if (
-        last?.role === "tool" &&
-        last.tool_call_id === "coord_request_approval"
-      ) {
-        return call("deploy_writer", {
-          kind: "constraints",
-          instruction: "Write the constraints from the approved brief.",
-        });
-      }
-      if (
-        last?.role === "tool" &&
-        last.tool_call_id === "coord_write_artifact"
-      ) {
-        return call("request_approval", { kinds: ["problem_brief"] });
-      }
       if (last?.role === "user" && coordinatorRequests.length === 1) {
-        return call("write_artifact", {
-          kind: "problem_brief",
-          title: "Problem Brief: Weather app",
-          content:
-            "## In short\n- A weather app for a team.\n\n## Problem statement\nThe team wants a weather app.\n\n## Open questions\nNone.\n",
+        return call("execute", {
+          plugin: "writer",
+          action: "write",
+          input: {
+            kind: "constraints",
+            title: "Constraints: Weather app",
+            instruction: "Write the constraints for a weather app for a team.",
+          },
         });
       }
       return reply({ text: "Understood." });
@@ -109,19 +94,6 @@ test("a specialist whose model rejects its sign-in fails, and the coordinator is
     let failedSpecialist: string | undefined;
     for (let i = 0; i < 200 && !failedSpecialist; i++) {
       await Bun.sleep(500);
-      const { data } = await client.nativeApprovals(tenantId);
-      const pending = data.find(
-        (item) =>
-          item.status === "pending" &&
-          item.toolDefinition["name"] === "request_approval",
-      );
-      if (pending)
-        await client.decideNativeApproval(
-          tenantId,
-          pending.id,
-          "approve",
-          "once",
-        );
       ({ failedSpecialist } = await client.projectNextStep(
         tenantId,
         projectId,

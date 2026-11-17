@@ -7,13 +7,59 @@ import { getLogger } from "@intx/log";
 import { decodeMail } from "@intx/mime";
 import { listMail } from "@intx/storage-isogit/node";
 import { runFailure } from "../artifacts/service.ts";
+import { agentDecidesApprovals } from "../config/preferences.ts";
 import { specialistEndedMessage } from "../config/specialist-ended.ts";
-import { endedRun, project, projectCoordinator } from "../db/schema.ts";
+import {
+  endedRun,
+  project,
+  projectCoordinator,
+  runAction,
+} from "../db/schema.ts";
+import {
+  readCommittedTurns,
+  type CoordinatorRepoDirSource,
+} from "../mail/conversation-turns.ts";
 import type { HubMail } from "../mail/hub-mail.ts";
 import { errorCode, requestErrorMetadata } from "../request-error.ts";
+import { runSteps } from "../run-stream.ts";
+import { loadSettings } from "../settings/policy.ts";
 import { spawnedWorkflowRole } from "../workflows/spawn-role.ts";
 
 const log = getLogger(["corbits-builder", "hub", "specialist-ended"]);
+
+// Enough of a failed run's end for the coordinator to name the cause without flooding its context.
+const LAST_CALLS = 5;
+const CALL_CLIP = 300;
+
+const clip = (text: string) =>
+  text.length > CALL_CLIP ? `${text.slice(0, CALL_CLIP)}…` : text;
+
+// The run's last calls from its saved conversation, each with the start of what it returned.
+async function savedLastCalls(
+  repoStore: CoordinatorRepoDirSource,
+  run: { runId: string; address: string | null },
+): Promise<string[]> {
+  if (run.address === null) return [];
+  try {
+    const turns = await readCommittedTurns(repoStore, run.address);
+    return runSteps(turns ?? [])
+      .slice(-LAST_CALLS)
+      .map(({ name, arguments: input, result }) => {
+        let returned = "no result came back";
+        if (result)
+          returned = `${result.isError ? "error: " : ""}${clip(result.content)}`;
+        return `- ${clip(`${name} ${JSON.stringify(input)}`)}\n  returned: ${returned}`;
+      });
+  } catch (error) {
+    // An unreadable conversation leaves the notice with the recorded reason alone.
+    log.warn("Reading ended specialist {runId}'s calls failed", {
+      runId: run.runId,
+      ...errorCode(error),
+      ...requestErrorMetadata(error),
+    });
+    return [];
+  }
+}
 
 // The correlation id of the latest assignment the run received after its last outgoing mail; none
 // when it answered every assignment it was given.
@@ -82,6 +128,7 @@ export async function liveSpecialistRuns(
 export function createSpecialistEndNotices(deps: {
   db: DB["db"];
   runs: WorkflowRunReader;
+  repoStore: CoordinatorRepoDirSource;
   mailDirectory: string;
   mail: HubMail;
 }) {
@@ -97,6 +144,9 @@ export function createSpecialistEndNotices(deps: {
         cancellationReason: workflowRun.cancellationReason,
         projectId: project.id,
         bundle: workflowRunLaunchSpec.frozenApprovalBundle,
+        plugin: runAction.plugin,
+        action: runAction.action,
+        blocked: runAction.blocked,
       })
       .from(workflowRun)
       .innerJoin(project, eq(project.tenantId, workflowRun.tenantId))
@@ -105,6 +155,7 @@ export function createSpecialistEndNotices(deps: {
         eq(workflowRunLaunchSpec.anchorRunId, workflowRun.id),
       )
       .leftJoin(endedRun, eq(endedRun.runId, workflowRun.id))
+      .leftJoin(runAction, eq(runAction.runId, workflowRun.id))
       .where(
         and(
           inArray(workflowRun.status, ["failed", "cancelled"]),
@@ -150,19 +201,17 @@ export function createSpecialistEndNotices(deps: {
             );
     // The hub cancels unpicked concept designers itself after the person's pick; nothing is lost.
     const unpicked = ended.cancellationReason === "design_concept_not_picked";
-    if (!role || correlationId === undefined || !coordinator || unpicked) {
+    if (
+      correlationId === undefined ||
+      !coordinator ||
+      unpicked ||
+      ended.plugin === null ||
+      ended.action === null
+    ) {
       await record(false);
       return true;
     }
     if ((await record(true)).length === 0) return true;
-    // A writer's or reviewer's assignment is correlated as `<role>-<kind>-<runId>` by deploy_writer
-    // and review_artifact.
-    const prefix = role + "-";
-    const suffix = "-" + ended.runId;
-    const kind =
-      correlationId.startsWith(prefix) && correlationId.endsWith(suffix)
-        ? correlationId.slice(prefix.length, -suffix.length) || undefined
-        : undefined;
     const failure =
       ended.status === "failed"
         ? await runFailure(deps.runs, ended)
@@ -172,16 +221,27 @@ export function createSpecialistEndNotices(deps: {
       (ended.cancellationReason === null
         ? undefined
         : { message: ended.cancellationReason });
+    const settings = await loadSettings(
+      db,
+      coordinator.tenantId,
+      ended.projectId,
+    );
     try {
       await deps.mail({
         tenantId: coordinator.tenantId,
         runId: coordinator.runId,
         principalId: coordinator.principalId,
         content: specialistEndedMessage({
-          role,
-          ...(kind ? { kind } : {}),
+          runId: ended.runId,
+          action: { plugin: ended.plugin, action: ended.action },
           status: ended.status === "failed" ? "failed" : "cancelled",
           ...(reason ? { reason } : {}),
+          blocked: ended.blocked,
+          lastCalls:
+            ended.status === "failed" && !ended.blocked
+              ? await savedLastCalls(deps.repoStore, ended)
+              : [],
+          agentDecides: agentDecidesApprovals(settings.preferences.value),
         }),
       });
     } catch (error) {

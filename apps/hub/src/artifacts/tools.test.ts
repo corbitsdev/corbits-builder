@@ -2,11 +2,11 @@ import { expect, test } from "bun:test";
 import { type } from "arktype";
 import type { RuntimeCapabilities } from "@intx/types/runtime-capabilities";
 import { WriterDocumentKind } from "@corbits-builder/schemas/artifact";
-import {
-  createArtifactTools,
-  createCoordinatorArtifactTools,
-  createWriterArtifactTools,
-} from "./tools.ts";
+import { CATALOG } from "../plugins/catalog.ts";
+import { createArtifactTools, createWriterArtifactTools } from "./tools.ts";
+
+const writer = CATALOG.role("writer");
+if (!writer) throw new Error("writer_role_missing");
 
 const deployment = {
   source: {
@@ -20,39 +20,12 @@ const deployment = {
   defaultSourceOfferingId: "offering",
 };
 
-const sampleApproaches = {
-  approaches: [
-    {
-      id: "simple",
-      name: "Simple",
-      summary: "Client-side forecast view.",
-      bestFor: "Fast launch",
-      pros: ["Fast to build"],
-      cons: ["No server cache"],
-      effort: "low" as const,
-      risks: ["Rate limits"],
-    },
-    {
-      id: "cached",
-      name: "Cached",
-      summary: "Server-cached forecast view.",
-      bestFor: "Higher traffic",
-      pros: ["Fewer upstream calls"],
-      cons: ["More moving parts"],
-      effort: "medium" as const,
-      risks: ["Stale cache"],
-    },
-  ],
-  recommended: "simple",
-};
-
 // The fields each writer's save takes.
 const WRITER_FIELDS: Record<WriterDocumentKind, string[]> = {
-  constraints: ["content", "kind", "openQuestions", "title"],
-  approaches: ["approaches", "content", "kind", "openQuestions", "title"],
   product_requirements: ["content", "kind", "openQuestions", "title"],
   build_plan: ["content", "kind", "openQuestions", "title"],
 };
+const DOC = "## In short\n\n- **Three apps** serve our area.";
 const WRITER_KINDS = Object.keys(WRITER_FIELDS).map((kind) =>
   WriterDocumentKind.assert(kind),
 );
@@ -74,15 +47,16 @@ function harness(role: string, tools: ReturnType<typeof createArtifactTools>) {
         domain: "example.invalid",
         role,
         workflows: {
-          "writer-constraints": deployment,
-          "writer-approaches": deployment,
           "writer-product-requirements": deployment,
           "writer-build-plan": deployment,
+          "writer-document": deployment,
           reviewer: deployment,
           coder: deployment,
           designer: deployment,
         },
         openNetwork: false,
+        firstBuild: false,
+        toolchains: { paths: [], dataDir: "/unused" },
         build: {
           assetDirectory: "/tmp",
           browserCli: "/tmp/browser",
@@ -92,6 +66,11 @@ function harness(role: string, tools: ReturnType<typeof createArtifactTools>) {
           runtimeVersion: "1.0.0",
         },
       });
+    if (path.endsWith("/run-values")) {
+      const body = JSON.parse(String(init.body)) as unknown;
+      written.push(body);
+      return Response.json(body);
+    }
     if (path.endsWith("/artifacts") && init.method === "POST") {
       const body = JSON.parse(String(init.body)) as { kind: string };
       written.push(body);
@@ -113,63 +92,21 @@ function harness(role: string, tools: ReturnType<typeof createArtifactTools>) {
   return {
     definitions: instance.definitions,
     written,
-    write: (args: Record<string, unknown>) =>
+    write: (args: Record<string, unknown>, name = "write_artifact") =>
       instance.run(
-        { id: "call", name: "write_artifact", arguments: args },
+        { id: "call", name, arguments: args },
         new AbortController().signal,
       ),
   };
 }
 
-test("coordinator write_artifact exposes only problem_brief without approaches", async () => {
-  const coordinator = harness("coordinator", createCoordinatorArtifactTools());
-  const definition = coordinator.definitions.find(
-    (item) => item.name === "write_artifact",
-  );
-  expect(definition).toBeDefined();
-  expect(definition?.description).not.toContain("approaches");
-  const properties = (
-    definition?.inputSchema as
-      | { properties?: Record<string, unknown> }
-      | undefined
-  )?.properties;
-  expect(properties?.["kind"]).toEqual({ const: "problem_brief" });
-  expect(properties?.["approaches"]).toBeUndefined();
-
-  const withApproaches = await coordinator.write({
-    kind: "problem_brief",
-    title: "Problem Brief",
-    content: "# Problem Brief\n\nWeather at a glance.",
-    approaches: sampleApproaches,
-  });
-  expect(withApproaches.isError).toBe(true);
-  expect(withApproaches.content).toContain("approaches");
-
-  const wrongKind = await coordinator.write({
-    kind: "constraints",
-    title: "Constraints",
-    content: "# Constraints",
-  });
-  expect(wrongKind.isError).toBe(true);
-  expect(wrongKind.content).toBe(
-    "brief_only: you write the problem brief; deploy_writer has a writer write the constraints",
-  );
-
-  const valid = await coordinator.write({
-    kind: "problem_brief",
-    title: "Problem Brief",
-    content: "# Problem Brief\n\nWeather at a glance.",
-  });
-  expect(valid.isError).toBeUndefined();
-  expect(coordinator.written).toHaveLength(1);
-});
-
 test("every role's artifact tool definitions declare top-level type: object", () => {
   const tools = [
-    harness("coordinator", createCoordinatorArtifactTools()),
-    harness("coder", createArtifactTools("coder", { unpacksDesign: true })),
+    ...CATALOG.roles.map((role) =>
+      harness(role.name, createArtifactTools(role)),
+    ),
     ...WRITER_KINDS.map((kind) =>
-      harness("writer", createWriterArtifactTools(kind)),
+      harness(writer.name, createWriterArtifactTools(writer, kind)),
     ),
   ];
   for (const tool of tools) {
@@ -184,8 +121,8 @@ test("every role's artifact tool definitions declare top-level type: object", ()
 test("each writer's write_artifact lists only its own fields, at the top level", () => {
   for (const [kind, fields] of Object.entries(WRITER_FIELDS)) {
     const tools = harness(
-      "writer",
-      createWriterArtifactTools(WriterDocumentKind.assert(kind)),
+      writer.name,
+      createWriterArtifactTools(writer, WriterDocumentKind.assert(kind)),
     );
     const [definition] = tools.definitions;
     const schema = FlatToolSchema.assert(definition?.inputSchema);
@@ -195,51 +132,95 @@ test("each writer's write_artifact lists only its own fields, at the top level",
 
 test("a writer files under the kind it was deployed for, with or without naming it", async () => {
   for (const kind of WRITER_KINDS) {
-    const writer = harness("writer", createWriterArtifactTools(kind));
-    const otherKind = await writer.write({
+    const filing = harness(
+      writer.name,
+      createWriterArtifactTools(writer, kind),
+    );
+    const otherKind = await filing.write({
       kind: WRITER_KINDS.find((other) => other !== kind),
       title: "Doc",
-      content: "# Doc",
+      content: DOC,
     });
     expect(otherKind.content).toStartWith("invalid_arguments:");
-    const empty = await writer.write({ title: "Doc", content: "" });
+    const empty = await filing.write({ title: "Doc", content: "" });
     expect(empty.content).toStartWith("invalid_arguments:");
-    expect(writer.written).toHaveLength(0);
+    expect(filing.written).toHaveLength(0);
 
-    await writer.write({ title: "Unnamed", content: "# Doc" });
-    await writer.write({ kind, title: "Named", content: "# Doc" });
-    expect(writer.written).toEqual([
-      { kind, title: "Unnamed", content: "# Doc" },
-      { kind, title: "Named", content: "# Doc" },
+    await filing.write({ title: "Unnamed", content: DOC });
+    await filing.write({ kind, title: "Named", content: DOC });
+    expect(filing.written).toEqual([
+      { kind, title: "Unnamed", content: DOC },
+      { kind, title: "Named", content: DOC },
     ]);
   }
 });
 
-test("only the approaches writer saves approaches", async () => {
-  for (const kind of WRITER_KINDS.filter((kind) => kind !== "approaches")) {
-    const writer = harness("writer", createWriterArtifactTools(kind));
-    const result = await writer.write({
-      title: "Doc",
-      content: "# Doc",
-      approaches: sampleApproaches,
-    });
-    expect(result.content).toStartWith("invalid_arguments:");
-    expect(result.content).toContain("approaches");
-  }
-
-  const approaches = harness("writer", createWriterArtifactTools("approaches"));
-  const valid = await approaches.write({
-    title: "Approaches",
-    content: "# Approaches",
-    approaches: sampleApproaches,
+test("a document of any kind is filed only with a summary, and the writer is told how to add one", async () => {
+  const filing = harness(writer.name, createArtifactTools(writer));
+  const bare = await filing.write({
+    kind: "user_manual",
+    title: "Tonight user manual",
+    content: "## Getting started\n\nOpen the app.",
   });
-  expect(valid.isError).toBeUndefined();
-  expect(approaches.written).toEqual([
+  expect(bare.isError).toBe(true);
+  expect(bare.content).toContain("## In short");
+  expect(filing.written).toHaveLength(0);
+
+  const summarised = {
+    kind: "user_manual",
+    title: "Tonight user manual",
+    content: `${DOC}\n\n## Getting started\n\nOpen the app.`,
+  };
+  await filing.write(summarised);
+  expect(filing.written).toEqual([summarised]);
+});
+
+test("report_values takes each value's name as a field, so a dotted name arrives as written", async () => {
+  const coder = CATALOG.role("coder");
+  if (!coder) throw new Error("coder_role_missing");
+  const reporting = harness(coder.name, createArtifactTools(coder));
+  const definition = reporting.definitions.find(
+    ({ name }) => name === "report_values",
+  );
+  expect(
+    Object.keys(FlatToolSchema.assert(definition?.inputSchema).properties),
+  ).toEqual(["values"]);
+
+  const keyed = await reporting.write(
+    { "stack.checks": "bun test" },
+    "report_values",
+  );
+  expect(keyed.isError).toBe(true);
+  expect(reporting.written).toHaveLength(0);
+
+  await reporting.write(
     {
-      kind: "approaches",
-      title: "Approaches",
-      content: "# Approaches",
-      approaches: sampleApproaches,
+      values: [
+        { name: "stack.language", value: "Rust" },
+        { name: "stack.checks", value: "cargo build\ncargo test" },
+      ],
+    },
+    "report_values",
+  );
+  expect(reporting.written).toEqual([
+    {
+      values: {
+        "stack.language": "Rust",
+        "stack.checks": "cargo build\ncargo test",
+      },
     },
   ]);
+});
+
+test("report_values is given only to a role an action starts to save values, so a writer has none", () => {
+  const offers = (name: string) => {
+    const role = CATALOG.role(name);
+    if (!role) throw new Error(`${name}_role_missing`);
+    return harness(role.name, createArtifactTools(role)).definitions.some(
+      (definition) => definition.name === "report_values",
+    );
+  };
+  expect(offers("coder")).toBe(true);
+  expect(offers("worker")).toBe(true);
+  expect(offers("writer")).toBe(false);
 });

@@ -10,7 +10,7 @@ import {
   ToolOutput,
 } from "@corbits/react-ui";
 import { wording } from "../../config.ts";
-import { Markdown } from "../../markdown.jsx";
+import { Markdown } from "@corbits-builder/plugin-ui/markdown";
 import styles from "./specialist-updates.module.css";
 
 /** One specialist's consecutive reports, in the words their row shows. */

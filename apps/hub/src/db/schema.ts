@@ -20,7 +20,9 @@ import {
   tenant,
   workflowRun,
 } from "@intx/db/schema";
+import type { RunBlock } from "@corbits-builder/schemas/activity";
 import type { CustomModel } from "@corbits-builder/schemas/models";
+import type { StoredPlan } from "@corbits-builder/schemas/project";
 
 export const project = pgTable(
   "project",
@@ -39,6 +41,17 @@ export const project = pgTable(
     ),
     // The person's own mark, apart from the lifecycle: a shipped project stays active and usable.
     shippedAt: timestamp("shipped_at", { withTimezone: true }),
+    // The handles of the ready-made plans the project is following, each until the fact that ends
+    // it holds or the coordinator leaves it.
+    following: text("following").array().notNull().default([]),
+    // Each project value a plugin declares, by name, as the person saved it; a value its plugin keeps
+    // in the design's styles lives there instead once a design is filed.
+    values: jsonb("values")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    // The saved plan; null until the coordinator or the person first saves one.
+    plan: jsonb("plan").$type<StoredPlan>(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -232,6 +245,94 @@ export const designConcept = pgTable(
       .defaultNow(),
   },
   (t) => [index("sb_design_concept_tenant_idx").on(t.tenantId, t.label)],
+);
+
+// Each question of a project's coordinator the person answered, kept once: the claim an answer
+// takes before anything it saves, so a second answer to the same question is refused.
+export const answeredQuestion = pgTable(
+  "sb_answered_question",
+  {
+    projectId: text("project_id")
+      .notNull()
+      .references(() => project.id),
+    signalName: text("signal_name").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.projectId, t.signalName] })],
+);
+
+// The plugin action the coordinator started a specialist run for, recorded before the run's
+// assignment. It is what lists the run among the coordinator's, lets the coordinator stop it, and
+// names the project values the run may save.
+export const runAction = pgTable(
+  "sb_run_action",
+  {
+    runId: text("run_id")
+      .primaryKey()
+      .references(() => workflowRun.id),
+    tenantId: text("tenant_id")
+      .notNull()
+      .references(() => tenant.id),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => project.id),
+    plugin: text("plugin").notNull(),
+    action: text("action").notNull(),
+    // The id of the plan step the run does, when execute could tell which; null when it could not.
+    planStep: text("plan_step"),
+    // What the action's start kept as the run's record, as the action declares it; null for none.
+    record: jsonb("record"),
+    // What stopped the run when it reported a block, or Builder did for it; null for none.
+    blocked: jsonb("blocked").$type<RunBlock>(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index("sb_run_action_project_idx").on(t.projectId)],
+);
+
+// One run of a plugin's check against the project as saved, or a person's skip of one. versions
+// names what it read, each at the version it read, so a pass stands only while all of it is current.
+export const checkRun = pgTable(
+  "sb_check_run",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id")
+      .notNull()
+      .references(() => tenant.id),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => project.id),
+    plugin: text("plugin").notNull(),
+    action: text("action").notNull(),
+    input: jsonb("input").$type<Record<string, unknown>>().notNull(),
+    versions: jsonb("versions")
+      .$type<Record<string, string | number | boolean | null>>()
+      .notNull(),
+    result: text("result").$type<"pass" | "fail" | "skipped">().notNull(),
+    summary: text("summary").notNull(),
+    evidence: jsonb("evidence").$type<string[]>().notNull(),
+    // "person:<principal id>", "run:<coordinator run id>" or "hub".
+    triggeredBy: text("triggered_by").notNull(),
+    skippedBy: text("skipped_by").references(() => principal.id),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("sb_check_run_project_idx").on(
+      t.projectId,
+      t.plugin,
+      t.action,
+      t.createdAt,
+    ),
+    check(
+      "sb_check_run_result_check",
+      sql`${t.result} in ('pass', 'fail', 'skipped')`,
+    ),
+  ],
 );
 
 // Invitation lifecycle is product audit data. Identity, role assignments and

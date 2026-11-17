@@ -9,13 +9,14 @@ import {
 } from "@intx/hub-sessions";
 import { getLogger } from "@intx/log";
 import type { InstalledWorkflows } from "@corbits-builder/schemas/installed-workflows";
-import { WORKFLOW_PACKAGES } from "../plugins/catalog.ts";
 import { spawnedWorkflowRole } from "../workflows/spawn-role.ts";
+import { WORKFLOW_PACKAGES } from "../plugins/catalog.ts";
 import { MODEL_CHOICE_REFUSALS } from "../config/models.ts";
 import { SPECIALIST_OUTDATED } from "../config/agent-upgrade.ts";
 import { HANDOFF_OPENING } from "../config/resume.ts";
 import type { HubMail } from "../mail/hub-mail.ts";
 import { project, projectCoordinator } from "../db/schema.ts";
+import { activeCoordinator } from "../auth/coordinator-registry.ts";
 import type { Actor } from "../lib/actor.ts";
 import { settle } from "../lib/serial-queue.ts";
 import { requestErrorMetadata } from "../request-error.ts";
@@ -180,7 +181,7 @@ export function createAgentUpgrades(deps: {
       );
     const specialists = live.flatMap((run) => {
       const role = spawnedWorkflowRole(run.bundle);
-      return role ? [{ ...run, role }] : [];
+      return role ? [{ ...run, role: role.name }] : [];
     });
     return {
       coordinator: coordinator && {
@@ -243,11 +244,9 @@ export function createAgentUpgrades(deps: {
   }
 
   /**
-   * Replaces an outdated coordinator the moment it starts a specialist, before the deploy lands. A
-   * coordinator from before writers were split names the constraints writer whatever document it
-   * means; its replacement picks the writer from the documents and is told at once, so the work
-   * carries on. Mid-turn the coordinator is never quiet, so this waits only for its specialists and
-   * for any mail on its way to it.
+   * Replaces an outdated coordinator the moment it starts a specialist, before the deploy lands; its
+   * replacement is told at once, so the work carries on. Mid-turn the coordinator is never quiet, so
+   * this waits only for its specialists and for any mail on its way to it.
    */
   async function handoff(
     projectId: string,
@@ -282,15 +281,7 @@ export function createAgentUpgrades(deps: {
     // successor that failed to start here.
     try {
       await deps.startup.ensure(actor, projectId);
-      const [next] = await db
-        .select({ runId: projectCoordinator.runId })
-        .from(projectCoordinator)
-        .where(
-          and(
-            eq(projectCoordinator.projectId, projectId),
-            eq(projectCoordinator.active, true),
-          ),
-        );
+      const next = await activeCoordinator(db, projectId);
       if (next)
         await deps.mail({
           tenantId,

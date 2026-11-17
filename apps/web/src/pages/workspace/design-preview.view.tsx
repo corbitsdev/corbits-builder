@@ -16,11 +16,15 @@ import {
   type ReactNode,
 } from "react";
 import { wording } from "../../config.ts";
-import { Markdown } from "../../markdown.jsx";
+import { DocumentView } from "@corbits-builder/plugin-ui/markdown";
 import { InlineNote, MenuItemLabel } from "../../components.jsx";
 import {
+  FrameScreens,
+  FrameShown,
+  fromFrame,
   INDEX_PAGE,
   MAX_QUOTE_CHARS,
+  MAX_SCREEN_CHARS,
   screenPage,
   type DesignFiles,
   type MockupScreen,
@@ -31,38 +35,6 @@ import type { TweakPanelProps } from "./mockup-tweaks.view.tsx";
 import type { PaneBarGroup } from "./pane-bar.tsx";
 import { QuoteOffer } from "./passage-note.tsx";
 import styles from "./design-preview.module.css";
-
-const MAX_SCREEN_CHARS = 512;
-const MAX_SCREENS = 100;
-
-type ScreenEntry = { screen: string; states: readonly string[] };
-
-function parseScreens(value: unknown): readonly ScreenEntry[] | null {
-  if (!Array.isArray(value) || value.length > MAX_SCREENS) return null;
-  const entries = value.filter(
-    (item): item is ScreenEntry =>
-      typeof (item as ScreenEntry | null)?.screen === "string" &&
-      Array.isArray((item as ScreenEntry).states) &&
-      (item as ScreenEntry).states.every((state) => typeof state === "string"),
-  );
-  return entries.length === value.length ? entries : null;
-}
-
-type ShownScreen = { screen: string; state: string | null };
-
-function parseShown(value: unknown): ShownScreen | null {
-  const shown = value as Partial<ShownScreen> | null;
-  if (
-    typeof shown?.screen !== "string" ||
-    shown.screen.length > MAX_SCREEN_CHARS
-  )
-    return null;
-  const state = shown.state;
-  if (state === null) return { screen: shown.screen, state };
-  return typeof state === "string" && state.length <= MAX_SCREEN_CHARS
-    ? { screen: shown.screen, state }
-    : null;
-}
 
 const spoken = (name: string) =>
   name.length === 0
@@ -95,8 +67,6 @@ export type MockupFrameViewProps = {
   /** Pane bar groups before the mockup's own screens (the draft's badge). */
   leading?: readonly PaneBarGroup[];
   trailing?: readonly PaneBarGroup[];
-  /** Hears the live look tweaks as the person changes them. */
-  onTweaks?: (tweaks: LookTweaks) => void;
   /** Fills its container edge to edge, as a pane's whole page. */
   fill?: boolean;
   /** The look panel the bar's palette opens over the page, drawn around the frame's live tweaks. */
@@ -113,7 +83,6 @@ export function MockupFrameView({
   onDevice,
   leading = [],
   trailing = [],
-  onTweaks,
   fill = false,
   tweakPanel,
 }: MockupFrameViewProps) {
@@ -122,9 +91,9 @@ export function MockupFrameView({
   const screen = useRef<MockupScreen>({ page: INDEX_PAGE, hash: "" });
   const [visit, setVisit] = useState<MockupScreen>(screen.current);
   const [expandedVisit, setExpandedVisit] = useState<MockupScreen | null>(null);
-  const [screens, setScreens] = useState<readonly ScreenEntry[]>([]);
+  const [screens, setScreens] = useState<FrameScreens>([]);
   const [themed, setThemed] = useState(false);
-  const [shown, setShown] = useState<ShownScreen | null>(null);
+  const [shown, setShown] = useState<FrameShown | null>(null);
   const [tweaks, setTweaks] = useState<LookTweaks>({});
   const [tweaking, setTweaking] = useState(false);
   const tweakSheet = useRef("");
@@ -133,7 +102,6 @@ export function MockupFrameView({
     const message = { designTweaks: tweakSheet.current };
     frame.current?.contentWindow?.postMessage(message, "*");
     expandedFrame.current?.contentWindow?.postMessage(message, "*");
-    onTweaks?.(tweaks);
   }, [tweaks]);
   // Every load is a fresh page (another screen, a refreshed draft, the expanded view), so the
   // tweaks go in again as soon as it reports its screens.
@@ -172,7 +140,7 @@ export function MockupFrameView({
         designTheme?: unknown;
         designShown?: unknown;
       } | null;
-      const listed = parseScreens(data?.designScreens);
+      const listed = fromFrame(FrameScreens, data?.designScreens);
       if (inline && listed !== null) {
         setScreens(listed);
         setThemed(data?.designTheme === true);
@@ -180,7 +148,7 @@ export function MockupFrameView({
       }
       const hash = data?.designScreen;
       if (typeof hash !== "string" || hash.length > MAX_SCREEN_CHARS) return;
-      if (inline) setShown(parseShown(data?.designShown));
+      if (inline) setShown(fromFrame(FrameShown, data?.designShown));
       const asked = data?.designPage;
       if (typeof asked !== "string") {
         screen.current = { ...screen.current, hash };
@@ -394,6 +362,6 @@ export function DesignPreviewView({
   return notes === undefined ? (
     <InlineNote>{wording.design.noPlan}</InlineNote>
   ) : (
-    <Markdown document source={notes.replace(/^\s*# [^\n]*\n+/, "")} />
+    <DocumentView source={notes.replace(/^\s*# [^\n]*\n+/, "")} />
   );
 }

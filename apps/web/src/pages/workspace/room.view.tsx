@@ -1,15 +1,16 @@
 /**
- * The project room as it looks: the conversation with the coordinator, the dock beneath it (the
- * composer, or a banner saying why there is none), and the reading pane beside it once there is
- * something to read.
+ * The project room as it looks: the conversation with the coordinator across the page, the dock
+ * beneath it (the composer, or a banner saying why there is none), and the project view that opens
+ * over it from a card or the project control and closes back to the conversation.
  */
 import {
+  useEffect,
   useRef,
-  type ReactElement,
+  useState,
   type ReactNode,
   type RefObject,
 } from "react";
-import { Paperclip, Sparkles } from "lucide-react";
+import { FolderOpen, Paperclip, Sparkles } from "lucide-react";
 import {
   Attachment,
   type AttachmentItem,
@@ -27,6 +28,7 @@ import {
   PromptInputTextarea,
   PromptInputToolbar,
 } from "@corbits/react-ui";
+import type { PlanView } from "@corbits-builder/schemas/project";
 import { wording } from "../../config.ts";
 import { Banner, BannerAction, Fault } from "../../components.jsx";
 import { Composer } from "../../composer.tsx";
@@ -37,24 +39,20 @@ import {
   type ArtifactPaneContent,
   type ArtifactPaneSlots,
 } from "./artifact-pane.tsx";
-import { DesignChosenView } from "./design-concepts.view.tsx";
 import { pastedFiles } from "./pasted-files.ts";
+import { PlanPanel, planProgress, usePlanCollapsed } from "./plan-panel.tsx";
 import { StageView } from "./stage-view.tsx";
-import {
-  RoomThread,
-  type PlacedChoice,
-  type RoomThreadContent,
-} from "./transcript.tsx";
+import { RoomThread, type RoomThreadContent } from "./transcript.tsx";
 import styles from "./index.module.css";
 
 /** The parts of the room that read the hub for themselves, which the page fills. */
 export type RoomSlots = {
   /** The line above the conversation saying where the project stands and the person's next step. */
   nextStep: ReactNode;
-  /** The ask to choose a design, asked last in the conversation; null while there is none to ask. */
-  designChoice: ReactElement | null;
   /** The reading pane's own such parts. */
   paneParts: ArtifactPaneSlots;
+  /** The coordinator's open question drawn over the whole room; null while there is none. */
+  page: ReactNode;
 };
 
 /** The box the person writes to the coordinator in. */
@@ -92,6 +90,8 @@ export type RoomComposer = {
   /** The answers the coordinator's last message offers, each sent as it is. */
   suggestedReplies: readonly string[];
   onReply: (reply: string) => void;
+  /** What Send says, beside it and as its name, while an open screen has feedback to send with nothing typed. */
+  sendLabel: string | null;
 };
 
 /** What sits under the conversation: the composer, or why the person cannot write yet. */
@@ -124,26 +124,35 @@ export type RoomContent = {
   /** The project's name. */
   title: string;
   layout: {
-    /** Nothing is filed yet, so the conversation takes the whole width and there is no pane. */
-    chatFirst: boolean;
-    /** How many documents and design concepts the pane holds, for the narrow screen's switch. */
-    artifactCount: number;
-    /** Which of the two a narrow screen shows. */
-    narrowPane: "conversation" | "artifacts";
-    onNarrowPaneChange: (pane: "conversation" | "artifacts") => void;
+    /** Something is filed, drafted or running, so the project view has something to show. */
+    projectReady: boolean;
+    /** The project view covers the room, with the prompt box beneath it; closed, it waits hidden. */
+    projectOpen: boolean;
+    onProjectOpenChange: (open: boolean) => void;
+    /** The page slot covers the room, with the prompt box beneath it; closed, it waits hidden. */
+    pageOpen: boolean;
   };
   conversation: {
     thread: RoomThreadContent;
     /** What stands in the thread's place: an archived project's note, or a new project's welcome. */
     empty: "archived" | "new" | null;
-    /** The design the person chose here and when, which keeps its place in the conversation. */
-    designChosen: { concept: string; at: number } | null;
   };
   dock: RoomDock;
+  /** The project's plan, top-level steps first; empty while it has none, and then nothing shows it. */
+  plan: PlanView["steps"];
+  /** The person declines an optional plan step, or brings back one they declined. */
+  onDeclineStep: (stepId: string, declined: boolean) => Promise<void>;
+  /** The person gives the go-ahead on a step they asked to be consulted on. */
+  onGoAheadStep: (stepId: string) => Promise<void>;
+  /** The person turns "ask me first" on or off for a step that has not started. */
+  onAskFirstStep: (stepId: string, askFirst: boolean) => Promise<void>;
   documentPane: ArtifactPaneContent;
-  /** The reading pane itself, which the room moves focus to. */
+  /** The project view's pane, which takes focus as it opens. */
   paneRef: RefObject<HTMLElement | null>;
 };
+
+/** Below this width of the room, the plan is a drawer over the conversation. */
+const NARROW_ROOM_PX = 900;
 
 export type RoomViewProps = RoomContent & RoomSlots;
 
@@ -152,71 +161,173 @@ export function RoomView({
   layout,
   conversation,
   dock,
+  plan,
+  onDeclineStep,
+  onGoAheadStep,
+  onAskFirstStep,
   documentPane,
   paneRef,
   nextStep,
-  designChoice,
   paneParts,
+  page,
 }: RoomViewProps) {
-  const { chatFirst, narrowPane, onNarrowPaneChange } = layout;
-  const { designChosen } = conversation;
-  const shell = useShellReply(paneRef);
-  const placedChoice = (): PlacedChoice | null => {
-    if (designChosen !== null)
-      return {
-        at: designChosen.at,
-        card: <DesignChosenView concept={designChosen.concept} />,
-      };
-    return designChoice === null ? null : { card: designChoice };
-  };
-  const choice = placedChoice();
+  const { projectReady, projectOpen, onProjectOpenChange, pageOpen } = layout;
+  const conversationRef = useRef<HTMLElement>(null);
+  const shell = useShellReply(conversationRef);
+  const closeProject = () => onProjectOpenChange(false);
+  // The plan sits beside the conversation; in a room too narrow for that it is a drawer, shut
+  // until the person opens it.
+  const roomRef = useRef<HTMLDivElement>(null);
+  const [narrow, setNarrow] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [planFolded, setPlanFolded] = usePlanCollapsed();
+  useEffect(() => {
+    const room = roomRef.current;
+    if (room === null) return;
+    const observer = new ResizeObserver(() =>
+      setNarrow(room.clientWidth < NARROW_ROOM_PX),
+    );
+    observer.observe(room);
+    return () => observer.disconnect();
+  }, []);
+  const planShown = plan.length > 0 && (narrow ? drawerOpen : !planFolded);
+  const setPlanShown = (shown: boolean) =>
+    narrow ? setDrawerOpen(shown) : setPlanFolded(!shown);
+  const progress = planProgress(plan);
+  // Focus goes into the project view as it opens and back to what opened it as it closes.
+  useEffect(() => {
+    if (!projectOpen) return;
+    const opener = document.activeElement;
+    paneRef.current?.focus();
+    return () => {
+      if (opener instanceof HTMLElement) opener.focus();
+    };
+  }, [projectOpen]);
+  // A menu inside the view closes on Escape first, and marks the key as used; a screen placed on
+  // the page sits over the view, so the key is not the view's while it is open.
+  useEffect(() => {
+    if (!projectOpen || pageOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !event.defaultPrevented) closeProject();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [projectOpen, pageOpen]);
+  // The prompt box stays in reach under whatever covers the conversation.
+  const dockInProject = projectOpen && !pageOpen;
+  const dockInConversation = !projectOpen && !pageOpen;
+  const roomDock = <Dock dock={dock} answersShell={shell.answers} />;
   return (
     <StageView aria-label={`Conversation for ${title}`}>
-      <div
-        className={styles.room}
-        data-mobile-pane={chatFirst ? "conversation" : narrowPane}
-      >
-        {chatFirst ? null : (
-          <nav className={styles.mobileSwitch} aria-label="Workspace panes">
-            <button
-              type="button"
-              aria-pressed={narrowPane === "conversation"}
-              onClick={() => onNarrowPaneChange("conversation")}
-            >
-              Conversation
-            </button>
-            <button
-              type="button"
-              aria-pressed={narrowPane === "artifacts"}
-              onClick={() => onNarrowPaneChange("artifacts")}
-            >
-              Artifacts ({layout.artifactCount})
-            </button>
-          </nav>
-        )}
-        <div
-          className={styles.panes}
-          data-chat-first={chatFirst ? "" : undefined}
+      <div ref={roomRef} className={styles.room}>
+        <section
+          ref={conversationRef}
+          className={styles.conversationPane}
+          aria-label="Project conversation"
         >
-          <section
-            className={styles.conversationPane}
-            aria-label="Project conversation"
-          >
-            <div className={styles.conversation}>
+          <div className={styles.conversation}>
+            <div className={styles.top}>
               {nextStep}
-              <RoomThread
-                {...conversation.thread}
-                {...(choice === null ? {} : { designChoice: choice })}
-              >
-                <EmptyConversation empty={conversation.empty} />
-              </RoomThread>
-              <Dock dock={dock} answersShell={shell.answers} />
+              {projectReady || progress !== null ? (
+                <div className={styles.controls}>
+                  {progress === null ? null : (
+                    <UiButton
+                      type="button"
+                      size="sm"
+                      variant={planShown ? "secondary" : "ghost"}
+                      className={styles.control}
+                      aria-pressed={planShown}
+                      aria-label={wording.conversation.plan.progressLabel(
+                        progress.done,
+                        progress.total,
+                        progress.alert,
+                      )}
+                      title={
+                        planShown
+                          ? wording.conversation.plan.hide
+                          : wording.conversation.plan.show
+                      }
+                      onClick={() => setPlanShown(!planShown)}
+                    >
+                      <span>{wording.conversation.plan.title}</span>
+                      <span className={styles.meter} aria-hidden="true">
+                        {progress.marks.map(({ id, mark }) => (
+                          <span key={id} data-mark={mark} />
+                        ))}
+                      </span>
+                      <span className={styles.count}>
+                        {wording.conversation.plan.progress(
+                          progress.done,
+                          progress.total,
+                        )}
+                      </span>
+                      {progress.alert === null ? null : (
+                        <span
+                          className={styles.alert}
+                          data-mark={progress.alert}
+                        />
+                      )}
+                    </UiButton>
+                  )}
+                  {projectReady ? (
+                    <UiButton
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className={styles.control}
+                      aria-label={wording.conversation.openProject}
+                      title={wording.conversation.openProjectHint}
+                      onClick={() => onProjectOpenChange(true)}
+                    >
+                      <FolderOpen size={16} aria-hidden="true" />
+                      <span className={styles.label}>
+                        {wording.conversation.openProject}
+                      </span>
+                    </UiButton>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
-          </section>
-          {chatFirst ? null : (
-            <ArtifactPane {...documentPane} {...paneParts} paneRef={paneRef} />
-          )}
-        </div>
+            <RoomThread {...conversation.thread}>
+              <EmptyConversation empty={conversation.empty} />
+            </RoomThread>
+            {dockInConversation ? roomDock : null}
+          </div>
+        </section>
+        {planShown ? (
+          <PlanPanel
+            steps={plan}
+            drawer={narrow}
+            onHide={() => setPlanShown(false)}
+            onDecline={onDeclineStep}
+            onGoAhead={onGoAheadStep}
+            onAskFirst={onAskFirstStep}
+          />
+        ) : null}
+        {projectReady ? (
+          // Kept while closed, so its tabs, previews and drafts keep their place.
+          <div
+            className={styles.page}
+            data-slot="room-project"
+            hidden={!projectOpen}
+          >
+            <ArtifactPane
+              {...documentPane}
+              {...paneParts}
+              paneRef={paneRef}
+              open={projectOpen}
+              onClose={closeProject}
+            />
+            {dockInProject ? roomDock : null}
+          </div>
+        ) : null}
+        {page === null ? null : (
+          // Kept while closed, so the screen's draft and the page it shows wait for the person.
+          <div className={styles.page} data-slot="room-page" hidden={!pageOpen}>
+            <div className={styles.pageScreen}>{page}</div>
+            {pageOpen ? roomDock : null}
+          </div>
+        )}
       </div>
       {shell.reply}
     </StageView>
@@ -322,6 +433,7 @@ function RoomComposerView({
   onCancelCaution,
   suggestedReplies,
   onReply,
+  sendLabel,
   answersShell,
 }: RoomComposer & { answersShell: AnswersShell }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -394,7 +506,9 @@ function RoomComposerView({
               value={text}
               onValueChange={onTextChange}
               onSubmit={send}
-              canSubmit={text.trim() !== "" || files.length > 0}
+              canSubmit={
+                text.trim() !== "" || files.length > 0 || sendLabel !== null
+              }
               status={busy ? "submitted" : "ready"}
               disabled={disabled || needsProvider}
             >
@@ -470,7 +584,17 @@ function RoomComposerView({
                     <Sparkles size={14} aria-hidden="true" />
                   </UiButton>
                 ) : (
-                  <PromptInputSubmit className="ms-auto" />
+                  <>
+                    {sendLabel === null ? null : (
+                      <span className={styles.sendLabel} aria-hidden="true">
+                        {sendLabel}
+                      </span>
+                    )}
+                    <PromptInputSubmit
+                      className={sendLabel === null ? "ms-auto" : undefined}
+                      aria-label={sendLabel ?? undefined}
+                    />
+                  </>
                 )}
               </PromptInputToolbar>
             </PromptInput>

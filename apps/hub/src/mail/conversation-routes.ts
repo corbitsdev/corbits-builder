@@ -23,9 +23,9 @@ import { ProjectError, projectResource } from "../projects/errors.ts";
 import { getLogger } from "@intx/log";
 import { requestErrorMetadata } from "../request-error.ts";
 import { earlierRunQuestions } from "./earlier-questions.ts";
+import { isRecord } from "../lib/json.ts";
 import {
   type CoordinatorRepoDirSource,
-  isRecord,
   projectRunTurns,
   unsavedPersonTurns,
 } from "./conversation-turns.ts";

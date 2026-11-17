@@ -92,7 +92,7 @@ const reading = {
   found: ["Problem brief", "Design"],
   toWrite: ["Product requirements", "Technical plan"],
   empty: false,
-  warnings: ["The package manager is pnpm; the app builder installs with bun."],
+  warnings: ["The package manager is pnpm; the coder installs with bun."],
   leaveOut: [
     { path: ".env.local", reason: "looks like a secret", leftOut: true },
     {

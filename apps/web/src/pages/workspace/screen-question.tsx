@@ -1,0 +1,469 @@
+/**
+ * A question the coordinator asked as a plugin's screen. The plugin, not the agent, decides what is
+ * drawn: its view gets the project's values it reads, the checked input and the draft. Its output
+ * answers the question through the hub, which saves the values it writes and records what it approves.
+ * What the person has chosen so far is kept across a reload as the question card keeps its answers.
+ */
+import type { ScreenViewProps } from "@corbits-builder/plugin-ui/screen";
+import { useQuestionOutcome } from "./question-outcome.tsx";
+import { useEffect, useRef, useState, type ComponentType } from "react";
+import { type, type ArkErrors, type Type } from "arktype";
+import {
+  validateInput,
+  validateOutput,
+  type Decision,
+  type Offer,
+  type PageControls,
+  type ProjectValues,
+  type Screen,
+  type ScreenActionBuilder,
+} from "@corbits-builder/plugin";
+import { QuestionAnswer } from "@corbits-builder/schemas/conversation";
+import { Button } from "@corbits/react-ui";
+import {
+  ScreenDecision,
+  ScreenRow,
+  type DecisionControls,
+} from "@corbits-builder/plugin-ui/screen-actions";
+import { SettledFrame } from "@corbits-builder/plugin-ui/screen-card";
+import { wording } from "../../config.ts";
+import { Fault, InlineNote } from "../../components.jsx";
+import type { DesignFiles } from "./design-bundle.ts";
+import type { MockupFrameProps } from "./mockup-frame.tsx";
+import { SettledReply, useAnswer } from "./questions-card.tsx";
+import styles from "./screen-question.module.css";
+
+const text = wording.questions;
+
+// The project's facts, which gate options such as paid fonts. None reach the interface yet.
+export const projectFacts: readonly string[] = [];
+
+/** Reads the open project's values by name. */
+export type ProjectValuesStore = {
+  read(keys: readonly string[], signal: AbortSignal): Promise<ProjectValues>;
+};
+
+/** The design a screen reviews, and the design option an approval of it chooses, if any. */
+export type ReviewedDesign = {
+  files: DesignFiles;
+  version: number | "draft";
+  approval: { option: string } | { unavailable: string };
+};
+
+/** A filed document at its current version, as a screen lists it to approve. */
+export type ShownDocument = {
+  kind: string;
+  title: string;
+  artifactId: string;
+  version: number;
+  approvedVersion?: number;
+  /** The document's own `## In short` section, as markdown, when it has one. */
+  summary?: string;
+};
+
+/** What the interface itself supplies a screen's view, by the names a manifest lists under host. */
+export type HostSupplies = {
+  /** The live draft while a designer works, else the newest filed design or design option. */
+  design: ReviewedDesign | null;
+  /** A design bundle drawn in the design pane's own sandboxed frame. */
+  mockupFrame: ComponentType<MockupFrameProps>;
+  /** The output of the latest question the coordinator asked with the same screen, if answered. */
+  earlierAnswer: unknown;
+  /** The project's filed documents, and a way to open one over the room by its kind. */
+  documents: { list: readonly ShownDocument[]; open(kind: string): void };
+  /** The filed design concepts the person has yet to choose between, in the order they were asked about. */
+  designConcepts: readonly ChoosableConcept[];
+  /** The room's prompt box, which a screen's decision sends back through; the host's own, no view's. */
+  reply: ReplyBox;
+};
+
+export type ViewResources = {
+  design: HostSupplies["design"];
+  mockupFrame: HostSupplies["mockupFrame"];
+  earlierAnswer: unknown;
+  documents: { list: readonly ShownDocument[] };
+  designConcepts: readonly ChoosableConcept[];
+};
+
+/** What the prompt box sends in place of the person's words while a screen has feedback staged. */
+export type Staged = {
+  /** Sends the feedback with what was typed, if anything; whether it reached the hub. */
+  send: (message: string | undefined) => Promise<boolean>;
+  /** The items it carries, such as "2 comments", which Send sends with nothing typed; null while none. */
+  pending: string | null;
+};
+
+/** The room's prompt box as a screen's decision reads and stages it. */
+export type ReplyBox = {
+  /** The box holds more than whitespace. */
+  drafted: boolean;
+  stage(staged: Staged | null): void;
+};
+
+/** A filed design concept, and the design option choosing it approves, if any. */
+export type ChoosableConcept = {
+  label: string;
+  direction: string | undefined;
+  files: DesignFiles;
+  version: number;
+  approval: ReviewedDesign["approval"];
+};
+
+const SUPPLIED: ReadonlySet<string> = new Set<keyof HostSupplies>([
+  "design",
+  "mockupFrame",
+  "earlierAnswer",
+  "documents",
+  "designConcepts",
+]);
+
+/** The pending items an offer would send back, in the decision's words; null while there are none. */
+export function pendingItems<Out>(
+  decision: Decision<Out>,
+  sendBack: Out | undefined,
+): string | null {
+  if (
+    decision.sendBack === undefined ||
+    sendBack === undefined ||
+    sendBack === null
+  )
+    return null;
+  const { items, one, many } = decision.sendBack;
+  const held = sendBack[items];
+  const count = Array.isArray(held) ? held.length : 0;
+  if (count === 0) return null;
+  return count === 1 ? `1 ${one}` : `${String(count)} ${many}`;
+}
+
+/** The controls a screen's decision gets from what its view offers and the prompt box holds. */
+export function decisionControls<Out>(
+  decision: Decision<Out>,
+  offer: Offer<Out> | undefined,
+  room: { drafted: boolean; accept: (output: Out) => void },
+): DecisionControls {
+  const accept = offer?.accept;
+  const accepted =
+    accept !== undefined && "output" in accept ? accept.output : undefined;
+  return {
+    accept: decision.accept,
+    onAccept: accepted === undefined ? null : () => room.accept(accepted),
+    unavailable:
+      accept !== undefined && "unavailable" in accept
+        ? accept.unavailable
+        : undefined,
+    pending: pendingItems(decision, offer?.sendBack),
+    drafted: room.drafted,
+  };
+}
+
+/** The answer sending back gives: the offered output, with the typed note in the decision's field. */
+export function sentBack<Out>(
+  note: string,
+  sendBack: Out,
+  message: string | undefined,
+): Out {
+  if (message === undefined) return sendBack;
+  return Object.assign({}, sendBack, { [note]: message });
+}
+
+// Draft text may be unfinished; output validation still gates every submission.
+const isDraft = <Out,>(
+  saved: unknown,
+  errors: ArkErrors,
+): saved is Partial<Out> =>
+  typeof saved === "object" &&
+  saved !== null &&
+  !Array.isArray(saved) &&
+  errors.every(
+    (error) =>
+      (error.code === "required" && error.path.length === 1) ||
+      error.code === "pattern" ||
+      error.code === "minLength",
+  );
+
+/** What the person chose so far, read back through the screen's own output schema; undefined if it does not fit. */
+export const draftOf =
+  <Out,>(output: Type<Out>) =>
+  (saved: unknown): Partial<Type<Out>["infer"]> | undefined => {
+    const checked = output(saved);
+    if (!(checked instanceof type.errors)) return checked;
+    return isDraft<Type<Out>["infer"]>(saved, checked) ? saved : undefined;
+  };
+
+export type ScreenHostProps = {
+  /** The question's signal, which keys what the person has chosen so far. */
+  signalName: string;
+  input: Record<string, unknown>;
+  output: Record<string, unknown> | undefined;
+  projectValues: ProjectValuesStore;
+  disabled: boolean;
+  onAnswer: (answer: QuestionAnswer) => Promise<boolean>;
+  host: HostSupplies;
+  page?: PageControls | undefined;
+};
+
+/** One plugin's screen action, by its name such as "designer pick-fonts", typed end to end, behind props every screen shares. */
+export function screenHost<In, Out, Data, Prepared>(
+  handle: string,
+  builder: ScreenActionBuilder,
+  plugin: {
+    screen: Screen<In, Out, Data, Prepared>;
+    view: ComponentType<
+      ScreenViewProps<
+        Type<In>["infer"],
+        Type<Out>["infer"],
+        Prepared,
+        ViewResources
+      >
+    >;
+    data: Type<Data>["infer"];
+  },
+): ComponentType<ScreenHostProps> {
+  const { screen, view: View, data } = plugin;
+  const readDraft = draftOf(screen.output);
+  const { reads = [], host: supplied = [] } = builder;
+  const unknown = supplied.find((name) => !SUPPLIED.has(name));
+  if (unknown !== undefined)
+    throw new Error(
+      `${handle} asks for ${unknown}, which this interface does not supply.`,
+    );
+
+  return function ScreenHost({
+    signalName,
+    input,
+    output,
+    projectValues,
+    disabled,
+    onAnswer,
+    host,
+    page,
+  }) {
+    const outcome = useQuestionOutcome(signalName);
+    const [project, setProject] = useState<ProjectValues>();
+    const [unreadable, setUnreadable] = useState(false);
+    const answering = useAnswer(
+      `unsent:screen:${signalName}`,
+      readDraft,
+      onAnswer,
+    );
+    const [offer, setOffer] = useState<Offer<Type<Out>["infer"]>>();
+    const settled = output !== undefined;
+    const busy = answering.sending || outcome?.kind === "sending" || disabled;
+    const { decision } = screen;
+    const pending =
+      decision === undefined ? null : pendingItems(decision, offer?.sendBack);
+    // The prompt box sends the feedback back only where the decision sends it back as output.
+    const staging =
+      !settled &&
+      decision?.sendBack !== undefined &&
+      offer?.sendBack !== undefined;
+    // The room hands a new prompt box and this render a new answer each time; staging follows what is pending.
+    const box = useRef(host.reply);
+    box.current = host.reply;
+    const sendBack = useRef<(message: string | undefined) => Promise<boolean>>(
+      () => Promise.resolve(false),
+    );
+    useEffect(() => {
+      if (!staging) return;
+      const reply = box.current;
+      reply.stage({ send: (message) => sendBack.current(message), pending });
+      return () => reply.stage(null);
+    }, [staging, pending]);
+
+    useEffect(() => {
+      if (settled) return;
+      const abort = new AbortController();
+      const load = async () => {
+        try {
+          // The hub refuses a read of no names, and a screen that reads none needs no read.
+          setProject(
+            reads.length === 0
+              ? {}
+              : await projectValues.read(reads, abort.signal),
+          );
+        } catch (cause) {
+          if (abort.signal.aborted) return;
+          console.warn(`${handle} could not read the project's values.`, cause);
+          setUnreadable(true);
+        }
+      };
+      void load();
+      return () => abort.abort();
+    }, [projectValues, settled]);
+
+    if (unreadable) return <InlineNote>{text.screenUnavailable}</InlineNote>;
+    // Once answered, the project already holds the answer, so the settled screen draws from it alone.
+    const shown: ProjectValues | undefined = settled ? {} : project;
+    if (shown === undefined)
+      return <InlineNote>{text.screenLoading}</InlineNote>;
+    const checked = validateInput(handle, screen, input, data, shown);
+    const answered =
+      output === undefined ? undefined : validateOutput(handle, screen, output);
+    if (!checked.ok || checked.prepared === undefined || answered?.ok === false)
+      return <InlineNote>{text.screenUnavailable}</InlineNote>;
+
+    const answerWith = (chosen: Type<Out>["infer"]) => {
+      const result = validateOutput(handle, screen, chosen);
+      if (!result.ok) throw new Error(result.text);
+      return answering.send(QuestionAnswer.assert({ output: result.output }));
+    };
+    const submit = async (chosen: Type<Out>["infer"]) => {
+      await answerWith(chosen);
+    };
+    const note = decision?.sendBack?.note;
+    const offered = offer?.sendBack;
+    if (note !== undefined && offered !== undefined)
+      sendBack.current = (message) =>
+        answerWith(sentBack(note, offered, message));
+    const view = (
+      <View
+        prepared={{
+          input: checked.input,
+          data: checked.prepared,
+          project: shown,
+          facts: projectFacts,
+          resources: {
+            design: host.design,
+            mockupFrame: host.mockupFrame,
+            earlierAnswer: host.earlierAnswer,
+            documents: { list: host.documents.list },
+            designConcepts: host.designConcepts,
+          },
+        }}
+        draft={answering.draft ?? {}}
+        setDraft={(change) =>
+          answering.change((current) => {
+            const draft: Partial<Type<Out>["infer"]> =
+              current === undefined ? {} : current;
+            return Object.assign(
+              {},
+              draft,
+              typeof change === "function" ? change(draft) : change,
+            );
+          })
+        }
+        submit={submit}
+        submitting={busy}
+        answer={answered?.output}
+        place={page === undefined ? "card" : "page"}
+        fault={
+          outcome !== undefined && "fault" in outcome
+            ? outcome.fault
+            : undefined
+        }
+        openDocument={
+          supplied.includes("documents") ? host.documents.open : undefined
+        }
+        offer={setOffer}
+      />
+    );
+    if (settled)
+      return (
+        <SettledFrame
+          title={text.screenAnswered}
+          ended="answered"
+          focus={answering.sending}
+        >
+          {view}
+        </SettledFrame>
+      );
+    return (
+      <ScreenRow
+        value={{
+          cancel: {
+            label: text.cancel,
+            onCancel: () => void answering.send({ reply: text.cancelReply }),
+          },
+          fault:
+            outcome !== undefined && "fault" in outcome ? (
+              <Fault>{outcome.fault}</Fault>
+            ) : null,
+          back:
+            page === undefined
+              ? null
+              : { label: text.pageScreenClose, onBack: page.close },
+        }}
+      >
+        <ScreenDecision
+          value={
+            decision === undefined
+              ? null
+              : decisionControls(decision, offer, {
+                  drafted: host.reply.drafted,
+                  accept: (chosen) => void submit(chosen),
+                })
+          }
+        >
+          {/* While an answer is on its way the whole screen takes no input, whatever it draws. */}
+          <div className={styles.screen} inert={busy}>
+            {view}
+          </div>
+        </ScreenDecision>
+      </ScreenRow>
+    );
+  };
+}
+
+export type ScreenQuestionProps = {
+  signalName: string;
+  host: ComponentType<ScreenHostProps> | undefined;
+  input: Record<string, unknown>;
+  projectValues: ProjectValuesStore | undefined;
+  answer: QuestionAnswer | undefined;
+  disabled: boolean;
+  onAnswer: ScreenHostProps["onAnswer"];
+  supplies: HostSupplies | undefined;
+  page?: PageControls | undefined;
+};
+
+/** The screen, or a plain notice when it has no view or no project to read. */
+export function ScreenQuestion({
+  signalName,
+  host: Host,
+  input,
+  projectValues,
+  answer,
+  disabled,
+  onAnswer,
+  supplies,
+  page,
+}: ScreenQuestionProps) {
+  if (answer !== undefined && "reply" in answer)
+    return <SettledReply reply={answer.reply} sent={false} />;
+  if (
+    Host === undefined ||
+    projectValues === undefined ||
+    supplies === undefined
+  )
+    return (
+      <SettledFrame title={text.title(1)} ended="waiting">
+        <p>{text.screenUnavailable}</p>
+      </SettledFrame>
+    );
+  return (
+    <Host
+      signalName={signalName}
+      input={input}
+      output={
+        answer !== undefined && "output" in answer ? answer.output : undefined
+      }
+      projectValues={projectValues}
+      disabled={disabled}
+      onAnswer={onAnswer}
+      host={supplies}
+      page={page}
+    />
+  );
+}
+
+/** In the conversation, a screen open over the room: the way back to it after it was closed. */
+export function PageScreenCard({ onOpen }: { onOpen: () => void }) {
+  return (
+    <InlineNote>
+      {text.pageScreenOpen}{" "}
+      <Button type="button" size="sm" variant="outline" onClick={onOpen}>
+        {text.pageScreenReopen}
+      </Button>
+    </InlineNote>
+  );
+}

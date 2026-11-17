@@ -1,22 +1,58 @@
 import { expect, test } from "bun:test";
 import { NativeSpecialistDeployment } from "@corbits-builder/schemas/native-specialist";
 import { MODEL_PROVIDERS, tierBinding } from "../config/models.ts";
-import { CATALOG, roleModel } from "../plugins/catalog.ts";
-import { resolveRoleInference } from "./role-inference.ts";
+import { projectLiveToInert } from "@intx/workflow/projection";
+import { browserCatalog } from "../builds/browser-catalog.ts";
+import { nativePackageName } from "./package-name.ts";
+import { resolveRoleInference, type RoleInference } from "./role-inference.ts";
+import { spawnedWorkflowRole } from "./spawn-role.ts";
+import { resolve } from "node:path";
+import {
+  CATALOG,
+  PLUGINS_FOLDER,
+  roleModel,
+  runRole,
+  WORKFLOW_PACKAGES,
+} from "../plugins/catalog.ts";
 
-const inference = Object.fromEntries(
-  CATALOG.roles.map((role) => [
-    role.name,
-    resolveRoleInference(
-      MODEL_PROVIDERS,
-      role.limits,
-      tierBinding(
+const AGENT_ENTRY = "./agent-package.ts";
+let browser: string | undefined;
+
+// An installed plugin's workflow package by name: the agent it declares, built as build-packages.ts
+// builds it, else loaded from the entry its plugin names for it. The agent's declaration reaches
+// the shared entry through the environment, so one is built at a time, each run of the module with
+// its own declaration set the moment it is imported.
+async function installed(name: string) {
+  const brought = CATALOG.packages.get(name);
+  if (brought === undefined) throw new Error(`no installed package ${name}`);
+  if (!("agent" in brought))
+    return (await import(resolve(PLUGINS_FOLDER, brought.entry))).default;
+  browser ??= JSON.stringify(await browserCatalog());
+  process.env.BUILDER_AGENT = JSON.stringify(brought.agent);
+  process.env.BUILDER_BROWSER = browser;
+  return (await import(`${AGENT_ENTRY}?${name}`)).default;
+}
+
+// Each named package in turn, never two at once.
+async function installedInTurn(names: readonly string[]) {
+  const built = [];
+  for (const name of names) built.push(await installed(name));
+  return built;
+}
+
+// What each role an installed package plays resolves to on the shipped Anthropic profile.
+const inference: Record<string, RoleInference> = Object.fromEntries(
+  [...new Set(WORKFLOW_PACKAGES.values())].map((name) => {
+    const model = roleModel(runRole(name));
+    return [
+      name,
+      resolveRoleInference(
         MODEL_PROVIDERS,
-        { profile: "anthropic_default" },
-        roleModel(role),
+        model.budget,
+        tierBinding(MODEL_PROVIDERS, { profile: "anthropic_default" }, model),
       ),
-    ),
-  ]),
+    ];
+  }),
 );
 
 test("native specialist accepts installed tarballs only with an exact package pin", () => {
@@ -37,69 +73,76 @@ test("native specialist accepts installed tarballs only with an exact package pi
   ).toThrow();
 });
 
+// What these tests read of an agent's tool bundles.
+type Factories = { definitions?: { name: string; approval?: string }[] }[];
+
 test("production entries expose concrete native workflows without callback credentials", async () => {
-  process.env.BUILDER_ROLE_INFERENCE = JSON.stringify(inference["coordinator"]);
+  process.env.BUILDER_ROLE_INFERENCE = JSON.stringify(inference.coordinator);
   const coordinator = (await import("./entries/coordinator.ts")).default;
-  const writers = [
-    (await import("@corbits-builder/writer/packages/writer-constraints"))
-      .default,
-    (await import("@corbits-builder/writer/packages/writer-approaches"))
-      .default,
-    (
-      await import("@corbits-builder/writer/packages/writer-product-requirements")
-    ).default,
-    (await import("@corbits-builder/writer/packages/writer-build-plan"))
-      .default,
+  const writerNames = [
+    "writer-product-requirements",
+    "writer-build-plan",
+    "writer-document",
   ];
-  const reviewer = (await import("./entries/reviewer.ts")).default;
-  const coder = (await import("@corbits-builder/coder/packages/coder")).default;
-  const coderAnyPackage = (
-    await import("@corbits-builder/coder/packages/coder-any-package")
-  ).default;
-  const designer = (await import("@corbits-builder/designer/packages/designer"))
-    .default;
-  const presenter = (
-    await import("@corbits-builder/presenter/packages/presenter")
-  ).default;
-  expect(coordinator.steps.coordinate).toMatchObject({ triggers: "unbounded" });
-  for (const writer of writers)
-    expect(writer.steps.write).toMatchObject({ triggers: 1 });
-  expect(reviewer.steps.review).toMatchObject({ triggers: 1 });
-  expect(coder.steps.build).toMatchObject({ triggers: 1 });
-  expect(coderAnyPackage.steps.build).toMatchObject({ triggers: 1 });
-  expect(designer.steps.design).toMatchObject({ triggers: 1 });
-  expect(presenter.steps.present).toMatchObject({ triggers: 1 });
-  // Secure by default: only the coder a person opted into declares install_packages without an ask.
-  const installTool = (workflow: typeof coder) => {
-    const step = workflow.steps.build;
-    if (!step || !("agent" in step))
-      throw new Error("coder_build_step_missing");
-    return step.agent.toolFactories
-      .flatMap((factory) => factory.definitions ?? [])
-      .find((definition) => definition.name === "install_packages");
+  const writers = await installedInTurn(writerNames);
+  const [reviewer, coder, designer, presenter] = await installedInTurn([
+    "reviewer",
+    "coder",
+    "designer",
+    "presenter",
+  ]);
+  // Each writer is its own package, and a writer of one kind files only that kind.
+  const filing = (writer: (typeof writers)[number]) => {
+    const artifacts = writer.steps.work.agent.toolFactories.find(
+      (factory: { id: string }) =>
+        factory.id === "@corbits-builder/artifacts/tools",
+    );
+    return artifacts({}).definitions.find(
+      (definition: { name: string }) => definition.name === "write_artifact",
+    ).description;
   };
-  expect(installTool(coder)).toEqual({
-    name: "install_packages",
-    approval: "ask",
-  });
-  expect(installTool(coderAnyPackage)).toEqual({ name: "install_packages" });
+  expect(writers.map((writer) => writer.id)).toEqual(
+    writerNames.map((name) => `corbits-builder-${name}`),
+  );
+  expect(writers.map((writer) => writer.steps.work.agent.id)).toEqual(
+    writerNames,
+  );
+  expect(filing(writers[0])).toStartWith(
+    "Write the next version of the product requirements.",
+  );
+  expect(filing(writers[1])).toStartWith(
+    "Write the next version of the build plan.",
+  );
+  expect(filing(writers[2])).toStartWith(
+    "Write the next version of the document your task names.",
+  );
+  expect(coordinator.steps.coordinate).toMatchObject({ triggers: "unbounded" });
+  for (const agent of [...writers, reviewer, coder, designer, presenter])
+    expect(agent.steps.work).toMatchObject({ triggers: 1 });
+  // Secure by default: the coder declares install_packages as a tool that asks.
+  const factories: Factories = coder.steps.work.agent.toolFactories;
+  expect(
+    factories
+      .flatMap((factory) => factory.definitions ?? [])
+      .find((definition) => definition.name === "install_packages"),
+  ).toEqual({ name: "install_packages", approval: "ask" });
   for (const workflow of [
     coordinator,
     ...writers,
     reviewer,
     coder,
-    coderAnyPackage,
     designer,
     presenter,
   ]) {
     expect(workflow.credentialBindings ?? []).toEqual([]);
     // A trimmed result's note names read_file, so every agent needs one.
-    const tools = Object.values(workflow.steps).flatMap((step) =>
-      "agent" in step
-        ? step.agent.toolFactories.flatMap(
-            (factory) => factory.definitions ?? [],
-          )
-        : [],
+    const steps: { agent?: { toolFactories: Factories } }[] = Object.values(
+      workflow.steps,
+    );
+    const tools = steps.flatMap((step) =>
+      (step.agent?.toolFactories ?? []).flatMap(
+        (factory) => factory.definitions ?? [],
+      ),
     );
     expect(tools.map((tool) => tool.name)).toContain("read_file");
   }
@@ -109,7 +152,6 @@ test("production entries expose concrete native workflows without callback crede
       ...writers,
       reviewer,
       coder,
-      coderAnyPackage,
       designer,
       presenter,
     ]),
@@ -127,7 +169,6 @@ test("built npm tarballs contain importable production workflow metadata and def
   );
   try {
     const manifest = await buildWorkflowPackages(directory, "1.0.0", inference);
-    expect(manifest).toHaveLength(10);
     for (const metadata of manifest) {
       const extracted = join(directory, metadata.assetName);
       await mkdir(extracted);
@@ -150,9 +191,65 @@ test("built npm tarballs contain importable production workflow metadata and def
       expect(entry.director).toBeDefined();
       expect(Object.keys(entry.default.steps)).toHaveLength(1);
       expect(entry.default.credentialBindings ?? []).toEqual([]);
+      // The hub accepts a run as a specialist's only when its launch bundle yields a role.
+      if (metadata.packageName !== nativePackageName("coordinator"))
+        expect(
+          spawnedWorkflowRole({
+            projection: projectLiveToInert(entry.default),
+          }),
+        ).toBeDefined();
     }
+    expect(manifest).toHaveLength(10);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
   // Building starts the coder's browser, whose first start downloads Chrome for Testing.
+}, 180_000);
+
+test("the built coordinator runs its prompt with the plugin tools and no tool waits on the person", async () => {
+  const { mkdtemp, rm } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { pathToFileURL } = await import("node:url");
+  const { buildWorkflowPackages } = await import("./build-packages.ts");
+  const { nativePackageName } = await import("./package-name.ts");
+  const { composeCoordinatorPrompt } =
+    await import("@corbits-builder/coordinator/prompt");
+  const directory = await mkdtemp(join(tmpdir(), "sb-coordinator-prompt-"));
+  try {
+    const manifest = await buildWorkflowPackages(directory, "1.0.0", inference);
+    const coordinator = manifest.find(
+      (item) => item.packageName === nativePackageName("coordinator"),
+    );
+    if (!coordinator) throw new Error("coordinator_package_missing");
+    const child = Bun.spawn(
+      ["tar", "-xzf", join(directory, coordinator.file), "-C", directory],
+      { stdout: "ignore", stderr: "pipe" },
+    );
+    expect(await child.exited).toBe(0);
+    const entry = await import(
+      pathToFileURL(join(directory, "package", coordinator.entry)).href
+    );
+    const { systemPrompt, toolFactories } =
+      entry.default.steps.coordinate.agent;
+    const declared: { name: string; approval?: string }[] =
+      toolFactories.flatMap(
+        (tool: { definitions: { name: string; approval?: string }[] }) =>
+          tool.definitions,
+      );
+    expect(systemPrompt).toBe(composeCoordinatorPrompt());
+    // question is Interchange's own tool, authorized like any other, so its bundle declares it.
+    expect(declared.map(({ name }) => name)).toEqual([
+      "read_artifact",
+      "discover",
+      "execute",
+      "runs",
+      "plan",
+      "question",
+      "read_file",
+    ]);
+    expect(declared.filter((definition) => definition.approval)).toEqual([]);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 }, 180_000);

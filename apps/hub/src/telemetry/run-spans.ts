@@ -221,10 +221,28 @@ export function createRunSpans(options: { captureContent: boolean }) {
               model.attributes[ATTR_GEN_AI_OUTPUT_MESSAGES] = JSON.stringify([
                 {
                   role: "assistant",
-                  parts: event.data.turn.content.flatMap((block) =>
-                    block.type === "text"
-                      ? [{ type: "text", content: block.text }]
-                      : [],
+                  parts: event.data.turn.content.flatMap(
+                    (block): Record<string, unknown>[] => {
+                      switch (block.type) {
+                        case "text":
+                          return [{ type: "text", content: block.text }];
+                        case "thinking":
+                          return [
+                            { type: "reasoning", content: block.thinking },
+                          ];
+                        case "tool_call":
+                          return [
+                            {
+                              type: "tool_call",
+                              id: block.id,
+                              name: block.name,
+                              arguments: block.arguments,
+                            },
+                          ];
+                        default:
+                          return [];
+                      }
+                    },
                   ),
                 },
               ]);

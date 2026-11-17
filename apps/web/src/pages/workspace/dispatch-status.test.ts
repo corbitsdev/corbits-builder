@@ -1,11 +1,12 @@
 import { expect, test } from "bun:test";
+import "./plugin-roles.testing.ts";
 import {
   dispatchLive,
   dispatchStatus,
   dispatchesOf,
   type DispatchRoom,
+  type RunEnd,
 } from "./dispatch-card.tsx";
-import { workUnitMessage, workUnits } from "./work-unit.ts";
 
 const room = (state: "working" | "waiting" | "approval"): DispatchRoom => ({
   artifacts: [],
@@ -21,19 +22,29 @@ const room = (state: "working" | "waiting" | "approval"): DispatchRoom => ({
   ],
   failed: [],
   seen: new Map(),
-  approvals: [],
-  activity: [],
 });
 
 const [coder] = dispatchesOf(
   {
     kind: "tool-trace",
     toolCallId: "call-coder",
-    name: "deploy_coder",
+    name: "execute",
     status: "output-available",
-    input: { instruction: "Build it." },
+    input: {
+      plugin: "coder",
+      action: "build",
+      input: { instruction: "Build it." },
+    },
   },
-  { content: JSON.stringify({ runId: "run-coder" }), isError: false },
+  {
+    content: JSON.stringify({
+      started: true,
+      plugin: "coder",
+      action: "build",
+      runs: [{ runId: "run-coder" }],
+    }),
+    isError: false,
+  },
 );
 if (coder === undefined) throw new Error("no dispatch");
 
@@ -49,16 +60,37 @@ test("a run held on an approval reads as paused for the person, not as at work",
   expect(dispatchLive(coder, room("approval"))).toBe(true);
 });
 
-test("the hand-off's own step does not ask the person while its run waits on an approval", () => {
-  const [unit] = workUnits([{ at: 100, dispatch: coder }], [], []).units;
-  if (unit === undefined) throw new Error("no unit");
-  const message = workUnitMessage(unit, { state: "approval" });
-  const [step] = message.parts;
-  expect(step).toMatchObject({
-    kind: "tool-trace",
-    toolCallId: "call-coder",
-    status: "running",
+test("a run with an open approval reads as waiting for the person, with what it asked, before its own state catches up", () => {
+  const waiting: DispatchRoom = {
+    ...room("working"),
+    asked: new Map([["run-coder", "installing zod, exceljs"]]),
+  };
+  expect(dispatchStatus(coder, waiting)).toEqual({
+    state: "approval",
+    asked: "installing zod, exceljs",
   });
-  // Nothing streams while the person is the one being waited on.
-  expect(message.status).toBe("sent");
+});
+
+test("a run that ended on a block reads as blocked with its reason, not as stopped or failed", () => {
+  const ended = (end: RunEnd): DispatchRoom => ({
+    artifacts: [],
+    inFlight: [],
+    failed: [],
+    seen: new Map(),
+    ended: new Map([["run-coder", end]]),
+  });
+  expect(dispatchStatus(coder, ended({ status: "cancelled" }))).toEqual({
+    state: "stopped",
+  });
+  const blocked = { reason: "The hub refused every file write." };
+  expect(
+    dispatchStatus(coder, ended({ status: "cancelled", blocked })),
+  ).toEqual({ state: "blocked", reason: blocked.reason });
+  // Builder's end of a blocked run can itself fail; the block is still what happened.
+  expect(
+    dispatchStatus(coder, ended({ status: "failed", error: "x", blocked })),
+  ).toEqual({ state: "blocked", reason: blocked.reason });
+  expect(dispatchLive(coder, ended({ status: "cancelled", blocked }))).toBe(
+    false,
+  );
 });

@@ -6,7 +6,7 @@ import type {
 import { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import { InlineNote } from "../../components.tsx";
 import { wording } from "../../config.ts";
-import { Markdown } from "../../markdown.jsx";
+import { DocumentView } from "@corbits-builder/plugin-ui/markdown";
 import { parseApprovalPackage } from "./approval-package.ts";
 import styles from "./approval-package-preview.module.css";
 import { SourceLink } from "./source-link.tsx";
@@ -243,7 +243,7 @@ function SourcesView({
             {Object.entries(documents).map(([name, docContent]) => (
               <article key={name} className={styles.document}>
                 <h4>{name}</h4>
-                <Markdown source={docContent} document />
+                <DocumentView source={docContent} />
               </article>
             ))}
           </div>

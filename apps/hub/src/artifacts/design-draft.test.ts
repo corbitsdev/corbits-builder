@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import {
   mkdir,
   mkdtemp,
-  readFile,
   realpath,
   rm,
   stat,
@@ -11,39 +10,16 @@ import {
 } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import {
-  createAgent,
-  createDirectorRegistry,
-  createStaticCredentialResolver,
-} from "@intx/agent";
-import { defineTool } from "@intx/agent/authoring";
-import { noopAuditStore, permissiveAuthorize } from "@intx/agent/testing";
-import { createDefaultScheduler } from "@intx/inference";
-import { createBuiltinRegistry } from "@intx/inference/providers";
-import { createIsogitStore } from "@intx/storage-isogit/node";
-import { posix } from "@intx/tools-posix/sidecar-bundle";
 import type { RuntimeCapabilities } from "@intx/types/runtime-capabilities";
-import { createDesignerAgent } from "@corbits-builder/designer/agent";
-import {
-  designStarterFiles,
-  designThemes,
-} from "@corbits-builder/designer/skills" with { type: "macro" };
 import { DesignBundle } from "@corbits-builder/schemas/artifact";
-import { checkDesignDefinition } from "../config/design.ts";
+import { createDesignSubmission } from "../builds/design-submission.ts";
 import {
-  CHECK_DESIGN_TOOL,
-  createDesignSubmission,
-  touchesDesigns,
-} from "../builds/design-submission.ts";
-import { designPath, type CodingSidecarEnv } from "../builds/sidecar-tools.ts";
-import {
-  prepareWorkspace,
   spliceDesignScreens,
   syncDesignScreensOnDisk,
 } from "../builds/starter.ts";
-import { compactingDirector } from "../workflows/director.ts";
-import { dropDegenerateTurn, trimHistory } from "../workflows/compaction.ts";
+import { CATALOG } from "../plugins/catalog.ts";
 import {
+  designDraftOf,
   readDesignBundle,
   readDesignDraft,
   manualPictureRefs,
@@ -52,8 +28,9 @@ import {
 import { MAX_DESIGN_BYTES } from "../config/design.ts";
 import { fileDesignOption } from "./design-tools.ts";
 
-const STARTER = designStarterFiles();
-const MODERN_SLEEK = designThemes()["modern-sleek"]!;
+const DESIGN = CATALOG.design!;
+const STARTER = DESIGN.starter;
+const MODERN_SLEEK = DESIGN.themes.get("modern-sleek")!;
 
 test("the draft serves only regular files inside .builder/designs", async () => {
   const root = await mkdtemp(join(tmpdir(), "sb-design-draft-"));
@@ -115,6 +92,79 @@ test("the draft serves only regular files inside .builder/designs", async () => 
   }
 });
 
+// check_design against a hub that files whatever it is sent.
+function designTools(
+  workspace: string,
+  onFile: (body: { kind: string; title: string; content: string }) => void,
+) {
+  const deployment = {
+    source: {
+      kind: "asset" as const,
+      assetId: "asset",
+      package: { format: "tarball" as const },
+    },
+    entry: "entry",
+    pin: "@corbits-builder/designer@1.0.0",
+    sourceOfferingIds: ["offering"],
+    defaultSourceOfferingId: "offering",
+  };
+  const fetch = async (path: string, init: RequestInit) => {
+    if (path === "/api/workflow-project-scope")
+      return Response.json({
+        tenantId: "tenant",
+        projectId: "project",
+        domain: "example.invalid",
+        role: "designer",
+        workflows: {
+          "writer-product-requirements": deployment,
+          "writer-build-plan": deployment,
+          "writer-document": deployment,
+          reviewer: deployment,
+          coder: deployment,
+          designer: deployment,
+        },
+        openNetwork: false,
+        firstBuild: false,
+        toolchains: { paths: [], dataDir: "/unused" },
+        build: {
+          assetDirectory: "/assets",
+          browserCli: "/browser",
+          childPath: "/child",
+          dependencyRoots: ["/deps"],
+          ripgrepPath: "/rg",
+          runtimeVersion: "1.0.0",
+        },
+      });
+    if (path === "/api/tenants/tenant/projects/project/artifacts") {
+      const filedBody = JSON.parse(String(init.body)) as {
+        kind: string;
+        title: string;
+        content: string;
+      };
+      onFile(filedBody);
+      return Response.json({
+        artifact: {
+          artifactId: "design-1",
+          kind: "design_option",
+          title: filedBody.title,
+          version: 1,
+          sha256: "a".repeat(64),
+        },
+      });
+    }
+    return Response.json({ code: "unexpected_route" }, { status: 404 });
+  };
+  const capabilities = {
+    resolve: () => ({ resolve: async () => ({ kind: "http", fetch }) }),
+  } as unknown as RuntimeCapabilities;
+  return createDesignSubmission(
+    workspace,
+    async () => ({ exitCode: 0, output: "check passed: opened all screens" }),
+    (submission, signal) =>
+      fileDesignOption(capabilities, "designer", submission, signal),
+  );
+}
+
 test("check_design packs per-screen files and drops the untouched starter home screen", async () => {
   const workspace = await realpath(
     await mkdtemp(join(tmpdir(), "sb-design-file-")),
@@ -151,71 +201,10 @@ test("check_design packs per-screen files and drops the untouched starter home s
       'data-screen="orders"',
     );
 
-    const deployment = {
-      source: {
-        kind: "asset" as const,
-        assetId: "asset",
-        package: { format: "tarball" as const },
-      },
-      entry: "entry",
-      pin: "@corbits-builder/designer@1.0.0",
-      sourceOfferingIds: ["offering"],
-      defaultSourceOfferingId: "offering",
-    };
     let filedBody: { kind: string; title: string; content: string } | undefined;
-    const fetch = async (path: string, init: RequestInit) => {
-      if (path === "/api/workflow-project-scope")
-        return Response.json({
-          tenantId: "tenant",
-          projectId: "project",
-          domain: "example.invalid",
-          role: "designer",
-          workflows: {
-            "writer-constraints": deployment,
-            "writer-approaches": deployment,
-            "writer-product-requirements": deployment,
-            "writer-build-plan": deployment,
-            reviewer: deployment,
-            coder: deployment,
-            designer: deployment,
-          },
-          openNetwork: false,
-          build: {
-            assetDirectory: "/assets",
-            browserCli: "/browser",
-            childPath: "/child",
-            dependencyRoots: ["/deps"],
-            ripgrepPath: "/rg",
-            runtimeVersion: "1.0.0",
-          },
-        });
-      if (path === "/api/tenants/tenant/projects/project/artifacts") {
-        filedBody = JSON.parse(String(init.body)) as {
-          kind: string;
-          title: string;
-          content: string;
-        };
-        return Response.json({
-          artifact: {
-            artifactId: "design-1",
-            kind: "design_option",
-            title: filedBody.title,
-            version: 1,
-            sha256: "a".repeat(64),
-          },
-        });
-      }
-      return Response.json({ code: "unexpected_route" }, { status: 404 });
-    };
-    const capabilities = {
-      resolve: () => ({ resolve: async () => ({ kind: "http", fetch }) }),
-    } as unknown as RuntimeCapabilities;
-    const tools = createDesignSubmission(
-      workspace,
-      async () => ({ exitCode: 0, output: "check passed: opened all screens" }),
-      (submission, signal) =>
-        fileDesignOption(capabilities, submission, signal),
-    );
+    const tools = designTools(workspace, (body) => {
+      filedBody = body;
+    });
     const result = await tools.run(
       { id: "call-1", name: "check_design", arguments: {} },
       new AbortController().signal,
@@ -263,10 +252,12 @@ test("check_design files a design past the old 256 KiB cap and refuses one over 
       async (submission) => {
         filed.push(submission.content);
         return {
-          artifactId: "design-1",
-          kind: "design_option",
-          version: filed.length,
-          sha256: "a".repeat(64),
+          artifact: {
+            artifactId: "design-1",
+            kind: "design_option",
+            version: filed.length,
+            sha256: "a".repeat(64),
+          },
         };
       },
     );
@@ -294,6 +285,28 @@ test("check_design files a design past the old 256 KiB cap and refuses one over 
   }
 });
 
+test("a draft over the limit is refused, naming its largest file and what a designer starts from instead", () => {
+  const files = {
+    "DESIGN.md": "# Design",
+    "designs/index.html": "x".repeat(MAX_DESIGN_BYTES),
+  };
+  expect(() =>
+    designDraftOf(
+      files,
+      "A new design task starts from the filed design instead.",
+    ),
+  ).toThrow(
+    expect.objectContaining({
+      code: "design_draft_too_large",
+      details: expect.objectContaining({
+        hint: expect.stringMatching(
+          /^The draft cannot be loaded\. The design is \d+ bytes; .*Largest files: designs\/index\.html \(\d+ bytes\).*starts from the filed design instead\.$/,
+        ),
+      }),
+    }),
+  );
+});
+
 test("check-app serves a per-screen mockup in the headless browser and checks every screen", async () => {
   const browserCache = join(
     homedir(),
@@ -315,7 +328,7 @@ test("check-app serves a per-screen mockup in the headless browser and checks ev
   const home = join(root, "home");
   const checkApp = resolve(
     import.meta.dir,
-    "../../../../plugins/coder/check/check-app.ts",
+    "../../../../packages/app-checks/check/check-app.ts",
   );
   try {
     await mkdir(home, { recursive: true });
@@ -411,334 +424,6 @@ test("check-app serves a per-screen mockup in the headless browser and checks ev
     await rm(root, { recursive: true, force: true });
   }
 }, 30_000);
-
-test("designer agent writes per-screen files, is held by checkBeforeDone until checked, and files the bundle", async () => {
-  const root = await realpath(
-    await mkdtemp(join(tmpdir(), "sb-designer-e2e-")),
-  );
-  const workspace = join(root, "workspace");
-  const workdir = join(root, "agent");
-  await mkdir(workspace, { recursive: true });
-  await mkdir(workdir, { recursive: true });
-  await prepareWorkspace("design", workspace, async (kind) =>
-    kind === "requirements"
-      ? {
-          artifactId: "req-1",
-          kind: "requirements",
-          title: "Requirements",
-          version: 1,
-          sha256: "b".repeat(64),
-          filedAt: "2026-11-01T00:00:00.000Z",
-          content:
-            "## Interface requirements\n\n- IR-1: Overview screen\n- IR-2: Orders screen\n",
-        }
-      : undefined,
-  );
-  const designCodingTools = defineTool<CodingSidecarEnv>({
-    id: "@corbits-builder/coding/test-design",
-    requires: ["toolCwd"],
-    definitions: [
-      { name: "read_file" },
-      { name: "write_file" },
-      { name: "edit_file" },
-      { name: "grep" },
-      { name: CHECK_DESIGN_TOOL },
-    ],
-    factory: (env) => {
-      const native = posix(env);
-      const submission = createDesignSubmission(
-        workspace,
-        async () => ({
-          exitCode: 0,
-          output: "check passed: opened all screens",
-        }),
-        (prepared, signal) =>
-          fileDesignOption(env.capabilities, prepared, signal),
-      );
-      return {
-        definitions: [
-          ...native.definitions.filter((tool) =>
-            ["read_file", "write_file", "edit_file", "grep"].includes(
-              tool.name,
-            ),
-          ),
-          checkDesignDefinition,
-        ],
-        run: async (rawCall, signal) => {
-          const rawPath = rawCall.arguments?.["path"];
-          const call =
-            typeof rawPath === "string"
-              ? {
-                  ...rawCall,
-                  arguments: {
-                    ...rawCall.arguments,
-                    path: designPath(rawPath),
-                  },
-                }
-              : rawCall;
-          if (call.name === CHECK_DESIGN_TOOL) {
-            await syncDesignScreensOnDisk(workspace);
-            return submission.run(call, signal);
-          }
-          const result = await native.run(call, signal);
-          const path = call.arguments?.["path"];
-          if (
-            !result.isError &&
-            typeof path === "string" &&
-            touchesDesigns(workspace, path)
-          )
-            await syncDesignScreensOnDisk(workspace);
-          return result;
-        },
-        dispose: async () => {
-          submission.dispose();
-          await native.dispose?.();
-        },
-      };
-    },
-  });
-
-  const deployment = {
-    source: {
-      kind: "asset" as const,
-      assetId: "asset",
-      package: { format: "tarball" as const },
-    },
-    entry: "entry",
-    pin: "@corbits-builder/designer@1.0.0",
-    sourceOfferingIds: ["offering"],
-    defaultSourceOfferingId: "offering",
-  };
-  let filedBody: { kind: string; title: string; content: string } | undefined;
-  const hubFetch = async (path: string, init: RequestInit) => {
-    if (path === "/api/workflow-project-scope")
-      return Response.json({
-        tenantId: "tenant",
-        projectId: "project",
-        domain: "example.invalid",
-        role: "designer",
-        workflows: {
-          "writer-constraints": deployment,
-          "writer-approaches": deployment,
-          "writer-product-requirements": deployment,
-          "writer-build-plan": deployment,
-          reviewer: deployment,
-          coder: deployment,
-          designer: deployment,
-        },
-        openNetwork: false,
-        build: {
-          assetDirectory: "/assets",
-          browserCli: "/browser",
-          childPath: "/child",
-          dependencyRoots: ["/deps"],
-          ripgrepPath: "/rg",
-          runtimeVersion: "1.0.0",
-        },
-      });
-    if (path === "/api/tenants/tenant/projects/project/artifacts") {
-      filedBody = JSON.parse(String(init.body)) as {
-        kind: string;
-        title: string;
-        content: string;
-      };
-      return Response.json({
-        artifact: {
-          artifactId: "design-1",
-          kind: "design_option",
-          title: filedBody.title,
-          version: 1,
-          sha256: "a".repeat(64),
-        },
-      });
-    }
-    return Response.json({ code: "unexpected_route" }, { status: 404 });
-  };
-  const capabilities = {
-    resolve: () => ({
-      resolve: async () => ({ kind: "http", fetch: hubFetch }),
-    }),
-  } as unknown as RuntimeCapabilities;
-
-  const compacting = compactingDirector("@corbits-builder/designer-test");
-  const historyCompactor = trimHistory(160_000);
-  const definition = createDesignerAgent<CodingSidecarEnv>({
-    id: "designer",
-    director: compacting.build({
-      contextWindow: 200_000,
-      compactAt: 0.6,
-      checkBeforeDone: true,
-      timeouts: {},
-    }),
-    standards: [],
-    inference: { provider: "anthropic", model: "claude-sonnet-4-6" },
-    tools: [designCodingTools],
-  });
-
-  const shell = STARTER[".builder/designs/index.html"]!.replaceAll(
-    "#/home",
-    "#/overview",
-  );
-  const systemPrompts: string[] = [];
-  const scriptedTurns = [
-    [
-      {
-        type: "tool_use",
-        id: "call-shell",
-        name: "write_file",
-        input: { path: "designs/index.html", content: shell },
-      },
-      {
-        type: "tool_use",
-        id: "call-overview",
-        name: "write_file",
-        input: {
-          path: "designs/screens/overview.html",
-          content:
-            '<section data-screen="overview"><div data-state="populated"><h1>Overview</h1></div></section>',
-        },
-      },
-      {
-        type: "tool_use",
-        id: "call-orders",
-        name: "write_file",
-        input: {
-          path: "designs/screens/orders.html",
-          content:
-            '<section data-screen="orders"><div data-state="populated"><h1>Orders</h1></div></section>\n<dialog class="dialog" id="new-order-dialog"></dialog>',
-        },
-      },
-      {
-        type: "tool_use",
-        id: "call-doc",
-        name: "write_file",
-        input: { path: "DESIGN.md", content: MODERN_SLEEK["DESIGN.md"]! },
-      },
-    ],
-    [{ type: "text", text: "Premature reply before checking or filing." }],
-    [
-      {
-        type: "tool_use",
-        id: "call-check",
-        name: CHECK_DESIGN_TOOL,
-        input: {},
-      },
-    ],
-    [{ type: "text", text: "Filed the two-screen order desk design." }],
-  ];
-  let turnIndex = 0;
-  const storage = await createIsogitStore(workdir);
-  const agent = await createAgent(definition, {
-    sources: [
-      {
-        id: "anthropic:claude-sonnet-4-6",
-        provider: "anthropic",
-        baseURL: "https://api.anthropic.invalid",
-        credentialId: "test-key",
-        model: "claude-sonnet-4-6",
-      },
-    ],
-    defaultSource: "anthropic:claude-sonnet-4-6",
-    storage,
-    workdir,
-    audit: noopAuditStore(),
-    authorize: permissiveAuthorize(),
-    directors: createDirectorRegistry({
-      factories: [compacting.factory],
-      defaultId: compacting.factory.id,
-    }),
-    compactors: {
-      [dropDegenerateTurn.name]: dropDegenerateTurn,
-      [historyCompactor.name]: historyCompactor,
-    },
-    readCurrentMaterial: createStaticCredentialResolver({
-      "test-key": "sk-test",
-    }),
-    deps: {
-      scheduler: createDefaultScheduler(),
-      adapters: createBuiltinRegistry(),
-      fetch: async (_input, init) => {
-        const body = JSON.parse(String(init?.body)) as {
-          system?: string | { text?: string }[];
-        };
-        const system = body.system;
-        let systemText: string | undefined;
-        if (Array.isArray(system)) {
-          systemText = system
-            .flatMap((part) =>
-              typeof part.text === "string" ? [part.text] : [],
-            )
-            .join("\n");
-        } else if (typeof system === "string") {
-          systemText = system;
-        }
-        if (systemText === undefined) throw new Error("missing_system_prompt");
-        systemPrompts.push(systemText);
-        const content = scriptedTurns[turnIndex++];
-        if (!content) throw new Error("unexpected_inference_turn");
-        return Response.json({
-          type: "message",
-          content,
-          usage: { input_tokens: 120, output_tokens: 60 },
-        });
-      },
-    },
-    toolCwd: workspace,
-    capabilities,
-  });
-
-  try {
-    const sent = await agent.send("Design the order desk mockup.");
-    expect(sent).toMatchObject({
-      type: "reply",
-      reply: "Filed the two-screen order desk design.",
-    });
-    expect(turnIndex).toBe(4);
-    expect(systemPrompts[0]).toContain("designs/screens/<name>.html");
-    expect(systemPrompts[2]).toContain(
-      "Files changed after the last passing check-app, so the work is not done yet.",
-    );
-
-    const draft = await readDesignDraft(workspace);
-    expect(draft?.["designs/screens/home.html"]).toBeUndefined();
-    expect(draft?.["designs/index.html"]).toContain(
-      "<!-- builder:screens:start -->",
-    );
-    expect(draft?.["designs/index.html"]).toContain('data-screen="overview"');
-    expect(draft?.["designs/index.html"]).toContain('data-screen="orders"');
-    expect(draft?.["designs/screens/overview.html"]).toContain(
-      'data-screen="overview"',
-    );
-    expect(draft?.["designs/screens/orders.html"]).toContain(
-      'data-screen="orders"',
-    );
-
-    const diskIndex = await readFile(
-      join(workspace, ".builder", "designs", "index.html"),
-      "utf8",
-    );
-    expect(diskIndex).toContain("<!-- builder:screens:start -->");
-    expect(diskIndex).toContain('data-screen="overview"');
-    expect(diskIndex).toContain('data-screen="orders"');
-    expect(diskIndex).toContain("<!-- builder:screens:end -->");
-
-    const parsed = DesignBundle.assert(JSON.parse(filedBody!.content));
-    expect(parsed.files["designs/screens/home.html"]).toBeUndefined();
-    expect(parsed.files["designs/index.html"]).toContain(
-      "<!-- builder:screens:start -->",
-    );
-    expect(parsed.files["designs/screens/overview.html"]).toContain(
-      'data-screen="overview"',
-    );
-    expect(parsed.files["designs/screens/orders.html"]).toContain(
-      'id="new-order-dialog"',
-    );
-    expect(parsed.files["DESIGN.md"]).toContain("colors:");
-  } finally {
-    await agent.close();
-    await rm(root, { recursive: true, force: true });
-  }
-});
 
 test("readDesignDraft serves spliced index.html whether synced on disk or packed on read", async () => {
   const workspace = await mkdtemp(join(tmpdir(), "sb-design-sync-"));

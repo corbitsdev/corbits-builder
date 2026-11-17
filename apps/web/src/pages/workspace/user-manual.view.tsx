@@ -1,5 +1,5 @@
 import type { UserManual } from "@corbits-builder/schemas/artifact";
-import { Markdown } from "../../markdown.tsx";
+import { DocumentView } from "@corbits-builder/plugin-ui/markdown";
 
 export type UserManualViewProps = {
   /** The manual as written, and its pictures by the path the manual places them at. */
@@ -9,8 +9,7 @@ export type UserManualViewProps = {
 /** The manual's pages, its pictures shown where it places them; the pane around it scrolls. */
 export function UserManualView({ manual }: UserManualViewProps) {
   return (
-    <Markdown
-      document
+    <DocumentView
       source={manual.markdown}
       images={new Map(Object.entries(manual.pictures))}
     />

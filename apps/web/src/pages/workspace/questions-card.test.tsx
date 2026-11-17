@@ -1,6 +1,7 @@
+import { QuestionOutcomes } from "./question-outcome.tsx";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import type { AskedQuestion } from "@corbits-builder/schemas/conversation";
+import type { PromptQuestion } from "@corbits-builder/schemas/conversation";
 import { wording } from "../../config.ts";
 import {
   QuestionsCard,
@@ -33,7 +34,7 @@ afterEach(() => {
 
 const text = wording.questions;
 
-const ask: AskedQuestion = {
+const ask: PromptQuestion["asked"] = {
   questions: [
     {
       id: "audience",
@@ -96,7 +97,7 @@ describe("questions card", () => {
             status: "open",
           }}
           disabled={false}
-          onSend={send}
+          onAnswer={send}
         />,
       );
     for (let mount = 0; mount < 2; mount++) {
@@ -130,7 +131,7 @@ describe("questions card", () => {
         <QuestionsCard
           question={{ at: 0, signalName: "call-1", asked: ask, status: "open" }}
           disabled={false}
-          onSend={send}
+          onAnswer={send}
         />,
       );
       expect(html).toContain('checked=""');
@@ -149,7 +150,7 @@ describe("questions card", () => {
       <QuestionsCard
         question={{ at: 0, signalName: "call-1", asked: ask, status: "open" }}
         disabled={false}
-        onSend={send}
+        onAnswer={send}
       />,
     );
     expect(html).toContain(text.position(1, 3));
@@ -177,7 +178,7 @@ describe("questions card", () => {
           status: "open",
         }}
         disabled={false}
-        onSend={send}
+        onAnswer={send}
       />,
     );
     expect(html).not.toContain(text.position(1, 1));
@@ -209,7 +210,7 @@ describe("questions card", () => {
           status: "open",
         }}
         disabled={false}
-        onSend={send}
+        onAnswer={send}
       />,
     );
     expect(html).toContain(`placeholder="${text.typed}"`);
@@ -228,7 +229,7 @@ describe("questions card", () => {
           answer: { answers },
         }}
         disabled={false}
-        onSend={send}
+        onAnswer={send}
       />,
     );
     expect(html).toContain(`aria-label="${text.answered}"`);
@@ -240,7 +241,7 @@ describe("questions card", () => {
       <QuestionsCard
         question={{ at: 0, signalName: "call-1", asked: ask, status: "closed" }}
         disabled={false}
-        onSend={send}
+        onAnswer={send}
       />,
     );
     expect(html).toContain(text.closed(3));
@@ -261,7 +262,7 @@ describe("questions card", () => {
           answer: { reply: "Actually, let's build a game." },
         }}
         disabled={false}
-        onSend={send}
+        onAnswer={send}
       />,
     );
     expect(html).toContain(text.answeredInChat);
@@ -343,4 +344,28 @@ describe("question keys", () => {
       answerLabels(multi!, { chosen: ["Track tasks"], own: "Export" }),
     ).toEqual(["Track tasks", "Export"]);
   });
+});
+
+test("a refusal sent outside the card is shown by the card from the shared question outcome", () => {
+  const html = renderToStaticMarkup(
+    <QuestionOutcomes
+      value={
+        new Map([
+          ["typed-reply", { kind: "refused", fault: text.answerFault.refused }],
+        ])
+      }
+    >
+      <QuestionsCard
+        question={{
+          signalName: "typed-reply",
+          at: 1,
+          asked: ask,
+          status: "open",
+        }}
+        disabled={false}
+        onAnswer={send}
+      />
+    </QuestionOutcomes>,
+  );
+  expect(html).toContain(text.answerFault.refused);
 });

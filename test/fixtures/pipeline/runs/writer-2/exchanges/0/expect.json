@@ -1,6 +1,0 @@
-{
-  "lastMessageRole": "user",
-  "userTextContains": "\"artifact\":\"approaches\"",
-  "requiredTools": ["read_skill", "write_artifact"],
-  "toolResults": []
-}

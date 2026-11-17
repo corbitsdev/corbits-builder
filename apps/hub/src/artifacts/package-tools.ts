@@ -6,9 +6,8 @@ import { defineTool, type BaseEnv } from "@intx/agent/authoring";
 import { HUB_CREDENTIAL_HANDLE } from "@intx/types/credential-delivery";
 import type { RuntimeCapabilities } from "@intx/types/runtime-capabilities";
 import { Deck, DeckError, validateDeck } from "@corbits/slidedeck";
-import { defaultPackageTitle } from "@corbits-builder/presenter/personas";
 import { resolveWorkflowProjectScope } from "../workflows/project-scope.ts";
-import { workflowHttpJson } from "../workflows/http-json.ts";
+import { workflowHttpJson } from "@corbits-builder/plugin/http-json";
 import {
   DECK_JSON,
   DECK_PDF,
@@ -16,7 +15,8 @@ import {
   checkDeckInWorkspace,
   writeDeckToWorkspace,
 } from "./deck-tools.ts";
-import { failure, HubArtifactReceipt } from "./tools.ts";
+import { failure } from "./tools.ts";
+import { HubArtifactReceipt } from "@corbits-builder/schemas/artifact";
 
 export { DECK_JSON, DECK_PDF, DECK_PPTX };
 
@@ -465,11 +465,11 @@ function deriveDeckTitle(
   if (firstSlide && "title" in firstSlide && firstSlide.title.trim()) {
     return firstSlide.title.trim();
   }
-  const label = assignment.personaLabel ?? assignment.audience;
-  return defaultPackageTitle(label);
+  return `Approval package for ${assignment.personaLabel ?? assignment.audience}`;
 }
 
-export function createPackageTools() {
+// The deck and approval package tools of a run of the named role.
+export function createPackageTools(role: string) {
   const definitions = [
     {
       name: "write_deck",
@@ -543,7 +543,7 @@ export function createPackageTools() {
           }
           const scope = await resolveWorkflowProjectScope(
             env.capabilities,
-            "presenter",
+            role,
             signal,
           );
           const deckText = await readTextIfPresent(join(workspace, DECK_JSON));

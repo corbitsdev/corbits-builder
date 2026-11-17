@@ -2,6 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import postgres from "postgres";
+import { createDB, type DB } from "@intx/db";
 import {
   createProductApiClient,
   type ProductApiClient,
@@ -14,12 +15,9 @@ export type TestHubHandle = Readonly<{
   baseUrl: string;
   workspaceTenantId: string;
   client: ProductApiClient;
-  fakeCredentialSecret: string;
-  subscribeRunStream: (
-    projectTenantId: string,
-    runId: string,
-    onFrame: (event: string, data: string) => void,
-  ) => () => void;
+  // The signed-up person's session, for a hub call the client has no method for.
+  cookie: string;
+  db: DB["db"];
   close: () => Promise<void>;
 }>;
 
@@ -38,7 +36,7 @@ function readTestDbServerConfig(): {
 
   if ((port === 5432 || port === 5433) && user === "corbits_builder") {
     throw new Error(
-      "Refusing to run E2E pipeline test against the development database.",
+      "Refusing to run E2E tests against the development database.",
     );
   }
   return { host, port, user, password, adminDatabase };
@@ -141,6 +139,7 @@ export async function startTestHub(
   recordedModel: Pick<RecordedModelServer, "url">,
 ): Promise<TestHubHandle> {
   const database = await createTestDatabase();
+  const handle = createDB(database.connection);
 
   const dataDir = await mkdtemp(join(tmpdir(), "builder-e2e-hub-"));
   const fakeCredentialSecret = `sk-fake-e2e-secret-${crypto.randomUUID()}`;
@@ -183,7 +182,6 @@ export async function startTestHub(
 
   let runtime: Awaited<ReturnType<typeof createHubRuntime>> | undefined;
   let server: ReturnType<typeof Bun.serve> | undefined;
-  const activeStreams = new Set<AbortController>();
 
   try {
     await migrateDatabase(hubEnv);
@@ -268,92 +266,24 @@ export async function startTestHub(
       },
     });
 
-    function subscribeRunStream(
-      projectTenantId: string,
-      runId: string,
-      onFrame: (event: string, data: string) => void,
-    ): () => void {
-      const controller = new AbortController();
-      activeStreams.add(controller);
-
-      async function pump(): Promise<void> {
-        const streamUrl = new URL(
-          `/api/tenants/${encodeURIComponent(projectTenantId)}/workflows/runs/${encodeURIComponent(runId)}/stream`,
-          baseUrl,
-        );
-        try {
-          const response = await fetch(streamUrl, {
-            headers: {
-              Cookie: cookie,
-              Accept: "text/event-stream",
-            },
-            signal: controller.signal,
-          });
-          if (!response.ok || !response.body) return;
-          const reader = response.body
-            .pipeThrough(new TextDecoderStream())
-            .getReader();
-          let buffer = "";
-          while (!controller.signal.aborted) {
-            const { value, done } = await reader.read();
-            if (done) break;
-            buffer += value;
-            let boundary = buffer.indexOf("\n\n");
-            while (boundary >= 0) {
-              const rawFrame = buffer.slice(0, boundary);
-              buffer = buffer.slice(boundary + 2);
-              boundary = buffer.indexOf("\n\n");
-              let eventName = "message";
-              const dataLines: string[] = [];
-              for (const line of rawFrame.split("\n")) {
-                if (line.startsWith("event:")) {
-                  eventName = line.slice("event:".length).trim();
-                } else if (line.startsWith("data:")) {
-                  dataLines.push(line.slice("data:".length).trim());
-                }
-              }
-              onFrame(eventName, dataLines.join("\n"));
-            }
-          }
-        } catch (error) {
-          if (!controller.signal.aborted) {
-            throw error;
-          }
-        }
-      }
-
-      void pump();
-
-      return () => {
-        controller.abort();
-        activeStreams.delete(controller);
-      };
-    }
-
     return {
       baseUrl,
       workspaceTenantId,
       client,
-      fakeCredentialSecret,
-      subscribeRunStream,
+      cookie,
+      db: handle.db,
       close: async () => {
-        for (const controller of activeStreams) {
-          controller.abort();
-        }
-        activeStreams.clear();
         if (server) await server.stop(true);
         if (runtime) await runtime.close();
+        await handle.close();
         await rm(dataDir, { recursive: true, force: true });
         await database.drop();
       },
     };
   } catch (error) {
-    for (const controller of activeStreams) {
-      controller.abort();
-    }
-    activeStreams.clear();
     if (server) await server.stop(true);
     if (runtime) await runtime.close();
+    await handle.close();
     await rm(dataDir, { recursive: true, force: true });
     await database.drop();
     throw error;

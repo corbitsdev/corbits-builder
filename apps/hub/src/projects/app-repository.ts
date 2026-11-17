@@ -5,7 +5,13 @@ import { Hono, type Context, type MiddlewareHandler } from "hono";
 import { describeRoute, resolver } from "hono-openapi";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import { mintGitToken, type AppEnv, type TenantEnv } from "@intx/hub-api";
+import { PostgresJsDatabase } from "drizzle-orm/postgres-js";
+import {
+  mintGitToken,
+  setRunToolGrantEffect,
+  type AppEnv,
+  type TenantEnv,
+} from "@intx/hub-api";
 import type { DB } from "@intx/db";
 import {
   asset,
@@ -25,13 +31,28 @@ import {
   type RepoStore,
 } from "@intx/hub-sessions";
 import type { AppBundle } from "@corbits-builder/schemas/artifact";
-import { outbox, project, projectCoordinator } from "../db/schema.ts";
+import {
+  ApprovedPackages,
+  PACKAGE_INSTALL_TOOL,
+} from "@corbits-builder/schemas/package-install";
+import { approvedPackages } from "../artifacts/approvals.ts";
+import {
+  outbox,
+  project,
+  projectCoordinator,
+  runAction,
+} from "../db/schema.ts";
 import { spawnedWorkflowRole } from "../workflows/spawn-role.ts";
+import { CATALOG } from "../plugins/catalog.ts";
+import type { Preferences } from "@corbits-builder/schemas/preferences";
+import { installsAnyPackage } from "../config/preferences.ts";
+import { loadSettings } from "../settings/policy.ts";
 import {
   addBundleFile,
   bundleContent,
   EXCLUDED_DIRECTORIES,
   excludedFile,
+  holdsApp,
 } from "../builds/app-snapshot.ts";
 
 const TOKEN_LIFETIME_MS = 4 * 60 * 60 * 1000;
@@ -42,6 +63,11 @@ const GITIGNORE = [
 ].join("\n");
 
 const GRANTED_ACTIONS = ["read", "write"];
+
+// Only coder build starts a coder on a project with no code, so only it seeds a starter and writes
+// the project's checks.
+export const isFirstBuild = (action: string | null | undefined) =>
+  action === "build";
 
 export const AppRepositoryAccess = type({
   path: "string",
@@ -204,6 +230,36 @@ export async function issueAppPushAccess(
   };
 }
 
+/**
+ * A first build begins from the starter its run named: while main holds no app, the hub writes the
+ * starter's files onto main as the project's first code, before the build's coder first clones it.
+ */
+export async function seedStarter(
+  assets: Pick<AssetService, "listAssetBlobs" | "populateAsset">,
+  assetId: string,
+  starter: string,
+) {
+  const files = CATALOG.appStarters.get(starter)?.files;
+  if (!files) throw new Error(`starter_files_missing: ${starter}`);
+  if (holdsApp(await assets.listAssetBlobs({ assetId, dir: "" }))) return;
+  await assets.populateAsset({
+    assetId,
+    ref: DEFAULT_ASSET_REF,
+    tree: { files, message: `Start from the ${starter} starter` },
+    principal: { kind: "hub" },
+  });
+}
+
+/**
+ * The tools whose ask the person's preferences lift for a coder run, each to the standing effect
+ * an "always" answer to that ask would set: with installing any package without asking on,
+ * install_packages installs without asking.
+ */
+export const coderToolEffects = (preferences: Preferences | null) =>
+  installsAnyPackage(preferences)
+    ? [{ tool: PACKAGE_INSTALL_TOOL, effect: "allow" as const }]
+    : [];
+
 /** Ends a run principal's app push access: its tokens are revoked and its grants removed. */
 export async function revokeAppPushAccess(
   db: DB["db"],
@@ -259,7 +315,7 @@ export async function appRepositoryMain(dir: string) {
       }
     };
     await walk(tree, "");
-    return "package.json" in collected.files
+    return holdsApp(Object.keys(collected.files))
       ? bundleContent(collected)
       : undefined;
   };
@@ -308,12 +364,17 @@ export function createAppRepositoryRoutes(
       throw new AppRepositoryError(403, "forbidden");
     const projectId = c.req.param("projectId")!;
     const [run] = await db
-      .select({ bundle: workflowRunLaunchSpec.frozenApprovalBundle })
+      .select({
+        bundle: workflowRunLaunchSpec.frozenApprovalBundle,
+        action: runAction.action,
+        values: project.values,
+      })
       .from(workflowRun)
       .innerJoin(
         workflowRunLaunchSpec,
         eq(workflowRunLaunchSpec.anchorRunId, workflowRun.id),
       )
+      .leftJoin(runAction, eq(runAction.runId, workflowRun.id))
       .innerJoin(
         coordinatorRun,
         eq(
@@ -336,7 +397,7 @@ export function createAppRepositoryRoutes(
         ),
       )
       .limit(1);
-    if (spawnedWorkflowRole(run?.bundle) !== "coder")
+    if (!run || !spawnedWorkflowRole(run.bundle)?.writesCode)
       throw new AppRepositoryError(403, "forbidden");
     return {
       tenantId: tenant.id,
@@ -344,6 +405,8 @@ export function createAppRepositoryRoutes(
       projectId,
       runPrincipalId: caller.id,
       runId: caller.refId,
+      firstBuild: isFirstBuild(run.action),
+      starter: run.values["stack.starter"],
     };
   };
 
@@ -370,6 +433,36 @@ export function createAppRepositoryRoutes(
     async (c) => {
       try {
         const run = await coderRun(c);
+        // The coder's workspace starts by asking for this access, by then the run holds its grants.
+        const { preferences } = await loadSettings(
+          db,
+          run.tenantId,
+          run.projectId,
+        );
+        for (const { tool, effect } of coderToolEffects(preferences.value))
+          await setRunToolGrantEffect(
+            db,
+            run.tenantId,
+            run.runId,
+            tool,
+            effect,
+          );
+        if (
+          run.firstBuild &&
+          typeof run.starter === "string" &&
+          CATALOG.appStarters.has(run.starter)
+        )
+          await seedStarter(
+            assets,
+            await ensureAppAsset(
+              db,
+              assets,
+              run.tenantId,
+              run.projectId,
+              run.runPrincipalId,
+            ),
+            run.starter,
+          );
         return c.json(await issueAppPushAccess(db, assets, run));
       } catch (error) {
         if (error instanceof AppRepositoryError)
@@ -392,6 +485,48 @@ export function createAppRepositoryRoutes(
       try {
         await revokeAppPushAccess(db, await coderRun(c));
         return c.json({ ok: true });
+      } catch (error) {
+        if (error instanceof AppRepositoryError)
+          return c.json({ code: error.code }, error.status);
+        throw error;
+      }
+    },
+  );
+  app.post(
+    "/:projectId/app-repository/approved-packages",
+    describeRoute({
+      tags: ["Projects"],
+      operationId: "readApprovedPackages",
+      description:
+        "The packages the calling coder run installs without asking: those the approved version of each of the project's documents declares, and none while the run's install_packages is denied.",
+      security: [{ coordinatorBearer: [] }],
+      responses: {
+        200: {
+          description: "The declared packages, by document kind",
+          content: {
+            "application/json": { schema: resolver(ApprovedPackages) },
+          },
+        },
+      },
+    }),
+    async (c) => {
+      if (!(db instanceof PostgresJsDatabase))
+        throw new Error("Artifacts require postgres-js");
+      try {
+        const run = await coderRun(c);
+        // Read, never written: the effect Interchange holds for the run's install_packages.
+        const [installs] = await db
+          .select({ effect: grant.effect })
+          .from(grant)
+          .where(
+            and(
+              eq(grant.principalId, run.runPrincipalId),
+              eq(grant.resource, `tool:${PACKAGE_INSTALL_TOOL}`),
+            ),
+          );
+        return c.json(
+          await approvedPackages(db, run.tenantId, installs?.effect),
+        );
       } catch (error) {
         if (error instanceof AppRepositoryError)
           return c.json({ code: error.code }, error.status);

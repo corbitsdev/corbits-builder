@@ -1,4 +1,3 @@
-import { watch, type FSWatcher } from "node:fs";
 import {
   chmod,
   mkdir,
@@ -24,6 +23,10 @@ import type { buildPackageLayout } from "./package-layout.ts";
 import { BROWSER_ARGS } from "./browser.ts";
 import { CODER_REGISTRY_HOSTS } from "../config/packages.ts";
 import { COMMAND_PROGRESS_FILE } from "@corbits-builder/schemas/activity";
+import type {
+  AppRun,
+  SandboxToolchains,
+} from "@corbits-builder/schemas/installed-workflows";
 
 const log = getLogger(["corbits-builder", "hub", "posix-sandbox"]);
 
@@ -107,23 +110,30 @@ async function relayStderr(
 }
 
 export type BuildPackageLayout = Awaited<ReturnType<typeof buildPackageLayout>>;
-// The workspace's dev app: its address, whether it runs and its recent output. stopped names the
-// workspace whose dev script exited while the rest kept running, as `bun --filter` names it.
+// The program running in the workspace: its command, the address its port answers on, the port each
+// variable was given, whether it runs, whether it printed its waitFor line, and its recent output.
+// stopped names the workspace whose script failed while the rest kept running, as `bun --filter`
+// names it; a script that finished cleanly, such as a build step, stopped nothing.
 export type DevApp = {
+  command: string;
   url: string;
+  ports: Record<string, number>;
   running: boolean;
+  ready: boolean;
   log: string[];
   stopped?: string;
 };
+// What runs, and whether its address serves a page the page watcher keeps open.
+export type Running = { run: AppRun; page: boolean };
 
 export interface BuildExecutionPolicy {
   commandTimeoutMs: number;
   maxToolResultBytes: number;
 }
 export class BuildExecutionError extends Error {}
-const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
-// `bun --filter`'s line when one workspace's script ends: "@app/server dev: Exited with code 1".
-const PART_EXITED = /^(\S+) \S+: Exited with code \d+$/;
+export const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
+// `bun --filter`'s line when one workspace's script fails: "@app/server dev: Exited with code 1".
+const PART_EXITED = /^(\S+) \S+: Exited with code [1-9]\d*$/;
 const PART_LINE = /^(\S+) \S+: (.*)$/;
 // Changes the app makes itself, or that a restart would not pick up.
 export const IGNORED_CHANGES =
@@ -347,6 +357,25 @@ async function freePort(): Promise<number> {
   return port;
 }
 
+// A stopped app's sockets close as its processes die, a moment after its wrapper exits.
+async function becomesFree(port: number): Promise<boolean> {
+  for (let tries = 0; tries < 10; tries++) {
+    try {
+      const probe = Bun.serve({
+        hostname: "127.0.0.1",
+        port,
+        fetch: () => new Response(),
+      });
+      await probe.stop(true);
+      return true;
+    } catch (error) {
+      if (!hasCode(error) || error.code !== "EADDRINUSE") throw error;
+    }
+    await Bun.sleep(100);
+  }
+  return false;
+}
+
 async function isReachable(url: string): Promise<boolean> {
   try {
     await fetch(url);
@@ -374,6 +403,42 @@ async function configureLinuxBridgeSockets(
   }
 }
 
+// What a command finds in the sandbox, as the executor below sets it up: the shims and Bun ahead of
+// the system's folders on PATH, writes only in the workspace and its home, which is also TMPDIR.
+// macOS's mktemp takes its folder from the system rather than TMPDIR, so it needs a template.
+export const SANDBOX_SHELL =
+  'Commands run in a sandbox with Bun and no Node: node runs Bun, and npm and npx are not there. A command writes only inside the workspace and $HOME, which is also $TMPDIR; /tmp is not writable, so give mktemp a template there, such as mktemp "$TMPDIR/x.XXXXXX".';
+
+// Whether a path is the folder or inside it.
+const contains = (parent: string, path: string) => {
+  const tail = relative(parent, path);
+  return tail === "" || (tail !== ".." && !tail.startsWith(`..${sep}`));
+};
+
+export async function toolchainReadPaths(
+  toolchains: SandboxToolchains,
+  writable: readonly string[],
+) {
+  if (toolchains.paths.length === 0) return [];
+  const protectedPaths = await Promise.all(
+    [toolchains.dataDir, ...writable].map((path) => realpath(path)),
+  );
+  const reads: string[] = [];
+  for (const path of toolchains.paths) {
+    const resolved = await realpath(path);
+    if (
+      protectedPaths.some(
+        (own) => contains(resolved, own) || contains(own, resolved),
+      )
+    )
+      throw new BuildExecutionError(
+        `SANDBOX_TOOLCHAIN_PATHS: ${path} overlaps hub data or a writable folder`,
+      );
+    reads.push(path, resolved);
+  }
+  return reads;
+}
+
 export async function createPosixBuildExecutor(
   workspace: string,
   limits: BuildExecutionPolicy,
@@ -382,16 +447,20 @@ export async function createPosixBuildExecutor(
     openNetwork?: boolean;
     // Extra commands on PATH, each a Bun script kept beside the shims where the sandbox cannot write.
     commands?: Readonly<Record<string, string>>;
+    // Modules the commands import, by their path from the root, such as "/steps.ts".
+    commandModules?: Readonly<Record<string, string>>;
     // Workspace folders the agent reads but never writes, such as the coder's copy of the design.
     readOnly?: readonly string[];
     // A Bun script that keeps the dev app's page open and prints each error it meets as a JSON line.
     pageWatcher?: string;
     // Whether the agent drives its app in Playwright's browser, which browser() starts.
     browser?: boolean;
-    // Whether the workspace's dev app runs here, which app() starts.
+    // Whether a program that keeps running runs here, which app() starts.
     app?: boolean;
     // The shared Chrome install, which the sandbox reads through $HOME/browsers but never writes.
     browsers?: string | undefined;
+    // Toolchain folders the operator lets every build read but never write (SANDBOX_TOOLCHAIN_PATHS).
+    toolchains?: SandboxToolchains;
   } = {},
 ) {
   if (leased) throw new BuildExecutionError("sandbox_already_leased");
@@ -408,10 +477,6 @@ export async function createPosixBuildExecutor(
   try {
     const cwd = await realpath(workspace);
     stage = "dependencies";
-    const contains = (parent: string, path: string) => {
-      const tail = relative(parent, path);
-      return tail === "" || (tail !== ".." && !tail.startsWith(`..${sep}`));
-    };
     const protectedPaths = [
       layout.assetDirectory,
       layout.childPath,
@@ -462,7 +527,7 @@ export async function createPosixBuildExecutor(
       const binary = join(shimDirectory, `${name}.bin`);
       const built = await Bun.build({
         entrypoints: [entry],
-        files: { [entry]: source },
+        files: { ...options.commandModules, [entry]: source },
         target: "bun",
         minify: true,
         compile: {
@@ -514,6 +579,10 @@ export async function createPosixBuildExecutor(
     // reached through a socket here too, since every wrap there has a loopback of its own.
     if (needsSockets(options))
       sockets = await realpath(await mkdtemp("/tmp/sb-browser-"));
+    const writable = [cwd, home, ...(sockets ? [sockets] : [])];
+    const toolchains = options.toolchains
+      ? await toolchainReadPaths(options.toolchains, writable)
+      : [];
     stage = "policy";
     const policy = SandboxRuntimeConfigSchema.parse({
       filesystem: {
@@ -531,11 +600,12 @@ export async function createPosixBuildExecutor(
           executable,
           shimDirectory,
           ...layout.dependencyRoots,
+          ...toolchains,
           home,
           ...(options.browsers ? [options.browsers] : []),
           ...(sockets ? [sockets] : []),
         ],
-        allowWrite: [cwd, home, ...(sockets ? [sockets] : [])],
+        allowWrite: writable,
         denyWrite: [
           ...protectedPaths,
           shimDirectory,
@@ -605,14 +675,28 @@ export async function createPosixBuildExecutor(
       SandboxManager.updateConfig(policy);
     }
     let trustedGate: { nonce: string; timeoutMs: number } | undefined;
+    // What app() starts again when it is called with nothing to run: the last program it started.
+    let lastRun: Running | undefined;
     let devApp:
       | {
+          running: Running;
           process: Bun.Subprocess<"ignore", "pipe", "pipe">;
           view: () => DevApp;
-          watcher?: FSWatcher;
           page?: Bun.Subprocess<"pipe", "pipe", "ignore">;
         }
       | undefined;
+    // The port each variable was given, kept for every later start so the app's address, the
+    // preview and anything the agent wrote down stay right; a port taken meanwhile is replaced.
+    const ports = new Map<string, number>();
+    const portFor = async (name: string) => {
+      const kept = ports.get(name);
+      if (kept !== undefined && (await becomesFree(kept))) return kept;
+      const taken = new Set(ports.values());
+      let port = await freePort();
+      while (taken.has(port)) port = await freePort();
+      ports.set(name, port);
+      return port;
+    };
     // What the running app complained of since the agent last heard, each once and newest last.
     const complaints = new Set<string>();
     const complain = (text: string) => {
@@ -750,39 +834,48 @@ export async function createPosixBuildExecutor(
     };
     const stopApp = async () => {
       if (!devApp) return;
-      const { process: child, watcher, page } = devApp;
-      watcher?.close();
+      const { process: child, page } = devApp;
       devApp = undefined;
       kill(child);
       if (page) kill(page);
       await Promise.all([child.exited, page?.exited, appRelay.stop()]);
     };
-    const startApp = (): Promise<DevApp> => {
+    const startApp = (next?: Running): Promise<DevApp> => {
       if (disposed)
         return Promise.reject(new BuildExecutionError("sandbox_closed"));
+      const wanted = next ?? lastRun;
+      if (!wanted)
+        return Promise.reject(new BuildExecutionError("nothing_to_run"));
       if (
         devApp &&
+        devApp.running.run.command === wanted.run.command &&
         devApp.process.exitCode === null &&
         devApp.view().stopped === undefined
       )
         return Promise.resolve(devApp.view());
+      lastRun = wanted;
+      const { run, page: watchesPage } = wanted;
       const launchDevApp = async () => {
         try {
           await stopApp();
-          const [port, clientPort] = await Promise.all([
-            freePort(),
-            freePort(),
-          ]);
+          const given: Record<string, number> = {};
+          for (const name of [run.port, ...(run.extraPorts ?? [])])
+            given[name] = await portFor(name);
+          const address = given[run.port]!;
           await appRelay.reserve();
           const command = await wrapShell(
-            `${appRelay.serve(clientPort)}exec ${quote(executable)} run dev`,
+            `${appRelay.serve(address)}exec /bin/sh -c ${quote(run.command)}`,
           );
           const child = Bun.spawn(["/bin/sh", "-c", command], {
             cwd,
             env: {
               ...childEnv,
-              PORT: String(port),
-              CLIENT_PORT: String(clientPort),
+              ...Object.fromEntries(
+                Object.entries(given).map(([name, port]) => [
+                  name,
+                  String(port),
+                ]),
+              ),
               ...(process.platform === "darwin" ? MACOS_WATCH_POLLING : {}),
             },
             stdin: "ignore",
@@ -792,28 +885,8 @@ export async function createPosixBuildExecutor(
           });
           const lines: string[] = [];
           let stopped: string | undefined;
+          let seen = run.waitFor === undefined;
           const current = () => !disposed && devApp?.process === child;
-          // `bun --filter` keeps the other half running when one exits, so the dev server still
-          // answers while its API is gone. The next file change starts the whole app again.
-          const restartAfterChange = async () => {
-            try {
-              await startApp();
-            } catch (error) {
-              log.warn(
-                "Restarting the dev app after a file change failed",
-                requestErrorMetadata(error),
-              );
-            }
-          };
-          const partStopped = (name: string) => {
-            stopped = name;
-            if (!devApp || !current()) return;
-            devApp.watcher = watch(cwd, { recursive: true }, (_event, file) => {
-              if (file === null || IGNORED_CHANGES.test(file) || !current())
-                return;
-              void restartAfterChange();
-            });
-          };
           const collect = async (stream: ReadableStream<Uint8Array>) => {
             const decoder = new TextDecoder();
             // The last complaint on this stream, which the frame on the next line locates.
@@ -824,8 +897,12 @@ export async function createPosixBuildExecutor(
                 .split("\n")) {
                 if (!line.trim()) continue;
                 if (lines.push(line) > 200) lines.shift();
+                if (run.waitFor !== undefined && line.includes(run.waitFor))
+                  seen = true;
+                // `bun --filter` keeps the other half running when one fails, so the dev server still
+                // answers while its API is gone; the next app() call starts the whole app again.
                 const exited = PART_EXITED.exec(line);
-                if (exited && stopped === undefined) partStopped(exited[1]!);
+                if (exited) stopped ??= exited[1];
                 if (!current()) continue;
                 const match = PART_LINE.exec(line);
                 const part = match?.[1] ?? "app";
@@ -848,17 +925,19 @@ export async function createPosixBuildExecutor(
           };
           void Promise.all([collect(child.stdout), collect(child.stderr)]);
           await appRelay.start();
-          // Vite serves the client on CLIENT_PORT and proxies /api to the server on PORT; where the
-          // wraps have loopbacks of their own, the relays serve it on one port everywhere.
-          const url = appRelay.url(clientPort);
+          // Where the wraps have loopbacks of their own, the relays serve it on one port everywhere.
+          const url = appRelay.url(address);
           const view = (): DevApp => ({
+            command: run.command,
             url,
+            ports: given,
             running: child.exitCode === null,
+            ready: child.exitCode === null && seen,
             log: lines.slice(-40),
             ...(stopped === undefined ? {} : { stopped }),
           });
-          devApp = { process: child, view };
-          if (options.pageWatcher) {
+          devApp = { running: wanted, process: child, view };
+          if (options.pageWatcher && watchesPage) {
             const page = Bun.spawn(
               [
                 "/bin/sh",
@@ -1150,9 +1229,10 @@ export async function createPosixBuildExecutor(
       violationCount: () =>
         SandboxManager.getSandboxViolationStore().getTotalCount(),
       /**
-       * Starts `bun run dev` in the workspace under the same sandbox and keeps it running until
-       * dispose, so the agent can use its app while it builds. Calling it again returns the same
-       * app, restarted when it or one of its halves has exited.
+       * Starts a program that keeps running in the workspace under the same sandbox and keeps it
+       * running until dispose or until another is started, which stops it first. Called with
+       * nothing to run, it returns the last program started, restarted when it or one of its
+       * halves has failed.
        */
       app: startApp,
       /** The coder's browser server's URL, started on first use and again whenever it has exited. */

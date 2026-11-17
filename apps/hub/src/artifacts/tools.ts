@@ -1,3 +1,7 @@
+import {
+  REPORT_VALUES_DESCRIPTION,
+  invalidReportValues,
+} from "../config/tools.ts";
 import { type } from "arktype";
 import {
   defineTool,
@@ -7,15 +11,20 @@ import {
 import { HUB_CREDENTIAL_HANDLE } from "@intx/types/credential-delivery";
 import type { RuntimeCapabilities } from "@intx/types/runtime-capabilities";
 import {
+  AnyDocumentFields,
   ArtifactContent,
-  BriefWrite,
   ArtifactList,
   ArtifactRead,
-  ArtifactReceipt,
+  HubArtifactReceipt,
   WriterDocumentFields,
   type DocumentWrite,
   type WriterDocumentKind,
 } from "@corbits-builder/schemas/artifact";
+import { inShort } from "@corbits-builder/schemas/in-short";
+import { describedSchema } from "@corbits-builder/plugin-host/coordinator";
+import type { Role } from "@corbits-builder/plugin";
+import { COORDINATOR } from "../workflows/coordinator-role.ts";
+import { savesValues } from "../plugins/catalog.ts";
 import { stripApprovalPackageBinaries } from "./approval-package.ts";
 import { unpackDesign } from "./design-tools.ts";
 import {
@@ -26,7 +35,7 @@ import {
   accessRefusal,
   workflowHttpJson,
   WorkflowHttpError,
-} from "../workflows/http-json.ts";
+} from "@corbits-builder/plugin/http-json";
 
 interface ArtifactToolEnv extends BaseEnv {
   capabilities: RuntimeCapabilities;
@@ -35,7 +44,6 @@ interface ArtifactToolEnv extends BaseEnv {
 // A deployed agent keeps the tool bundle it started with while the hub moves on; a field a newer
 // hub adds must not fail every read of an older agent.
 export const HubArtifactList = ArtifactList.onDeepUndeclaredKey("ignore");
-export const HubArtifactReceipt = ArtifactReceipt.onDeepUndeclaredKey("ignore");
 const HubArtifactContent = ArtifactContent.onDeepUndeclaredKey("ignore");
 
 // A tool result holds at most 10000 characters (inference size-cap), and a cut document sends agents
@@ -47,27 +55,36 @@ const ToolRead = ArtifactRead.merge({ "part?": "number.integer > 0" });
 const readDefinition = {
   name: "read_artifact",
   description:
-    "See which project documents exist, or read one.\nWith no arguments it lists: each document's artifactId, kind, title, current version, sha256, approvedVersion, the version a person approved, and openQuestionCount, the questions its current version leaves open for the person; inFlight, the writer, reviewer, coder and designer runs still open, each with its status, deployed until its first assignment arrives and running after, and each working (mid-turn) or waiting (between turns), with progress once it has acted: its turns so far, its latest tool calls as tool and target, the files it has written, and lastActivityAt; failed, the latest runs that stopped on an error, with when and why, which deliver nothing more; awaitingApproval, the kinds of filed documents whose current version waits on the person's approval; appBuilt, whether the app's first build is done, a version filed after a coder's passing check; and preferenceGuidance, how the person said they wanted to work when the project started; what they say in the conversation wins over it.\nWith a kind or an artifactId it returns that document's content at its current version, or at the given version, with the openQuestions that version leaves for the person; a long document comes in numbered parts, and part reads the next one.",
-  inputSchema: { ...ToolRead.toJsonSchema() },
+    "List first, then read by kind. With no arguments it lists the project:\n- each filed document's kind, title, artifactId, current version, the version the person approved (approvedVersion) and how many questions its current version leaves open for the person;\n- inFlight, the specialists' runs still open. Each has its status, deployed until its first assignment arrives and running after, and is working (mid-turn) or waiting (between turns). Once it has acted it has progress: its turns so far, its latest tool calls as tool and target, the files it has written, and when it last acted;\n- failed, the latest runs that stopped on an error, with when and why. They deliver nothing more;\n- awaitingApproval, the kinds of filed documents the person has approved no version of;\n- appBuilt, whether the project's code (the document of kind app) has had its first build: a version filed after a passing check or brought in by import;\n- preferenceGuidance, the person's standing settings for how they want to work. They apply until the person says otherwise: what they tell you in the conversation overrides a setting.\nWith a kind from that list it returns that document's content, with the open questions that version leaves for the person. A long document comes in numbered parts.",
+  inputSchema: describedSchema(ToolRead, {
+    kind: {
+      about:
+        "The kind of the document to read, as the list names it. Leave out kind and artifactId to list the project.",
+    },
+    artifactId: {
+      about:
+        "The id of the document to read, in place of kind. Set it for a document you were given by its id, such as a file the person attached; otherwise read by kind.",
+    },
+    version: {
+      about:
+        "The version to read. Set it only for an earlier version; leave it out for the current one.",
+    },
+    part: {
+      about:
+        "The numbered part of a long document to read. Set it to read the part after the one you have; leave it out for the first.",
+    },
+  }),
 };
-const briefWriteDefinition = {
-  name: "write_artifact",
-  description:
-    "Write the next version of the problem brief. The hub assigns its id, version and sha256 and returns them. Writing a version is not approval.\nopenQuestions lists each question in the document's Open questions section that the person must answer: a short id, the question as they would read it, whyItBlocks, and suggestedAnswers, your recommendation first. A version written without openQuestions leaves none open.",
-  inputSchema: { ...BriefWrite.toJsonSchema() },
-};
+// The person asked to approve a document decides from its summary on the card, so none is filed
+// without one.
+const IN_SHORT =
+  "content opens with ## In short: two to four one-line bullets written for the person deciding whether to approve it, who may read nothing else: what it concludes, decides or leaves out, specific to this document, with no counts and nothing about the document itself.";
+
 // Each writer's document by name, and what its write_artifact says about the fields only it has.
 const WRITER_DOCUMENTS: Record<
   WriterDocumentKind,
   { name: string; fieldNotes: string[] }
 > = {
-  constraints: { name: "constraints", fieldNotes: [] },
-  approaches: {
-    name: "approaches document",
-    fieldNotes: [
-      "approaches carries the approaches the document compares, for the person to see side by side: each with a short id, its name, a one-line summary, bestFor, its pros, cons and risks as short phrases, and its effort; recommended names the id of the one you recommend.",
-    ],
-  },
   product_requirements: { name: "product requirements", fieldNotes: [] },
   build_plan: { name: "build plan", fieldNotes: [] },
 };
@@ -78,10 +95,50 @@ function writerWriteDefinition(kind: WriterDocumentKind) {
     name: "write_artifact",
     description: [
       `Write the next version of the ${name}. The hub assigns its id, version and sha256 and returns them. Writing a version is not approval.`,
-      "openQuestions lists each question in the document's Open questions section that the person must answer: a short id, the question as they would read it, whyItBlocks, and suggestedAnswers, your recommendation first. A version written without openQuestions leaves none open.",
+      "openQuestions lists each question the document leaves for the person to answer, as its Open questions section asks them: a short id, the question as they would read it, whyItBlocks, and suggestedAnswers, your recommendation first. A version written without openQuestions leaves none open.",
+      IN_SHORT,
       ...fieldNotes,
     ].join("\n"),
     inputSchema: { ...WriterDocumentFields[kind].toJsonSchema() },
+  };
+}
+
+const documentWriteDefinition = {
+  name: "write_artifact",
+  description: [
+    "Write the next version of the document your task names. kind is the kind your task names: a short lowercase slug such as competitor_analysis, the same for every version. title is its title, and content is the document itself as markdown sections. The hub assigns its id, version and sha256 and returns them. Writing a version is not approval.",
+    "openQuestions lists each question the document leaves for the person to answer, as its Open questions section asks them: a short id, the question as they would read it, whyItBlocks, and suggestedAnswers, your recommendation first. A version written without openQuestions leaves none open.",
+    IN_SHORT,
+  ].join("\n"),
+  inputSchema: { ...AnyDocumentFields.toJsonSchema() },
+};
+
+// A specialist saves what it learned of the project values its assignment lists; the hub keeps
+// to the names the plugin action it was started for writes. Each name is a field's value rather
+// than a key: a model sent every dotted key, such as stack.checks, as stack_checks.
+const ReportValues = type({
+  "+": "reject",
+  values: type({ "+": "reject", name: "string > 0", value: "unknown" })
+    .array()
+    .atLeastLength(1),
+});
+const reportValuesDefinition = {
+  name: "report_values",
+  description: REPORT_VALUES_DESCRIPTION,
+  inputSchema: { ...ReportValues.toJsonSchema() },
+};
+
+// Why the hub saved none of the values, field by field, as the agent can correct it.
+function valuesRefused(callId: string, error: WorkflowHttpError) {
+  return {
+    callId,
+    content: [
+      `Nothing was saved (${error.refusalCode ?? "refused"}).`,
+      ...(error.issues ?? []).map(({ path, message }) => `${path}: ${message}`),
+      ...(error.hint ? [error.hint] : []),
+      "Call again with only the values your assignment lists, each of the type it names.",
+    ].join("\n"),
+    isError: true,
   };
 }
 
@@ -101,51 +158,65 @@ export function failure(callId: string, error: unknown) {
   return projectScopeFailure(callId, error);
 }
 
+// The tools a role gets, and for a role that writes, the check of its fields that names the kind
+// they file under.
 interface ArtifactToolSet {
   definitions: readonly (typeof readDefinition)[];
-  save?: {
-    kind: typeof DocumentWrite.infer.kind;
-    fields:
-      | typeof BriefWrite
-      | (typeof WriterDocumentFields)[WriterDocumentKind];
+  save?: (fields: unknown) => typeof DocumentWrite.infer | type.errors;
+}
+
+// A role deployed for one kind files its fields under that kind.
+const savesAs =
+  (
+    kind: typeof DocumentWrite.infer.kind,
+    check: (typeof WriterDocumentFields)[WriterDocumentKind],
+  ) =>
+  (raw: unknown) => {
+    const fields = check(raw);
+    return fields instanceof type.errors ? fields : { ...fields, kind };
   };
-  unpacksDesign: boolean;
-}
 
-// A writer's or reviewer's task carries every document it needs in full; a read tool sends
-// writers looking for documents that do not exist.
-export function createArtifactTools(
-  role: string,
-  { unpacksDesign }: { unpacksDesign: boolean },
+// A role's artifact tools, as its tools name them: reading the project's documents, and with
+// write_artifact filing a document of any kind, saved under the kind it names.
+export const createArtifactTools = (role: Role) =>
+  artifactTools(
+    role,
+    role.tools.includes("write_artifact")
+      ? {
+          definitions: [documentWriteDefinition, readDefinition],
+          save: AnyDocumentFields,
+        }
+      : { definitions: [readDefinition] },
+  );
+
+// The coordinator reads the project; specialists write every document.
+export const createReadArtifactTools = () =>
+  artifactTools(COORDINATOR, { definitions: [readDefinition] });
+
+// A writer of a known kind is deployed for it and saves only that kind.
+export function createWriterArtifactTools(
+  role: Role,
+  kind: WriterDocumentKind,
 ) {
-  return artifactTools(role, { definitions: [readDefinition], unpacksDesign });
-}
-
-export function createCoordinatorArtifactTools() {
-  return artifactTools("coordinator", {
-    definitions: [readDefinition, briefWriteDefinition],
-    save: { kind: "problem_brief", fields: BriefWrite },
-    unpacksDesign: false,
-  });
-}
-
-// A writer is deployed for one kind and saves only that kind.
-export function createWriterArtifactTools(kind: WriterDocumentKind) {
-  return artifactTools("writer", {
-    definitions: [writerWriteDefinition(kind)],
-    save: { kind, fields: WriterDocumentFields[kind] },
-    unpacksDesign: false,
+  return artifactTools(role, {
+    definitions: [writerWriteDefinition(kind), readDefinition],
+    save: savesAs(kind, WriterDocumentFields[kind]),
   });
 }
 
 function artifactTools(
-  role: string,
-  { definitions, save, unpacksDesign }: ArtifactToolSet,
+  role: Pick<Role, "name" | "writesCode">,
+  { definitions: own, save }: ArtifactToolSet,
 ): AnnotatedToolFactory<ArtifactToolEnv> {
+  // Only a role an action starts to save project values can save any; every other call is refused.
+  const definitions = savesValues(role.name)
+    ? [...own, reportValuesDefinition]
+    : own;
   return defineTool<ArtifactToolEnv>({
     id: "@corbits-builder/artifacts/tools",
     credentials: [{ handle: HUB_CREDENTIAL_HANDLE }],
-    requires: unpacksDesign ? ["capabilities", "toolCwd"] : ["capabilities"],
+    // A code writer's read of the design unpacks it into its workspace.
+    requires: role.writesCode ? ["capabilities", "toolCwd"] : ["capabilities"],
     definitions: definitions.map(({ name }) => ({ name })),
     factory: (env) => {
       // Filing the same document again makes a new identical version each time until the doom
@@ -164,15 +235,15 @@ function artifactTools(
           try {
             const scope = await resolveWorkflowProjectScope(
               env.capabilities,
-              role,
+              role.name,
               signal,
             );
-            const base =
+            const projectPath =
               "/api/tenants/" +
               encodeURIComponent(scope.tenantId) +
               "/projects/" +
-              encodeURIComponent(scope.projectId) +
-              "/artifacts";
+              encodeURIComponent(scope.projectId);
+            const base = projectPath + "/artifacts";
             const request = (path: string, body?: unknown) =>
               workflowHttpJson({
                 capabilities: env.capabilities,
@@ -183,27 +254,48 @@ function artifactTools(
                 maxResponseBytes: Number.POSITIVE_INFINITY,
                 signal,
               });
+            if (call.name === "report_values") {
+              const input = ReportValues(call.arguments);
+              if (input instanceof type.errors)
+                return {
+                  callId: call.id,
+                  content: invalidReportValues(input.summary),
+                  isError: true,
+                };
+              const values = Object.fromEntries(
+                input.values.map(({ name, value }) => [name, value]),
+              );
+              try {
+                return {
+                  callId: call.id,
+                  content: JSON.stringify(
+                    await request(projectPath + "/run-values", { values }),
+                  ),
+                };
+              } catch (error) {
+                if (
+                  error instanceof WorkflowHttpError &&
+                  (error.status === 400 ||
+                    (error.status === 403 && error.refusalCode !== "forbidden"))
+                )
+                  return valuesRefused(call.id, error);
+                throw error;
+              }
+            }
             if (call.name === "write_artifact" && save) {
-              const rawKind = (call.arguments as { kind?: unknown } | undefined)
-                ?.kind;
-              if (
-                save.kind === "problem_brief" &&
-                typeof rawKind === "string" &&
-                rawKind !== "problem_brief"
-              )
+              const input = save(call.arguments);
+              if (input instanceof type.errors)
                 return {
                   callId: call.id,
-                  content: `brief_only: you write the problem brief; deploy_writer has a writer write the ${rawKind}`,
+                  content: "invalid_arguments: " + input.summary,
                   isError: true,
                 };
-              const fields = save.fields(call.arguments);
-              if (fields instanceof type.errors)
+              if (inShort(input.content) === undefined)
                 return {
                   callId: call.id,
-                  content: "invalid_arguments: " + fields.summary,
+                  content: `not_filed: nothing was filed, as the document has no summary. A document's ${IN_SHORT} Call write_artifact again with it.`,
                   isError: true,
                 };
-              const input = { ...fields, kind: save.kind };
               const body = JSON.stringify(input);
               const earlier = written.get(input.kind);
               if (earlier?.body === body)
@@ -251,7 +343,7 @@ function artifactTools(
               "toolCwd" in env && typeof env.toolCwd === "string"
                 ? env.toolCwd
                 : undefined;
-            if (unpacksDesign && document.kind === "design" && workspace) {
+            if (role.writesCode && document.kind === "design" && workspace) {
               const files = await unpackDesign(document.content, workspace);
               // DESIGN.md runs past the host's tool-output cap, and a cut copy sends the coder
               // re-reading until the doom guard fails the run; read_file pages through it.

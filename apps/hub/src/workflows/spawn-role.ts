@@ -1,54 +1,97 @@
 import { sql, type SQLWrapper } from "drizzle-orm";
+import { ROLE_TAG, type Role } from "@corbits-builder/plugin";
+import type { Catalog } from "@corbits-builder/plugin-host/catalog";
+import { isRecord } from "../lib/json.ts";
 import { CATALOG } from "../plugins/catalog.ts";
+import { COORDINATOR } from "./coordinator-role.ts";
 
-function stepRoles(step: unknown): string[] {
-  if (typeof step !== "object" || step === null || !("agent" in step))
-    return [];
-  const agent = step.agent;
-  if (typeof agent !== "object" || agent === null || !("tags" in agent))
-    return [];
-  const tags = agent.tags;
-  if (typeof tags !== "object" || tags === null) return [];
-  return Object.entries(tags)
-    .filter(
-      ([tag, value]) =>
-        typeof value === "string" &&
-        tag.endsWith(".version") &&
-        CATALOG.role(tag.slice(0, -8)) !== undefined,
-    )
-    .map(([tag]) => tag.slice(0, -8));
+// The coordinator's agent is tagged with its package's version, which the coordinator registry
+// reads; every specialist's agent is tagged with the name of the role it plays. Runs stored before
+// that tag carry only "<role>.version", so a step without it plays the role a version tag names.
+const COORDINATOR_TAG = "coordinator.version";
+const VERSION_TAG = ".version";
+
+type Roles = Pick<Catalog, "role" | "roles">;
+
+// A step's role: the coordinator, or a role an installed plugin declares; untagged steps such as
+// the blocked notice, and roles no installed plugin declares, do not count.
+function stepRole(step: unknown, roles: Roles): string | undefined {
+  if (!isRecord(step) || !isRecord(step["agent"])) return undefined;
+  const tags = step["agent"]["tags"];
+  if (!isRecord(tags)) return undefined;
+  const named = tags[ROLE_TAG];
+  if (typeof named === "string")
+    return roles.role(named) === undefined ? undefined : named;
+  if (typeof tags[COORDINATOR_TAG] === "string") return COORDINATOR.name;
+  return Object.keys(tags)
+    .filter((tag) => tag.endsWith(VERSION_TAG) && typeof tags[tag] === "string")
+    .map((tag) => tag.slice(0, -VERSION_TAG.length))
+    .find((name) => roles.role(name) !== undefined);
 }
 
+/** A workflow's role: its one step that plays one, the coordinator or one of the given roles. */
 export function workflowStep(
   bundle: unknown,
+  roles: Roles,
 ): { stepId: string; role: string } | undefined {
-  if (typeof bundle !== "object" || bundle === null) return undefined;
-  const steps = (bundle as { projection?: { steps?: unknown } }).projection
-    ?.steps;
-  if (typeof steps !== "object" || steps === null) return undefined;
-  const tagged = Object.entries(steps).flatMap(([stepId, step]) =>
-    stepRoles(step).map((role) => ({ stepId, role })),
-  );
+  if (!isRecord(bundle) || !isRecord(bundle["projection"])) return undefined;
+  const steps = bundle["projection"]["steps"];
+  if (!isRecord(steps)) return undefined;
+  const tagged = Object.entries(steps).flatMap(([stepId, step]) => {
+    const role = stepRole(step, roles);
+    return role ? [{ stepId, role }] : [];
+  });
   return tagged.length === 1 ? tagged[0] : undefined;
 }
 
-/** The same rule in SQL, so a frozen bundle is read where it is stored. */
+/** The same rule in SQL, so a frozen bundle is read where it is stored: the name of its role. */
 export function workflowRoleSql(bundle: SQLWrapper) {
-  const tags = CATALOG.roles.map(({ name }) => `${name}.version`);
+  const names = sql.join(
+    CATALOG.roles.map(({ name }) => sql`${name}::text`),
+    sql`, `,
+  );
+  const installed =
+    CATALOG.roles.length === 0
+      ? sql`false`
+      : sql`role_step.tags ->> ${ROLE_TAG}::text in (${names})`;
+  // The role a stored run's "<role>.version" tag names, for a run from before the role tag.
+  const versioned =
+    CATALOG.roles.length === 0
+      ? sql`null`
+      : sql`(select left(tag, -length(${VERSION_TAG}::text)) from jsonb_each(role_step.tags) as versions(tag, value) where jsonb_typeof(value) = 'string' and right(tag, length(${VERSION_TAG}::text)) = ${VERSION_TAG}::text and left(tag, -length(${VERSION_TAG}::text)) in (${names}) limit 1)`;
   return sql<
     string | null
-  >`(select case when count(*) = 1 then min(left(role_tag.name, -8)) end from jsonb_path_query(${bundle}, '$.projection.steps.*.agent.tags') as role_step(tags), jsonb_each(role_step.tags) as role_tag(name, value) where role_tag.name in ${tags} and jsonb_typeof(role_tag.value) = 'string')`;
+  >`(select case when count(*) = 1 then min(role_steps.role) end from (select case when jsonb_typeof(role_step.tags -> ${ROLE_TAG}::text) = 'string' then case when ${installed} then role_step.tags ->> ${ROLE_TAG}::text end when jsonb_typeof(role_step.tags -> ${COORDINATOR_TAG}::text) = 'string' then ${COORDINATOR.name}::text else ${versioned} end as role from jsonb_path_query(${bundle}, '$.projection.steps.*.agent.tags') as role_step(tags)) as role_steps where role_steps.role is not null)`;
 }
 
-export function spawnedWorkflowStep(
+/** Whether a frozen bundle's role is one of the installed roles that match, in SQL. */
+export function workflowRoleMatchesSql(
+  bundle: SQLWrapper,
+  matches: (role: Role) => boolean,
+) {
+  const names = CATALOG.roles
+    .filter(matches)
+    .map(({ name }) => sql`${name}::text`);
+  return names.length === 0
+    ? sql<boolean>`false`
+    : sql<boolean>`${workflowRoleSql(bundle)} in (${sql.join(names, sql`, `)})`;
+}
+
+/** The step of a specialist's run and the role it plays, of the given roles. */
+export function roleStep(
   bundle: unknown,
-): { stepId: string; role: string } | undefined {
-  const step = workflowStep(bundle);
-  return step && step.role !== "coordinator"
-    ? { stepId: step.stepId, role: step.role }
-    : undefined;
+  roles: Roles,
+): { stepId: string; role: Role } | undefined {
+  const step = workflowStep(bundle, roles);
+  const role = step && roles.role(step.role);
+  return step && role ? { stepId: step.stepId, role } : undefined;
 }
 
-export function spawnedWorkflowRole(bundle: unknown): string | undefined {
+/** The step of a specialist's run and the installed role it plays. */
+export const spawnedWorkflowStep = (bundle: unknown) =>
+  roleStep(bundle, CATALOG);
+
+/** The installed role a specialist's run plays; undefined for the coordinator's and any other. */
+export function spawnedWorkflowRole(bundle: unknown): Role | undefined {
   return spawnedWorkflowStep(bundle)?.role;
 }

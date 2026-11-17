@@ -53,7 +53,7 @@ export const openSourceNotices: readonly OpenSourceNotice[] = [
   },
   {
     name: "Chrome for Testing headless shell",
-    use: "The browser that checks a built app and takes its pictures.",
+    use: "The browser that checks what was built and takes its pictures.",
     kind: "binary",
     license: null,
     link: "https://googlechromelabs.github.io/chrome-for-testing/",

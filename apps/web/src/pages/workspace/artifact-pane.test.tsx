@@ -62,6 +62,8 @@ function render(selected: PaneDocument | null, state?: DeliverableState) {
       state={state}
       onSelect={() => {}}
       onSeen={() => {}}
+      open
+      onClose={() => {}}
       {...parts}
     />,
   );
@@ -70,8 +72,8 @@ function render(selected: PaneDocument | null, state?: DeliverableState) {
 describe("persistent artifact pane", () => {
   test("exists before artifacts without modal or Expand controls", () => {
     const html = render(null);
-    expect(html).toContain('aria-label="Artifacts"');
-    expect(html).toContain("Your outputs appear here");
+    expect(html).toContain('aria-label="Documents"');
+    expect(html).toContain("What you make appears here");
     expect(html).not.toContain(">Artifacts<");
     expect(html).not.toContain(">Output<");
     expect(html).not.toContain("<select");
@@ -267,7 +269,6 @@ describe("remembered tab", () => {
   const have = {
     liveApp: false,
     manual: false,
-    themes: false,
     draft: false,
     concepts: [] as string[],
     documents: [ready, plan],

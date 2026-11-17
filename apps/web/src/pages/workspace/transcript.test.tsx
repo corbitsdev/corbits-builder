@@ -1,16 +1,15 @@
 import { describe, expect, test } from "bun:test";
+import "./plugin-roles.testing.ts";
+import { roleLabel } from "./roles.ts";
 import { isValidElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
   clippedTurnText,
   maxTurnText,
 } from "@corbits-builder/schemas/conversation";
-import {
-  IMPORTED_PROJECT_LEAD,
-  SPECIALIST_ENDED_LEAD,
-  wording,
-} from "../../config.ts";
-import { Markdown } from "../../markdown.tsx";
+import { HUB_NOTE_LEAD } from "@corbits-builder/schemas/conversation";
+import { IMPORTED_PROJECT_LEAD, wording } from "../../config.ts";
+import { Markdown } from "@corbits-builder/plugin-ui/markdown";
 import { DocumentDecision } from "./document-decision.tsx";
 import {
   awaitingCommit,
@@ -22,8 +21,10 @@ import {
   pendingLiveTurn,
   waitingOnPerson,
 } from "./live-run.ts";
+import { Activity, MessageParts, type PartTool } from "@corbits/react-ui";
 import { RoomThread } from "./transcript.tsx";
-import { workUnitStanding } from "./work-unit-message.model.ts";
+import { WorkUnitStepView } from "./work-unit-step.view.tsx";
+import { workUnitStanding } from "./work-unit-step.model.ts";
 import type { WorkUnit } from "./work-unit.ts";
 
 function findElement(
@@ -45,7 +46,7 @@ function findElement(
 
 const briefId = "problem_brief";
 
-/** The labels the conversation map's ticks carry, in order. */
+/** The accessible names the conversation map's ticks carry, in order. */
 function mapLabels(html: string): string[] {
   return [
     ...html.matchAll(
@@ -61,8 +62,6 @@ const standing = (unit: WorkUnit) =>
     inFlight: [],
     failed: [],
     seen: new Map(),
-    approvals: [],
-    activity: undefined,
   });
 
 describe("conversation transcript", () => {
@@ -96,9 +95,7 @@ describe("conversation transcript", () => {
     expect(html).toContain('data-slot="message-parts"');
     expect(html).toContain("What is the weather?");
     expect(html).toContain("Checking.");
-    expect(html).not.toContain("Look up the city");
     expect(html).not.toContain("location");
-    expect(html).not.toContain('data-slot="tool"');
     expect(html).not.toContain("Approved once");
     expect(html).not.toContain("Approve always");
   });
@@ -163,48 +160,6 @@ describe("conversation transcript", () => {
     expect(prevented).toEqual(["Enter", " "]);
   });
 
-  test("an approval asks about the document in words", () => {
-    const html = renderToStaticMarkup(
-      <RoomThread
-        standing={standing}
-        turns={[]}
-        approvals={[
-          {
-            approvalId: "appr-1",
-            toolName: "request_approval",
-            document: { kind: briefId, title: "Problem brief", version: 4 },
-          },
-        ]}
-        onDecide={() => {}}
-      />,
-    );
-    expect(html).toContain("Happy with the brief?");
-    expect(html).toContain(">Yes, go ahead<");
-    expect(html).toContain(">Not yet<");
-    expect(html).not.toContain(">Not Yet<");
-    expect(html).not.toContain("<table");
-    expect(html).not.toContain("Start Designs");
-    expect(html).not.toContain("request_approval");
-    expect(html).not.toContain("appr-1");
-    expect(html).not.toContain(briefId);
-    expect(html).not.toContain("approve_artifact");
-    expect(html).not.toContain("sha256");
-  });
-
-  test("a design start does not offer to go ahead without asking", () => {
-    const html = renderToStaticMarkup(
-      <DocumentDecision
-        approval={{ approvalId: "appr-1", toolName: "design_app" }}
-        onYes={() => {}}
-        onAlways={() => {}}
-        onNo={() => {}}
-      />,
-    );
-    expect(html).toContain('data-once=""');
-    expect(html).toContain(">Start Designs<");
-    expect(html).not.toContain("Start designs without asking");
-  });
-
   test("Not yet denies the approval and then takes the person to the composer", () => {
     const calls: string[] = [];
     const thread = RoomThread({
@@ -213,8 +168,8 @@ describe("conversation transcript", () => {
       approvals: [
         {
           approvalId: "appr-1",
-          toolName: "design_app",
-          document: { kind: briefId, title: "Problem brief", version: 1 },
+          toolName: "run_shell",
+          subject: "bun run build",
         },
       ],
       onDecide: (decision) =>
@@ -270,8 +225,8 @@ describe("conversation transcript", () => {
         type: "inference.tool_call.end",
         data: {
           callId: "call-1",
-          name: "request_approval",
-          arguments: { kinds: ["approaches"] },
+          name: "execute",
+          arguments: { plugin: "writer", action: "write" },
         },
       },
       null,
@@ -304,8 +259,8 @@ describe("conversation transcript", () => {
         type: "inference.tool_call.end",
         data: {
           callId: "call-1",
-          name: "request_approval",
-          arguments: { kinds: ["brief"] },
+          name: "execute",
+          arguments: { plugin: "designer", action: "pick-fonts" },
         },
       },
       { type: "inference.done" },
@@ -326,7 +281,77 @@ describe("conversation transcript", () => {
     expect(streaming([])).toBe(true);
   });
 
-  test("a coordinator turn shows one live line, at the bottom", () => {
+  test("a working coordinator turn keeps one quiet thinking line at its end through every frame, and never its reasoning", () => {
+    const reasoning = "Weighing which font reads best";
+    const reply = "The order list now sets in the humanist sans.";
+    const frames = [
+      [
+        { type: "message.run.started" },
+        { type: "inference.start" },
+        { type: "inference.delta", data: { partial: { thinking: reasoning } } },
+      ],
+      [
+        {
+          type: "inference.tool_call.end",
+          data: { callId: "c1", name: "Read the brief", arguments: {} },
+        },
+        { type: "inference.done" },
+        { type: "inference.start" },
+      ],
+      [{ type: "inference.delta", data: { partial: { thinking: reasoning } } }],
+      [
+        {
+          type: "inference.text.delta",
+          data: { partial: { thinking: reasoning, text: reply } },
+        },
+      ],
+    ];
+    const person = { role: "person", text: "Change the font", at: 1 } as const;
+    const thinkingLine = `>${wording.activity.thinkingNow}<`;
+    const copy = `aria-label="${wording.message.copy}"`;
+    let run = emptyLiveRun;
+    for (const batch of frames) {
+      for (const frame of batch) run = foldLiveRun(run, frame, null).run;
+      const live = pendingLiveTurn(run, [person]);
+      const html = renderToStaticMarkup(
+        <RoomThread
+          standing={standing}
+          turns={
+            live === null
+              ? [person]
+              : [
+                  person,
+                  {
+                    role: "assistant",
+                    text: live.text,
+                    at: -1,
+                    streaming: true,
+                    parts: live.parts,
+                  },
+                ]
+          }
+          thinking
+        />,
+      );
+      expect(html.split(thinkingLine)).toHaveLength(2);
+      expect(html).not.toContain(reasoning);
+      expect(html).not.toContain(copy);
+      // Nothing of the turn stands below its live line.
+      const end = html.slice(html.indexOf(thinkingLine));
+      expect(end).not.toContain("Read the brief");
+      expect(end).not.toContain(reply);
+    }
+    const finished = renderToStaticMarkup(
+      <RoomThread
+        standing={standing}
+        turns={[person, { role: "assistant", text: reply, at: 2 }]}
+      />,
+    );
+    expect(finished).not.toContain(thinkingLine);
+    expect(finished).toContain(copy);
+  });
+
+  test("the thinking line stays at the bottom, under a report that follows the coordinator's words", () => {
     const live = {
       role: "assistant",
       text: "",
@@ -334,21 +359,7 @@ describe("conversation transcript", () => {
       streaming: true,
       parts: [{ kind: "reasoning", text: "Read the idea" }],
     } as const;
-    const thinkingLine = 'data-item-id="colleague-thinking"';
-    const liveLines = (html: string) =>
-      html.split('data-slot="activity" data-streaming="true"').length -
-      1 +
-      html.split(thinkingLine).length -
-      1;
-    const alone = renderToStaticMarkup(
-      <RoomThread
-        standing={standing}
-        turns={[{ role: "person", text: "Start", at: 1 }, live]}
-        thinking
-      />,
-    );
-    expect(liveLines(alone)).toBe(1);
-    expect(alone).not.toContain(thinkingLine);
+    const thinkingLine = `>${wording.activity.thinkingNow}<`;
     const report = "Saved the requirements.";
     const afterReport = renderToStaticMarkup(
       <RoomThread
@@ -362,18 +373,20 @@ describe("conversation transcript", () => {
         thinking
       />,
     );
-    expect(liveLines(afterReport)).toBe(1);
+    expect(afterReport.split(thinkingLine)).toHaveLength(2);
     expect(afterReport.indexOf(thinkingLine)).toBeGreaterThan(
       afterReport.indexOf(report),
     );
   });
 
-  test("a specialist's report joins its hand-off as one message and a long run of lone ones folds", () => {
+  test("a started specialist is a step of the coordinator's list and a long run of lone reports folds", () => {
     const summary =
       "Wrote the limits for your weather app, covering offline use and units.";
     const html = renderToStaticMarkup(
       <RoomThread
         standing={standing}
+        // The writer is still at work, so the coordinator's list stays open on it.
+        live={() => true}
         turns={[
           { role: "person", text: "Start", at: 1 },
           {
@@ -384,11 +397,15 @@ describe("conversation transcript", () => {
               {
                 kind: "tool-trace",
                 toolCallId: "call-1",
-                name: "deploy_writer",
+                name: "execute",
                 status: "output-available",
                 input: {
-                  kind: "constraints",
-                  instruction: "Write the limits.",
+                  plugin: "writer",
+                  action: "write",
+                  input: {
+                    kind: "constraints",
+                    instruction: "Write the limits.",
+                  },
                 },
               },
               { kind: "text", text: "Starting the constraints." },
@@ -423,11 +440,71 @@ describe("conversation transcript", () => {
         ]}
       />,
     );
-    expect(html).toContain('data-item-id="work:call-1"');
-    expect(html).toContain(`>${wording.activity.role.writer}<`);
+    // Not a card of its own: the row is its own item, for the map, inside the coordinator's list.
+    expect(html).not.toContain('data-item-id="units:');
+    expect(html.indexOf('data-item-id="work:call-1"')).toBeGreaterThan(
+      html.indexOf('data-slot="activity-content"'),
+    );
+    const row = wording.dispatch.row(
+      roleLabel("writer"),
+      "Writing the constraints",
+    );
+    // The list's header counts its one row rather than saying it again.
+    expect(html.split(row)).toHaveLength(2);
+    expect(html).toContain(wording.activity.run(1));
+    expect(html.indexOf('data-slot="activity-content"')).toBeLessThan(
+      html.indexOf(row),
+    );
     expect(html).not.toContain('data-slot="update-names">Constraints<');
     expect(html).toContain(wording.updatesFolded(4));
     expect(html).toContain(`data-slot="update-names">${wording.buildSubject}<`);
+  });
+
+  test("a specialist's step opens onto what came of it", () => {
+    const shell = {
+      kind: "tool-trace" as const,
+      toolCallId: "call-test",
+      name: "run_shell",
+      status: "output-available" as const,
+      input: { command: "bun test" },
+    };
+    const build = {
+      kind: "tool-trace" as const,
+      toolCallId: "call-build",
+      name: "execute",
+      status: "output-available" as const,
+      input: { plugin: "coder", action: "build", input: {} },
+    };
+    const thread = RoomThread({
+      standing,
+      results: new Map([
+        [
+          "call-build",
+          {
+            content: JSON.stringify({ runs: [{ runId: "run-build" }] }),
+            isError: false,
+          },
+        ],
+        ["call-test", { content: "3 pass", isError: false }],
+      ]),
+      turns: [
+        {
+          role: "assistant",
+          text: "Building.",
+          at: 2,
+          parts: [build, { kind: "text", text: "Building." }],
+        },
+      ],
+    });
+    const parts = findElement(thread, MessageParts);
+    const renderStep = parts?.props["renderStep"] as (
+      step: typeof build,
+    ) => ReactNode;
+    const row = findElement(renderStep(build), WorkUnitStepView);
+    const run = row?.props["run"] as (steps: readonly PartTool[]) => ReactNode;
+    const activity = findElement(run([shell]), Activity);
+    const steps = activity?.props["steps"] as readonly PartTool[] | undefined;
+    expect(steps?.[0]?.output).toBe("3 pass");
   });
 
   test("a coordinator stretch has one header, its words first and its cards last", () => {
@@ -444,7 +521,7 @@ describe("conversation transcript", () => {
         approvals={[
           {
             approvalId: "appr-1",
-            document: { kind: briefId, title: "Problem brief", version: 1 },
+            toolName: "run_shell",
             at: 3,
           },
         ]}
@@ -456,7 +533,7 @@ describe("conversation transcript", () => {
       "Start",
       "First words.",
       "Second words.",
-      "Happy with the brief?",
+      wording.approval.tool("run shell"),
       "Next",
     ];
     const positions = order.map((text) => html.indexOf(text));
@@ -509,72 +586,6 @@ describe("conversation transcript", () => {
     }
   });
 
-  test("a document with a blank name is asked about by its tool", () => {
-    const html = renderToStaticMarkup(
-      <DocumentDecision
-        approval={{
-          approvalId: "appr-blank",
-          toolName: "browser.browser_navigate",
-          document: { kind: "notes", title: "", version: 1 },
-        }}
-        onYes={() => {}}
-        onAlways={() => {}}
-        onNo={() => {}}
-      />,
-    );
-    expect(html).toContain("browser navigate");
-    expect(html).not.toContain(wording.approval.document(""));
-  });
-
-  test("a design approval lists each look and starts one by name", () => {
-    const html = renderToStaticMarkup(
-      <DocumentDecision
-        approval={{
-          approvalId: "appr-design",
-          toolName: "design_app",
-          concepts: [
-            {
-              label: "Clear Skies",
-              direction:
-                "Crisp cool neutrals, one cobalt accent, generous whitespace.",
-            },
-          ],
-        }}
-        onYes={() => {}}
-        onAlways={() => {}}
-        onNo={() => {}}
-      />,
-    );
-    expect(html).toContain(">Clear Skies<");
-    expect(html).toContain(">Crisp cool neutrals<");
-    expect(html).not.toContain("generous whitespace");
-    expect(html).toContain(">Start Clear Skies<");
-    expect(html).toContain(">Not Yet<");
-
-    const several = renderToStaticMarkup(
-      <DocumentDecision
-        approval={{
-          approvalId: "appr-several",
-          toolName: "design_app",
-          concepts: [
-            { label: "Clear Skies", direction: "Crisp cool neutrals." },
-            {
-              label: "Night Dock",
-              direction: "Square corners (--radius 0), a deep navy primary.",
-            },
-          ],
-        }}
-        onYes={() => {}}
-        onAlways={() => {}}
-        onNo={() => {}}
-      />,
-    );
-    expect(several).toContain(">Start Designs<");
-    expect(several).toContain(">Night Dock<");
-    expect(several).not.toContain("--radius");
-    expect(several).not.toContain(">Start Clear Skies<");
-  });
-
   test("the map marks the person's messages and not the hub's notices", () => {
     const html = renderToStaticMarkup(
       <RoomThread
@@ -583,7 +594,7 @@ describe("conversation transcript", () => {
           { role: "person", text: "What is the weather?", at: 1 },
           {
             role: "person",
-            text: `${SPECIALIST_ENDED_LEAD}The writer stopped before finishing.`,
+            text: `${HUB_NOTE_LEAD}The writer stopped before finishing.`,
             at: 2,
           },
           { role: "assistant", text: "I'll pick it up.", at: 3 },
@@ -591,7 +602,10 @@ describe("conversation transcript", () => {
         ]}
       />,
     );
-    expect(mapLabels(html)).toEqual(["What is the weather?", "Thanks."]);
+    expect(mapLabels(html)).toEqual([
+      "Go to: What is the weather?",
+      "Go to: Thanks.",
+    ]);
   });
 
   test("an imported project's opening is a divider, not a turn in the map", () => {
@@ -612,8 +626,8 @@ describe("conversation transcript", () => {
     );
     expect(html).toContain(wording.projectImported);
     expect(mapLabels(html)).toEqual([
-      "What should we do first?",
-      "Go ahead and draft it.",
+      "Go to: What should we do first?",
+      "Go to: Go ahead and draft it.",
     ]);
   });
 });

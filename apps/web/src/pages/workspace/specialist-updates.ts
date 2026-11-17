@@ -8,9 +8,11 @@
  * shows live, in the activity strip. The task a specialist was handed is the coordinator's hand-off
  * call, so it never becomes an update.
  */
+import { COORDINATOR_NOTE_LEAD } from "@corbits-builder/schemas/native-specialist";
 import { wording } from "../../config.ts";
 import type { ConversationThread } from "../../api/conversation.ts";
-import { participantLabel, visibleChatText } from "./visible-chat.ts";
+import { roleLabel, roleOf } from "./roles.ts";
+import { visibleChatText } from "./visible-chat.ts";
 import { type } from "arktype";
 import { readJson } from "../../json.ts";
 import type { UpdatesRow } from "./specialist-updates.view.tsx";
@@ -39,13 +41,19 @@ function mailProse(text: string): string {
   return result instanceof type.errors ? "" : result.result.summary;
 }
 
+// A specialist's words without Builder's note to the coordinator after them.
+function ownWords(text: string): string {
+  const note = text.indexOf(COORDINATOR_NOTE_LEAD);
+  return note === -1 ? text : text.slice(0, note);
+}
+
 /** One specialist turn as an update, or null when nothing in it is for a person. */
 export function specialistUpdate(
   sender: string,
   text: string,
   at: number,
 ): SpecialistUpdate | null {
-  const shown = visibleChatText(mailProse(text));
+  const shown = visibleChatText(ownWords(mailProse(text)));
   return shown.length === 0 ? null : { sender, text: shown, at };
 }
 
@@ -107,9 +115,9 @@ export function summaryLine(text: string): string {
     .trim();
 }
 
-/** What a lone specialist's reports were about: the coder only ever builds the whole app. */
+/** What a lone specialist's reports were about: a role that writes code only ever builds the app. */
 export function updateSubject(sender: string): string | undefined {
-  return sender === "coder" ? wording.buildSubject : undefined;
+  return roleOf(sender)?.writesCode ? wording.buildSubject : undefined;
 }
 
 /** A group as the row the thread draws for it, named by its subject, else by who reported. */
@@ -121,7 +129,7 @@ export function updatesRow(
   return {
     key: group.key,
     title: wording.updates(
-      subject ?? participantLabel(group.sender),
+      subject ?? roleLabel(group.sender),
       group.updates.length,
     ),
     summary: latest === undefined ? null : summaryLine(latest.text),

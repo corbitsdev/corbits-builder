@@ -1,8 +1,7 @@
 import { createCoordinatorAgent } from "@corbits-builder/coordinator/agent";
 import { createCoordinatorWorkflow } from "@corbits-builder/coordinator";
-import { createCoordinatorArtifactTools } from "../../artifacts/tools.ts";
-import { createDeployTools } from "../../projects/deploy-tools.ts";
-import { createSkillTools } from "../../skills/tools.ts";
+import { createReadArtifactTools } from "../../artifacts/tools.ts";
+import { createExecuteTools } from "../../plugins/tools.ts";
 import { roleInference } from "../role-inference.ts";
 import { compactingDirector } from "../director.ts";
 import { dropDegenerateTurn, trimHistory } from "../compaction.ts";
@@ -18,19 +17,13 @@ const agent = createCoordinatorAgent({
     contextWindow,
     timeouts,
     compactAt: 0.6,
-    startAfterApproval: true,
     // The coordinator's run is the project's; nothing starts a failed one again.
     replyOnFailure: true,
   }),
   id: "coordinator",
   capabilities: [],
   inference: { ...source, parameters },
-  tools: [
-    createCoordinatorArtifactTools(),
-    createDeployTools(),
-    createSkillTools(["problem-brief"]),
-    savedResultTools,
-  ],
+  tools: [createReadArtifactTools(), createExecuteTools(), savedResultTools],
 });
 const workflow = createCoordinatorWorkflow({
   id: "corbits-builder-coordinator",

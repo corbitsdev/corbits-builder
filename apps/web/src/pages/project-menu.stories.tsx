@@ -124,7 +124,7 @@ export const ExportCheckFailed: Story = {
     exportDialog: (
       <ExportDialogView
         {...exporting}
-        failure={`Only the planning documents can be offered: ${wording.auth.unreachable}`}
+        failure={`Only the documents can be offered: ${wording.auth.unreachable}`}
         sections={[
           { section: "planning", available: true, chosen: true },
           { section: "design", available: false, chosen: false },

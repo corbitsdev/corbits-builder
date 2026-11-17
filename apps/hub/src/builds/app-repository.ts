@@ -22,17 +22,16 @@ import { getLogger } from "@intx/log";
 import { HUB_CREDENTIAL_HANDLE } from "@intx/types/credential-delivery";
 import { hexDecode } from "@intx/types/hex";
 import type { RuntimeCapabilities } from "@intx/types/runtime-capabilities";
+import { ApprovedPackages } from "@corbits-builder/schemas/package-install";
 import { INPUTS_DIRECTORY } from "../config/inputs.ts";
 import { errorCode, requestErrorMetadata } from "../request-error.ts";
-import {
-  excludedFile as excludedSnapshotFile,
-  linkOrGone,
-} from "./app-snapshot.ts";
+import { excludedFile as excludedSnapshotFile } from "./app-snapshot.ts";
+import { linkOrGone, workspaceHoldsApp } from "./app-workspace.ts";
 import {
   mediatedHttpJson,
   WorkflowHttpError,
   workflowHttpJson,
-} from "../workflows/http-json.ts";
+} from "@corbits-builder/plugin/http-json";
 
 const AppPushAccess = type({
   path: "string",
@@ -203,6 +202,24 @@ export async function revokeAppPushAccess(
     if (error instanceof WorkflowHttpError && error.status === 401) return;
     throw error;
   }
+}
+
+/** The packages this run installs without asking, as the hub reads them from approved documents. */
+export async function readApprovedPackages(
+  capabilities: RuntimeCapabilities,
+  scope: { tenantId: string; projectId: string },
+  signal: AbortSignal,
+) {
+  return ApprovedPackages.assert(
+    await workflowHttpJson({
+      capabilities,
+      handle: HUB_CREDENTIAL_HANDLE,
+      path: appRepositoryPath(scope) + "/approved-packages",
+      body: {},
+      maxResponseBytes: 65_536,
+      signal,
+    }),
+  );
 }
 
 /**
@@ -537,7 +554,7 @@ export function createAppRepository(options: {
   async function attach(signal: AbortSignal, starting: boolean) {
     if (await exists(gitdir)) return;
     const { url, secret } = await pushAccess(signal);
-    const seeded = await exists(join(workspace, "package.json"));
+    const seeded = await workspaceHoldsApp(workspace);
     // A clone given up on keeps writing, so it writes beside the git directory until it completes.
     const staging = `${gitdir}.${crypto.randomUUID()}`;
     const cloning = git.clone({
@@ -783,7 +800,7 @@ export function createAppRepository(options: {
       serial(() => prepare(signal))
         .catch(async (error: unknown) => {
           failed(error);
-          if (await exists(join(workspace, "package.json"))) return;
+          if (await workspaceHoldsApp(workspace)) return;
           await mkdir(dirname(unattached), { recursive: true });
           await writeFile(unattached, "");
         })

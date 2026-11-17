@@ -4,21 +4,15 @@
  * concept named after a design theme starts from that theme's sample app, so its draft shows only
  * once the designer has changed a page of it.
  */
-import { useState } from "react";
-import { toast } from "sonner";
+import { skipToken, useQuery } from "@tanstack/react-query";
 import type { ProjectArtifact } from "@corbits-builder/client";
 import type { InFlightRun } from "@corbits-builder/schemas/artifact";
-import { wording } from "../../config.ts";
-import { chooseDesign } from "../../api/artifacts.ts";
-import { conceptTab, type DesignConcept } from "./design-concept.ts";
-import { humanFault } from "./human-fault.ts";
+import { listDesignThemes, readDesignTheme } from "../../api/design-themes.ts";
+import { keys } from "../../queries/keys.ts";
+import type { DesignConcept } from "./design-concept.ts";
 import { parseBundle, type DesignFiles } from "./design-bundle.ts";
-import type {
-  ConceptMockupViewProps,
-  DesignChoiceViewProps,
-} from "./design-concepts.view.tsx";
+import type { ConceptMockupViewProps } from "./design-concepts.view.tsx";
 import { useDesignDraft } from "./design-preview.model.ts";
-import { useDesignThemes, useThemeFiles } from "./design-themes.model.ts";
 import type { PreviewDevice } from "./device-preview.tsx";
 import { mockupLook } from "./mockup-look.ts";
 
@@ -26,7 +20,7 @@ export const DESIGN_OPTION = "design_option";
 
 /**
  * The concepts with a filed option or a designer at work, in the order the person was asked about
- * them. Directions come only from the asks this room has seen.
+ * them. Directions come only from the hand-offs this room has seen.
  */
 export function designConcepts(
   options: readonly ProjectArtifact[],
@@ -102,14 +96,26 @@ const showsSeed = (draft: DesignFiles, seed: DesignFiles) =>
  */
 function useConceptSeed(projectId: string, concept: DesignConcept) {
   const drafting = concept.content === undefined;
-  const themes = useDesignThemes(projectId);
+  const themes = useQuery({
+    queryKey: keys.designThemes.of(projectId),
+    queryFn: () => listDesignThemes(projectId),
+    staleTime: Infinity,
+  });
   const theme = drafting
     ? themes.data?.find(
         (item) =>
           item.label.toLowerCase() === concept.label.trim().toLowerCase(),
       )
     : undefined;
-  const files = useThemeFiles(projectId, theme?.id);
+  const themeId = theme?.id;
+  const files = useQuery({
+    queryKey: keys.designThemes.theme(projectId, themeId),
+    queryFn:
+      themeId === undefined
+        ? skipToken
+        : () => readDesignTheme(projectId, themeId),
+    staleTime: Infinity,
+  });
   return {
     pending:
       drafting &&
@@ -156,45 +162,5 @@ export function useConceptMockup({
     mockup: mockup(),
     device,
     onDevice,
-  };
-}
-
-export type DesignChoiceProps = {
-  projectId: string;
-  /** The concepts with a filed option, each confirmable. */
-  concepts: readonly DesignConcept[];
-  onShowConcept: (tab: string) => void;
-  onChosen: (concept: string) => void;
-};
-
-/**
- * The person's choice of a filed concept, asked in the conversation; the hub files it as the
- * approved design and tells the coordinator.
- */
-export function useDesignChoice({
-  projectId,
-  concepts,
-  onShowConcept,
-  onChosen,
-}: DesignChoiceProps): DesignChoiceViewProps {
-  const [choosing, setChoosing] = useState(false);
-  const choose = async (label: string) => {
-    const option = concepts.find((concept) => concept.label === label)?.option;
-    if (option === undefined) return;
-    setChoosing(true);
-    try {
-      const receipt = await chooseDesign(projectId, option);
-      onChosen(receipt.concept);
-    } catch (cause) {
-      toast.error(humanFault(cause, wording.design.chooseFailed));
-    } finally {
-      setChoosing(false);
-    }
-  };
-  return {
-    concepts: concepts.map(({ label, direction }) => ({ label, direction })),
-    choosing,
-    onShow: (label) => onShowConcept(conceptTab(label)),
-    onChoose: (label) => void choose(label),
   };
 }
