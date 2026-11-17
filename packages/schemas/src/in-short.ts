@@ -5,7 +5,7 @@ export function documentSection(
   content: string,
   title: string,
 ): string | undefined {
-  const opens = new RegExp(`^##\\s+${title}\\s*$`, "i");
+  const opens = new RegExp(`^##\\s+${title}\\s*:?\\s*$`, "i");
   const lines = content.replace(/\r\n/g, "\n").split("\n");
   const start = lines.findIndex((line) => opens.test(line));
   if (start === -1) return undefined;

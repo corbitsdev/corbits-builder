@@ -20,3 +20,10 @@ test("the summary is the In short section as written, and nothing else", () => {
   );
   expect(inShort("# Notes\n\n## Stack\n\n- React")).toBeUndefined();
 });
+
+test("a heading written with a trailing colon is still the summary", () => {
+  expect(inShort("## In short:\n\n- **Weekday walks** only.")).toBe(
+    "- **Weekday walks** only.",
+  );
+  expect(inShort("## In shortly\n\n- **Weekday walks** only.")).toBeUndefined();
+});
