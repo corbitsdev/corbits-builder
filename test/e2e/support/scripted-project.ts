@@ -79,9 +79,13 @@ export const call = (
   id: string,
   name: string,
   args: Record<string, unknown>,
-): Reply => ({ toolCalls: [{ id, name, arguments: args }] });
-export const calls = (...replies: Reply[]): Reply => ({
-  toolCalls: replies.flatMap((reply) => reply.toolCalls ?? []),
+): Required<Pick<Reply, "toolCalls">> => ({
+  toolCalls: [{ id, name, arguments: args }],
+});
+export const calls = (
+  ...replies: Required<Pick<Reply, "toolCalls">>[]
+): Reply => ({
+  toolCalls: replies.flatMap((reply) => reply.toolCalls),
 });
 export const execute = (
   id: string,
@@ -110,7 +114,9 @@ function decodeReply(sse: string): Reply {
     );
     for (const choice of chunk.choices) {
       text += choice.delta.content ?? "";
-      for (const part of choice.delta.tool_calls ?? []) {
+      const parts = choice.delta.tool_calls;
+      if (parts === undefined) continue;
+      for (const part of parts) {
         const known = made[part.index];
         if (known) known.args += part.function.arguments;
         else
