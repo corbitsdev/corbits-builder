@@ -175,7 +175,15 @@ jobs:
         run: bunx playwright install --with-deps chromium
       - if: env.RUN == 'true'
         # test/e2e/builds runs in the e2e-builds job, which installs the sandbox libraries a build needs.
-        run: bun --conditions=intx-src test ./test/e2e --path-ignore-patterns='test/e2e/builds/**'
+        run: bun --conditions=intx-src test ./test/e2e --path-ignore-patterns='test/e2e/builds/**' --path-ignore-patterns='test/e2e/plugin-credentials.test.ts'
+        env:
+          E2E_DB_HOST: 127.0.0.1
+          E2E_DB_PORT: 5432
+          E2E_DB_USER: postgres
+          E2E_DB_PASSWORD: postgres
+      - if: env.RUN == 'true'
+        # The hub reads its plugins once per process, so the test that installs one runs in its own.
+        run: bun --conditions=intx-src test ./test/e2e/plugin-credentials.test.ts
         env:
           E2E_DB_HOST: 127.0.0.1
           E2E_DB_PORT: 5432

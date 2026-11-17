@@ -1,0 +1,71 @@
+{
+  "name": "@corbits-builder/keyholder",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "builder": {
+    "handle": "keyholder",
+    "runs": "specialist",
+    "groups": [
+      "keyholder"
+    ],
+    "when": "The person wants the Keyholder API checked.",
+    "unless": "They want something else.",
+    "credentials": {
+      "keyholder-api": {
+        "about": "Your Keyholder API key",
+        "origin": "http://127.0.0.1:4010",
+        "sends": {
+          "header": "x-api-key",
+          "prefix": "Token"
+        },
+        "screen": "key-form"
+      }
+    },
+    "roles": [
+      {
+        "name": "keyholder",
+        "label": "Key checker",
+        "model": "keyholder",
+        "limits": "keyholder",
+        "tools": [
+          "write_artifact"
+        ],
+        "status": {
+          "working": "Checking the key",
+          "done": "Checked the key"
+        },
+        "preferences": [
+          "technical"
+        ]
+      }
+    ],
+    "settings": {
+      "keyholder": {
+        "label": "Key checker",
+        "hint": "Checks the Keyholder API.",
+        "tier": "medium"
+      }
+    },
+    "budgets": {
+      "keyholder": {
+        "maxOutputTokens": 16384
+      }
+    },
+    "agents": {
+      "keyholder": {
+        "prompt": "./prompt.md",
+        "tools": "./src/tools.ts"
+      }
+    },
+    "actions": {
+      "use-key": {
+        "returns": [],
+        "start": {
+          "agent": "keyholder"
+        }
+      },
+      "key-form": {}
+    }
+  }
+}
