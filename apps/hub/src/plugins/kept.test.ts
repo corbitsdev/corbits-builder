@@ -38,10 +38,8 @@ test("what a plugin's start keeps for its run is checked against its action alon
   const values = new Map<string, unknown>();
   const project: StarterProject = {
     appStarters: new Map(),
-    heldBack: unused,
     state: unused,
     values: unused,
-    working: unused,
     deploy: unused,
     startConcepts: unused,
     startAlone: async ({ keep }) => {

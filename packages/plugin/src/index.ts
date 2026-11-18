@@ -741,10 +741,6 @@ export type StarterProject = {
   }>;
   // Each named project value as stored, null where the project has none yet.
   values(names: readonly string[]): Promise<Readonly<Record<string, unknown>>>;
-  // The runs at work in the project, whoever started them.
-  working(): Promise<readonly Working[]>;
-  // What the coordinator can do to free a start that these runs hold back, named as it lists them.
-  heldBack(runIds: string): string;
   // Deploys the installed workflow, one run of its role at a time: busy refuses while another is
   // starting, or is still at work once a replied one had time to end. assignment writes the run's
   // first message from the project as it then stands; the host adds the values block and the

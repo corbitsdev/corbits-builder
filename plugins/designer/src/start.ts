@@ -19,10 +19,6 @@ const { design, actions } = manifest.builder;
 // The project values that carry the person's brand: the ones a mockup's run is given.
 const BRAND = actions.mockup.reads;
 
-// A design concept is one designer's: the hub files that run's design as the concept's option.
-const conceptBusy = (project: StarterProject, concept: string, runId: string) =>
-  `the ${concept} designer in run ${runId} is still at work, and a concept is one designer's because its design is filed as that concept's option. ${project.heldBack(JSON.stringify(runId))} A new concept label starts alongside it.`;
-
 const nothingStarted = (notStarted: Started["notStarted"]) =>
   new StartRefusal(
     "No designer was started: " +
@@ -80,7 +76,7 @@ async function lacking(input: typeof Input.infer, project: StarterProject) {
 }
 
 // One designer for each concept, from whatever documents the project has filed, once the call has a
-// theme and guidance. A concept whose designer is still at work is refused at once; the others start.
+// theme and guidance.
 export default defineStarter(
   type({ "+": "reject", workflow: "'designer'" }),
   Input,
@@ -93,28 +89,10 @@ export default defineStarter(
     const { concepts } = input;
     if (concepts.length > 1 && !(await project.state()).asksApprovals)
       throw oneConceptOnly(concepts.length);
-    const busy = new Map(
-      (await project.working()).flatMap((run) =>
-        run.role === "designer" && run.concept
-          ? [[run.concept, run.runId]]
-          : [],
-      ),
-    );
-    const notStarted: Started["notStarted"] = [];
-    for (const { label } of concepts) {
-      const runId = busy.get(label);
-      if (runId)
-        notStarted.push({
-          concept: label,
-          reason: conceptBusy(project, label, runId),
-        });
-    }
-    const free = concepts.filter(({ label }) => !busy.has(label));
-    if (free.length === 0) throw nothingStarted(notStarted);
     const started = await project.startConcepts({
       workflow,
       correlation: "designer",
-      concepts: free,
+      concepts,
       assignment: (filed, concept) =>
         (filed.startHere(DESIGNER_INPUTS, false) ?? "") +
         skills +
@@ -122,6 +100,7 @@ export default defineStarter(
       busy: designerBusy,
     });
     const runs: Started["runs"] = [];
+    const notStarted: Started["notStarted"] = [];
     for (const outcome of started) {
       if ("error" in outcome)
         notStarted.push({ concept: outcome.concept, reason: outcome.error });

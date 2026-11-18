@@ -31,7 +31,6 @@ import {
   PLAN_DESCRIPTION,
   pluginHint,
   RUNS_DESCRIPTION,
-  waitOrStop,
 } from "@corbits-builder/plugin-host/text";
 import { PlanView } from "@corbits-builder/schemas/project";
 import type { PluginHint } from "../environment.ts";
@@ -185,7 +184,6 @@ function project(session: ProjectSession): Project {
   const path = session.projectPath + "/following";
   return {
     appStarters: CATALOG.appStarters,
-    heldBack: waitOrStop,
     state: async () => {
       const listed = await session.listed();
       const { checks } = CheckList.assert(
@@ -260,7 +258,6 @@ function project(session: ProjectSession): Project {
         throw error;
       }
     },
-    working: async () => (await session.listed()).inFlight,
     startAlone: ({ workflow, correlation, assignment, busy, keep }) =>
       session.startAlone(
         workflow,
@@ -321,7 +318,7 @@ async function executeCheck(
 
 /**
  * The coordinator's way to act: discover finds a plugin, execute starts a specialist's action,
- * runs a check or opens a screen, whose answer records what it approves, runs lists, waits on and
+ * runs a check or opens a screen, whose answer records what it approves, runs lists and
  * stops the runs it started, plan keeps the project's plan, and question asks the person in words.
  */
 export function createExecuteTools(
@@ -400,7 +397,7 @@ export function createExecuteTools(
           if (call.name === "runs")
             return {
               callId: call.id,
-              ...(await manageRuns(project(session), call.arguments, signal)),
+              ...(await manageRuns(project(session), call.arguments)),
             };
           if (call.name === "plan")
             return {
