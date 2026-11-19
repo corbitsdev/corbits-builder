@@ -183,7 +183,7 @@ jobs:
         run: bunx playwright install --with-deps chromium
       - if: env.RUN == 'true'
         # test/e2e/builds runs in the e2e-builds job, which installs the sandbox libraries a build needs.
-        run: bun --conditions=intx-src test ./test/e2e --path-ignore-patterns='test/e2e/builds/**' --path-ignore-patterns='test/e2e/plugin-credentials.test.ts' --path-ignore-patterns='test/e2e/plugin-optional-credential.test.ts'
+        run: bun --conditions=intx-src test ./test/e2e --path-ignore-patterns='test/e2e/builds/**' --path-ignore-patterns='test/e2e/plugin-credentials.test.ts' --path-ignore-patterns='test/e2e/plugin-optional-credential.test.ts' --path-ignore-patterns='test/e2e/run-server-key.test.ts'
         env:
           E2E_DB_HOST: 127.0.0.1
           E2E_DB_PORT: 5432
@@ -200,6 +200,13 @@ jobs:
           E2E_DB_PASSWORD: postgres
       - if: env.RUN == 'true'
         run: bun --conditions=intx-src test ./test/e2e/plugin-optional-credential.test.ts
+        env:
+          E2E_DB_HOST: 127.0.0.1
+          E2E_DB_PORT: 5432
+          E2E_DB_USER: postgres
+          E2E_DB_PASSWORD: postgres
+      - if: env.RUN == 'true'
+        run: bun --conditions=intx-src test ./test/e2e/run-server-key.test.ts
         env:
           E2E_DB_HOST: 127.0.0.1
           E2E_DB_PORT: 5432

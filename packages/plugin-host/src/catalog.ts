@@ -16,6 +16,7 @@ import {
   SkillsBuilder,
   SpecialistBuilder,
   declaredRole,
+  isProvisioned,
   lookOf,
   notNeededWhileOf,
   validateInput,
@@ -26,7 +27,9 @@ import {
   Workspace,
   type AgentBuilder,
   type AppStarter,
+  type HttpCredentialDeclaration,
   type CredentialDeclaration,
+  type SshCredentialDeclaration,
   type FiledVersion,
   type Kept,
   type Starter,
@@ -337,11 +340,13 @@ export type PluginPackage =
  * The installed plugins as one project sees them: one plugin per handle, the one its selection names
  * of those that share a handle, else their default.
  */
-// A credential name as the installed plugins declare it, with the labels of those that do.
-export type PluginCredential = Pick<
-  CredentialDeclaration,
-  "about" | "origin" | "sends"
-> & { name: string; plugins: string[] };
+// A credential name as the installed plugins declare it, with the labels of those that do: an API
+// key with the origin it is sent to, or a server key, which names none and may be one the hub
+// makes.
+export type PluginCredential = (
+  | Pick<HttpCredentialDeclaration, "about" | "origin" | "sends">
+  | (Pick<SshCredentialDeclaration, "about" | "sends"> & { provisioned?: true })
+) & { name: string; plugins: string[] };
 
 export type Catalog = {
   plugins: readonly Plugin[];
@@ -612,13 +617,46 @@ async function manifested(found: Found) {
         action,
         await declaredAction(found, builder.handle, action, entry),
       );
-    for (const [provider, { screen }] of Object.entries(builder.credentials))
-      if (actions.get(screen)?.kind !== "screen")
+    for (const [provider, declaration] of Object.entries(builder.credentials))
+      if (
+        "screen" in declaration &&
+        actions.get(declaration.screen)?.kind !== "screen"
+      )
         throw new Error(
-          `${builder.handle}'s credential ${provider} shows its form on ${screen}, which is not a screen of ${builder.handle}`,
+          `${builder.handle}'s credential ${provider} shows its form on ${declaration.screen}, which is not a screen of ${builder.handle}`,
         );
+    checkProvisions(builder, actions);
   }
   return { found, builder, about, actions };
+}
+
+// Only a run of its plugin makes a provisioned credential. So an action may provision only its
+// plugin's provisioned credentials, and each of those needs an action that provisions it. Otherwise
+// nothing could make it, and every action that needs it would be refused for good.
+function checkProvisions(
+  builder: SpecialistBuilder,
+  actions: ReadonlyMap<string, Declared>,
+) {
+  const provisioning = [...actions].flatMap(([action, declared]) =>
+    declared.kind === "workflow"
+      ? (declared.builder.provisions ?? []).map((name) => ({ action, name }))
+      : [],
+  );
+  for (const { action, name } of provisioning) {
+    const declaration = builder.credentials[name];
+    if (declaration === undefined || !isProvisioned(declaration))
+      throw new Error(
+        `${builder.handle} ${action} provisions ${name}, which ${builder.handle} does not declare as a provisioned credential`,
+      );
+  }
+  for (const [name, declaration] of Object.entries(builder.credentials))
+    if (
+      isProvisioned(declaration) &&
+      !provisioning.some((each) => each.name === name)
+    )
+      throw new Error(
+        `${builder.handle}'s credential ${name} is provisioned, but no action of ${builder.handle} provisions it`,
+      );
 }
 type Manifested = Awaited<ReturnType<typeof manifested>>;
 
@@ -822,19 +860,24 @@ const sameSends = (
   a: CredentialDeclaration["sends"],
   b: CredentialDeclaration["sends"],
 ) =>
-  a === "bearer" || b === "bearer"
+  typeof a === "string" || typeof b === "string"
     ? a === b
     : a.header === b.header && a.prefix === b.prefix;
 
+// How a credential is had besides its form: made by the hub, or not. Plugins sharing a name must
+// agree on it.
+const obtained = (declaration: CredentialDeclaration) =>
+  JSON.stringify({ provisioned: isProvisioned(declaration) });
+
 // Each credential name the installed plugins declare, with the labels of the plugins that declare
-// it. Plugins share a name only as one key, sent to one origin one way, since a person saves it once
-// for all of them.
+// it. Plugins share a name only as one key, sent to one origin one way and had the same way, since a
+// person saves it once for all of them.
 function declaredCredentials(
   manifests: readonly Manifested[],
   values: ReadonlyMap<string, ValueDeclaration>,
 ) {
   const credentials = new Map<string, PluginCredential>();
-  const firsts = new Map<string, string>();
+  const firsts = new Map<string, { package: string; obtained: string }>();
   for (const { builder, about } of manifests) {
     if (builder.runs !== "specialist") continue;
     // A plugin is named to a person by its own agent, as the page names it while it works.
@@ -842,25 +885,48 @@ function declaredCredentials(
       builder.roles.find((role) => role.name === builder.handle)?.label ??
       builder.handle;
     for (const [name, declaration] of Object.entries(builder.credentials)) {
-      const { about: what, origin, sends } = declaration;
+      const { about: what, sends } = declaration;
       const notNeededWhile = notNeededWhileOf(declaration);
       if (notNeededWhile !== undefined && !values.has(notNeededWhile))
         throw new Error(
           `${about.package}'s credential ${name} is not needed while ${notNeededWhile} is set, but no plugin declares ${notNeededWhile} as a project value`,
         );
+      const origin = "origin" in declaration ? declaration.origin : undefined;
       const earlier = credentials.get(name);
+      const first = firsts.get(name);
       if (!earlier) {
-        credentials.set(name, {
+        credentials.set(
           name,
-          about: what,
-          origin,
-          sends,
-          plugins: [named],
+          "origin" in declaration
+            ? {
+                name,
+                about: what,
+                origin: declaration.origin,
+                sends: declaration.sends,
+                plugins: [named],
+              }
+            : {
+                name,
+                about: what,
+                sends: "ssh",
+                ...(isProvisioned(declaration) ? { provisioned: true } : {}),
+                plugins: [named],
+              },
+        );
+        firsts.set(name, {
+          package: about.package,
+          obtained: obtained(declaration),
         });
-        firsts.set(name, about.package);
-      } else if (earlier.origin !== origin || !sameSends(earlier.sends, sends))
+      } else if (
+        ("origin" in earlier ? earlier.origin : undefined) !== origin ||
+        !sameSends(earlier.sends, sends)
+      )
         throw new Error(
-          `${about.package} and ${firsts.get(name)} both declare the credential ${name}, sent to a different origin or a different way`,
+          `${about.package} and ${first?.package} both declare the credential ${name}, sent to a different origin or a different way`,
+        );
+      else if (first?.obtained !== obtained(declaration))
+        throw new Error(
+          `${about.package} and ${first?.package} both declare the credential ${name}, had a different way: made by the hub, or given on a form`,
         );
       else earlier.plugins.push(named);
     }
@@ -1479,10 +1545,14 @@ async function agentPackages(
         presents: startedPresents(builder.handle, name, starting, actions),
         done: startedDone(builder.handle, name, starting, workspace),
         credentials,
-        optional: credentials.filter(
-          (credential) =>
-            notNeededWhileOf(builder.credentials[credential]!) !== undefined,
-        ),
+        // A provisioned credential is bound optional too, so the run that makes it starts without it.
+        optional: credentials.filter((credential) => {
+          const declaration = builder.credentials[credential]!;
+          return (
+            notNeededWhileOf(declaration) !== undefined ||
+            isProvisioned(declaration)
+          );
+        }),
       };
       return [name, { role: role.name, agent }] as const;
     }),

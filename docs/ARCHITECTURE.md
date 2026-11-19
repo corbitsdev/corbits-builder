@@ -462,6 +462,50 @@ Only the coordinator talks to the person. Specialists put questions in their
 reply to it, and it settles them with a stated assumption unless the answer
 changes what gets built, in which case it asks.
 
+### Hub-made server keys
+
+The hub makes every server key (`apps/hub/src/credentials/`), both for a
+person connecting their own server and for a place that rents a server for
+them, so no browser ever holds a private key. For each server it makes an
+Ed25519 pair and an unguessable label and stores them in `sb_server_key`, one
+row per project and credential name, with the private half sealed under the
+credential cipher and the issuer recorded: `person`, or `plugin:<handle>` for
+the plugin whose run asked. A live run of an action that provisions the credential may ask for the
+public half and label, ask the hub to bind the key to a server by its public IP
+address and the fingerprint of the host key it must present, and ask it to
+revoke the key its plugin made. The hub binds only after it has signed in with
+the key to that address, pinned to that host key. It then saves the key as the
+plugin's `ssh` credential in the project, the same rows a person's form would
+save, and drops its own copy of the private half, so the credential is the only
+place the key lives. A run never gets the private half. It never binds to a
+host name or, outside development, to a private address or a port other than
+22, and never replaces or revokes a key that a person or another plugin made.
+
+A person connects their own server through the same module, on their session
+and only with the grants to save a provider and a credential in the project.
+They get a key, the same one until it is connected or they ask for a new one,
+and name the server by the address or host name their provider shows. The hub
+takes the host key the server presents on first contact, since the person typed
+the address, and proves the key signs in before it saves anything, so a key
+the person has not yet added at their provider is refused in words that say
+so. Their key replaces whatever key the project held under that name; the
+earlier one stays saved and working until the new one connects. The form opens
+on a read that never makes a key: the connected server and its key's public
+half, or else the key waiting to be connected. While a new key waits and the
+old server stays connected, the connected server and its public half are read
+from the credential, since the new key's row says nothing of it. A `provisioned` credential is never a
+person's, so their routes answer `server_key_unknown` for its name. A key
+revoked in Settings leaves its row behind as lost, and the person's next request
+for a key replaces it.
+
+A rented server first presents a host key that the run made and handed to the
+provider in the server's user-data, where it stays readable on the machine.
+Pinning to it keeps out a server that is not the one rented, but not someone
+who can read the machine and stands on the network path to it. The hub does not
+rotate the host key after binding, because a failure between restarting the
+server's SSH and saving the new fingerprint would lock Builder out of a server
+the person pays for.
+
 ## Documents and versions
 
 A document has a kind, a title and a sequence of versions. Each version has

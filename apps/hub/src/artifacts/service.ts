@@ -427,9 +427,11 @@ export function createArtifactService(
         plugin: runAction.plugin,
         action: runAction.action,
         blocked: runAction.blocked,
+        status: workflowRun.status,
       })
       .from(runAction)
       .innerJoin(principal, eq(principal.refId, runAction.runId))
+      .innerJoin(workflowRun, eq(workflowRun.id, runAction.runId))
       .where(
         and(
           eq(principal.id, actor.principalId),
@@ -1600,6 +1602,28 @@ export function createArtifactService(
         throw new ProjectError(403, "run_saves_no_values", {
           hint: "This run was not started for a plugin action that saves project values, so it saves none.",
         });
+      return run;
+    },
+
+    // The plugin action the calling specialist run was started for, while the run is live. What it
+    // asks for is made for that run to use, and a run that ended uses nothing.
+    async liveRun(actor: Actor, projectId: string) {
+      await requireProject(actor, projectId, "read");
+      const run = await callingRun(actor, projectId);
+      if (!run)
+        throw new ProjectError(403, "run_not_started_for_an_action", {
+          hint: "This run was not started for a plugin action, so Builder makes nothing for it.",
+        });
+      if (!isLiveWorkflowRunStatus(run.status)) {
+        // A tool still working after its run ended. Nothing else at the default log level shows it.
+        log.info("A run's ask was refused: {code}", {
+          code: "run_not_live",
+          projectId,
+          plugin: run.plugin,
+          action: run.action,
+        });
+        throw new ProjectError(403, "run_not_live", { runId: run.runId });
+      }
       return run;
     },
 

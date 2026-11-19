@@ -194,6 +194,9 @@ export const WorkflowActionBuilder = type({
   "reads?": "string[]",
   // Project values, by name, that the run's agent may save with report_values as it learns them.
   writes: type("string[]").default(() => []),
+  // The plugin's provisioned credentials that this run makes, so the run starts without them. The
+  // plugin's other actions that need one are refused until it exists.
+  "provisions?": "string[] > 0",
   // The screen actions of the same plugin that can show the finished work to the person; each
   // screen's when says which fits.
   "presents?": "string[] > 0",
@@ -413,38 +416,76 @@ export type AgentBuilder = typeof AgentBuilder.infer;
 // Plain http only to this machine, so an end-to-end test can stand up its upstream locally.
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1"]);
 
-// An API key a plugin's tools send: what it is, the origin it may be sent to, how it is sent (a
-// bearer token through Interchange's http provider, or a named header through its http-header
-// provider) and the plugin's screen action that shows its form. notNeededWhile names a project
-// value that, while it is set, lets the plugin's actions start without the key, for a plugin with a
-// way to work that needs none; its tools then find the key missing and take that way.
-export const CredentialDeclaration = type({
+const isSecure = (url: URL) =>
+  url.protocol === "https:" ||
+  (url.protocol === "http:" && LOCAL_HOSTS.has(url.hostname));
+
+// A secret a plugin's tools use, by how it is sent, and the plugin's screen action that shows its
+// form. An http credential names the origin it may be sent to and how it is sent: a bearer token
+// through Interchange's http provider, or a named header through its http-header provider. An ssh
+// credential names no origin, because the server is its own: the person gives its address with the
+// key, and Interchange's ssh provider runs commands on that one server only. A provisioned ssh
+// credential is made by the hub for the plugin's own actions that say they provision it, never
+// typed by a person, so it has no form. notNeededWhile names a project value that, while it is set,
+// lets the plugin's actions start without the key, for a plugin with a way to work that needs none;
+// its tools then find the key missing and take that way. A provisioned credential has none: only the
+// plugin's own runs make it, so nothing the person sets stands in for it.
+const HttpOrigin = type("string.url").narrow((origin, ctx) => {
+  const url = new URL(origin);
+  return (
+    (url.origin === origin && isSecure(url)) ||
+    ctx.mustBe("an https origin, such as https://api.example.com")
+  );
+});
+const HttpCredentialDeclaration = type({
   "+": "reject",
   about: "string > 0",
-  origin: type("string.url").narrow((origin, ctx) => {
-    const url = new URL(origin);
-    return (
-      (url.origin === origin &&
-        (url.protocol === "https:" ||
-          (url.protocol === "http:" && LOCAL_HOSTS.has(url.hostname)))) ||
-      ctx.mustBe("an https origin, such as https://api.example.com")
-    );
-  }),
-  sends: type("'bearer'").or({
+  origin: HttpOrigin,
+  sends: "'bearer'",
+  screen: "string > 0",
+  "notNeededWhile?": "string > 0",
+}).or({
+  "+": "reject",
+  about: "string > 0",
+  origin: HttpOrigin,
+  sends: {
     "+": "reject",
     header: type(/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/).describe(
       "an HTTP header name",
     ),
     "prefix?": "string > 0",
-  }),
+  },
   screen: "string > 0",
   "notNeededWhile?": "string > 0",
 });
+const SshCredentialDeclaration = type({
+  "+": "reject",
+  about: "string > 0",
+  sends: "'ssh'",
+  screen: "string > 0",
+  "notNeededWhile?": "string > 0",
+}).or({
+  "+": "reject",
+  about: "string > 0",
+  sends: "'ssh'",
+  provisioned: "true",
+});
+export const CredentialDeclaration = HttpCredentialDeclaration.or(
+  SshCredentialDeclaration,
+);
+export type HttpCredentialDeclaration = typeof HttpCredentialDeclaration.infer;
+export type SshCredentialDeclaration = typeof SshCredentialDeclaration.infer;
 export type CredentialDeclaration = typeof CredentialDeclaration.infer;
 
 /** The project value that lets a credential's plugin start without it while set, when it names one. */
 export const notNeededWhileOf = (declaration: CredentialDeclaration) =>
   "notNeededWhile" in declaration ? declaration.notNeededWhile : undefined;
+
+/** Whether the hub makes a credential for its plugin's actions, rather than a person giving it. */
+export const isProvisioned = (
+  declaration: CredentialDeclaration,
+): declaration is Extract<CredentialDeclaration, { provisioned: true }> =>
+  "provisioned" in declaration;
 
 // Each credential by the Interchange provider it is saved under, which is also the handle the
 // plugin's tools declare it by.

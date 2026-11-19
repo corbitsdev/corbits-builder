@@ -35,6 +35,7 @@ import {
   createReconciliationScheduler,
   createRunCredentialsLoader,
   pushCredentialReconcile,
+  pushCredentialRevoke,
   type SidecarLookups,
   createSessionService,
   createSidecarCredentialResolver,
@@ -50,6 +51,8 @@ import { createWorkspaceRoutes } from "./workspaces.ts";
 import { ensureInstallRoot, joinInstallRoot } from "./install-root.ts";
 import { serverProviderKeys } from "./config/install-root.ts";
 import { createProjectRoutes } from "./projects/routes.ts";
+import { createServerKeys } from "./credentials/server-keys.ts";
+import { mountPersonServerKeys } from "./credentials/routes.ts";
 import { createAppRepositoryRoutes } from "./projects/app-repository.ts";
 import { createInstalledCoordinatorStartup } from "./projects/coordinator-startup.ts";
 import { createConversationRoutes } from "./mail/conversation-routes.ts";
@@ -563,6 +566,18 @@ export async function createHubRuntime(env: HubEnvironment) {
     });
     app.route("/api/tenants/:tenantId/invitations", invitations.management);
     app.route("/api/invitations", invitations.recipient);
+    const serverKeys = createServerKeys(
+      handle.db,
+      credentialCipher,
+      { allowPrivateAddresses: env.SIDECAR_SSH_ALLOW_PRIVATE_ADDRESSES },
+      (tenantId, credentialId) =>
+        void pushCredentialRevoke(
+          handle.db,
+          sidecarRouter,
+          tenantId,
+          credentialId,
+        ),
+    );
     app.route(
       "/api/tenants/:tenantId/projects",
       createConversationRoutes(
@@ -610,6 +625,7 @@ export async function createHubRuntime(env: HubEnvironment) {
         liveApps,
         workflows.services.workflowLifecycleService.requestCancellation,
         checks,
+        serverKeys,
       ),
     );
     app.route(
@@ -662,6 +678,7 @@ export async function createHubRuntime(env: HubEnvironment) {
       sidecarRouter,
       loadRunCredentials,
     });
+    mountPersonServerKeys(app, serverKeys, { db: handle.db, requireGrant });
     const tokenRefresher = startTokenRefresher({
       db: handle.db,
       cipher: credentialCipher,

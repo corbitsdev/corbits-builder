@@ -222,6 +222,12 @@ When a change needs something that none of them clearly owns, or that one of
 the first two almost covers, raise it before building: it may belong upstream,
 as a deliberate vendor change, or in a Corbits package.
 
+Making a credential on the server side for a run falls between Interchange and
+Builder: Interchange stores credentials and binds them to runs, but has no
+route a run can call to have one made. The hub does it in
+`apps/hub/src/credentials/`, the one place where it writes a plugin's provider
+and credential rows itself; this should be raised upstream.
+
 `@intx/*` packages come from npm where a published version serves. A package
 is vendored only when Builder patches it or needs Interchange's main past the
 published release.

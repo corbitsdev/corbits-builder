@@ -1,0 +1,104 @@
+{
+  "name": "@corbits-builder/hoster",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "builder": {
+    "handle": "hoster",
+    "runs": "specialist",
+    "groups": [
+      "hoster"
+    ],
+    "when": "The person wants the app on a machine rented at Hoster.",
+    "unless": "They want something else.",
+    "values": {
+      "hoster.choice": {
+        "about": "The machine the person agreed to rent, as { \"size\": its size, \"region\": where it runs }.",
+        "type": "json"
+      },
+      "hoster.region": {
+        "about": "Where the rented machine runs.",
+        "type": "text"
+      }
+    },
+    "credentials": {
+      "hoster": {
+        "about": "Hoster account",
+        "origin": "https://api.hoster.example",
+        "sends": "bearer",
+        "screen": "account"
+      },
+      "hoster-server": {
+        "about": "the key to the rented machine",
+        "sends": "ssh",
+        "provisioned": true
+      }
+    },
+    "roles": [
+      {
+        "name": "hoster",
+        "label": "Renter",
+        "model": "hoster",
+        "limits": "hoster",
+        "tools": [],
+        "status": {
+          "working": "Renting",
+          "done": "Rented"
+        }
+      }
+    ],
+    "settings": {
+      "hoster": {
+        "label": "Renter",
+        "hint": "Rents a machine and puts the app on it.",
+        "tier": "medium"
+      }
+    },
+    "budgets": {
+      "hoster": {
+        "maxOutputTokens": 16384
+      }
+    },
+    "agents": {
+      "hoster": {
+        "prompt": "./prompt.md",
+        "tools": "./src/tools.ts"
+      },
+      "hoster-release": {
+        "prompt": "./prompt.md",
+        "tools": "./src/release-tools.ts"
+      }
+    },
+    "actions": {
+      "account": {
+        "reads": [
+          "hoster.choice"
+        ]
+      },
+      "create": {
+        "returns": [],
+        "provisions": [
+          "hoster-server"
+        ],
+        "start": {
+          "agent": "hoster"
+        }
+      },
+      "publish": {
+        "returns": [],
+        "start": {
+          "agent": "hoster-release"
+        }
+      },
+      "remove": {
+        "returns": [],
+        "provisions": [
+          "hoster-server"
+        ],
+        "start": {
+          "agent": "hoster"
+        }
+      }
+    }
+  }
+}

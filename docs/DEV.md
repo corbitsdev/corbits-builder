@@ -151,15 +151,34 @@ what it holds, because evidence reaches models.
 
 `credentials` declares the keys a plugin's tools use, each under the handle its
 tools resolve it by, with `about` (what the person reads) and `screen` (the
-plugin's screen with the form that saves it). An http credential adds `origin`,
-the https origin it may be sent to, and `sends`: `"bearer"` or
-`{ "header": "...", "prefix": "..." }`. While the key is missing, starting an
-action whose agent's tools use it opens that screen first, unless the value
-`notNeededWhile` names is set, as for a plugin that can also work without a
-key: its tools find the key unbound and work that way. Only the credentials an
+plugin's screen with the form that saves it). How a credential is sent sets its
+kind. An http credential adds `origin`, the https origin it may be sent to, and
+`sends`: `"bearer"` or `{ "header": "...", "prefix": "..." }`. An ssh
+credential says `"sends": "ssh"` and has no origin. Its screen draws
+`ServerKeyForm` from `@corbits-builder/plugin-ui/server-key-form`. The hub makes
+the key and keeps its private half; the person gives the public half to their
+hosting provider and types the server's address, through
+`/api/tenants/:tenantId/server-keys/:name/{key,bind}`
+([how the hub makes and saves it](https://github.com/corbitsdev/corbits-builder/blob/main/docs/ARCHITECTURE.md#hub-made-server-keys)).
+Interchange's ssh provider then runs commands on that server only. While the
+key is missing, starting an action whose agent's tools use
+it opens that screen first, unless the value `notNeededWhile` names is set, as
+for a plugin that can also work without a key: its tools find the key unbound
+and work that way.
+
+An ssh credential that says `"provisioned": true` instead of `screen` is made by
+the hub for the plugin's own actions; no person types it. An action that lists
+it in `provisions` starts without it. Any other action of the plugin whose
+agent's tools use it is refused while it is missing, in words that name the
+actions that provision it, and no form opens. Every name in `provisions` must be
+a provisioned credential of the same plugin, and every provisioned credential
+needs an action that provisions it. Plugins that declare the same credential
+must agree on how it is sent and how it is obtained. Only the credentials an
 agent's tools module declares hold back the actions that start that agent; the
 hub reads them from the module when the catalog loads, and stops if a tools
-module uses a credential its plugin does not declare.
+module uses a credential its plugin does not declare. The fixture
+`apps/hub/src/plugins/fixtures/hoster` declares one of each, with an agent that
+binds only the provisioned key.
 
 The role is the worker's agent as the hub runs it. `model` names a model
 setting and `limits` an output budget, each declared here or by the hub; a
@@ -239,7 +258,8 @@ refusal the coordinator can act on.
 The manifest entry says what the folder cannot. `requires` lists alternatives,
 each the facts that together let the action start; `returns` the facts its
 finished work makes true; `reads` and `writes` the project values the run is
-given and may save; `presents` the screens of the same plugin that show what it
+given and may save; `provisions` the provisioned credentials of the same plugin
+that its run makes (above); `presents` the screens of the same plugin that show what it
 made; `done` the checks of the same plugin that must pass before its reply goes
 out. A fact the action needs or makes must be one the hub works out, one a
 check returns, or a template on an input field such as `filed:{kind}`; the

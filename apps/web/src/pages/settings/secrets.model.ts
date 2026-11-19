@@ -9,9 +9,11 @@ import { toast } from "sonner";
 import { credentialProvider } from "@corbits-builder/plugin";
 import {
   heldCredentials,
+  heldServers,
   replaceCredential,
   revokeCredential,
-} from "@corbits-builder/plugin-ui/credential-form";
+  type ApiKeySending,
+} from "@corbits-builder/plugin-ui/credentials";
 import type { PluginCredentials } from "@corbits-builder/schemas/settings";
 import { wording } from "../../config.ts";
 import { keys } from "../../queries/keys.ts";
@@ -36,7 +38,14 @@ export type Place = {
   tenant: string;
   /** The project's name; null for the workspace. */
   project: string | null;
-  credentials: readonly { id: string; name: string; status: string }[];
+  credentials: readonly {
+    id: string;
+    name: string;
+    status: string;
+    providerId: string;
+  }[];
+  /** The address of each server this place has a key for, by the id of the key's provider. */
+  servers: Readonly<Record<string, string>>;
 };
 
 type Secrets = {
@@ -57,11 +66,13 @@ async function readSecrets(): Promise<Secrets> {
     ...projects.map((row) => ({ tenant: row.tenantId, project: row.title })),
   ];
   const places = await Promise.all(
-    tenants.map(async ({ tenant, project }) => ({
-      tenant,
-      project,
-      credentials: await heldCredentials(tenant),
-    })),
+    tenants.map(async ({ tenant, project }) => {
+      const [credentials, servers] = await Promise.all([
+        heldCredentials(tenant),
+        heldServers(tenant),
+      ]);
+      return { tenant, project, credentials, servers };
+    }),
   );
   return { workspace, places, declared };
 }
@@ -69,9 +80,26 @@ async function readSecrets(): Promise<Secrets> {
 const declarationOf = (declared: readonly Declared[], credential: string) =>
   declared.find(({ name }) => credentialProvider(name) === credential);
 
+// How a saved key was had: typed or connected by the person, or made by Builder for a server a
+// plugin rented.
+function kindOf(declaration: Declared | undefined): SavedSecret["kind"] {
+  if (declaration?.sends === "ssh" && declaration.provisioned)
+    return "provisioned";
+  return "key";
+}
+
+// How a new key typed in a credential's place is sent, which is what makes it replaceable: only a
+// plugin's declaration says how an API key is sent, and a server key is a pair made for one server,
+// revoked and connected again rather than retyped. Null when it cannot be replaced.
+function replacement(declaration: Declared | undefined): ApiKeySending | null {
+  if (declaration === undefined || declaration.sends === "ssh") return null;
+  return { origin: declaration.origin, sends: declaration.sends };
+}
+
 function savedSecret(
   declared: readonly Declared[],
   credential: Place["credentials"][number],
+  servers: Place["servers"],
 ): SavedSecret {
   const declaration = declarationOf(declared, credential.name);
   return {
@@ -80,9 +108,15 @@ function savedSecret(
     usedBy: declaration
       ? {
           plugins: declaration.plugins,
-          host: new URL(declaration.origin).host,
+          // A server key is sent to the person's own server, whose address is saved with the key.
+          host:
+            declaration.sends === "ssh"
+              ? (servers[credential.providerId] ?? null)
+              : new URL(declaration.origin).host,
         }
       : null,
+    replaceable: replacement(declaration) !== null,
+    kind: kindOf(declaration),
   };
 }
 
@@ -98,7 +132,7 @@ export function secretGroups(
       .filter(
         ({ name, status }) => name.startsWith(PREFIX) && status === "active",
       )
-      .map((credential) => savedSecret(declared, credential)),
+      .map((credential) => savedSecret(declared, credential, place.servers)),
   }));
 }
 
@@ -137,13 +171,15 @@ export function useSecretsSection(): SecretsSectionViewProps {
     try {
       const data = secrets();
       const { owner, declaration } = locate(data, id);
-      // A key no installed plugin declares has no way to send it, so its row offers no replacement.
-      if (!declaration) throw new Error(`secret_undeclared:${id}`);
+      const sending = replacement(declaration);
+      // Only a replaceable row offers a replacement.
+      if (declaration === undefined || sending === null)
+        throw new Error(`secret_not_replaceable:${id}`);
       await replaceCredential(
         { owner, workspace: data.workspace },
         id,
         declaration.name,
-        declaration,
+        sending,
         key,
       );
       setReplacing(null);
