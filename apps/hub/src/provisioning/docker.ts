@@ -62,6 +62,8 @@ type CreateDockerSidecarProvisionerOpts = {
   readonly image: string;
   /** The hub's adapter manifest at the paths the image holds its modules. */
   readonly adapterManifest: AdapterManifest;
+  /** Lets ssh credentials reach loopback and private addresses. */
+  readonly sshAllowPrivateAddresses: boolean;
   /** Where containers reach the hub, for a daemon on another machine; unset, the hub's own address with loopback mapped to the Docker host. */
   readonly hubWebSocketUrl?: string;
 };
@@ -129,6 +131,7 @@ export function createDockerSidecarProvisioner({
   daemonId,
   image,
   adapterManifest,
+  sshAllowPrivateAddresses,
   hubWebSocketUrl,
   limits = defaultDockerLimits,
 }: CreateDockerSidecarProvisionerOpts): SidecarProvisioner {
@@ -174,6 +177,7 @@ export function createDockerSidecarProvisioner({
       SIDECAR_DATA_DIR: DATA_DIR,
       SIDECAR_CREDENTIAL_ENCRYPTION_KEY: randomBytes(32).toString("hex"),
       SIDECAR_ADAPTER_MANIFEST: JSON.stringify(adapterManifest),
+      SIDECAR_SSH_ALLOW_PRIVATE_ADDRESSES: String(sshAllowPrivateAddresses),
       HOME: DATA_DIR,
       TMPDIR: "/tmp",
     };

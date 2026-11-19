@@ -76,6 +76,7 @@ export async function createWorkflowServices(options: {
     | "HUB_DATA_DIR"
     | "SIDECAR_ADAPTER_MANIFEST"
     | "SIDECAR_LOCAL_MAX_ACTIVE"
+    | "SIDECAR_SSH_ALLOW_PRIVATE_ADDRESSES"
     | "SIDECAR_IMAGE"
     | "SIDECAR_DOCKER_HOST"
     | "SIDECAR_DOCKER_HUB_ID"
@@ -139,6 +140,7 @@ export async function createWorkflowServices(options: {
       interchangeDir: INTERCHANGE_DIR,
       credentialEncryptionKey: environment.CREDENTIAL_ENCRYPTION_KEY,
       maxActiveDeployments,
+      sshAllowPrivateAddresses: environment.SIDECAR_SSH_ALLOW_PRIVATE_ADDRESSES,
       // A sidecar finds binaries and scratch space with these. Nothing else from the hub's
       // environment, which has its secrets, is passed on.
       processEnv: inherit(["PATH", "HOME", "TMPDIR"]),
@@ -174,6 +176,8 @@ export async function createWorkflowServices(options: {
         daemonId: daemon.ID,
         image: image.Id,
         adapterManifest,
+        sshAllowPrivateAddresses:
+          environment.SIDECAR_SSH_ALLOW_PRIVATE_ADDRESSES,
         limits: {
           memoryBytes: environment.SIDECAR_MEMORY_BYTES,
           pids: environment.SIDECAR_PIDS,
