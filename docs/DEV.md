@@ -141,6 +141,18 @@ list of them). A text value may add `pattern`, a regular expression it must
 match, and `style`, the design token it lives in once the project has a filed
 design; a run cannot write a value that has a `style`.
 
+`credentials` declares the keys a plugin's tools use, each under the handle its
+tools resolve it by, with `about` (what the person reads) and `screen` (the
+plugin's screen with the form that saves it). An http credential adds `origin`,
+the https origin it may be sent to, and `sends`: `"bearer"` or
+`{ "header": "...", "prefix": "..." }`. While the key is missing, starting an
+action whose agent's tools use it opens that screen first, unless the value
+`notNeededWhile` names is set, as for a plugin that can also work without a
+key: its tools find the key unbound and work that way. Only the credentials an
+agent's tools module declares hold back the actions that start that agent; the
+hub reads them from the module when the catalog loads, and stops if a tools
+module uses a credential its plugin does not declare.
+
 The role is the worker's agent as the hub runs it. `model` names a model
 setting and `limits` an output budget, each declared here or by the hub; a
 plugin that shares a setting with another declares it alike, so neither

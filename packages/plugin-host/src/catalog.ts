@@ -17,6 +17,7 @@ import {
   SpecialistBuilder,
   declaredRole,
   lookOf,
+  notNeededWhileOf,
   validateInput,
   validateOutput,
   validateWorkflowInput,
@@ -58,6 +59,10 @@ import {
   resolveFacts,
   templateField,
 } from "./facts.ts";
+import {
+  toolCredentials,
+  type AgentTools,
+} from "@corbits-builder/plugin/tools";
 import type { Found } from "./folder.ts";
 import {
   presentsText,
@@ -297,7 +302,8 @@ export const selectionName = (handle: string) => `plugins.${handle}`;
 // what its declaration says, its tools module's path in the plugins folder, each skill's files by
 // path with SKILL.md first, what the actions
 // that start it name: the screens that show its finished work, and the checks the hub runs on the
-// saved result before its reply counts as done; and the credentials its plugin's tools may use.
+// saved result before its reply counts as done; the credentials its plugin's tools may use; and
+// which of those a run may start without, because a value stands in for it or the hub makes it.
 export const AgentPackage = type({
   "+": "reject",
   name: "string > 0",
@@ -315,6 +321,7 @@ export const AgentPackage = type({
     checks: type("string > 0").array().atLeastLength(1),
   }).or("null"),
   credentials: "string[]",
+  optional: "string[]",
 });
 export type AgentPackage = typeof AgentPackage.infer;
 
@@ -791,7 +798,10 @@ const sameSends = (
 // Each credential name the installed plugins declare, with the labels of the plugins that declare
 // it. Plugins share a name only as one key, sent to one origin one way, since a person saves it once
 // for all of them.
-function declaredCredentials(manifests: readonly Manifested[]) {
+function declaredCredentials(
+  manifests: readonly Manifested[],
+  values: ReadonlyMap<string, ValueDeclaration>,
+) {
   const credentials = new Map<string, PluginCredential>();
   const firsts = new Map<string, string>();
   for (const { builder, about } of manifests) {
@@ -800,9 +810,13 @@ function declaredCredentials(manifests: readonly Manifested[]) {
     const named =
       builder.roles.find((role) => role.name === builder.handle)?.label ??
       builder.handle;
-    for (const [name, { about: what, origin, sends }] of Object.entries(
-      builder.credentials,
-    )) {
+    for (const [name, declaration] of Object.entries(builder.credentials)) {
+      const { about: what, origin, sends } = declaration;
+      const notNeededWhile = notNeededWhileOf(declaration);
+      if (notNeededWhile !== undefined && !values.has(notNeededWhile))
+        throw new Error(
+          `${about.package}'s credential ${name} is not needed while ${notNeededWhile} is set, but no plugin declares ${notNeededWhile} as a project value`,
+        );
       const earlier = credentials.get(name);
       if (!earlier) {
         credentials.set(name, {
@@ -1355,14 +1369,27 @@ async function agentPackages(
         declared.workspace === undefined
           ? null
           : Workspace.assert(await found.module(declared.workspace));
+      // The agent's runs bind the credentials its tools resolve, so only those hold back the
+      // actions that start it. Each must be one the plugin declares, since only those are pushed to
+      // a run.
+      let credentials: string[] = [];
       if (declared.tools !== undefined) {
         if (!(await found.has(declared.tools)))
           throw new Error(
             `${builder.handle}'s agent ${name} has no tools module inside plugins/${found.folder} at ${declared.tools}`,
           );
-        if (typeof (await found.module(declared.tools)) !== "function")
+        const tools = await found.module(declared.tools);
+        if (typeof tools !== "function")
           throw new Error(
             `${builder.handle}'s agent ${name} tools module ${declared.tools} has no defineTools factory as its default export`,
+          );
+        credentials = toolCredentials(tools as AgentTools, role.name);
+        const undeclared = credentials.find(
+          (handle) => !Object.hasOwn(builder.credentials, handle),
+        );
+        if (undeclared !== undefined)
+          throw new Error(
+            `${builder.handle}'s agent ${name} tools module ${declared.tools} uses the credential ${undeclared}, which ${builder.handle} does not declare`,
           );
       }
       const agent: AgentPackage = {
@@ -1386,7 +1413,11 @@ async function agentPackages(
           ),
         presents: startedPresents(builder.handle, name, starting, actions),
         done: startedDone(builder.handle, name, starting, workspace),
-        credentials: Object.keys(builder.credentials),
+        credentials,
+        optional: credentials.filter(
+          (credential) =>
+            notNeededWhileOf(builder.credentials[credential]!) !== undefined,
+        ),
       };
       return [name, { role: role.name, agent }] as const;
     }),
@@ -1679,11 +1710,11 @@ export async function loadCatalog(
     found.filter((each) => RunsSkills.allows(each.manifest)).map(packOf),
     manifests,
   );
-  const credentials = declaredCredentials(manifests);
+  const values = declaredValues(manifests);
+  const credentials = declaredCredentials(manifests, values);
   const made = checkMade(manifests);
   const known = new Set([...host.facts, ...made.keys()]);
   const factText = factWords(manifests, host.facts, made);
-  const values = declaredValues(manifests);
   const starters = await pluginStarters(manifests);
   const plugins = await Promise.all(
     manifests.map(

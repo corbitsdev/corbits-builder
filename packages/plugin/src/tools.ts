@@ -1,4 +1,5 @@
 import type { AnnotatedToolFactory, BaseEnv } from "@intx/agent/authoring";
+import { HUB_CREDENTIAL_HANDLE } from "@intx/types/credential-delivery";
 import type { RuntimeCapabilities } from "@intx/types/runtime-capabilities";
 
 // The most a plugin's tool may require of its run: the folder it works in, which puts the run on a
@@ -16,3 +17,16 @@ export type AgentTools = (host: {
 }) => AnnotatedToolFactory<ToolEnv>[];
 
 export const defineTools = (tools: AgentTools) => tools;
+
+/**
+ * The handles of the plugin's credentials that an agent's tools resolve, as their factories declare
+ * them. It leaves out the run's hub credential, which every run has.
+ */
+export function toolCredentials(tools: AgentTools, role: string): string[] {
+  const handles = tools({ role }).flatMap((factory) =>
+    (factory.credentials ?? []).map(({ handle }) => handle),
+  );
+  return [...new Set(handles)].filter(
+    (handle) => handle !== HUB_CREDENTIAL_HANDLE,
+  );
+}
