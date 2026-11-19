@@ -245,6 +245,20 @@ out. A fact the action needs or makes must be one the hub works out, one a
 check returns, or a template on an input field such as `filed:{kind}`; the
 catalog refuses any other.
 
+A check's entry may also say `rerun`: when the hub runs it again on its own
+after a saved change made its latest record stale. With `"never"`, the
+default, it runs only when someone asks. `"change"` re-runs it whenever
+anything it read changed, as a `ready` check does, so a coder's fix is checked
+without anyone asking. `"value"` is for a check whose fact follows a project
+value: it re-runs whenever a value it read is saved or cleared, never for a
+change to the app or a document alone, and the re-run only asks whether the
+fact holds now. A pass is recorded and the coordinator is told; a failure
+leaves no record and no note, because the stale record already says the fact
+does not hold. A run
+that the person or the coordinator asks for records its failure as always, and
+so does a `"change"` check that fails after a change, since that failure is
+news. Only a check with a record re-runs: one never run has read nothing.
+
 ### A screen
 
 An action with a `view.tsx` is a screen. The project plugin's `hand-over` is

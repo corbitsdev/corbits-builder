@@ -268,9 +268,18 @@ export const CheckActionBuilder = type({
   "all?": Proof.array().atLeastLength(1),
   "any?": Proof.array().atLeastLength(1),
   "speed?": Speed,
-  // When the hub runs the check again by itself: never, only when asked, unless stated; or on each
-  // saved change to something its latest record read.
-  "rerun?": "'never' | 'change'",
+  // When the hub runs the check again by itself. With "never", or unless stated, it runs only when
+  // asked. With "change" it re-runs on each saved change to something its latest record read. With
+  // "value", for a check whose fact follows a project value, it re-runs each time a value its
+  // latest record read is saved or cleared. That re-run only asks whether the fact holds now, so it
+  // records a pass, and a failure leaves no record and no note: the stale record it would replace
+  // already says the fact does not hold. A change only to the app or a document it read leaves the
+  // record stale until something else runs the check.
+  "rerun?": "'never' | 'change' | 'value'",
+  // Whether the person may skip the check when it fails, so that what it proves counts as true.
+  // They may unless this says "never", as for a check guarding something that only the person's
+  // answer elsewhere may allow, such as removing what a target published.
+  "skip?": "'never'",
 }).narrow(
   (action, ctx) =>
     action.all === undefined ||

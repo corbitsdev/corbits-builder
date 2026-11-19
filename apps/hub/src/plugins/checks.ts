@@ -200,23 +200,105 @@ export function savedProject({
     return { saved, versions };
   };
   const records = rows.map((row) => recordOf(row, now));
+  // The latest records whose checks the hub re-runs on its own now, each with its installed check.
+  const due = rows.flatMap((row, index) => {
+    const action = installedCheck(CATALOG, row.plugin, row.action);
+    const record = records[index];
+    return action &&
+      record &&
+      rerunsOn(action.builder.rerun, staleReads(row.versions, now))
+      ? [{ record, action }]
+      : [];
+  });
   // What is true of the project, a check's facts among it while its latest record stands.
   const facts = projectFacts({
     artifacts: listed.artifacts,
     preferences: listed.preferences,
     checks: records,
   });
-  return { now, view, records, facts };
+  return { now, view, records, due, facts };
 }
 type Now = (key: string) => string | number | boolean | null;
 
-// Whether everything a record read is still what the project has saved: the one rule of whether a
-// record is stale, which a check's facts and its re-run both go by. The version the app was seen at
-// is no part of it, so a new commit leaves a record standing unless it changed what the check read.
+// The reads of a record that no longer match what the project has saved. This is the only rule for
+// whether a record is stale, and both a check's facts and its re-run use it. The version the app
+// was seen at does not count, so a new commit leaves a record standing unless it changed what the
+// check read.
+const staleReads = (versions: Versions, now: Now) =>
+  Object.entries(versions)
+    .filter(([key, version]) => key !== SEEN_AT && now(key) !== version)
+    .map(([key]) => key);
+
 const isCurrent = (versions: Versions, now: Now) =>
-  Object.entries(versions).every(
-    ([key, version]) => key === SEEN_AT || now(key) === version,
+  staleReads(versions, now).length === 0;
+
+const valueReads = (versions: Versions): Versions =>
+  Object.fromEntries(
+    Object.entries(versions).filter(([key]) => key.startsWith("value:")),
   );
+
+// How a run ended. unrecorded is what the run read when it left no record, as a failed hub re-run
+// on a value does.
+type Settled = { unrecorded?: Versions };
+
+// Whether the hub re-runs a check on its own, given which of its latest record's reads went stale.
+// A check that re-runs on a value looks only at the project values it read. When a saved app or
+// document it read changes, its record stays stale until something else runs it.
+const rerunsOn = (
+  rerun: CheckAction["builder"]["rerun"],
+  stale: readonly string[],
+) => {
+  if (rerun === "change") return stale.length > 0;
+  if (rerun === "value") return stale.some((key) => key.startsWith("value:"));
+  return false;
+};
+
+// The triggeredBy of a check run the hub starts on its own.
+const BY_HUB = "hub";
+
+/**
+ * The record one run of a check adds and the note the coordinator may be sent about it. When the
+ * hub re-runs a check that re-runs on a value, it only asks whether the fact still holds, so a
+ * failure leaves nothing. The stale record it would replace already says the fact does not hold.
+ * A failed record would look like a fault when a value simply changed, as when the app is
+ * published to another target.
+ */
+export function runLeaves(
+  action: CheckAction,
+  run: { projectId: string; input: unknown },
+  row: Pick<Row, "id" | "tenantId" | "triggeredBy">,
+  { outcome, versions }: { outcome: CheckOutcome; versions: Versions },
+) {
+  if (
+    !outcome.pass &&
+    row.triggeredBy === BY_HUB &&
+    action.builder.rerun === "value"
+  )
+    return undefined;
+  const result = outcome.pass ? "pass" : "fail";
+  return {
+    record: {
+      id: row.id,
+      tenantId: row.tenantId,
+      projectId: run.projectId,
+      plugin: action.plugin,
+      action: action.action,
+      input: inputRecord(run.input),
+      versions,
+      result,
+      summary: outcome.summary,
+      evidence: [...outcome.evidence],
+      triggeredBy: row.triggeredBy,
+    } satisfies Omit<Row, "skippedBy" | "createdAt">,
+    note: checkNote({
+      name: action.name,
+      checkId: row.id,
+      result,
+      summary: outcome.summary,
+      evidence: outcome.evidence,
+    }),
+  };
+}
 
 const recordOf = (row: Row, now: Now): CheckRecord => {
   const record: CheckRecord = {
@@ -264,7 +346,7 @@ async function coordinatorOf(db: DB["db"], projectId: string) {
 /**
  * The hub's checks: the one place a check runs, always against the project as saved, each run
  * recorded with what it read and its result, and the coordinator told of each result it did not
- * wait on itself.
+ * wait on itself. A failed hub re-run of a check on a value is the exception: it leaves nothing.
  */
 export function createChecks(deps: {
   db: DB["db"];
@@ -342,14 +424,14 @@ export function createChecks(deps: {
     return { outcome, versions };
   };
 
-  // A retrying check's attempts, its last outcome recorded and noted; it runs after its start
-  // answered, so what goes wrong is logged here.
+  // A retrying check's attempts. Its last outcome is recorded as runLeaves says. It runs after its
+  // start answered, so what goes wrong is logged here, and it settles as Settled says.
   const retrying = async (
     action: CheckAction,
     run: { actor: Actor; projectId: string; input: unknown; origin: string },
     retry: { everySeconds: number; forSeconds: number },
     row: Pick<Row, "id" | "tenantId" | "triggeredBy">,
-  ) => {
+  ): Promise<Settled> => {
     try {
       let versions: Versions = {};
       const outcome = await keepChecking(async () => {
@@ -361,18 +443,10 @@ export function createChecks(deps: {
         versions = attempt.versions;
         return attempt.outcome;
       }, retry);
-      await finish(action, run, row, { outcome, versions });
-      await note(
-        run.projectId,
-        run.origin,
-        checkNote({
-          name: action.name,
-          checkId: row.id,
-          result: outcome.pass ? "pass" : "fail",
-          summary: outcome.summary,
-          evidence: outcome.evidence,
-        }),
-      );
+      const left = runLeaves(action, run, row, { outcome, versions });
+      if (!left) return { unrecorded: versions };
+      await db.insert(checkRun).values(left.record);
+      await note(run.projectId, run.origin, left.note);
     } catch (error) {
       log.error("A retrying check stopped", {
         projectId: run.projectId,
@@ -380,33 +454,14 @@ export function createChecks(deps: {
         ...requestErrorMetadata(error),
       });
     }
-  };
-
-  const finish = async (
-    action: CheckAction,
-    run: { projectId: string; input: unknown },
-    row: Pick<Row, "id" | "tenantId" | "triggeredBy">,
-    { outcome, versions }: { outcome: CheckOutcome; versions: Versions },
-  ) => {
-    await db.insert(checkRun).values({
-      id: row.id,
-      tenantId: row.tenantId,
-      projectId: run.projectId,
-      plugin: action.plugin,
-      action: action.action,
-      input: inputRecord(run.input),
-      versions,
-      result: outcome.pass ? "pass" : "fail",
-      summary: outcome.summary,
-      evidence: [...outcome.evidence],
-      triggeredBy: row.triggeredBy,
-    });
+    return {};
   };
 
   // Runs an installed check once, or starts one that keeps trying, refused while what it requires
   // does not hold. triggeredBy names who asked; waited says the caller reads the result from the
-  // answer, so the coordinator is not also sent a note of it.
-  const start = async (
+  // answer, so the coordinator is not also sent a note of it. settled resolves once the run is
+  // over, which for a retrying check is long after it answered.
+  const begin = async (
     actor: Actor,
     projectId: string,
     action: CheckAction,
@@ -447,74 +502,85 @@ export function createChecks(deps: {
       origin: caller.origin,
     };
     const { speed } = action.builder;
-    if (typeof speed === "object") {
-      void retrying(action, run, speed.retry, row);
-      return CheckRan.assert({
-        started: true,
+    if (typeof speed === "object")
+      return {
+        answer: CheckRan.assert({
+          started: true,
+          checkId: row.id,
+          plugin: action.plugin,
+          action: action.action,
+        }),
+        settled: retrying(action, run, speed.retry, row),
+      };
+    const ran = await once(action, project, checked.input);
+    const left = runLeaves(action, run, row, ran);
+    if (left) {
+      await db.insert(checkRun).values(left.record);
+      if (!caller.waited) await note(projectId, caller.origin, left.note);
+    }
+    const result = ran.outcome.pass ? "pass" : "fail";
+    return {
+      answer: CheckRan.assert({
+        ran: true,
         checkId: row.id,
         plugin: action.plugin,
         action: action.action,
-      });
-    }
-    const ran = await once(action, project, checked.input);
-    await finish(action, run, row, ran);
-    const result = ran.outcome.pass ? "pass" : "fail";
-    if (!caller.waited)
-      await note(
-        projectId,
-        caller.origin,
-        checkNote({
-          name: action.name,
-          checkId: row.id,
-          result,
-          summary: ran.outcome.summary,
-          evidence: ran.outcome.evidence,
-        }),
-      );
-    return CheckRan.assert({
-      ran: true,
-      checkId: row.id,
-      plugin: action.plugin,
-      action: action.action,
-      result,
-      summary: ran.outcome.summary,
-      evidence: ran.outcome.evidence,
-    });
+        result,
+        summary: ran.outcome.summary,
+        evidence: ran.outcome.evidence,
+      }),
+      settled: Promise.resolve<Settled>(
+        left ? {} : { unrecorded: ran.versions },
+      ),
+    };
   };
 
-  // The stale records whose re-run is under way, so a second change saved meanwhile does not run
-  // the same check again.
-  const rerunning = new Set<string>();
+  const start = async (...args: Parameters<typeof begin>) =>
+    (await begin(...args)).answer;
 
-  // Runs again, once each, the project's checks that re-run on a change and whose latest record is
-  // stale. A re-run records straight to the table, never through a saving route, so its record is
-  // no change of its own. The person a re-run reads the project as is the one who saved the change.
+  // The stale records whose re-run has not settled yet, so a change saved meanwhile does not run
+  // the same check again, even while a retrying check is still trying.
+  const rerunning = new Set<string>();
+  // The project values each stale record's last re-run read when it failed and recorded nothing.
+  // The stale record stays the latest and stays due. Without this, every later save would run the
+  // same check to the same failure, whatever it changed. The check runs again once one of those
+  // values changes. The map lives only in memory, so a hub restart costs at most one more re-run.
+  const failedOn = new Map<string, Versions>();
+
+  // Re-runs, once each, the project's checks whose latest record went stale in a way they re-run
+  // on. A re-run writes its record straight to the table, never through a saving route, so the
+  // record does not count as a change itself. A re-run reads the project as the person who saved
+  // the change.
   const rerun = async (actor: Actor, projectId: string, origin: string) => {
-    const { records } = await standing(actor, projectId);
-    for (const record of records) {
-      const action = installedCheck(CATALOG, record.plugin, record.action);
-      if (
-        record.current ||
-        action?.builder.rerun !== "change" ||
-        rerunning.has(record.checkId)
-      )
-        continue;
-      rerunning.add(record.checkId);
+    const { due, now } = await standing(actor, projectId);
+    for (const { record, action } of due) {
+      const id = record.checkId;
+      const failed = failedOn.get(id);
+      if (rerunning.has(id) || (failed && isCurrent(failed, now))) continue;
+      rerunning.add(id);
       try {
-        await start(actor, projectId, action, record.input, {
-          triggeredBy: "hub",
-          waited: false,
-          origin,
-        });
+        const { answer, settled } = await begin(
+          actor,
+          projectId,
+          action,
+          record.input,
+          { triggeredBy: BY_HUB, waited: false, origin },
+        );
+        const settling = settled
+          .then(({ unrecorded }) => {
+            if (unrecorded) failedOn.set(id, valueReads(unrecorded));
+            else failedOn.delete(id);
+          })
+          .finally(() => rerunning.delete(id));
+        if ("ran" in answer) await settling;
       } catch (error) {
+        rerunning.delete(id);
         log.warn("A check did not re-run after a change", {
           projectId,
           check: action.name,
-          staleCheckId: record.checkId,
+          staleCheckId: id,
           ...requestErrorMetadata(error),
         });
-      } finally {
-        rerunning.delete(record.checkId);
       }
     }
   };
@@ -603,6 +669,17 @@ export function createChecks(deps: {
         );
       if (!skipped)
         throw new ProjectError(404, "check_run_not_found", { checkId });
+      const state = await artifacts.projectState(actor, projectId);
+      const catalog = await projectCatalog(async (names) =>
+        readProjectValues(names, state, CATALOG.values),
+      );
+      if (
+        installedCheck(catalog, skipped.plugin, skipped.action)?.builder
+          .skip === "never"
+      )
+        throw new ProjectError(409, "check_not_skippable", {
+          hint: `${skipped.plugin} ${skipped.action} cannot be skipped: what it proves counts only once it passes.`,
+        });
       const { now } = await standing(actor, projectId);
       const row: Row = {
         id: crypto.randomUUID(),
@@ -742,6 +819,10 @@ export function mountCheckRoutes(app: Hono<TenantEnv>, checks: Checks) {
           content: { "application/json": { schema: resolver(CheckRecord) } },
         },
         404: { description: "No check record by that id in the project" },
+        409: {
+          description:
+            "A check its plugin declares the person may never skip, since only its passing may make what it proves true",
+        },
       },
     }),
     async (c) =>

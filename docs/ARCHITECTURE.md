@@ -384,14 +384,17 @@ A check proves one thing about the project as saved and records whether it
 holds, with evidence. Builder ships ready-made proofs a plugin uses by name
 with no code: a file exists, a file contains some text or a JSON key holds a
 value, a document is filed or approved, a design is chosen, a value is set or
-equals something, an address answers, a health address answers several times
-in a row, a domain resolves, and commands pass against the saved app. They
-combine with `all`, `any` and `not`, and a check can instead run its own code
-over a read-only view of the project. A check runs once, keeps trying for a set
-time, or waits on the person, who can fix what it names and run it again, or
-skip it. A skip is recorded as theirs and never as a pass. Each record names
-what the check read at the version it read, so a pass stops counting as soon as
-any of it changes.
+equals something, and commands pass against the saved app. They combine with
+`all`, `any` and `not`, and a check can instead run its own code over a
+read-only view of the project. A check reads only what the project stores and
+contacts nothing outside it, so no check can say that an address answers. A
+check runs once, keeps trying for a set time, or waits on the person, who can
+fix what it names and run it again, or skip it unless the check says
+`"skip": "never"`. A skip is recorded as theirs and never as a pass. Each
+record names what the check read at the version it read, so a pass stops
+counting as soon as any of it changes. The hub can also run a check again by
+itself after a saved change; a plugin's manifest says when
+([DEV.md](https://github.com/corbitsdev/corbits-builder/blob/main/docs/DEV.md#one-action)).
 
 ## Specialists and roles
 
