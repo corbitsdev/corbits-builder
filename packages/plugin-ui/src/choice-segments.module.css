@@ -42,6 +42,37 @@
   font-weight: 600;
 }
 
+/* Rows: the whole row picks, and the chosen one is outlined and filled. */
+.rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.row {
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--foreground);
+  font-size: 0.875rem;
+  line-height: 1.4;
+  text-align: start;
+}
+
+.row:hover:not(:disabled) {
+  background: var(--muted);
+}
+
+.row[aria-checked="true"] {
+  border-color: var(--foreground);
+  background: var(--muted);
+}
+
+.rowLabel {
+  overflow-wrap: anywhere;
+}
+
 .boldWidth {
   display: inline-grid;
   min-width: 0;
