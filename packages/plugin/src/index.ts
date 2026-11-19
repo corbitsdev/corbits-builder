@@ -405,7 +405,9 @@ const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1"]);
 
 // An API key a plugin's tools send: what it is, the origin it may be sent to, how it is sent (a
 // bearer token through Interchange's http provider, or a named header through its http-header
-// provider) and the plugin's screen action that shows its form.
+// provider) and the plugin's screen action that shows its form. notNeededWhile names a project
+// value that, while it is set, lets the plugin's actions start without the key, for a plugin with a
+// way to work that needs none; its tools then find the key missing and take that way.
 export const CredentialDeclaration = type({
   "+": "reject",
   about: "string > 0",
@@ -426,8 +428,13 @@ export const CredentialDeclaration = type({
     "prefix?": "string > 0",
   }),
   screen: "string > 0",
+  "notNeededWhile?": "string > 0",
 });
 export type CredentialDeclaration = typeof CredentialDeclaration.infer;
+
+/** The project value that lets a credential's plugin start without it while set, when it names one. */
+export const notNeededWhileOf = (declaration: CredentialDeclaration) =>
+  "notNeededWhile" in declaration ? declaration.notNeededWhile : undefined;
 
 // Each credential by the Interchange provider it is saved under, which is also the handle the
 // plugin's tools declare it by.
