@@ -1,8 +1,9 @@
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 import type { ArtifactListItem } from "@corbits-builder/schemas/artifact";
 import { isCheckAction } from "@corbits-builder/plugin-host/catalog";
 import { CATALOG } from "./catalog.ts";
-import { runLeaves, savedProject, type Row } from "./checks.ts";
+import { checkNote } from "../config/checks.ts";
+import { createChecks, runLeaves, savedProject, type Row } from "./checks.ts";
 
 const appArtifact: ArtifactListItem = {
   artifactId: "app",
@@ -162,8 +163,89 @@ const recorded = async (
   return left.row;
 };
 
+// A re-run the hub starts by itself.
+const rerun = (
+  plugin: string,
+  action: string,
+  project: ReturnType<typeof checkedProject>,
+) => ranBy("hub", plugin, action, project);
+
 const due = (project: ReturnType<typeof checkedProject>) =>
   project.due.map(({ record }) => `${record.plugin} ${record.action}`);
+
+const standing = (project: ReturnType<typeof checkedProject>) =>
+  project.records.map(({ result, current }) => ({ result, current }));
+
+const files = { "package.json": "{}" };
+
+const serverRelease = {
+  target: "server",
+  url: "http://203.0.113.7/",
+  version: "first",
+  at: "2026-11-17T10:00:00.000Z",
+};
+
+test("server ready makes ready:server true for an app that says how it runs in production", async () => {
+  const stored = {
+    "stack.production": {
+      install: "bun install --frozen-lockfile",
+      build: "bun run build",
+      start: "bun run start",
+      port: "PORT",
+      data: ["server/data"],
+    },
+  };
+  const ready = await recorded(
+    "server",
+    "ready",
+    checkedProject("first", files, stored),
+  );
+  expect(ready.result).toBe("pass");
+  expect(
+    checkedProject("first", files, stored, [ready]).facts.has("ready:server"),
+  ).toBe(true);
+});
+
+test("a live check runs again by itself once the release it read is recorded anew", async () => {
+  const release = (version: string) => ({
+    "publish.release": { ...serverRelease, version },
+  });
+  const before = await recorded(
+    "server",
+    "live",
+    checkedProject("first", files, {}),
+  );
+  expect(before.result).toBe("fail");
+  expect(
+    due(checkedProject("first", files, release("first"), [before])),
+  ).toEqual(["server live"]);
+  const published = await recorded(
+    "server",
+    "live",
+    checkedProject("first", files, release("first")),
+  );
+  expect(
+    due(checkedProject("second", files, release("second"), [published])),
+  ).toEqual(["server live"]);
+});
+
+test("a live check is not run again when only the app changed, its record no longer stands, and it fails on the app it did not publish", async () => {
+  const stored = { "publish.release": serverRelease };
+  const published = await recorded(
+    "server",
+    "live",
+    checkedProject("first", files, stored),
+  );
+  expect(published.result).toBe("pass");
+  const edited = checkedProject("second", files, stored, [published]);
+  expect(due(edited)).toEqual([]);
+  expect(edited.records[0]?.current).toBe(false);
+  expect(edited.facts.has("published:server")).toBe(false);
+  expect(
+    (await recorded("server", "live", checkedProject("second", files, stored)))
+      .result,
+  ).toBe("fail");
+});
 
 test("a check that re-runs on a change is not run again for a new commit alone, only once a file it read changed", async () => {
   const stored = {
@@ -193,4 +275,197 @@ test("a check that re-runs on a change is not run again for a new commit alone, 
       ),
     ),
   ).toEqual(["cloudflare ready"]);
+});
+
+test("a live check re-run after a release to its own place records the pass and notes it", async () => {
+  const unpublished = await recorded(
+    "server",
+    "live",
+    checkedProject("first", files, {}),
+  );
+  expect(unpublished.result).toBe("fail");
+  const released = checkedProject(
+    "first",
+    files,
+    { "publish.release": serverRelease },
+    [unpublished],
+  );
+  expect(due(released)).toEqual(["server live"]);
+  const left = await rerun("server", "live", released);
+  if (!left) throw new Error("the re-run left no record");
+  expect(left.row.result).toBe("pass");
+  expect(left.note).toBe(
+    checkNote({
+      name: "server live",
+      checkId: left.row.id,
+      result: "pass",
+      summary: left.row.summary,
+      evidence: left.row.evidence,
+    }),
+  );
+  expect(
+    checkedProject("first", files, { "publish.release": serverRelease }, [
+      left.row,
+    ]).facts.has("published:server"),
+  ).toBe(true);
+});
+
+test("a live check re-run after a release to another place, or after its release is cleared, leaves no record and no note, and its fact lapses", async () => {
+  const published = await recorded(
+    "server",
+    "live",
+    checkedProject("first", files, { "publish.release": serverRelease }),
+  );
+  expect(published.result).toBe("pass");
+  for (const release of [
+    {
+      target: "digitalocean",
+      url: "http://198.51.100.4/",
+      version: "first",
+      at: "2026-11-18T10:00:00.000Z",
+    },
+    null,
+  ]) {
+    const moved = checkedProject(
+      "first",
+      files,
+      { "publish.release": release },
+      [published],
+    );
+    expect(due(moved)).toEqual(["server live"]);
+    expect(await rerun("server", "live", moved)).toBeUndefined();
+    expect(standing(moved)).toEqual([{ result: "pass", current: false }]);
+    expect(moved.facts.has("published:server")).toBe(false);
+  }
+});
+
+test("a removable check re-run records the person's take-down answer, and a new release leaves no record", async () => {
+  const shown = { "publish.release": serverRelease };
+  const answered = {
+    ...shown,
+    "publish.take-down": { target: "server", release: serverRelease.at },
+  };
+  const unasked = await recorded(
+    "server",
+    "removable",
+    checkedProject("first", files, shown),
+  );
+  expect(unasked.result).toBe("fail");
+  const asked = checkedProject("first", files, answered, [unasked]);
+  expect(due(asked)).toEqual(["server removable"]);
+  const removable = (await rerun("server", "removable", asked))?.row;
+  if (!removable) throw new Error("the re-run left no record");
+  expect(removable.result).toBe("pass");
+  expect(
+    checkedProject("first", files, answered, [removable]).facts.has(
+      "removable:server",
+    ),
+  ).toBe(true);
+
+  const republished = checkedProject(
+    "second",
+    files,
+    {
+      ...answered,
+      "publish.release": {
+        ...serverRelease,
+        version: "second",
+        at: "2026-11-18T10:00:00.000Z",
+      },
+    },
+    [removable],
+  );
+  expect(due(republished)).toEqual(["server removable"]);
+  expect(await rerun("server", "removable", republished)).toBeUndefined();
+  expect(standing(republished)).toEqual([{ result: "pass", current: false }]);
+  expect(republished.facts.has("removable:server")).toBe(false);
+});
+
+test("a failed hub re-run on a value is not repeated by unrelated saves, and runs again once a value it read changes", async () => {
+  const published = await recorded(
+    "server",
+    "live",
+    checkedProject("first", files, { "publish.release": serverRelease }),
+  );
+  let stored: Record<string, unknown> = {
+    "publish.release": { ...serverRelease, target: "digitalocean" },
+  };
+  const inserted: unknown[] = [];
+  // A query that answers rows whichever way it is narrowed.
+  const query = (rows: readonly unknown[]) => {
+    const narrowed: object = Object.assign(Promise.resolve(rows), {
+      from: () => narrowed,
+      where: () => narrowed,
+      orderBy: () => narrowed,
+      innerJoin: () => narrowed,
+    });
+    return narrowed;
+  };
+  const checks = createChecks({
+    db: {
+      selectDistinctOn: () => query([published]),
+      select: () => query([]),
+      insert: () => ({
+        values: async (row: unknown) => inserted.push(row),
+      }),
+    } as unknown as Parameters<typeof createChecks>[0]["db"],
+    toolchains: {} as never,
+    artifacts: {
+      list: async () => ({ artifacts: [{ ...appArtifact }], preferences: {} }),
+      savedApp: async () => ({ commit: "first", bundle: { files } }),
+      projectState: async () => ({ styles: undefined, stored, materials: [] }),
+      read: async () => ({ content: "" }),
+    } as never,
+    commands: {} as never,
+    fetch: () => Promise.reject(new Error("no coordinator to note")),
+  });
+  const live = installed("server", "live");
+  const runs = spyOn(live, "run");
+  // How many times one save ran the live check.
+  const save = async (values: Record<string, unknown>) => {
+    stored = { ...stored, ...values };
+    const before = runs.mock.calls.length;
+    await checks.changed(
+      { tenantId: "tenant", principalId: "person" },
+      "project",
+      "http://hub.test",
+    );
+    return runs.mock.calls.length - before;
+  };
+
+  try {
+    expect(await save({})).toBe(1);
+    expect(inserted).toEqual([]);
+    expect(await save({ "look.font-primary": "Arial" })).toBe(0);
+    expect(
+      await save({
+        "publish.release": {
+          ...serverRelease,
+          target: "digitalocean",
+          at: "2026-11-18T10:00:00.000Z",
+        },
+      }),
+    ).toBe(1);
+    expect(inserted).toEqual([]);
+  } finally {
+    runs.mockRestore();
+  }
+});
+
+test("a failing check run by the coordinator or the person, or re-run on a change, still records the failure and notes it", async () => {
+  const elsewhere = checkedProject("first", files, {
+    "publish.release": { ...serverRelease, target: "digitalocean" },
+  });
+  for (const triggeredBy of ["run:coordinator", "person:someone"]) {
+    const left = await ranBy(triggeredBy, "server", "live", elsewhere);
+    expect(left?.row.result).toBe("fail");
+    expect(left?.note).toContain("failed");
+  }
+  const ready = await rerun(
+    "server",
+    "ready",
+    checkedProject("first", files, { "stack.production": null }),
+  );
+  expect(ready?.row.result).toBe("fail");
+  expect(ready?.note).toContain("failed");
 });

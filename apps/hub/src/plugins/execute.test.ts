@@ -22,6 +22,8 @@ const workflows = {
   reviewer: deployment,
   coder: deployment,
   designer: deployment,
+  server: deployment,
+  "server-remove": deployment,
 };
 
 type Filed = { kind: string; version: number; approvedVersion?: number };
@@ -31,6 +33,7 @@ function project(
   artifacts: Filed[],
   following: string[] = [],
   preferences: Record<string, string> = {},
+  checks: unknown[] = [],
 ) {
   const state = { artifacts, following, plan: [] as PlanStep[] };
   const deployed: string[] = [];
@@ -79,7 +82,7 @@ function project(
         values: Object.fromEntries(keys.split(",").map((key) => [key, null])),
       });
     }
-    if (path.endsWith("/checks")) return Response.json({ checks: [] });
+    if (path.endsWith("/checks")) return Response.json({ checks });
     if (path.endsWith("/plan")) {
       if (body) state.plan = body.steps.map(stored);
       return Response.json({ steps: state.plan, updatedAt: null });
@@ -668,4 +671,79 @@ test("a step is done once its own run finished and its result exists, never by a
   expect(stateOf([run("earlier", "first-mockup")])).toBe("not_started");
   // A first-time step whose own run filed the result.
   expect(stateOf([run("own", "revise"), unplanned])).toBe("done");
+});
+
+// A current pass of the server's ready check, which makes ready:server true.
+const serverReady = {
+  checkId: "ready",
+  plugin: "server",
+  action: "ready",
+  input: {},
+  result: "pass",
+  summary: "The app says how it runs in production",
+  evidence: [],
+  versions: {},
+  current: true,
+  returns: ["ready:server"],
+  triggeredBy: "hub",
+  createdAt: new Date(0).toISOString(),
+};
+
+test("server publish is not started while the app does not say how it runs in production", async () => {
+  const unready = project([filed("app")]);
+  const refused = await unready.execute({
+    plugin: "server",
+    action: "publish",
+    input: {
+      instruction:
+        "Publish the project's saved app to the person's own server.",
+    },
+  });
+  expect(refused.isError).toBe(true);
+  expect(refused.content).toContain("(server ready makes this true)");
+  expect(unready.deployed).toEqual([]);
+});
+
+test("server publish waits on the connect screen while no server is connected, and runs again once it is", async () => {
+  const unconnected = project([filed("app")], [], {}, [serverReady]);
+  expect(
+    await unconnected.pause({
+      plugin: "server",
+      action: "publish",
+      input: {
+        instruction:
+          "Publish the project's saved app to the person's own server.",
+      },
+    }),
+  ).toEqual({
+    plugin: "server",
+    action: "connect",
+    input: {},
+    resume: "rerun",
+  });
+  expect(unconnected.deployed).toEqual([]);
+});
+
+// A current pass of the server's removable check, which makes removable:server true.
+const removable = {
+  ...serverReady,
+  checkId: "removable",
+  action: "removable",
+  summary: "The person agreed to take it down",
+  returns: ["removable:server"],
+};
+
+test("server remove is refused until the person's go-ahead holds, and then starts on no input of the coordinator's", async () => {
+  const unasked = project([filed("app")]);
+  const refused = await unasked.execute({ plugin: "server", action: "remove" });
+  expect(refused.isError).toBe(true);
+  expect(refused.content).toContain("(server removable makes this true)");
+  expect(unasked.deployed).toEqual([]);
+
+  const agreed = project([filed("app")], [], {}, [removable]);
+  const started = await agreed.execute({ plugin: "server", action: "remove" });
+  expect(started.isError).toBeUndefined();
+  expect(agreed.recorded).toEqual([
+    { runId: "run-1", plugin: "server", action: "remove" },
+  ]);
 });

@@ -389,6 +389,27 @@
       "name": "@corbits-builder/rust-skills",
       "version": "0.1.0-rc.3",
     },
+    "plugins/server": {
+      "name": "@corbits-builder/server",
+      "version": "0.1.0",
+      "dependencies": {
+        "@corbits-builder/plugin": "workspace:*",
+        "@corbits-builder/plugin-ui": "workspace:*",
+        "@corbits-builder/schemas": "workspace:*",
+        "@corbits-builder/ssh-publish": "workspace:*",
+        "@corbits/react-ui": "0.5.1",
+        "@intx/agent": "workspace:*",
+        "arktype": "catalog:",
+        "react": "19.3.0",
+      },
+      "devDependencies": {
+        "@types/react": "19.3.0",
+      },
+    },
+    "plugins/server-publish": {
+      "name": "@corbits-builder/server-publish",
+      "version": "0.1.0",
+    },
     "plugins/serverless-skills": {
       "name": "@corbits-builder/serverless-skills",
       "version": "0.1.0-rc.3",
@@ -971,6 +992,10 @@
     "@corbits-builder/rust-skills": ["@corbits-builder/rust-skills@workspace:plugins/rust-skills"],
 
     "@corbits-builder/schemas": ["@corbits-builder/schemas@workspace:packages/schemas"],
+
+    "@corbits-builder/server": ["@corbits-builder/server@workspace:plugins/server"],
+
+    "@corbits-builder/server-publish": ["@corbits-builder/server-publish@workspace:plugins/server-publish"],
 
     "@corbits-builder/serverless-skills": ["@corbits-builder/serverless-skills@workspace:plugins/serverless-skills"],
 

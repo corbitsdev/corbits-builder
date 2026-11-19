@@ -5,6 +5,10 @@ import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import JSZip from "jszip";
 import { createArtifact } from "@corbits/artifacts";
+import { toolConsumer } from "@intx/authz";
+import { createNoopCredentialCipher } from "@intx/crypto";
+import { createRunTokenStore } from "@intx/db";
+import { grant } from "@intx/db/schema";
 import { APP_VERSION_HEADER } from "@corbits-builder/schemas/app-files";
 import { startInProcessHub } from "../support/in-process-hub.ts";
 
@@ -229,6 +233,74 @@ test("a build whose caller goes away stops, and frees the project for its next b
   expect(await builtPaths(await hub.call("GET", route))).toEqual([
     "dist/index.html",
   ]);
+}, 120_000);
+
+// A run the coordinator started for server publish in the project and its token; with read, it holds
+// the project read its package's grant requirements give it.
+async function publishingRun(
+  person: { tenantId: string; principalId: string },
+  projectId: string,
+  read: boolean,
+) {
+  const path = `/api/tenants/${person.tenantId}/projects/${projectId}`;
+  const run = await hub.seedRun(person, "server", true);
+  await hub.call("POST", `${path}/run-actions`, {
+    runId: run.id,
+    plugin: "server",
+    action: "publish",
+  });
+  if (read)
+    await hub.db.insert(grant).values({
+      id: randomUUID(),
+      tenantId: person.tenantId,
+      principalId: run.principalId,
+      resource: `sb-project:${projectId}`,
+      action: "read",
+      effect: "allow",
+      origin: "system",
+    });
+  const tokens = createRunTokenStore({
+    db: hub.db,
+    cipher: createNoopCredentialCipher(),
+  });
+  await tokens.mintIfAbsent(
+    {
+      principalId: run.principalId,
+      consumers: [toolConsumer("@corbits-builder/server/tools")],
+    },
+    hub.db,
+  );
+  const [delivery] = await tokens.loadDelivery(run.principalId);
+  return { authorization: `Bearer ${delivery!.token}` };
+}
+
+test("a publishing run builds its own project's saved app, and nothing of a project it cannot read", async () => {
+  const build = production("mkdir dist", "echo page > dist/index.html");
+  const own = await project("Own", SOURCE, build);
+  const token = await publishingRun(own.person, own.projectId, true);
+  const built = await hub.call(
+    "GET",
+    `${own.path}/app/build-archive?path=dist`,
+    undefined,
+    token,
+  );
+  expect(built.headers.get(APP_VERSION_HEADER)).toBe("v1");
+  expect(await builtPaths(built)).toEqual(["dist/index.html"]);
+
+  // Another person's project, in a tenant the run is not in.
+  const other = await project("Other", SOURCE, build);
+  expect(
+    await answer(`${other.path}/app/build-archive?path=dist`, token),
+  ).toStartWith("HTTP 401");
+  // A run of the project that holds no read on it.
+  const unread = await publishingRun(own.person, own.projectId, false);
+  expect(await answer(`${own.path}/app/build-archive?path=dist`, unread)).toBe(
+    'HTTP 403: {"code":"forbidden"}',
+  );
+  // The route is a read: the run cannot reach it any other way.
+  await expect(
+    hub.call("POST", `${own.path}/app/build-archive?path=dist`, {}, token),
+  ).rejects.toThrow("HTTP 401");
 }, 120_000);
 
 // The coder's web-app starter as a project's saved app, the way a first build files it.

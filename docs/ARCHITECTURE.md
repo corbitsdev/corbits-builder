@@ -441,6 +441,13 @@ The specialists installed today:
   person's go-ahead before each publish, and one asks it before the app is
   taken down. It declares the values every place shares (`publish.release`,
   `publish.plan`, `publish.keep`, `publish.holding`, `publish.take-down`).
+- The server plugin (`plugins/server`) publishes the app over SSH to a Debian
+  or Ubuntu server the person rents, at the server's own address. Its screen
+  gives them the key to hand their hosting provider and saves the server's
+  address; its checks say whether the app says how it runs in production,
+  whether the saved version is the one published, and whether the person
+  agreed to take it down. Its `remove` action takes the app down with its own
+  agent, which cannot publish.
 - The Cloudflare plugin (`plugins/cloudflare`) publishes the app to Cloudflare
   Workers at its own workers.dev address, either in the person's own
   Cloudflare account through a token they save or in a temporary account: they
@@ -458,6 +465,10 @@ The ready-made plans installed today:
   and nothing in it waits on the person. The first is the default.
 - `add-feature` (`plugins/add-feature`): revised requirements and a build plan
   the person approves, then the change to an existing app.
+- `publish-to-server` (`plugins/server-publish`): checks the app says how it
+  runs in production, asks the person's go-ahead, publishes it to their server
+  and checks the saved version is the one published. It takes the app down
+  with `server remove`.
 - `publish-to-cloudflare` (`plugins/cloudflare-publish`): checks the app is
   made to run on Cloudflare Workers, asks the person's go-ahead, publishes it
   to Cloudflare and checks the saved version is the one published. It takes
