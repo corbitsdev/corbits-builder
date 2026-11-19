@@ -1,0 +1,16 @@
+{
+  "name": "@corbits-builder/serverless-skills",
+  "version": "0.1.0-rc.3",
+  "private": true,
+  "description": "How the coder makes an app run on a host with no disk and no long-running process, while it still runs on Bun for Live Preview.",
+  "license": "SEE LICENSE IN ../../LICENSE.md",
+  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
+  "type": "module",
+  "builder": {
+    "handle": "serverless-skills",
+    "runs": "skills",
+    "extends": "publish-skills",
+    "when": "The app is being made ready for a serverless host, one with no disk and no long-running process, such as Cloudflare Workers.",
+    "skills": "./skills"
+  }
+}

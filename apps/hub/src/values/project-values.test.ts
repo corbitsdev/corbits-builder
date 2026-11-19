@@ -122,3 +122,14 @@ test("saving a value its schema refuses is refused", async () => {
     key: "look.font-primary",
   });
 });
+
+test("saving null never clears a filed design's token", async () => {
+  const styled = await save(harness(await Bun.file(STARTER).text()), {
+    "look.font-primary": null,
+  });
+  expect(styled.status).toBe(400);
+  expect(await styled.json()).toMatchObject({
+    code: "invalid_project_value",
+    key: "look.font-primary",
+  });
+});
