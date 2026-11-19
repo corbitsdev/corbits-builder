@@ -1,0 +1,222 @@
+/* The sheet reaches past the box by an even 12px (11 and its 1px edge) on
+   three sides, so the box never moves as the chat opens. Closed, it has no
+   edge or fill and only the handle or the pill shows above the box. */
+.sheet {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  margin: 0 -12px -12px;
+  padding: 0 11px 11px;
+  border: 1px solid transparent;
+  /* Concentric with the box it reaches 12px past. */
+  border-radius: calc(var(--radius-xl) + 12px);
+  transition:
+    background-color var(--duration-standard),
+    border-color var(--duration-standard),
+    box-shadow var(--duration-standard);
+}
+
+.sheet:not([data-state="closed"]) {
+  background: var(--wb-background);
+  border-color: var(--wb-border);
+  box-shadow: var(--wb-pane-shadow);
+}
+
+/* Full screen, the chat is the page: no edge, no lift, the box at its foot. */
+.sheet[data-state="full"] {
+  flex: 1;
+  margin: 0;
+  padding: 56px 0 0;
+  border-color: transparent;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+/* Above the box while the chat is put away: the handle on its top edge, or
+   the pill 8px above it. Out of the flow, so the page never shifts. */
+.grip {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  translate: -50% 0;
+  display: flex;
+  justify-content: center;
+  max-width: 100%;
+  z-index: 1;
+}
+
+.grip > [data-slot="pull-handle"] {
+  margin-bottom: -1px;
+}
+
+.grip > [data-slot="pill"] {
+  margin-bottom: var(--space-2);
+  animation: global(fade-in) var(--duration-standard) ease-out both;
+}
+
+.handle {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 14px;
+  padding: 0;
+  border: 0;
+  border-radius: 9999px;
+  background: transparent;
+  touch-action: none;
+  cursor: grab;
+  position: relative;
+}
+
+.handle[data-state="dragging"] {
+  cursor: grabbing;
+}
+
+/* A bigger target than the bar it shows, for a thumb as much as a pointer. */
+.handle::before {
+  content: "";
+  position: absolute;
+  inset: -10px -8px;
+}
+
+.handle:focus-visible {
+  outline: 2px solid var(--wb-ring);
+  outline-offset: 2px;
+}
+
+.bar {
+  width: 32px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--wb-border-strong);
+  transition:
+    width var(--duration-micro),
+    background-color var(--duration-micro);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .handle:hover .bar {
+    width: 40px;
+    background: var(--wb-muted-foreground);
+  }
+}
+
+.handle[data-state="dragging"] .bar {
+  width: 40px;
+  background: var(--wb-foreground);
+}
+
+.history {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: min(60vh, 560px);
+  overflow: hidden;
+}
+
+.history[hidden] {
+  display: none;
+}
+
+.sheet[data-state="full"] .history {
+  flex: 1;
+  max-height: none;
+}
+
+/* Between closed and open the history is given its height a frame at a time and is pinned to the
+   box, so the newest line shows first. Whatever does not fit fades out under the top edge rather
+   than being cut by it. */
+.sheet[data-state="moving"] .history {
+  justify-content: flex-end;
+  mask-image: linear-gradient(to bottom, transparent, #000 var(--fade, 0px));
+}
+
+.sheet[data-state="moving"] .messages {
+  flex: none;
+  overflow: hidden;
+}
+
+.handleRow {
+  display: flex;
+  justify-content: center;
+  flex: none;
+}
+
+/* No heading: the messages under it are plainly the chat, so the header holds only its controls. */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-1);
+  flex: none;
+  height: 44px;
+  margin-bottom: var(--space-2);
+  padding: 0 var(--space-2) 0 var(--space-4);
+}
+
+.sheet[data-state="full"] :is(.header, .messages) {
+  max-width: 640px;
+  width: 100%;
+  margin-inline: auto;
+}
+
+.icon {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--wb-muted-foreground);
+}
+
+/* 28px to look at, 36px to hit. */
+.icon::before {
+  content: "";
+  position: absolute;
+  inset: -4px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .icon:hover {
+    background: var(--wb-muted);
+    color: var(--wb-foreground);
+  }
+}
+
+/* Level with the words in the box below: its 14px inset and 1px edge. */
+.messages {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 0 calc(14px + 1px) var(--space-4);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.box {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.returnTo {
+  position: absolute;
+  top: var(--space-3);
+  left: 50%;
+  translate: -50% 0;
+}
+
+.returnTitle {
+  font-weight: var(--font-weight-semibold);
+}
+
+.returnVersion {
+  color: var(--wb-muted-foreground);
+}
