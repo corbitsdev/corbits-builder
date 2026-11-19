@@ -287,6 +287,157 @@ export const wording = {
       "Compare versions with the version menu",
     ],
   },
+  /** Putting the app online so people can open it: the control beside the plan and its tab. */
+  publish: {
+    /** The control's words in each state of publishing. */
+    control: {
+      unpublished: "Publish",
+      publishing: "Publishing…",
+      stalled: "Carry on publishing",
+      needsYou: "Publish · needs you",
+      published: "Published",
+      changes: "Publish changes",
+      failed: "Publish failed",
+      /** While the link to keep an app on a temporary account works, whatever the state. */
+      keep: "Keep your app",
+      /** Replaces Published once the deadline to keep the app passed: it may have been removed. */
+      keepPassed: "Time to keep it is up",
+      takingDown: "Taking it down…",
+      takeDownFailed: "Take-down failed",
+    },
+    /** The control's name for a screen reader, which otherwise hears only the state. */
+    controlName: (label: string) => `Publish: ${label}`,
+    controlHint: "See where your app is published, or publish it",
+    tab: "Publish",
+    tabTitle: "Where your app is published",
+    /** What pressing Publish sends the coordinator, as the person's own message. */
+    message: {
+      publish: "Publish my app",
+      changes: "Publish my changes",
+      continue: "Carry on publishing my app",
+      takeDown: "Take my app down",
+    },
+    unpublished: {
+      title: "Publish your app",
+      lead: "Put your app online so people can open it. You choose where, and nothing goes out until you say so.",
+      action: "Publish",
+    },
+    publishing: {
+      title: "Publishing your app…",
+      lead: "This can take a few minutes. If Builder needs you, it asks here.",
+    },
+    /** A publish under way that nothing is working on and nothing asks about. */
+    stalled: {
+      title: "Publishing is paused",
+      lead: "If Builder asked you something in the conversation, answer it there, or carry on from where it left off.",
+      action: "Carry on publishing",
+    },
+    published: {
+      title: "Your app is published",
+    },
+    /** An app on a temporary account, which the person keeps by signing in at the target. */
+    keep: {
+      heading: "Keep your app",
+      lead: (place: string) =>
+        `It's on a temporary ${place} account for now. Sign in or make a free account at ${place} to keep it, or ${place} removes it when the time runs out.`,
+      left: (minutes: number) => {
+        if (minutes < 1) return "Less than a minute left";
+        const minutesText = (count: number) =>
+          count === 1 ? "1 minute" : `${String(count)} minutes`;
+        if (minutes < 60) return `${minutesText(minutes)} left`;
+        const hours = Math.floor(minutes / 60);
+        const rest = minutes % 60;
+        const hoursText = hours === 1 ? "1 hour" : `${String(hours)} hours`;
+        return rest === 0
+          ? `${hoursText} left`
+          : `${hoursText} ${minutesText(rest)} left`;
+      },
+      action: "Keep my app",
+      share: "Share the address once you've kept it.",
+      already: "Kept it already?",
+      kept: "I kept it",
+      /** Asked before the link is cleared, since it cannot be shown again. */
+      sure: {
+        lead: (place: string) =>
+          `Say yes only once you've kept it at ${place}: the Keep my app button won't come back.`,
+        yes: "Yes, I kept it",
+        notYet: "Not yet",
+      },
+      keeping: "Saving…",
+      notSaved: "Not saved. Try again in a moment.",
+      /** The deadline to keep it passed, and nobody knows whether it was kept. */
+      passed: {
+        heading: "The time to keep your app has passed",
+        lead: (place: string) =>
+          `If you kept it at ${place}, it's yours and still at its address. If not, ${place} has removed it.`,
+        /** Asks which it was; either answer clears the notice. */
+        which: "Did you keep it?",
+        /** Says the app was not kept, so Builder no longer counts it as published. */
+        gone: "I didn't keep it",
+        again:
+          "Publishing again gives it a new address, unless you connect your own account first.",
+        action: "Publish again",
+      },
+    },
+    changes: {
+      title: "You have changes to publish",
+      lead: "People still see the version from before your latest changes.",
+      action: "Publish changes",
+    },
+    failed: {
+      title: "Publishing didn't finish",
+      lead: "Nothing new went out. You can try again, or ask Builder what happened.",
+      action: "Try again",
+    },
+    takingDown: {
+      title: "Taking it down…",
+      lead: "This can take a few minutes. If Builder needs you, it asks here.",
+    },
+    takeDownFailed: {
+      title: "Taking it down didn't finish",
+      lead: "Your app may still be online. You can try again, or ask Builder what happened.",
+      action: "Try again",
+      /**
+       * For an app the person removed themselves, as by cancelling their server, which no
+       * take-down can reach.
+       */
+      options: "More options for taking it down",
+      gone: "I already removed it myself…",
+      /** Asked again in the menu, because saying it by mistake forgets an app still online. */
+      sure: "Yes, it's gone",
+    },
+    /** Asks the coordinator to take the app down; the screen it opens asks the person first. */
+    takeDown: {
+      note: "No longer need it online?",
+      action: "Take it down",
+    },
+    /**
+     * Where the app is hosted and what that costs, as one more fact beside its address: "Hosted on
+     * Example Host · $6 a month". A target that does not state its price still bills for it.
+     */
+    holding: {
+      hosted: (place: string, costs: string | undefined) =>
+        `Hosted on ${place} · ${costs ?? "billed there"}`,
+      /** Before anything is published there, when the start date is the only date in the tab. */
+      since: (place: string, costs: string | undefined, at: string) =>
+        `Hosting on ${place} since ${new Date(at).toLocaleDateString(undefined, { dateStyle: "medium" })} · ${costs ?? "billed there"}`,
+      options: (place: string) => `Options for hosting on ${place}`,
+      /** For hosting the person removed themselves, which Builder cannot see. */
+      gone: (place: string) => `I already removed it from ${place}…`,
+      /** Asked again in the menu, because saying it by mistake hides a real cost. */
+      sure: (place: string) => `Yes, it's gone from ${place}`,
+    },
+    /** Saving that the holding, or an app no take-down could reach, is gone failed. */
+    goneNotSaved: "Not saved. Try again in a moment.",
+    /** The address people open the app at, and when it went out, in plain words. */
+    address: "Address",
+    open: "Open",
+    publishedAt: (at: string) =>
+      `Published ${new Date(at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}`,
+    /** In the conversation while a publishing question waits in the Publish tab. */
+    asking: "Publishing needs your answer.",
+    reopen: "Open",
+  },
   liveApp: {
     tab: "Live preview",
     title: "What the coder is building, as it runs",

@@ -51,6 +51,9 @@
 
 .bannerAction {
   margin-top: var(--space-1);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
 }
 
 .inlineNote {
@@ -135,4 +138,20 @@ button.quietControl {
 .quietControl:focus-visible {
   outline: 2px solid var(--wb-ring);
   outline-offset: 2px;
+}
+
+.spinner {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: none;
+  }
 }

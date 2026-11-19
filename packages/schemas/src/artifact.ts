@@ -486,6 +486,7 @@ export const ProjectRun = RunAction.merge({
 });
 export type ProjectRun = typeof ProjectRun.infer;
 export const ProjectRuns = type({ "+": "reject", runs: ProjectRun.array() });
+export type ProjectRuns = typeof ProjectRuns.infer;
 // How long one run of a check may take on the hub, attempts of a retrying check each.
 export const CHECK_MS = 30_000;
 
@@ -537,6 +538,25 @@ export const CheckRecord = type({
 });
 export type CheckRecord = typeof CheckRecord.infer;
 export const CheckList = type({ "+": "reject", checks: CheckRecord.array() });
+export type CheckList = typeof CheckList.infer;
+
+/**
+ * The facts the project's checks establish. A fact a check returns holds while the check's latest
+ * record is a pass or the person's skip, and everything the check read is unchanged in the project.
+ */
+export function heldFacts(
+  records: readonly {
+    result: CheckRecord["result"];
+    current: boolean;
+    returns: readonly string[];
+  }[],
+): ReadonlySet<string> {
+  return new Set(
+    records.flatMap(({ result, current, returns }) =>
+      current && result !== "fail" ? returns : [],
+    ),
+  );
+}
 export const ArtifactList = type({
   "+": "reject",
   artifacts: ArtifactListItem.array(),

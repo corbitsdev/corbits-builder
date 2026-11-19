@@ -14,10 +14,12 @@
 }
 
 /* Long content scrolls here, so the card keeps its place in the conversation and the page never
-   widens. The padding, taken back by the margin, keeps focus rings inside the scroller's clip. */
+   widens. The padding, taken back by the margin, keeps focus rings inside the scroller's clip. A
+   place that scrolls around the card itself, such as a tab drawing it alone, lifts the cap through
+   --screen-card-body-max, so nothing hides below a fold of the card's own. */
 .body {
   min-width: 0;
-  max-height: 28rem;
+  max-height: var(--screen-card-body-max, 28rem);
   margin: -3px;
   padding: 3px;
   overflow-y: auto;

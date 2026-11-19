@@ -307,7 +307,9 @@ A value is declared once, so its words and type never disagree, and any action
 may read it. The hub supplies the values an action reads: a screen gets them as
 props, and a run gets them as a labelled block in its assignment, so the
 coordinator never has to find or pass what the project already stores. A person
-saves a value by answering a screen. A run saves only the values its action
+saves a value by answering a screen, or where the interface offers it: the
+Publish tab clears `publish.keep` and `publish.holding`, and with them a
+`publish.release` the person says is gone. A run saves only the values its action
 lists under `writes`, with `report_values`, and the hub checks the name and the
 type. A value that names a style token, as the designer's fonts and colours do,
 lives in the filed design's `styles.css` once there is a design, and in the
@@ -557,6 +559,52 @@ A new place implements this contract:
   read them through those. Each place's take-down tool checks it again for
   itself through `takeDownAgreed` before it acts and answers `not_agreed`, so
   "Keep it" pressed after the coordinator started the removal is seen.
+
+The Publish tab's state comes from these records alone, never from what the
+page remembers or an agent wrote. The rows that decide it are in the comment on
+`publishState` in `apps/web/src/pages/workspace/publish-state.ts`, and the first
+row that matches wins. A publish or a take-down is a chain of hand-offs (a
+press, the coordinator's turn, a screen, an answer, a check, a run, its report),
+and between links nothing may be at work and nothing asked. So the project is
+busy while anything is at work on it, and for 20 seconds after work last moved
+on: a run of any plugin on it ended, or the person pressed Publish or Take it
+down or gave a publishing question an answer that went ahead. That window is
+the only rule read from the clock, which is the hub's, so a browser's clock that
+runs ahead or behind does not change it. Once the window passes with nothing at
+work the tab reads what the records say.
+
+The release is behind once its ending fact, which the `live` check records,
+lapses after the release went out: a newer version was saved, which is not a
+publish under way. A release recorded for its place passes, so the plan reaches
+its end with no step left to the coordinator. A release to another place, or a
+take-down that clears it, drops the fact with no failed step, since an app
+published elsewhere or taken down on purpose has not failed. Saving a newer app
+re-runs nothing and leaves the record stale. A check never run has read
+nothing, so the coordinator still runs the first publish's `live` step. The
+check re-runs by itself once it has a record
+([DEV.md](https://github.com/corbitsdev/corbits-builder/blob/main/docs/DEV.md#one-action)).
+
+While `publish.keep` is set, the way to keep the app shows over whichever state
+applies. While `publish.holding` is set, every state shows one more line, a
+fact beside the state's own rather than a notice (`wording.publish.holding`):
+"Hosted on DigitalOcean · $6 a month" under the address and its date once
+published, or "Hosting on DigitalOcean since" its date before, with "billed
+there" for a place that does not say its price. While a question is open it
+shows under the question. Its menu holds "I already removed it from
+DigitalOcean…" for hosting the person removed themselves, which asks a second
+time in the menu, then clears the holding and any release its place recorded.
+
+The tab offers a quiet "Take it down", apart from its main button, while a
+release or a holding is recorded and a publish plan's `takeDown` names its
+target (a holding's target wins over a release's). It is not offered while
+work is under way, while a question is open, or after a failed take-down,
+whose own "Try again" asks for the take-down again. Its menu holds "I already
+removed it myself…" for an app the person removed where it went, such as by
+cancelling the server, which no take-down can reach. It asks a second time in
+the menu, then clears the release and the go-ahead to take down. Nor is it offered while a
+keep link is recorded and nothing is held, since no take-down can reach an app
+the person has not kept yet. It sends the person's message as Publish does; the
+screen is where they decide.
 
 ### Hub-made server keys
 

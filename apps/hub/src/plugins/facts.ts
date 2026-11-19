@@ -1,5 +1,5 @@
 import type { Fact } from "@corbits-builder/plugin";
-import { isDocumentKind } from "@corbits-builder/schemas/artifact";
+import { heldFacts, isDocumentKind } from "@corbits-builder/schemas/artifact";
 import type { Preferences } from "@corbits-builder/schemas/preferences";
 import { agentDecidesApprovals } from "../config/preferences.ts";
 
@@ -59,9 +59,7 @@ export function projectFacts(project: {
     if (approvedVersion !== undefined || agentDecides)
       facts.add(`approved:${kind}`);
   }
-  for (const { result, current, returns } of project.checks)
-    if (current && result !== "fail")
-      for (const fact of returns) facts.add(fact);
+  for (const fact of heldFacts(project.checks)) facts.add(fact);
   return facts;
 }
 

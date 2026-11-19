@@ -9,6 +9,7 @@ import { ConceptMockup } from "./design-concepts.tsx";
 import { LiveApp } from "./live-app.tsx";
 import { TweakPanel } from "./mockup-tweaks.tsx";
 import { NextStepLine } from "./next-step.tsx";
+import { PublishView } from "./publish.view.tsx";
 import {
   useRoom,
   useRoomGate,
@@ -29,8 +30,15 @@ export function StageWorkspace(props: StageWorkspaceProps) {
 
 function ReadyRoom(props: ReadyRoomProps) {
   const { projectId } = props;
-  const { view, nextStep, enableAi, liveApp, pageScreen, questionOutcomes } =
-    useRoom(props);
+  const {
+    view,
+    nextStep,
+    enableAi,
+    liveApp,
+    pageScreen,
+    publish,
+    questionOutcomes,
+  } = useRoom(props);
   return (
     <QuestionOutcomes value={questionOutcomes}>
       <RoomView
@@ -39,6 +47,17 @@ function ReadyRoom(props: ReadyRoomProps) {
         page={pageScreen === null ? null : <ScreenQuestion {...pageScreen} />}
         paneParts={{
           liveApp: liveApp === null ? null : <LiveApp {...liveApp} />,
+          publish:
+            publish === null ? null : (
+              <PublishView
+                {...publish}
+                question={
+                  publish.question === null ? null : (
+                    <ScreenQuestion {...publish.question} />
+                  )
+                }
+              />
+            ),
           conceptMockup: (concept, frame) => (
             <ConceptMockup projectId={projectId} concept={concept} {...frame} />
           ),

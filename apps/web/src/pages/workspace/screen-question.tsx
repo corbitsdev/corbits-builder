@@ -231,6 +231,10 @@ export function screenHost<In, Out, Data, Prepared>(
   },
 ): ComponentType<ScreenHostProps> {
   const { screen, view: View, data } = plugin;
+  // A screen's validate decides whether the question can be asked, given the project's values. An
+  // answered screen was already asked and is drawn without values, so a validate that needs one,
+  // such as something published to take down, would refuse it.
+  const answeredScreen: typeof screen = { ...screen, validate: () => [] };
   const readDraft = draftOf(screen.output);
   const { reads = [], host: supplied = [] } = builder;
   const unknown = supplied.find((name) => !SUPPLIED.has(name));
@@ -308,7 +312,13 @@ export function screenHost<In, Out, Data, Prepared>(
     const { tenants } = host;
     if (shown === undefined || tenants === null)
       return <InlineNote>{text.screenLoading}</InlineNote>;
-    const checked = validateInput(handle, screen, input, data, shown);
+    const checked = validateInput(
+      handle,
+      settled ? answeredScreen : screen,
+      input,
+      data,
+      shown,
+    );
     const answered =
       output === undefined ? undefined : validateOutput(handle, screen, output);
     if (!checked.ok || checked.prepared === undefined || answered?.ok === false)
@@ -470,13 +480,24 @@ export function ScreenQuestion({
   );
 }
 
-/** In the conversation, a screen open over the room: the way back to it after it was closed. */
-export function PageScreenCard({ onOpen }: { onOpen: () => void }) {
+/**
+ * The link in the conversation to a screen drawn elsewhere, over the room or in the project view.
+ * note says what waits there; open is the link's label.
+ */
+export function PageScreenCard({
+  onOpen,
+  note = text.pageScreenOpen,
+  open = text.pageScreenReopen,
+}: {
+  onOpen: () => void;
+  note?: string;
+  open?: string;
+}) {
   return (
     <InlineNote>
-      {text.pageScreenOpen}{" "}
+      {note}{" "}
       <Button type="button" size="sm" variant="outline" onClick={onOpen}>
-        {text.pageScreenReopen}
+        {open}
       </Button>
     </InlineNote>
   );

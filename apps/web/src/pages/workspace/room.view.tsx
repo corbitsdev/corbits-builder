@@ -10,7 +10,7 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
-import { FolderOpen, Paperclip, Sparkles } from "lucide-react";
+import { CloudUpload, FolderOpen, Paperclip, Sparkles } from "lucide-react";
 import {
   Attachment,
   type AttachmentItem,
@@ -40,6 +40,7 @@ import {
   type ArtifactPaneSlots,
 } from "./artifact-pane.tsx";
 import { pastedFiles } from "./pasted-files.ts";
+import type { Publishing } from "./publish-state.ts";
 import { PlanPanel, planProgress, usePlanCollapsed } from "./plan-panel.tsx";
 import { StageView } from "./stage-view.tsx";
 import { RoomThread, type RoomThreadContent } from "./transcript.tsx";
@@ -147,6 +148,8 @@ export type RoomContent = {
   /** The person turns "ask me first" on or off for a step that has not started. */
   onAskFirstStep: (stepId: string, askFirst: boolean) => Promise<void>;
   documentPane: ArtifactPaneContent;
+  /** Where publishing the app stands, and opening its tab; null while there is nothing to publish. */
+  publish: { publishing: Publishing; onOpen: () => void } | null;
   /** The project view's pane, which takes focus as it opens. */
   paneRef: RefObject<HTMLElement | null>;
 };
@@ -166,6 +169,7 @@ export function RoomView({
   onGoAheadStep,
   onAskFirstStep,
   documentPane,
+  publish,
   paneRef,
   nextStep,
   paneParts,
@@ -228,7 +232,7 @@ export function RoomView({
           <div className={styles.conversation}>
             <div className={styles.top}>
               {nextStep}
-              {projectReady || progress !== null ? (
+              {projectReady || progress !== null || publish !== null ? (
                 <div className={styles.controls}>
                   {progress === null ? null : (
                     <UiButton
@@ -268,6 +272,12 @@ export function RoomView({
                         />
                       )}
                     </UiButton>
+                  )}
+                  {publish === null ? null : (
+                    <PublishControl
+                      publishing={publish.publishing}
+                      onOpen={publish.onOpen}
+                    />
                   )}
                   {projectReady ? (
                     <UiButton
@@ -331,6 +341,58 @@ export function RoomView({
       </div>
       {shell.reply}
     </StageView>
+  );
+}
+
+// The dots the plan's button uses to mark a step that needs a look, and the okay colour once
+// published.
+const PUBLISH_MARK: Partial<Record<Publishing["state"]["state"], string>> = {
+  needsYou: "needs_you",
+  stalled: "needs_you",
+  failed: "failed",
+  takeDownFailed: "failed",
+  published: "live",
+};
+
+// The control's wording and mark. A keep link with time left needs the person whatever the state,
+// and after its deadline a published app may have been removed.
+function publishMark({ state, keep }: Publishing) {
+  if (keep !== null && !keep.passed)
+    return { label: wording.publish.control.keep, mark: "needs_you" };
+  if (keep !== null && state.state === "published")
+    return { label: wording.publish.control.keepPassed, mark: undefined };
+  return {
+    label: wording.publish.control[state.state],
+    mark: PUBLISH_MARK[state.state],
+  };
+}
+
+/** Where publishing stands, in a word or two beside the plan, opening the Publish tab. */
+export function PublishControl({
+  publishing,
+  onOpen,
+}: {
+  publishing: Publishing;
+  onOpen: () => void;
+}) {
+  const { label, mark } = publishMark(publishing);
+  return (
+    <UiButton
+      type="button"
+      size="sm"
+      variant="ghost"
+      className={styles.control}
+      aria-label={wording.publish.controlName(label)}
+      title={wording.publish.controlHint}
+      data-publish={publishing.state.state}
+      onClick={onOpen}
+    >
+      <CloudUpload size={16} aria-hidden="true" />
+      <span className={styles.label}>{label}</span>
+      {mark === undefined ? null : (
+        <span className={styles.alert} data-mark={mark} />
+      )}
+    </UiButton>
   );
 }
 

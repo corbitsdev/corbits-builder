@@ -138,8 +138,9 @@ their own. A project keeps the profile it started with.
 - Previewing anything that does not open in a browser. A command-line tool, a
   bot or a library is built and checked, but there is no way to try it inside
   Builder.
-- Hosting or deploying what was built. Builder can check that an app is ready
-  for Cloudflare Workers and routed to a domain; the person publishes it and
-  downloads its source.
+- Publishing anywhere but a server the person rents, a server Builder makes
+  for them at DigitalOcean, or Cloudflare Workers, and publishing at a domain
+  of the person's own. Builder publishes to each of the three at an address
+  that place gives the app.
 - Talking to a specialist directly; everything goes through the coordinator.
 - Spend tracking and reviews of the built app.

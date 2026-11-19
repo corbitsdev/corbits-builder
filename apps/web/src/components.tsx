@@ -1,5 +1,5 @@
 import { type ComponentProps, type ReactNode } from "react";
-import { Loader2 } from "lucide-react";
+import { Loader2, LoaderCircle } from "lucide-react";
 import {
   Badge,
   Button as UiButton,
@@ -194,6 +194,7 @@ export function InlineNote({
   as: Tag = "p",
   pill = false,
   role,
+  id,
   children,
 }: {
   /** A span sits within a line of other text rather than a paragraph of its own. */
@@ -201,6 +202,8 @@ export function InlineNote({
   /** A note that labels a view, such as which version it shows, in a rounded chip. */
   pill?: boolean;
   role?: "status";
+  /** Names the note for what it labels or describes. */
+  id?: string;
   children: ReactNode;
 }) {
   return (
@@ -209,6 +212,7 @@ export function InlineNote({
       data-slot="inline-note"
       data-pill={pill ? "" : undefined}
       role={role}
+      id={id}
     >
       {children}
     </Tag>
@@ -239,6 +243,17 @@ export function Fault({
         {wording.action.retry}
       </UiButton>
     </div>
+  );
+}
+
+/** A turning circle for work under way, still for a reader who asked for less motion. */
+export function Spinner() {
+  return (
+    <LoaderCircle
+      className={styles.spinner}
+      data-slot="spinner"
+      aria-hidden="true"
+    />
   );
 }
 

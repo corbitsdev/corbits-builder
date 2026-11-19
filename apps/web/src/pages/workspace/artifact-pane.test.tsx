@@ -16,7 +16,7 @@ import {
   type DeliverableState,
 } from "./deliverable-block.tsx";
 import { TweakPanel } from "./mockup-tweaks.tsx";
-import { LIVE_TAB } from "./tab-follow.ts";
+import { LIVE_TAB, PUBLISH_TAB } from "./tab-follow.ts";
 
 const filed = (id: string, title: string, version: number): PaneDocument => ({
   id,
@@ -269,6 +269,7 @@ describe("remembered tab", () => {
   const have = {
     liveApp: false,
     manual: false,
+    publish: false,
     draft: false,
     concepts: [] as string[],
     documents: [ready, plan],
@@ -280,6 +281,10 @@ describe("remembered tab", () => {
     expect(availableTab(LIVE_TAB, { ...have, liveApp: true })).toBe(LIVE_TAB);
     expect(availableTab("user-manual", { ...have, manual: true })).toBe(
       "user-manual",
+    );
+    expect(availableTab(PUBLISH_TAB, have)).toBeNull();
+    expect(availableTab(PUBLISH_TAB, { ...have, publish: true })).toBe(
+      PUBLISH_TAB,
     );
     expect(availableTab(null, have)).toBeNull();
   });

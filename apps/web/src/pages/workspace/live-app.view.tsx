@@ -16,7 +16,6 @@ import {
   AppWindow,
   ExternalLink,
   ListChecks,
-  LoaderCircle,
   Square,
   SquareCheck,
   TriangleAlert,
@@ -24,6 +23,7 @@ import {
 } from "lucide-react";
 import { DocumentView, Markdown } from "@corbits-builder/plugin-ui/markdown";
 import { wording } from "../../config.ts";
+import { Spinner } from "../../components.tsx";
 import {
   Sketching,
   SketchingClock,
@@ -238,7 +238,7 @@ function StandIn({
   return (
     <div className={styles.state} role="status">
       <EmptyState
-        icon={<LoaderCircle className={styles.spinner} />}
+        icon={<Spinner />}
         title={text.phase[app.phase]}
         {...(app.version === undefined ? {} : { description: app.version })}
         action={app.fromBuilder ? builderStatus : undefined}

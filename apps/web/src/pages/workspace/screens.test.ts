@@ -1,7 +1,12 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { installPluginRoles } from "./plugin-roles.testing.ts";
 import { installRoles } from "./roles.ts";
-import { installScreens, readyPlansIn } from "./screens.ts";
+import {
+  installScreens,
+  planEndsIn,
+  readyPlansIn,
+  specialistsIn,
+} from "./screens.ts";
 
 const plan = (
   handle: string,
@@ -159,4 +164,9 @@ test("of plans sharing a handle, the default one is offered", () => {
       takeDown: undefined,
     },
   ]);
+});
+
+test("a group's ending facts and specialists are read from the manifests", () => {
+  expect(planEndsIn("publish")).toEqual(["published:server"]);
+  expect(specialistsIn("publish")).toEqual(["server"]);
 });

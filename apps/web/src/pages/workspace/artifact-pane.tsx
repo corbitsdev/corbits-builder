@@ -57,7 +57,7 @@ import {
   writeStoredPreference,
 } from "../../stored-preference.ts";
 import { printDocument } from "./print-document.ts";
-import { DRAFT_TAB, LIVE_TAB } from "./tab-follow.ts";
+import { DRAFT_TAB, LIVE_TAB, PUBLISH_TAB } from "./tab-follow.ts";
 import { useTabStrip } from "./tab-strip.ts";
 import type { ApproachChoice } from "./approach-choice.ts";
 
@@ -86,8 +86,12 @@ const draftIds = panelTabIds(TAB_PREFIX, DRAFT_TAB);
 const MANUAL_TAB = "user-manual";
 const manualIds = panelTabIds(TAB_PREFIX, MANUAL_TAB);
 // The tabs that are not filed documents: open while what they show is there.
+const publishIds = panelTabIds(TAB_PREFIX, PUBLISH_TAB);
 const isSideOnly = (id: string) =>
-  id === DRAFT_TAB || id === LIVE_TAB || id === MANUAL_TAB;
+  id === DRAFT_TAB ||
+  id === LIVE_TAB ||
+  id === MANUAL_TAB ||
+  id === PUBLISH_TAB;
 const isSideTab = (id: string) =>
   isSideOnly(id) || conceptOfTab(id) !== undefined;
 
@@ -98,6 +102,7 @@ function selectTab(input: {
   conceptShown: boolean;
   liveApp: boolean;
   manual: boolean;
+  publish: boolean;
   selectedId: string | null;
   designPart: DesignPart;
 }): string | null {
@@ -106,6 +111,7 @@ function selectTab(input: {
   if (input.conceptShown) return side;
   if (side === LIVE_TAB && input.liveApp) return LIVE_TAB;
   if (side === MANUAL_TAB && input.manual) return MANUAL_TAB;
+  if (side === PUBLISH_TAB && input.publish) return PUBLISH_TAB;
   if (input.selectedId === "design" && input.designPart === "mockup")
     return MOCKUP_TAB;
   return input.selectedId;
@@ -156,6 +162,7 @@ export function availableTab(
   have: {
     liveApp: boolean;
     manual: boolean;
+    publish: boolean;
     draft: boolean;
     concepts: readonly string[];
     documents: readonly PaneDocument[];
@@ -164,6 +171,7 @@ export function availableTab(
   if (id === null) return null;
   if (id === LIVE_TAB) return have.liveApp ? id : null;
   if (id === MANUAL_TAB) return have.manual ? id : null;
+  if (id === PUBLISH_TAB) return have.publish ? id : null;
   if (id === DRAFT_TAB) return have.draft ? id : null;
   const concept = conceptOfTab(id);
   if (concept !== undefined) return have.concepts.includes(concept) ? id : null;
@@ -214,6 +222,8 @@ const flowRank = (kind: string) => {
 export type ArtifactPaneSlots = DeliverableSlots & {
   /** Once there is an app, filed or being built, or a build plan for one, a tab for it. */
   liveApp?: ReactElement | null;
+  /** Once there is a saved app and somewhere to publish it, a tab saying where it is published. */
+  publish?: ReactElement | null;
   /** One concept's mockup, at the device the pane keeps for the concepts. */
   conceptMockup: (
     concept: DesignConcept,
@@ -282,6 +292,7 @@ export function ArtifactPane({
   concepts,
   openTab = null,
   liveApp = null,
+  publish = null,
   conceptMockup,
   documents,
   selectedId,
@@ -329,6 +340,7 @@ export function ArtifactPane({
   const restorable = availableTab(memory.id, {
     liveApp: liveApp !== null,
     manual: manual !== null,
+    publish: publish !== null,
     draft: draftShown,
     concepts: concepts.map((concept) => concept.label),
     documents,
@@ -364,6 +376,7 @@ export function ArtifactPane({
       openTab.value === LIVE_TAB ||
         openTab.value === DRAFT_TAB ||
         openTab.value === MANUAL_TAB ||
+        openTab.value === PUBLISH_TAB ||
         conceptOfTab(openTab.value) !== undefined
         ? openTab.value
         : null,
@@ -380,6 +393,7 @@ export function ArtifactPane({
     conceptShown,
     liveApp: liveApp !== null,
     manual: manual !== null,
+    publish: publish !== null,
     selectedId,
     designPart,
   });
@@ -490,7 +504,8 @@ export function ArtifactPane({
     );
   };
   const outputs = documents.length > 0 || draftShown || concepts.length > 0;
-  const hasTabs = outputs || liveApp !== null || manual !== null;
+  const hasTabs =
+    outputs || liveApp !== null || manual !== null || publish !== null;
   useEffect(() => {
     if (open && shown?.unread) onSeen(shown.id);
   }, [open, shown?.id, shown?.unread]);
@@ -566,6 +581,15 @@ export function ArtifactPane({
                       title={wording.liveApp.title}
                     >
                       {wording.liveApp.tab}
+                    </PanelTab>
+                  ) : null,
+                  publish !== null ? (
+                    <PanelTab
+                      key={PUBLISH_TAB}
+                      value={PUBLISH_TAB}
+                      title={wording.publish.tabTitle}
+                    >
+                      {wording.publish.tab}
                     </PanelTab>
                   ) : null,
                   manual !== null ? (
@@ -790,6 +814,16 @@ export function ArtifactPane({
               </PanelPane>
             );
           })}
+          {publish !== null ? (
+            <PanelPane
+              value={PUBLISH_TAB}
+              id={publishIds.pane}
+              role="tabpanel"
+              aria-labelledby={publishIds.tab}
+            >
+              {publish}
+            </PanelPane>
+          ) : null}
           {manual !== null ? (
             <PanelPane
               value={MANUAL_TAB}

@@ -103,6 +103,7 @@ import {
   DRAFT_TAB,
   followDeliverableId,
   LIVE_TAB,
+  PUBLISH_TAB,
   shownDeliverableId,
   type DocumentChoice,
 } from "./tab-follow.ts";
@@ -176,6 +177,7 @@ import type {
 import { inShort } from "@corbits-builder/schemas/in-short";
 import { roleLabel, roleOf, screenWords } from "./roles.ts";
 import { readyPlansIn, screensFor, selectionNames } from "./screens.ts";
+import { usePublishTab, type PublishTab } from "./publish.model.ts";
 
 // The stream says when the room moved. This read covers what it cannot see,
 // such as a coordinator run replaced while its old stream stays quiet.
@@ -576,6 +578,8 @@ export function useRoom({
   liveApp: { projectId: string; builder: InFlightRun | undefined } | null;
   /** The coordinator's open question when its screen is placed over the whole room. */
   pageScreen: ScreenQuestionProps | null;
+  /** The Publish tab's props, with the open question it waits on; null while there is nothing to publish. */
+  publish: PublishTab["view"] | null;
   questionOutcomes: ReadonlyMap<string, AnswerOutcome>;
 } {
   const queryClient = useQueryClient();
@@ -736,7 +740,7 @@ export function useRoom({
   const pageQuestion =
     openQuestion !== undefined &&
     showsScreen(openQuestion) &&
-    screenOf(openQuestion.asked)?.page === true
+    screenOf(openQuestion.asked)?.place === "page"
       ? {
           signalName: openQuestion.signalName,
           asked: openQuestion.asked,
@@ -744,6 +748,17 @@ export function useRoom({
       : undefined;
   const pageOpen =
     pageQuestion !== undefined && closedPage !== pageQuestion.signalName;
+  // A question whose screen belongs in the Publish tab is drawn there, next to publishing's state.
+  const publishQuestion =
+    openQuestion !== undefined &&
+    showsScreen(openQuestion) &&
+    pageQuestion === undefined &&
+    screenOf(openQuestion.asked)?.place === "publish"
+      ? {
+          signalName: openQuestion.signalName,
+          asked: openQuestion.asked,
+        }
+      : undefined;
 
   useEffect(() => {
     setApprovalBusy(false);
@@ -935,6 +950,32 @@ export function useRoom({
     coordinator !== undefined &&
     (liveRun.endedAt === null ||
       Date.parse(coordinator.since) > liveRun.endedAt);
+  // The publishing records change only with the plan, a run starting, ending or failing, a save, a
+  // question asked or answered, or the coordinator starting or ending a turn. So the Publish tab
+  // reads its records again only on those, not on every change in the room.
+  const publishMoved = useMemo(
+    () =>
+      JSON.stringify([
+        snapshot.plan,
+        snapshot.inFlight.map(({ runId, status }) => [runId, status]),
+        snapshot.failed.map(({ runId }) => runId),
+        snapshot.artifacts.map(({ kind, artifactId, version }) => [
+          kind,
+          artifactId,
+          version,
+        ]),
+        snapshot.conversation.questions.map(({ signalName, status }) => [
+          signalName,
+          status,
+        ]),
+      ]),
+    [snapshot],
+  );
+  useEffect(() => {
+    void queryClient.invalidateQueries({
+      queryKey: keys.publish.of(projectId),
+    });
+  }, [projectId, queryClient, publishMoved, working]);
   // The engine treats the first id as history and every later change as a
   // send: it pins that turn and reserves space under it. A turn loaded from
   // the mirror is not a send. Passing it pins the old message and the reserve
@@ -1660,6 +1701,31 @@ export function useRoom({
     close: () => setClosedPage(pageQuestion?.signalName ?? null),
   };
   const appFiled = snapshot.artifacts.some((item) => item.kind === "app");
+  const openPublish = () => openProject(PUBLISH_TAB);
+  const publish = usePublishTab({
+    projectId,
+    savedApp: appFiled,
+    question:
+      publishQuestion === undefined
+        ? null
+        : {
+            signalName: publishQuestion.signalName,
+            host: screenOf(publishQuestion.asked)?.host,
+            input: publishQuestion.asked.input,
+            projectValues,
+            answer: undefined,
+            disabled: sending || archived,
+            onAnswer: (given) => answer(publishQuestion.signalName, given),
+            supplies,
+          },
+    plan: snapshot.plan,
+    working: working || sending || inFlight.length > 0,
+    turnEndedAt: liveRun.endedAt,
+    archived,
+    sending,
+    deliver: (message) => deliver(message),
+    onOpen: openPublish,
+  });
   const firstBuilder = appFiled ? undefined : inFlight.find(writesCode);
   // There is an app to preview once one is filed, built here or imported, or a coder is building
   // it; a filed build plan shows where it will appear.
@@ -1726,7 +1792,8 @@ export function useRoom({
     paneDeliverables.length === 0 &&
     designDraft === null &&
     concepts.length === 0 &&
-    liveApp === null;
+    liveApp === null &&
+    publish === null;
   const dock = (): RoomDock => {
     if (archived)
       return {
@@ -1852,6 +1919,7 @@ export function useRoom({
           screenOf,
           screenSupplies: supplies,
           onOpenPageScreen: () => setClosedPage(null),
+          onOpenPublishScreen: openPublish,
         },
         empty: emptyConversation(),
       },
@@ -1928,6 +1996,13 @@ export function useRoom({
               onApprove: approveRead,
             }),
       },
+      publish:
+        publish === null
+          ? null
+          : {
+              publishing: publish.publishing,
+              onOpen: openPublish,
+            },
       paneRef: documentPaneRef,
     },
     nextStep: archived
@@ -1947,6 +2022,7 @@ export function useRoom({
     enableAi: { open: enablingAi, onOpenChange: setEnablingAi },
     liveApp,
     questionOutcomes: outcomes,
+    publish: publish === null ? null : publish.view,
     pageScreen:
       pageQuestion === undefined
         ? null

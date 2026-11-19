@@ -229,6 +229,22 @@ export async function saveDesignTweaks(projectId: string, input: DesignTweaks) {
   return productClient().saveDesignTweaks(tenantId, projectId, input);
 }
 
+/** The latest record of each check of the project. */
+export async function readProjectChecks(
+  projectId: string,
+  signal: AbortSignal,
+) {
+  const tenantId = await workspaceTenantId();
+  return (await productClient().projectChecks(tenantId, projectId, signal))
+    .checks;
+}
+
+/** The coordinator's runs of plugin actions in the project: all at work, and the latest ended. */
+export async function readProjectRuns(projectId: string, signal: AbortSignal) {
+  const tenantId = await workspaceTenantId();
+  return (await productClient().projectRuns(tenantId, projectId, signal)).runs;
+}
+
 /** The named project values as stored, null where the project has none yet. */
 export async function readProjectValues(
   projectId: string,
@@ -243,6 +259,18 @@ export async function readProjectValues(
     signal,
   );
   return read.values;
+}
+
+/** Saves project values by name as the person; null clears one. Returns each value as stored. */
+export async function saveProjectValues(
+  projectId: string,
+  values: Readonly<Record<string, unknown>>,
+) {
+  const tenantId = await workspaceTenantId();
+  const saved = await productClient().saveProjectValues(tenantId, projectId, {
+    values,
+  });
+  return saved.values;
 }
 
 /** The person approves a filed document at the version they read. */

@@ -38,6 +38,13 @@ export const keys = {
     /** How the project's program starts, which says whether it serves a web app to preview. */
     run: (projectId: string) => ["projectValues", projectId, "run"] as const,
   },
+  /** The records that say where publishing stands: checks, publishing runs and the release. */
+  publish: {
+    all: ["publish"] as const,
+    of: (projectId: string) => ["publish", projectId] as const,
+    /** The link to keep an app published without an account; private, so never saved in the browser. */
+    keep: (projectId: string) => ["publish", projectId, "keep"] as const,
+  },
   liveApp: {
     all: ["liveApp"] as const,
     of: (projectId: string) => ["liveApp", projectId] as const,

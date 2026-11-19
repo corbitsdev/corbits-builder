@@ -155,6 +155,7 @@ export function ScreenStory({
   draft,
   output,
   placed = "conversation",
+  supplies = storySupplies,
 }: {
   screen: ReturnType<typeof storyScreen>;
   state: ScreenState;
@@ -166,6 +167,8 @@ export function ScreenStory({
   output?: Record<string, unknown>;
   /** A screen placed on the page shows a card in the conversation that opens it. */
   placed?: "conversation" | "page";
+  /** What the host supplies, when a story needs something other than the default. */
+  supplies?: HostSupplies;
 }) {
   const signalName = `story-${state}-${placed}`;
   const [ready, setReady] = useState(false);
@@ -218,7 +221,7 @@ export function ScreenStory({
         setGiven(answer);
         return Promise.resolve(true);
       }}
-      supplies={storySupplies}
+      supplies={supplies}
       page={onPage ? { close: () => setOnPage(false) } : undefined}
     />
   );
