@@ -73,7 +73,7 @@ export const designerBusy = (concept: string, live?: { runId: string }) =>
       ? "designer_starting: a designer is already starting for this project"
       : "designer_running: the " +
           concept +
-          " designer in run " +
+          " designer is still working in run " +
           live.runId +
-          " has not ended. If you already have its design, it is saving its last files: call execute again. Otherwise its design arrives as a message, and the next pass on it can start then. A new concept label starts alongside it.",
+          "; its design arrives as a message, and the next pass on it can start after",
   );

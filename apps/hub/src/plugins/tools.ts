@@ -31,6 +31,7 @@ import {
   PLAN_DESCRIPTION,
   pluginHint,
   RUNS_DESCRIPTION,
+  startAfter,
 } from "@corbits-builder/plugin-host/text";
 import { PlanView } from "@corbits-builder/schemas/project";
 import type { PluginHint } from "../environment.ts";
@@ -184,6 +185,7 @@ function project(session: ProjectSession): Project {
   const path = session.projectPath + "/following";
   return {
     appStarters: CATALOG.appStarters,
+    heldBack: startAfter,
     state: async () => {
       const listed = await session.listed();
       const { checks } = CheckList.assert(
@@ -258,6 +260,7 @@ function project(session: ProjectSession): Project {
         throw error;
       }
     },
+    working: async () => (await session.listed()).inFlight,
     startAlone: ({ workflow, correlation, assignment, busy, keep }) =>
       session.startAlone(
         workflow,

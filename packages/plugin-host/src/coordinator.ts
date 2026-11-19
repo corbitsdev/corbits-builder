@@ -1017,7 +1017,7 @@ export async function manageRuns(
   );
   if (unknown.length > 0)
     return {
-      content: unknownRuns(asked.operation, unknown, runs),
+      content: unknownRuns(unknown, runs),
       isError: true,
     };
   const live = runs.filter((run) => named.includes(run.runId) && !ended(run));

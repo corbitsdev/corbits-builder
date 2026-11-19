@@ -23,6 +23,10 @@ export const RUNS_DESCRIPTION =
 export const PLAN_DESCRIPTION =
   "Keep the project's plan, which shows the person what is coming and where work of several steps stands, and holds each step until what it waits for is true. It is the only way a plan is set. Each operation answers with the plan as it now stands, each step with its id; pass that id as execute's step when you start the step. Write a plan of your own with set from the actions that fit, which is the normal case, or take up a ready-made plan with add and plan, which also has the project follow it while its group is on the plan. Once added, a ready-made plan's steps can be adjusted like any others: add your own before, after or between them, inside its group or next to it, and remove those that do not fit. A refusal saves nothing. It names each wrong field, or the first step the plan cannot hold, such as an action that is not installed or an input that does not fit: correct it and call again. Adding a ready-made plan whose work is already done is refused too: start the action the person's request needs directly.";
 
+// What to do about a run that holds back the next one, named as runIds lists it.
+export const startAfter = (runIds: string) =>
+  `Its report reaches you as a message: end your turn and call execute again then. To start sooner, runs({ operation: "stop", runIds: [${runIds}] }) stops it; then call execute again.`;
+
 /** Why a tool call was not run, every wrong field at once, then everything the tool takes. */
 export function wrongCall(
   tool: string,
@@ -280,12 +284,11 @@ export const unknownAction = (
 
 /** Why runs did nothing with run ids that are not runs the coordinator started here. */
 export const unknownRuns = (
-  operation: string,
   unknown: readonly string[],
   yours: readonly { runId: string; plugin: string; action: string }[],
 ) =>
   [
-    `${unknown.join(", ")} ${unknown.length === 1 ? "is not a run" : "are not runs"} you started in this project, so nothing was done with ${operation}.`,
+    `${unknown.join(", ")} ${unknown.length === 1 ? "is not a run" : "are not runs"} you started in this project, so nothing was stopped.`,
     "",
     yours.length === 0
       ? "You have started no runs here yet; execute starts one."

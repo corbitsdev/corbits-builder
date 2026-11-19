@@ -22,6 +22,7 @@ function projectWith(
   const assignments = new Map<string, string>();
   const project: StarterProject = {
     appStarters: new Map(),
+    heldBack: unused,
     state: async () => ({
       facts: new Set(facts),
       personFacts: new Set(),
@@ -31,6 +32,7 @@ function projectWith(
     }),
     values: async (names) =>
       Object.fromEntries(names.map((name) => [name, values[name] ?? null])),
+    working: async () => [],
     startConcepts: async ({ concepts, assignment }) =>
       concepts.map((concept: Concept, index) => {
         assignments.set(concept.label, assignment(filed, concept));
