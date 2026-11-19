@@ -10,6 +10,7 @@
     "./http-json": "./src/http-json.ts",
     "./project-scope": "./src/project-scope.ts",
     "./run-hub": "./src/run-hub.ts",
+    "./server-key": "./src/server-key.ts",
     "./tools": "./src/tools.ts"
   },
   "dependencies": {

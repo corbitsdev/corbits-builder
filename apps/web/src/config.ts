@@ -1128,6 +1128,7 @@ export const wording = {
     replace: "Replace",
     revoke: "Revoke…",
     confirmRevoke: "Yes, revoke it",
+    confirmRevokeServer: `Yes, revoke it: ${productName} can no longer reach its server`,
     save: "Save",
     saving: "Saving…",
     cancel: "Cancel",

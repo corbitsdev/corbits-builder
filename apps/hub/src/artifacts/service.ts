@@ -427,9 +427,11 @@ export function createArtifactService(
         plugin: runAction.plugin,
         action: runAction.action,
         blocked: runAction.blocked,
+        status: workflowRun.status,
       })
       .from(runAction)
       .innerJoin(principal, eq(principal.refId, runAction.runId))
+      .innerJoin(workflowRun, eq(workflowRun.id, runAction.runId))
       .where(
         and(
           eq(principal.id, actor.principalId),
@@ -1591,15 +1593,24 @@ export function createArtifactService(
       return { runId };
     },
 
-    // The plugin action the calling specialist run was started for: it saves only the values that
-    // action writes. A run holds no project write of its own; saveRunValues is its one way to save.
-    async valuesRun(actor: Actor, projectId: string) {
+    // The plugin action the calling specialist run was started for. A run holds no project write of
+    // its own: it saves only the values that action writes, through saveRunValues. With live, the
+    // run must still be running, because what it asks for is made for that run to use, and a run that
+    // ended uses nothing.
+    async actionRun(actor: Actor, projectId: string, live = false) {
       await requireProject(actor, projectId, "read");
       const run = await callingRun(actor, projectId);
       if (!run)
-        throw new ProjectError(403, "run_saves_no_values", {
-          hint: "This run was not started for a plugin action that saves project values, so it saves none.",
-        });
+        throw live
+          ? new ProjectError(403, "run_not_started_for_an_action", {
+              hint: "This run was not started for a plugin action, so Builder makes nothing for it.",
+            })
+          : new ProjectError(403, "run_saves_no_values", {
+              hint: "This run was not started for a plugin action that saves project values, so it saves none.",
+            });
+      // A tool still working after its run ended.
+      if (live && !isLiveWorkflowRunStatus(run.status))
+        throw new ProjectError(403, "run_not_live", { runId: run.runId });
       return run;
     },
 

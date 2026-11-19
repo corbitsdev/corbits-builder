@@ -96,6 +96,7 @@
     "drizzle-kit": "0.31.9",
     "jszip": "3.10.2",
     "oxlint": "1.89.0",
+    "ssh2": "1.17.0",
     "typescript": "5.9.3"
   },
   "engines": {

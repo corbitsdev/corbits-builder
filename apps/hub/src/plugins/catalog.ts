@@ -77,21 +77,23 @@ export const catalogOf = async (
 
 /**
  * The calling specialist run and the installed action it was started for, as the project sees the
- * catalog. The action is undefined once it is no longer installed, so the run is given nothing in
- * that action's name.
+ * catalog; with live, only while the run is running. The action is undefined once it is no longer
+ * installed, so the run is given nothing in that action's name.
  */
 export async function callingAction(
   artifacts: {
-    valuesRun: (
+    actionRun: (
       actor: Actor,
       projectId: string,
+      live: boolean,
     ) => Promise<{ plugin: string; action: string }>;
     projectState: (actor: Actor, projectId: string) => Promise<ProjectState>;
   },
   actor: Actor,
   projectId: string,
+  live = false,
 ) {
-  const run = await artifacts.valuesRun(actor, projectId);
+  const run = await artifacts.actionRun(actor, projectId, live);
   const action = (
     await catalogOf(artifacts.projectState, actor, projectId)
   ).actions

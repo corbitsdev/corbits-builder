@@ -10,17 +10,21 @@
     "./choice-segments": "./src/choice-segments.tsx",
     "./comparison": "./src/comparison.tsx",
     "./credential-form": "./src/credential-form.tsx",
+    "./credentials": "./src/credentials.ts",
     "./document-block": "./src/document-block.tsx",
     "./markdown": "./src/markdown.tsx",
     "./screen": "./src/screen.ts",
     "./screen-actions": "./src/screen-actions.tsx",
     "./screen-card": "./src/screen-card.tsx",
+    "./server-key-form": "./src/server-key-form.tsx",
     "./steps": "./src/steps.tsx"
   },
   "dependencies": {
     "@corbits-builder/plugin": "workspace:*",
+    "@corbits-builder/schemas": "workspace:*",
     "@corbits/react-ui": "0.5.1",
     "@intx/types": "workspace:*",
+    "arktype": "catalog:",
     "lucide-react": "0.545.0",
     "react": "19.3.0"
   },

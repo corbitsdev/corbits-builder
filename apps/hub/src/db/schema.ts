@@ -443,3 +443,46 @@ export const approvalRound = pgTable(
     ),
   ],
 );
+
+// A server key the hub made for a project, under the name of the ssh credential it becomes. The
+// sealed private half is stored here only while the key is issued. Once a sign-in with the key has
+// proved the server, the private half lives only in the Interchange credential, and this row keeps
+// who made the key and which server it was proved on.
+export const serverKey = pgTable(
+  "sb_server_key",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id")
+      .notNull()
+      .references(() => tenant.id),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => project.id),
+    // The credential's name as its plugin declares it.
+    name: text("name").notNull(),
+    // "person", or "plugin:" and the handle of the plugin whose run asked for it.
+    issuer: text("issuer").notNull(),
+    stage: text("stage").$type<"issued" | "bound">().notNull(),
+    publicKey: text("public_key").notNull(),
+    sealedPrivateKey: text("sealed_private_key"),
+    // The label the server is rented under, so a later run can find the server this key opens.
+    label: text("label").notNull(),
+    boundHost: text("bound_host"),
+    boundPort: integer("bound_port"),
+    hostKey: text("host_key"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    boundAt: timestamp("bound_at", { withTimezone: true }),
+  },
+  (t) => [
+    unique("sb_server_key_tenant_name").on(t.tenantId, t.name),
+    check("sb_server_key_stage_check", sql`${t.stage} in ('issued', 'bound')`),
+    // An issued row has the private half and no server; a bound row has the server but no private
+    // half.
+    check(
+      "sb_server_key_stage_fields_check",
+      sql`(${t.stage} = 'issued' and ${t.sealedPrivateKey} is not null and ${t.boundHost} is null and ${t.boundPort} is null and ${t.hostKey} is null and ${t.boundAt} is null) or (${t.stage} = 'bound' and ${t.sealedPrivateKey} is null and ${t.boundHost} is not null and ${t.boundPort} is not null and ${t.hostKey} is not null and ${t.boundAt} is not null)`,
+    ),
+  ],
+);
