@@ -258,7 +258,16 @@ export function createSettingsRoutes(
         },
       },
     }),
-    (c) => c.json({ credentials: CATALOG.credentials }),
+    // Where a sign-in is sent is the hub's business; the interface only needs to know there is one.
+    (c) =>
+      c.json({
+        credentials: CATALOG.credentials.map((declared) => {
+          if (!("signIn" in declared) || declared.signIn === undefined)
+            return declared;
+          const { signIn: _, ...credential } = declared;
+          return { ...credential, signIn: true };
+        }),
+      }),
   );
   app.get(
     "/models",

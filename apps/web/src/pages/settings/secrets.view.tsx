@@ -24,12 +24,22 @@ export type SavedSecret = {
   /** The installed plugins that declare it, by title, and the host it may be sent to; null when
    * none does. */
   usedBy: { plugins: readonly string[]; host: string | null } | null;
-  /** Whether a new key can be typed in its place: only a plugin's declaration says how an API key
-   * is sent, and a server key is connected again rather than retyped. */
+  /**
+   * Whether a new key can be typed in its place. Only a plugin's declaration says how an API key is
+   * sent, a server key is connected again instead of retyped, and a sign-in is renewed by signing
+   * in again on its plugin's screen.
+   */
   replaceable: boolean;
-  /** How it was had: a key typed or connected by the person, or a key Builder made for a server a
-   * plugin rented, which Builder can no longer reach once it is revoked. */
-  kind: "key" | "provisioned";
+  /**
+   * Where the key came from: typed or connected by the person; a sign-in at the provider, which
+   * revoking also signs out of there; or a key Builder made for a server a plugin rented, which
+   * Builder can no longer reach once the key is revoked.
+   */
+  kind: "key" | "signedIn" | "provisioned";
+  /** The account a sign-in connected, when the provider named one. */
+  account: string | null;
+  /** A sign-in the provider stopped accepting. */
+  signedOut: boolean;
 };
 
 /** The secrets saved in one place: the workspace, or one project. */
@@ -108,15 +118,21 @@ export function SecretsSectionView({
                 <SettingsRowActions
                   label={copy.options(secret.label)}
                   editLabel={copy.replace}
-                  dangerLabel={copy.revoke}
+                  dangerLabel={
+                    secret.kind === "signedIn" ? copy.disconnect : copy.revoke
+                  }
                   confirmLabel={confirmLabel(secret)}
                   editable={secret.replaceable}
                   busy={pending !== null}
                   autoFocus={returnTo === secret.id}
-                  onEdit={() => {
-                    setReturnTo(secret.id);
-                    onReplacing(secret.id);
-                  }}
+                  onEdit={
+                    secret.replaceable
+                      ? () => {
+                          setReturnTo(secret.id);
+                          onReplacing(secret.id);
+                        }
+                      : undefined
+                  }
                   onConfirm={() => onRevoke(secret.id)}
                 />
               </SettingsRow>
@@ -136,11 +152,17 @@ function hint(secret: SavedSecret) {
           copy.usedBy(secret.usedBy.plugins),
           ...(secret.usedBy.host === null ? [] : [secret.usedBy.host]),
         ];
-  return where.join(" · ");
+  const signedIn = secret.signedOut
+    ? [copy.signedOut]
+    : secret.account === null
+      ? []
+      : [copy.signedInAs(secret.account)];
+  return [...where, ...signedIn].join(" · ");
 }
 
 // The label of the confirming second press, which says what else is lost with the key.
 function confirmLabel(secret: SavedSecret) {
+  if (secret.kind === "signedIn") return copy.confirmDisconnect;
   if (secret.kind === "provisioned") return copy.confirmRevokeServer;
   return copy.confirmRevoke;
 }

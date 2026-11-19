@@ -486,3 +486,21 @@ export const serverKey = pgTable(
     ),
   ],
 );
+
+// The client id a plugin's provider gave the hub when the hub registered for one sign-in
+// credential, with the address the provider sends the person back to. It is registered once and
+// kept, so every sign-in and refresh of that credential uses the same client.
+export const signInClient = pgTable(
+  "sb_sign_in_client",
+  {
+    // The hub's callback address the client was registered with.
+    redirectUri: text("redirect_uri").notNull(),
+    // The credential's name as its plugin declares it.
+    name: text("name").notNull(),
+    clientId: text("client_id").notNull(),
+    registeredAt: timestamp("registered_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.redirectUri, t.name] })],
+);

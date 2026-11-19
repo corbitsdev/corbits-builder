@@ -35,6 +35,7 @@ import {
   type HttpCredentialDeclaration,
   type CredentialDeclaration,
   type SshCredentialDeclaration,
+  type SignIn,
   type FiledVersion,
   type Kept,
   type Starter,
@@ -377,11 +378,13 @@ export type PluginPackage =
  * The installed plugins as one project sees them: one plugin per handle, the one its selection names
  * of those that share a handle, else their default.
  */
-// A credential name as the installed plugins declare it, with the labels of those that do: an API
-// key with the origin it is sent to, or a server key, which names none and may be one the hub
-// makes.
+// A credential name as the installed plugins declare it, with the labels of those that do. It is an
+// API key, with the origin it is sent to and how the person may sign in for it, or a server key,
+// which has no origin and may be one the hub makes.
 export type PluginCredential = (
-  | Pick<HttpCredentialDeclaration, "about" | "origin" | "sends">
+  | (Pick<HttpCredentialDeclaration, "about" | "origin" | "sends"> & {
+      signIn?: SignIn;
+    })
   | (Pick<SshCredentialDeclaration, "about" | "sends"> & { provisioned?: true })
 ) & { name: string; plugins: string[] };
 
@@ -933,14 +936,18 @@ const sameSends = (
     ? a === b
     : a.header === b.header && a.prefix === b.prefix;
 
-// How a credential is had besides its form: made by the hub, or not. Plugins sharing a name must
-// agree on it.
+// How a credential is obtained besides its form: by signing in, by the hub making it, or neither.
+// Plugins that share a name must agree on it, or one could sign in where another takes a pasted
+// key.
 const obtained = (declaration: CredentialDeclaration) =>
-  JSON.stringify({ provisioned: isProvisioned(declaration) });
+  JSON.stringify({
+    signIn: "signIn" in declaration ? declaration.signIn : undefined,
+    provisioned: isProvisioned(declaration),
+  });
 
 // Each credential name the installed plugins declare, with the labels of the plugins that declare
-// it. Plugins share a name only as one key, sent to one origin one way and had the same way, since a
-// person saves it once for all of them.
+// it. Plugins share a name only as one key, sent to one origin in one way and obtained the same
+// way, because a person saves it once for all of them.
 function declaredCredentials(
   manifests: readonly Manifested[],
   values: ReadonlyMap<string, ValueDeclaration>,
@@ -972,6 +979,9 @@ function declaredCredentials(
                 about: what,
                 origin: declaration.origin,
                 sends: declaration.sends,
+                ...("signIn" in declaration && declaration.signIn
+                  ? { signIn: declaration.signIn }
+                  : {}),
                 plugins: [named],
               }
             : {
@@ -995,7 +1005,7 @@ function declaredCredentials(
         );
       else if (first?.obtained !== obtained(declaration))
         throw new Error(
-          `${about.package} and ${first?.package} both declare the credential ${name}, had a different way: made by the hub, or given on a form`,
+          `${about.package} and ${first?.package} both declare the credential ${name}, had a different way: by signing in, made by the hub, or given on a form`,
         );
       else earlier.plugins.push(named);
     }

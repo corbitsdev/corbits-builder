@@ -8,6 +8,8 @@
   "exports": {
     "./app": "./src/app.ts",
     "./artifacts/service": "./src/artifacts/service.ts",
+    "./credentials/refresher": "./src/credentials/refresher.ts",
+    "./credentials/sign-ins": "./src/credentials/sign-ins.ts",
     "./environment": "./src/environment.ts",
     "./migrate": "./src/migrate.ts",
     "./plugins/catalog": "./src/plugins/catalog.ts",

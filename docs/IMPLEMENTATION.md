@@ -227,6 +227,19 @@ route a run can call to have one made. The hub does it in
 `apps/hub/src/credentials/`, the one place where it writes a plugin's provider
 and credential rows itself; this should be raised upstream.
 
+Signing in at a plugin's provider falls between Builder and Corbits. The hub
+does it itself (`apps/hub/src/credentials/sign-ins.ts` and
+`sign-in-routes.ts`), beside `@corbits/oauth-core/hub`, whose
+`mountOAuthLogin`, `mountOAuthCallback` and `createOAuthLoginStore` serve model
+logins (`apps/hub/src/inference/oauth-login.ts` mounts the first). Builder
+needs what they do not do: exchange the callback only for the session that
+started the sign-in; take the authorize, token and revoke addresses from the
+plugin's manifest; save the token as the plugin's `plugin.<name>` credential
+under a workspace provider row, replacing a pasted key; keep the client it
+registered dynamically, so every sign-in uses the same one; and revoke the
+grant at the provider on disconnect. This should be raised with Corbits so the
+two can become one.
+
 `@intx/*` packages come from npm where a published version serves. A package
 is vendored only when Builder patches it or needs Interchange's main past the
 published release.

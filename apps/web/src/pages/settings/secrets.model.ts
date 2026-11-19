@@ -1,7 +1,9 @@
 /**
  * What the Secrets tab does: reads the keys plugins saved in Interchange, in the workspace and in
  * each of its projects, through the person's own session; names the installed plugins that declare
- * each from the hub's `/settings/plugin-credentials`; and replaces or revokes a key there.
+ * each from the hub's `/settings/plugin-credentials`; and replaces or revokes a key there. A key the
+ * person signed in for is disconnected through the hub instead, which also revokes it at the
+ * provider.
  */
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -41,8 +43,10 @@ export type Place = {
   credentials: readonly {
     id: string;
     name: string;
+    type: string;
     status: string;
     providerId: string;
+    metadata?: Record<string, unknown> | null;
   }[];
   /** The address of each server this place has a key for, by the id of the key's provider. */
   servers: Readonly<Record<string, string>>;
@@ -80,19 +84,33 @@ async function readSecrets(): Promise<Secrets> {
 const declarationOf = (declared: readonly Declared[], credential: string) =>
   declared.find(({ name }) => credentialProvider(name) === credential);
 
-// How a saved key was had: typed or connected by the person, or made by Builder for a server a
-// plugin rented.
-function kindOf(declaration: Declared | undefined): SavedSecret["kind"] {
+// Where a saved key came from: typed or connected by the person, a sign-in at the provider, or made
+// by Builder for a server a plugin rented.
+function kindOf(
+  declaration: Declared | undefined,
+  credential: Place["credentials"][number],
+): SavedSecret["kind"] {
   if (declaration?.sends === "ssh" && declaration.provisioned)
     return "provisioned";
+  if (
+    declaration?.sends !== "ssh" &&
+    declaration?.signIn &&
+    credential.type === "oauth_token"
+  )
+    return "signedIn";
   return "key";
 }
 
-// How a new key typed in a credential's place is sent, which is what makes it replaceable: only a
-// plugin's declaration says how an API key is sent, and a server key is a pair made for one server,
-// revoked and connected again rather than retyped. Null when it cannot be replaced.
-function replacement(declaration: Declared | undefined): ApiKeySending | null {
+// How a new key typed in place of a credential is sent. A key is replaceable only if this is known.
+// Only a plugin's declaration says how an API key is sent. A server key is a pair made for one
+// server, so it is revoked and connected again instead of retyped. A signed-in key is renewed by
+// signing in again on its plugin's screen. Null when the key cannot be replaced.
+function replacement(
+  declaration: Declared | undefined,
+  kind: SavedSecret["kind"],
+): ApiKeySending | null {
   if (declaration === undefined || declaration.sends === "ssh") return null;
+  if (kind !== "key") return null;
   return { origin: declaration.origin, sends: declaration.sends };
 }
 
@@ -102,6 +120,8 @@ function savedSecret(
   servers: Place["servers"],
 ): SavedSecret {
   const declaration = declarationOf(declared, credential.name);
+  const kind = kindOf(declaration, credential);
+  const account = credential.metadata?.["account"];
   return {
     id: credential.id,
     label: declaration?.about ?? credential.name.slice(PREFIX.length),
@@ -115,12 +135,27 @@ function savedSecret(
               : new URL(declaration.origin).host,
         }
       : null,
-    replaceable: replacement(declaration) !== null,
-    kind: kindOf(declaration),
+    replaceable: replacement(declaration, kind) !== null,
+    kind,
+    account:
+      kind === "signedIn" && typeof account === "string" ? account : null,
+    signedOut: credential.status !== "active",
   };
 }
 
-/** Each place's active plugin keys, the workspace's first, each named by the plugins that declare it. */
+// A sign-in the provider stopped accepting stays listed, marked as such, until the person signs in
+// again or disconnects it. Any other key that is no longer active is left out.
+const listed = (
+  declared: readonly Declared[],
+  credential: Place["credentials"][number],
+) =>
+  credential.name.startsWith(PREFIX) &&
+  (credential.status === "active" ||
+    (credential.status === "error" &&
+      kindOf(declarationOf(declared, credential.name), credential) ===
+        "signedIn"));
+
+/** Each place's plugin keys, the workspace's first, each named by the plugins that declare it. */
 export function secretGroups(
   places: readonly Place[],
   declared: readonly Declared[],
@@ -129,22 +164,26 @@ export function secretGroups(
     id: place.tenant,
     project: place.project,
     secrets: place.credentials
-      .filter(
-        ({ name, status }) => name.startsWith(PREFIX) && status === "active",
-      )
+      .filter((credential) => listed(declared, credential))
       .map((credential) => savedSecret(declared, credential, place.servers)),
   }));
 }
 
-/** Where a listed key is held and the declaration it was saved for, if any plugin still makes one. */
+/**
+ * Where a listed key is saved, the declaration it was saved for if any plugin still makes one, and
+ * where the key came from.
+ */
 function locate({ places, declared }: Secrets, id: string) {
   for (const place of places) {
     const credential = place.credentials.find((held) => held.id === id);
-    if (credential)
+    if (credential) {
+      const declaration = declarationOf(declared, credential.name);
       return {
         owner: place.tenant,
-        declaration: declarationOf(declared, credential.name),
+        declaration,
+        kind: kindOf(declaration, credential),
       };
+    }
   }
   throw new Error(`secret_unknown:${id}`);
 }
@@ -170,8 +209,8 @@ export function useSecretsSection(): SecretsSectionViewProps {
     setPending(id);
     try {
       const data = secrets();
-      const { owner, declaration } = locate(data, id);
-      const sending = replacement(declaration);
+      const { owner, declaration, kind } = locate(data, id);
+      const sending = replacement(declaration, kind);
       // Only a replaceable row offers a replacement.
       if (declaration === undefined || sending === null)
         throw new Error(`secret_not_replaceable:${id}`);
@@ -194,7 +233,15 @@ export function useSecretsSection(): SecretsSectionViewProps {
   const revoke = async (id: string) => {
     setPending(id);
     try {
-      await revokeCredential(locate(secrets(), id).owner, id);
+      const { owner, declaration, kind } = locate(secrets(), id);
+      if (kind === "signedIn" && declaration !== undefined) {
+        const { code } = await productClient().disconnectPluginSignIn(
+          owner,
+          declaration.name,
+        );
+        if (code === "provider_may_hold_grant")
+          toast.warning(copy.providerMayHold);
+      } else await revokeCredential(owner, id);
       setReplacing((open) => (open?.id === id ? null : open));
       await queryClient.invalidateQueries({ queryKey: keys.secrets });
     } catch (cause) {

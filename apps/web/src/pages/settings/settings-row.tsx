@@ -125,7 +125,10 @@ export function SettingsInput({
   );
 }
 
-/** A row's options menu: edit it, or a destructive action that takes a second click to confirm. */
+/**
+ * A row's options menu: edit it, if it can be edited, or a destructive action that takes a second
+ * click to confirm.
+ */
 export function SettingsRowActions({
   label,
   editLabel,
@@ -146,7 +149,8 @@ export function SettingsRowActions({
   /** Its last action is on its way to the hub; the items wait. */
   busy: boolean;
   autoFocus?: boolean;
-  onEdit: () => void;
+  /** Absent when the row can never be edited, so the menu does not offer it. */
+  onEdit?: (() => void) | undefined;
   onConfirm: () => void;
 }) {
   // The destructive action takes two clicks, both in the menu, as deleting a project does.
@@ -168,10 +172,14 @@ export function SettingsRowActions({
         </UiButton>
       </MenuTrigger>
       <MenuContent align="end">
-        <MenuItem disabled={busy || !editable} onSelect={onEdit}>
-          {editLabel}
-        </MenuItem>
-        <MenuSeparator />
+        {onEdit === undefined ? null : (
+          <>
+            <MenuItem disabled={busy || !editable} onSelect={onEdit}>
+              {editLabel}
+            </MenuItem>
+            <MenuSeparator />
+          </>
+        )}
         {confirming ? (
           <DangerMenuItem disabled={busy} onSelect={onConfirm}>
             {confirmLabel}

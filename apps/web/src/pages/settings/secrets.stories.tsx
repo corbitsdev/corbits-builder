@@ -23,7 +23,19 @@ function Host(args: SecretsSectionViewProps) {
 }
 
 // A key the person typed or connected, and whether it can be replaced with another.
-const key = (replaceable: boolean) => ({ replaceable, kind: "key" }) as const;
+const key = (replaceable: boolean) =>
+  ({ replaceable, kind: "key", account: null, signedOut: false }) as const;
+
+// The Shop project's sign-in to its hoster, which names the account it signed in to.
+const signedIn = {
+  id: "secret-hoster",
+  label: "Hoster account",
+  usedBy: { plugins: ["Renter"], host: "api.hoster.example" },
+  replaceable: false,
+  kind: "signedIn",
+  account: "Acme team",
+  signedOut: false,
+} as const;
 
 const groups: readonly SecretGroup[] = [
   {
@@ -72,12 +84,15 @@ const groups: readonly SecretGroup[] = [
     id: "project-shop",
     project: "Shop",
     secrets: [
+      signedIn,
       {
         id: "secret-hoster-server",
         label: "The key to the rented machine",
         usedBy: { plugins: ["Renter"], host: "203.0.113.7" },
         replaceable: false,
         kind: "provisioned",
+        account: null,
+        signedOut: false,
       },
     ],
   },
@@ -153,6 +168,31 @@ export const ReplaceRefused: Story = {
   },
 };
 
+/** A signed-in key names its account and is disconnected, which also signs out at the provider. */
+export const DisconnectSignIn: Story = {
+  play: async ({ args, canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(
+      canvas.getByRole("button", {
+        name: wording.secrets.options("Hoster account"),
+      }),
+    );
+    const disconnect = await screen.findByRole("menuitem", {
+      name: wording.secrets.disconnect,
+    });
+    await expect(
+      screen.queryByRole("menuitem", { name: wording.secrets.replace }),
+    ).toBeNull();
+    await userEvent.click(disconnect);
+    await userEvent.click(
+      await screen.findByRole("menuitem", {
+        name: wording.secrets.confirmDisconnect,
+      }),
+    );
+    await expect(args.onRevoke).toHaveBeenCalledWith("secret-hoster");
+  },
+};
+
 /** Revoking a key Builder made for a rented server says Builder can no longer publish there. */
 export const RevokeRentedServerKey: Story = {
   play: async ({ canvasElement }) => {
@@ -170,5 +210,18 @@ export const RevokeRentedServerKey: Story = {
         name: wording.secrets.confirmRevokeServer,
       }),
     ).toBeVisible();
+  },
+};
+
+/** The provider stopped accepting a sign-in: it stays listed and says to sign in again. */
+export const SignedOutAtProvider: Story = {
+  args: {
+    groups: [
+      {
+        id: "project-shop",
+        project: "Shop",
+        secrets: [{ ...signedIn, signedOut: true }],
+      },
+    ],
   },
 };
