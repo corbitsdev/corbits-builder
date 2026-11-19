@@ -239,6 +239,9 @@ function freezeToolCredentials(
         ...(declaration.scopes !== undefined
           ? { scopes: Object.freeze([...declaration.scopes]) }
           : {}),
+        ...(declaration.optional !== undefined
+          ? { optional: declaration.optional }
+          : {}),
       }),
     ),
   );

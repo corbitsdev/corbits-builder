@@ -406,6 +406,11 @@ export async function buildCredentialDelivery(args: {
   creatorPrincipalId: string | null;
   invokerPrincipalId: string | null;
   credentialCipher: CredentialCipher;
+  // The delivery the run's anchor recorded when it was initialized before;
+  // null or absent for a first initialization.
+  earlierDelivery?: {
+    bindings: readonly { handle: string; consumer: string }[];
+  } | null;
 }): Promise<BuildCredentialDeliveryResult> {
   const materials = new Map<string, CredentialMaterialEntry>();
   const descriptors: CredentialBindingDescriptor[] = [];
@@ -417,6 +422,20 @@ export async function buildCredentialDelivery(args: {
       consumer,
       handle: binding.handle,
     };
+
+    // An optional binding is tolerated absent, never resolved later: a run
+    // initialized again (a replacement sidecar resuming it) resolves one only
+    // if its earlier delivery bound it. A required binding resolves afresh.
+    if (
+      binding.optional === true &&
+      args.earlierDelivery != null &&
+      !args.earlierDelivery.bindings.some(
+        (delivered) =>
+          delivered.handle === binding.handle &&
+          delivered.consumer === consumer,
+      )
+    )
+      continue;
 
     let resolved: Awaited<ReturnType<typeof resolveCredentialRequirement>>;
     try {
@@ -447,6 +466,10 @@ export async function buildCredentialDelivery(args: {
     }
 
     if (resolved === null) {
+      // An optional binding tolerates absence only: nothing is delivered for
+      // it, so the consumer's resolve of the handle rejects. Ambiguity and a
+      // provider without an origin still fail below as for any binding.
+      if (binding.optional === true) continue;
       return {
         ok: false,
         reason: {

@@ -80,6 +80,9 @@ export function sourceStepToolFactories(
       ...(declaration.scopes !== undefined
         ? { scopes: [...declaration.scopes] }
         : {}),
+      ...(declaration.optional !== undefined
+        ? { optional: declaration.optional }
+        : {}),
     })),
     factory,
   }));
