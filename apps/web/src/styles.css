@@ -326,9 +326,15 @@ button[aria-disabled="true"] {
 }
 /* --- Sidebar width ----------------------------------------------------------
    The rail's default is a fifth of a laptop window; the conversation needs
-   it more than the two labels do. */
+   it more than the two labels do. An open project's sidebar takes the same
+   width, so moving between them does not shift the page. In rem, as the
+   library sizes its own rail, so it grows with the reader's text size. */
+:root {
+  --rail-width: 12.75rem;
+}
+
 [data-slot="sidebar"]:not([data-collapsed="true"]) {
-  width: 12.75rem;
+  width: var(--rail-width);
 }
 
 /* Typing "fine" outside a field (flourish.tsx) makes the whole page deliberately bad for a moment. */
