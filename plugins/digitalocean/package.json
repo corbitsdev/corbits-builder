@@ -1,0 +1,252 @@
+{
+  "name": "@corbits-builder/digitalocean",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Publishes the project's app to a server Builder makes for the person in their own DigitalOcean account, so people can open it at the server's address.",
+  "license": "SEE LICENSE IN ../../LICENSE.md",
+  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
+  "type": "module",
+  "dependencies": {
+    "@corbits-builder/plugin": "workspace:*",
+    "@corbits-builder/plugin-ui": "workspace:*",
+    "@corbits-builder/schemas": "workspace:*",
+    "@corbits-builder/ssh-publish": "workspace:*",
+    "@corbits/react-ui": "0.5.1",
+    "@intx/agent": "workspace:*",
+    "arktype": "catalog:",
+    "react": "19.3.0"
+  },
+  "devDependencies": {
+    "@types/react": "19.3.0"
+  },
+  "builder": {
+    "handle": "digitalocean",
+    "runs": "specialist",
+    "groups": [
+      "publish"
+    ],
+    "when": "The person wants their app published to, checked on or taken off a server at DigitalOcean that Builder makes for them in their own DigitalOcean account, so people can open it at the server's address.",
+    "unless": "The project has no saved app yet, the person wants it published somewhere other than DigitalOcean, or they already rent a server of their own to publish to.",
+    "values": {
+      "digitalocean.choice": {
+        "about": "The server the person agreed to rent at DigitalOcean, as { \"size\": DigitalOcean's name for its size, \"region\": where it runs, \"monthly\": the monthly price in US dollars they were shown, \"team\": { \"id\", \"name\" } of the DigitalOcean team that pays, \"at\": when they agreed, as an ISO time }; none once the server it was for is gone, so a new one needs a new answer. Only the Publish to DigitalOcean screen saves it, and only DigitalOcean's own tools clear it.",
+        "type": "json"
+      },
+      "digitalocean.quote": {
+        "about": "The monthly price DigitalOcean asked for a size when it differed from the one the person was shown, as { \"size\", \"monthly\" }, so the Publish to DigitalOcean screen shows the real price when opened again. Only DigitalOcean's own tools save it.",
+        "type": "json"
+      },
+      "digitalocean.server": {
+        "about": "DigitalOcean's tools' own note of the server Builder makes there, as { \"stage\": creating while a create is under way, bound once Builder's key works on it, \"id\" at DigitalOcean once known, \"address\" once bound, \"label\": its name there, \"team\": { \"id\", \"name\" } of the DigitalOcean team it is made under, \"attempts\": servers made for the choice agreed at \"for\" }; with no stage, nothing is made and only the tries are kept; none once the server is gone. Only DigitalOcean's own tools save it.",
+        "type": "json"
+      }
+    },
+    "credentials": {
+      "digitalocean": {
+        "about": "Your DigitalOcean sign-in",
+        "origin": "https://api.digitalocean.com",
+        "sends": "bearer",
+        "signIn": {
+          "authorize": "https://cloud.digitalocean.com/v1/oauth/authorize",
+          "token": "https://cloud.digitalocean.com/v1/oauth/token",
+          "revoke": "https://cloud.digitalocean.com/v1/oauth/revoke",
+          "scopes": [
+            "account:read",
+            "regions:read",
+            "sizes:read",
+            "image:read",
+            "actions:read",
+            "droplet:create",
+            "droplet:read",
+            "droplet:delete",
+            "ssh_key:create",
+            "ssh_key:read",
+            "ssh_key:delete"
+          ],
+          "client": {
+            "register": "https://cloud.digitalocean.com/v1/oauth/register"
+          },
+          "account": {
+            "name": "info.team_name",
+            "id": "info.team_uuid"
+          }
+        },
+        "screen": "account"
+      },
+      "digitalocean-server": {
+        "about": "the key to your server at DigitalOcean",
+        "sends": "ssh",
+        "provisioned": true
+      }
+    },
+    "roles": [
+      {
+        "name": "digitalocean",
+        "label": "DigitalOcean publisher",
+        "model": "publisher",
+        "limits": "publisher",
+        "tools": [],
+        "status": {
+          "working": "Publishing to DigitalOcean",
+          "done": "Published to DigitalOcean"
+        }
+      }
+    ],
+    "settings": {
+      "publisher": {
+        "label": "Publisher",
+        "hint": "Publishes the app where the person chose and explains what went wrong.",
+        "tier": "low"
+      }
+    },
+    "budgets": {
+      "publisher": {
+        "maxOutputTokens": 8192
+      }
+    },
+    "agents": {
+      "digitalocean-create": {
+        "prompt": "./create.md",
+        "skills": "./skills",
+        "tools": "./src/create-tools.ts"
+      },
+      "digitalocean": {
+        "prompt": "./prompt.md",
+        "skills": "./skills",
+        "tools": "./src/tools.ts"
+      },
+      "digitalocean-remove": {
+        "prompt": "./remove.md",
+        "skills": "./skills",
+        "tools": "./src/remove-tools.ts"
+      }
+    },
+    "starters": {
+      "digitalocean-create": "./src/start.ts",
+      "digitalocean": "./src/start.ts",
+      "digitalocean-remove": "./src/start.ts"
+    },
+    "actions": {
+      "account": {
+        "place": "publish",
+        "reads": [
+          "digitalocean.choice",
+          "digitalocean.quote",
+          "publish.holding"
+        ],
+        "host": [
+          "tenants"
+        ]
+      },
+      "ready": {
+        "rerun": "change",
+        "returns": [
+          "ready:digitalocean"
+        ]
+      },
+      "create": {
+        "requires": [
+          [
+            "app_exists",
+            "ready:digitalocean"
+          ]
+        ],
+        "reads": [
+          "digitalocean.choice",
+          "digitalocean.server",
+          "publish.holding",
+          "publish.release"
+        ],
+        "writes": [
+          "digitalocean.server",
+          "digitalocean.quote",
+          "digitalocean.choice",
+          "publish.holding",
+          "publish.release"
+        ],
+        "provisions": [
+          "digitalocean-server"
+        ],
+        "returns": [],
+        "start": {
+          "workflow": "digitalocean-create"
+        }
+      },
+      "publish": {
+        "requires": [
+          [
+            "app_exists",
+            "ready:digitalocean"
+          ]
+        ],
+        "reads": [
+          "stack.production",
+          "publish.release"
+        ],
+        "writes": [
+          "publish.release"
+        ],
+        "returns": [],
+        "start": {
+          "workflow": "digitalocean"
+        }
+      },
+      "live": {
+        "rerun": "value",
+        "requires": [
+          [
+            "app_exists"
+          ]
+        ],
+        "returns": [
+          "published:digitalocean"
+        ]
+      },
+      "removable": {
+        "rerun": "value",
+        "returns": [
+          "removable:digitalocean"
+        ],
+        "skip": "never"
+      },
+      "remove": {
+        "requires": [
+          [
+            "removable:digitalocean"
+          ]
+        ],
+        "reads": [
+          "digitalocean.choice",
+          "digitalocean.server",
+          "publish.release",
+          "publish.holding",
+          "publish.take-down"
+        ],
+        "writes": [
+          "digitalocean.choice",
+          "digitalocean.server",
+          "publish.release",
+          "publish.holding"
+        ],
+        "provisions": [
+          "digitalocean-server"
+        ],
+        "returns": [],
+        "start": {
+          "workflow": "digitalocean-remove"
+        }
+      }
+    },
+    "facts": {
+      "ready:digitalocean": "the saved app says how it runs in production, as a publish to a server at DigitalOcean needs",
+      "published:digitalocean": "the app as saved now is published on the person's server at DigitalOcean",
+      "removable:digitalocean": "the person agreed, on the take-down screen, to delete the server at DigitalOcean with the app as it is published or held there now"
+    },
+    "examples": [
+      "put my app on DigitalOcean",
+      "publish the app to a DigitalOcean droplet",
+      "is my app still up on DigitalOcean",
+      "take the app off DigitalOcean and delete the server"
+    ]
+  }
+}

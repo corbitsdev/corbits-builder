@@ -1,0 +1,88 @@
+{
+  "name": "@corbits-builder/digitalocean-publish",
+  "version": "0.1.0",
+  "private": true,
+  "description": "DigitalOcean: Builder sets up a server for you. From $6 a month, billed by DigitalOcean.",
+  "license": "SEE LICENSE IN ../../LICENSE.md",
+  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
+  "type": "module",
+  "builder": {
+    "handle": "publish-to-digitalocean",
+    "runs": "plan",
+    "groups": [
+      "publish",
+      "plan"
+    ],
+    "when": "The project has an app and the person wants it published on a server Builder makes for them at DigitalOcean, in their own DigitalOcean account, so people can open it.",
+    "unless": "The project has no app yet, the person wants it published somewhere else, or they already rent a server of their own to publish to.",
+    "guidance": "./SKILL.md",
+    "steps": [
+      {
+        "plugin": "digitalocean",
+        "action": "ready",
+        "title": "Check your app is ready for a server",
+        "requires": [
+          "app_exists"
+        ]
+      },
+      {
+        "plugin": "digitalocean",
+        "action": "account",
+        "title": "Choose your server and sign in to DigitalOcean",
+        "requires": [
+          "app_exists"
+        ]
+      },
+      {
+        "plugin": "publish",
+        "action": "confirm",
+        "title": "Confirm where your app goes",
+        "requires": [
+          "app_exists"
+        ],
+        "input": {
+          "plan": "publish-to-digitalocean"
+        }
+      },
+      {
+        "plugin": "digitalocean",
+        "action": "create",
+        "title": "Make your server at DigitalOcean",
+        "requires": [
+          "app_exists",
+          "ready:digitalocean"
+        ]
+      },
+      {
+        "plugin": "digitalocean",
+        "action": "publish",
+        "title": "Publish the app to your server",
+        "requires": [
+          "app_exists",
+          "ready:digitalocean"
+        ],
+        "input": {
+          "instruction": "Publish the project's saved app to the person's server at DigitalOcean, readying the server first if it needs it, and report the address people open it at."
+        }
+      },
+      {
+        "plugin": "digitalocean",
+        "action": "live",
+        "title": "Confirm the saved version is the one published",
+        "requires": [
+          "app_exists"
+        ]
+      }
+    ],
+    "ends": "published:digitalocean",
+    "firstPublish": "It goes on your new server at DigitalOcean, at its IP address. That address isn't secure (https) yet, so don't use the app for passwords or payments.",
+    "takeDown": {
+      "plugin": "digitalocean",
+      "action": "remove"
+    },
+    "examples": [
+      "publish my app on DigitalOcean",
+      "make me a server at DigitalOcean and put the app on it"
+    ]
+  }
+}

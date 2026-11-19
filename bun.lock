@@ -334,6 +334,27 @@
       "name": "@corbits-builder/desktop-app-skills",
       "version": "0.1.0-rc.3",
     },
+    "plugins/digitalocean": {
+      "name": "@corbits-builder/digitalocean",
+      "version": "0.1.0",
+      "dependencies": {
+        "@corbits-builder/plugin": "workspace:*",
+        "@corbits-builder/plugin-ui": "workspace:*",
+        "@corbits-builder/schemas": "workspace:*",
+        "@corbits-builder/ssh-publish": "workspace:*",
+        "@corbits/react-ui": "0.5.1",
+        "@intx/agent": "workspace:*",
+        "arktype": "catalog:",
+        "react": "19.3.0",
+      },
+      "devDependencies": {
+        "@types/react": "19.3.0",
+      },
+    },
+    "plugins/digitalocean-publish": {
+      "name": "@corbits-builder/digitalocean-publish",
+      "version": "0.1.0",
+    },
     "plugins/presenter": {
       "name": "@corbits-builder/presenter",
       "version": "0.2.0",
@@ -968,6 +989,10 @@
     "@corbits-builder/designer": ["@corbits-builder/designer@workspace:plugins/designer"],
 
     "@corbits-builder/desktop-app-skills": ["@corbits-builder/desktop-app-skills@workspace:plugins/desktop-app-skills"],
+
+    "@corbits-builder/digitalocean": ["@corbits-builder/digitalocean@workspace:plugins/digitalocean"],
+
+    "@corbits-builder/digitalocean-publish": ["@corbits-builder/digitalocean-publish@workspace:plugins/digitalocean-publish"],
 
     "@corbits-builder/environment": ["@corbits-builder/environment@workspace:packages/environment"],
 

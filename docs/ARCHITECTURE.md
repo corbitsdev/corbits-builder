@@ -456,6 +456,15 @@ The specialists installed today:
   one published, and whether the person agreed to take it down. Its `remove`
   action takes the app down with the person's own key; it cannot reach an app
   in a temporary account, and says so.
+- The DigitalOcean plugin (`plugins/digitalocean`) makes a server for the app
+  in the person's own DigitalOcean account and publishes the app to it over
+  SSH, at the server's own address. Its screen has them choose the server's
+  size and place, each size with its monthly price, and sign in at
+  DigitalOcean, where they pick the team that pays. Making the server
+  (`create`), publishing to it (`publish`) and deleting it with everything on
+  it (`remove`) are three actions, each with its own agent. Its checks
+  say whether the app says how it runs in production, whether the saved version
+  is the one published, and whether the person agreed to take it down.
 
 The ready-made plans installed today:
 
@@ -473,6 +482,11 @@ The ready-made plans installed today:
   made to run on Cloudflare Workers, asks the person's go-ahead, publishes it
   to Cloudflare and checks the saved version is the one published. It takes
   the app down with `cloudflare remove`.
+- `publish-to-digitalocean` (`plugins/digitalocean-publish`): checks the app
+  says how it runs in production, has the person choose a server and sign in
+  at DigitalOcean, asks their go-ahead, makes the server, publishes the app to
+  it and checks the saved version is the one published. It takes the app down
+  with `digitalocean remove`, which deletes the server.
 
 The skill packs installed today, each for the coder or a pack it narrows:
 `web-app-skills`, narrowed by `react-router-skills` and `sveltekit-skills`;
@@ -552,6 +566,27 @@ did. `cloudflare remove` pauses on that screen while no token is saved, unless
 `cloudflare.terms` is set, so the screen usually comes first. When it runs
 without a token it answers `needs_own_account`; an app Cloudflare already
 removed is cleared by the person from the Publish tab.
+
+Publishing has three tiers: core, archetype and vendor. The core is the publish
+plugin (`plugins/publish`) and the shared code in `packages/plugin`
+(`publish.ts`, `run-hub.ts`, `tools.ts`). An archetype is a form of hosting,
+such as a machine reached over SSH or a serverless host. Code that an archetype's
+vendors share goes in a package: `packages/ssh-publish` holds the SSH release
+(the scripts that ready a Debian or Ubuntu machine, release, report and take
+the app down, the tools' failure codes, `sshReleaseTools`, the publish tools a
+vendor names in its own words, and the production-ready check), and each of its
+functions takes the vendor's target handle and credential. A release is
+recorded once the server has switched to it, so an app that cannot be reached
+from outside is still recorded and can be taken down, and the tool answers
+`unreachable_from_outside`. A server that already runs the saved version with
+the same production settings, with no release recorded, has it recorded without
+a new build. The
+archetype's guidance for the coder stays in the `publish-skills` packs, which
+say how to make an app ready for it. Each vendor is a specialist with its own
+plan, handle, facts, credential and words. `plugins/server` ("a server you
+rent yourself") and `plugins/digitalocean` ("a server Builder makes for you")
+are the two vendors of the SSH archetype; `plugins/cloudflare` is a serverless
+one.
 
 A new place implements this contract:
 
@@ -726,6 +761,107 @@ address, each in its own form request with the access token as a bearer token,
 then revokes the credential here. When the provider does not confirm, the
 credential is still revoked here and the person is told the provider may still
 hold the grant.
+
+### A server Builder makes: DigitalOcean
+
+`plugins/digitalocean` is the SSH archetype's second vendor. `plugins/server`
+publishes to a server the person rented and connected; this plugin rents the
+server for them in their own DigitalOcean account, so it adds four things
+renting needs: a sign-in at DigitalOcean (its `digitalocean` credential
+declares `signIn`), a key the hub makes instead of one the person saves
+(`digitalocean-server`, `provisioned`), something that costs money before
+anything is published (`publish.holding`), and a take-down that deletes the
+server with what people entered on it. The SSH release, its codes and its
+production-ready check come from `packages/ssh-publish`, as for the server
+plugin.
+
+The account screen records what the person agreed to as `digitalocean.choice`:
+the size, the place, the monthly price they were shown, and the DigitalOcean
+team their sign-in bills, which the provider names in its token answer. Three
+actions work on the server, each with its own agent. All three play the
+plugin's one role and start through its own starter with `startAlone`, so only
+one run at a time makes, publishes to or deletes the server. `create`'s agent
+holds one tool, `digitalocean_create`, which makes nothing that publishes; the
+publish agent holds the SSH release and status, bound to the hub-made key; the
+remove agent holds only deleting the server and asking DigitalOcean about it.
+`create` and `remove` list the key in `provisions`, so both start without it.
+`publish` binds the key and starts only once the hub holds it, which is only
+after `create` bound it to a server and until the key is revoked.
+
+The tools keep their notes in one value, `digitalocean.server`: its stage
+(`creating` while a create is under way, `bound` once the hub bound the key),
+the server's id once known, its address once bound, the label, the team and the
+tries made for the agreed choice. It is cleared when the server is deleted or
+found gone.
+
+The provisioning steps live in `plugins/digitalocean/src/provision.ts`, written
+against a small seam (`account`, `price`, `find`, `server`, `create`,
+`destroy`, `settle`) that DigitalOcean's API client implements over the shared
+`workflowHttpJson`. The client asks again only after a refused
+sign-in, so a create that timed out or failed is never sent twice. One call of
+`digitalocean_create` keeps these promises:
+
+- No server is made unless the live account can make one, bills the team the
+  person agreed to, and asks the price they were shown. A price that moved
+  either way is recorded as `digitalocean.quote`, which the screen shows when
+  it opens again; a locked account's refusal quotes DigitalOcean's own words.
+- DigitalOcean reports a server of another team as not there, so
+  `digitalocean.server` records the team a server is made under. No tool takes a server as gone, or deletes, revokes or clears
+  anything, until the live sign-in reaches that team (`team_changed`, or
+  `team_unknown` when DigitalOcean does not say).
+- A server is made only after `digitalocean.server` says a create is under way
+  and `publish.holding` records what it costs, and only while no server has the
+  hub's unguessable label as its name, looked for long enough to outlast
+  DigitalOcean's listing lag. A create that timed out or failed on
+  DigitalOcean's side may have made the server, so it is never sent again: the
+  call looks for the label instead, and when it finds none it leaves the
+  holding for the next call, which clears it only after its own wait.
+- The call makes the server's host key pair in memory and hands it to
+  DigitalOcean in the server's user-data, which also turns password sign-in
+  off; the hub pins its first sign-in to that key's fingerprint. Builder's own
+  key reaches the server through the account's SSH key list. Once the hub has
+  bound the key, `digitalocean.server` records it as bound, and then that entry in the SSH key list is
+  deleted. A failure there leaves only a public key behind, which the next call
+  that finds the server up, or the take-down, deletes.
+- Making, waiting and binding happen in one call, bounded to nine minutes,
+  inside the ten an agent run has. The slowest the calls after the wait can be
+  take five, so a server has until four minutes after the call started to take
+  the key; servers have taken it about two and a half minutes after their
+  create. A server that has not taken the key by then, or whose key the hub
+  will no longer bind, is deleted in the same call. So is an unbound server
+  with the label that an earlier, ended run left, since its host key ended with
+  that run. One agreed choice makes three servers at most; choosing again on
+  the screen allows three more.
+- A server is deleted only when its name is the label and, once the hub has
+  bound one, only the bound one at its bound address. It counts as gone only
+  when DigitalOcean no longer knows its id or, with no id recorded, when
+  nothing has the label once the listing's lag has passed. Only then is
+  `publish.holding` cleared, or at once when DigitalOcean refused the create or
+  the sign-in outright.
+- A bound server found gone is forgotten at once: `create` clears
+  `digitalocean.server`, the choice, the holding and
+  this target's release in one write, then revokes the key and answers
+  `server_gone`. It never makes a server in its place. The next step is the
+  "Publish to DigitalOcean" screen, where the person chooses a server and
+  agrees to its price, then `create` and `publish` on a new, empty
+  server, all under the same go-ahead to publish. A bound server at another
+  address than the one bound answers `address_differs`, and nothing publishes
+  to or deletes it. A server found up with no holding recorded gets its
+  holding back.
+
+The take-down acts only on the person's go-ahead for what is recorded now,
+which its tool checks itself as well as through the `agreed` check, which
+cannot be skipped. With no key ever issued it only clears the records.
+Otherwise it looks for the server by its recorded id and by the label, deletes
+each one it finds, waits until DigitalOcean no longer knows it, then revokes
+the hub's key and clears, in one write and in this order, `publish.release`
+when it is this target's, `publish.holding`, `digitalocean.server` and
+`digitalocean.choice`. A take-down stopped part way
+is finished by the next one, and a new server needs a new answer. When
+DigitalOcean refuses the sign-in, it clears nothing and names the server, so
+the person can delete it there themselves. Looking never makes a key: only
+`create` asks the hub for one. The risk left by the host key travelling in
+user-data is set out under Hub-made server keys above.
 
 ## Documents and versions
 
