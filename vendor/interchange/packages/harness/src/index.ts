@@ -22,6 +22,21 @@ export type {
 } from "./credential-providers";
 
 export {
+  createSshCredentialProvider,
+  isDeniedSshAddress,
+  readSshHostKey,
+  sshAddressOf,
+  sshOrigin,
+  SshCredentialError,
+} from "./ssh-credential-provider";
+export type {
+  SshAddress,
+  SshCredentialFailure,
+  SshCredentialProviderOptions,
+  SshLookup,
+} from "./ssh-credential-provider";
+
+export {
   createCredentialCapability,
   reconcileDeclaredCredentials,
 } from "./credential-capability";

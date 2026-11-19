@@ -42,6 +42,7 @@ import {
   readCacheMaxBytes,
   readCredentialEncryptionKey,
   readRegistryMaxTarballBytes,
+  readSshAllowPrivateAddresses,
 } from "./config";
 import { createDefaultHarnessBuilder } from "./default-harness";
 // `createSidecarDeployRouter` is the production routing the
@@ -458,6 +459,9 @@ const multistepSubstrateEnv: Record<string, string> = {
   // depth at the deserialization boundary, since the child env is
   // operator-controlled via Bun.spawn.
   SIDECAR_ADAPTER_MANIFEST: JSON.stringify(adapterManifest),
+  // Read here, at the one layer that reads env, and always serialized so the
+  // child treats a missing key as a serialization bug.
+  SIDECAR_SSH_ALLOW_PRIVATE_ADDRESSES: String(readSshAllowPrivateAddresses()),
 };
 const hostHome = process.env["HOME"];
 if (hostHome !== undefined) {

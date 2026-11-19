@@ -53,6 +53,7 @@ import type {
 import {
   builtinCredentialProviders,
   createCredentialProviderRegistry,
+  createSshCredentialProvider,
   createHarnessRuntimeCapabilities,
   createInferenceCredentialResolver,
   driveConnectorReplies,
@@ -197,6 +198,7 @@ export const SIDECAR_SUBSTRATE_CONFIG_KEYS = [
   "SIDECAR_CACHE_MAX_BYTES",
   "SIDECAR_REGISTRY_MAX_TARBALL_BYTES",
   "SIDECAR_ADAPTER_MANIFEST",
+  "SIDECAR_SSH_ALLOW_PRIVATE_ADDRESSES",
 ] as const;
 
 const SubstrateConfig = type({
@@ -227,6 +229,11 @@ const SubstrateConfig = type({
   // its JSON shape is re-validated against `AdapterManifest` in
   // `parseAdapterManifest` before any module is imported.
   SIDECAR_ADAPTER_MANIFEST: "string > 0",
+  // Whether an ssh credential may reach loopback and private addresses.
+  // Optional here so a factory handed a config without it keeps the safe
+  // default, off. The sidecar binary still requires it through
+  // SIDECAR_SUBSTRATE_CONFIG_KEYS, since its boot edge always serializes it.
+  "SIDECAR_SSH_ALLOW_PRIVATE_ADDRESSES?": "string > 0",
 }).onUndeclaredKey("ignore");
 
 /**
@@ -363,6 +370,33 @@ export function parseAdapterManifest(raw: string): AdapterManifest {
     );
   }
   return manifest;
+}
+
+/**
+ * The credential providers a run's steps shape their handles with: the
+ * built-ins plus Builder's ssh provider, which may reach loopback and private
+ * addresses only when `SIDECAR_SSH_ALLOW_PRIVATE_ADDRESSES` is "true". Absent
+ * means off, and any value other than the exact strings the boot edge writes
+ * throws, so a value mangled on the way can never widen what it may reach.
+ */
+export function sidecarCredentialProviders(
+  sshAllowPrivateAddresses: string | undefined,
+) {
+  if (
+    sshAllowPrivateAddresses !== undefined &&
+    sshAllowPrivateAddresses !== "true" &&
+    sshAllowPrivateAddresses !== "false"
+  ) {
+    throw new Error(
+      `sidecar workflow-child substrate config: SIDECAR_SSH_ALLOW_PRIVATE_ADDRESSES must be "true" or "false"; got ${JSON.stringify(sshAllowPrivateAddresses)}`,
+    );
+  }
+  return [
+    ...builtinCredentialProviders(),
+    createSshCredentialProvider({
+      allowPrivateAddresses: sshAllowPrivateAddresses === "true",
+    }),
+  ];
 }
 
 /**
@@ -2418,7 +2452,7 @@ export function createSidecarSubstrateFactory(
     // origin-pinned http provider) and shared by every per-step build; the
     // per-run material and grants ride in separately at each invoke.
     const credentialProviders = createCredentialProviderRegistry(
-      builtinCredentialProviders(),
+      sidecarCredentialProviders(validated.SIDECAR_SSH_ALLOW_PRIVATE_ADDRESSES),
     );
     // The run's credential wiring combined with the sidecar-static providers:
     // the context both a step's tool capabilities and an action handler's

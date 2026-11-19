@@ -137,3 +137,17 @@ export function parseReconnectDelayMs(
 export function readAdapterManifest(): AdapterManifest {
   return parseAdapterManifestEnv(process.env["SIDECAR_ADAPTER_MANIFEST"]) ?? [];
 }
+
+// Whether an ssh credential may reach loopback and private addresses. Off
+// unless the operator sets it to "true": for development against a server on
+// this machine, or servers on the operator's own private network. Any other
+// value fails at boot rather than being read as off.
+export function readSshAllowPrivateAddresses(): boolean {
+  const raw = process.env["SIDECAR_SSH_ALLOW_PRIVATE_ADDRESSES"];
+  if (raw === undefined || raw.trim() === "") return false;
+  if (raw === "true") return true;
+  if (raw === "false") return false;
+  throw new Error(
+    `SIDECAR_SSH_ALLOW_PRIVATE_ADDRESSES must be "true" or "false"; got ${raw}`,
+  );
+}
