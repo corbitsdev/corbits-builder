@@ -139,7 +139,15 @@ value declares it by a dotted name, such as `brand.guidelines`, with `about`
 (what it holds, in one line) and `type` (`text`, `json`, `link`, `file`, or a
 list of them). A text value may add `pattern`, a regular expression it must
 match, and `style`, the design token it lives in once the project has a filed
-design; a run cannot write a value that has a `style`.
+design; a run cannot write a value that has a `style`. A value that says
+`"private": true`, such as a link that works like a password, is read only by
+someone who manages the project, by a screen's view, and by a plugin's own
+tools through the run's values; for anyone else the values route answers null.
+No model reads it: `discover` and an assignment name it by its `about` alone,
+and `report_values` cannot save it. Only someone who manages the project, or a
+plugin's own tool, saves it. A screen may read it but may not list it under
+`writes`, because an answer reaches the coordinator, and no check may prove
+what it holds, because evidence reaches models.
 
 `credentials` declares the keys a plugin's tools use, each under the handle its
 tools resolve it by, with `about` (what the person reads) and `screen` (the

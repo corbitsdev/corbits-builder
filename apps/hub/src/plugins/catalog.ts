@@ -75,6 +75,23 @@ export const catalogOf = async (
   );
 };
 
+/**
+ * The installed action a specialist run was started for, as the project sees the catalog.
+ * undefined once it is no longer installed, so the run is given nothing in that action's name.
+ */
+export const runActionOf = async (
+  projectState: (actor: Actor, projectId: string) => Promise<ProjectState>,
+  actor: Actor,
+  projectId: string,
+  run: { plugin: string; action: string },
+) =>
+  (await catalogOf(projectState, actor, projectId)).actions
+    .filter(isWorkflowAction)
+    .find(
+      (installed) =>
+        installed.plugin === run.plugin && installed.action === run.action,
+    );
+
 /** Whether a project value is the selection of one of the plugins sharing a handle. */
 export const isSelection = (name: string) => SELECTIONS.includes(name);
 
@@ -127,16 +144,6 @@ export const WITH_SCREENS = PLUGINS.filter(
     isSpecialist(plugin) &&
     SCREENS.some((screen) => screen.plugin === plugin.builder.handle),
 );
-
-/** Whether an action that starts a run of the role declares project values the run saves. */
-export const savesValues = (role: string) =>
-  CATALOG.actions
-    .filter(isWorkflowAction)
-    .some(
-      (action) =>
-        CATALOG.packages.get(action.workflow)?.role === role &&
-        action.builder.writes.length > 0,
-    );
 
 // The ready-made plans a project is following, as the hub stores them: their handles.
 export const ProjectFollowing = type({

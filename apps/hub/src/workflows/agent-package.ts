@@ -4,7 +4,10 @@
 import { mcpTools } from "@corbits/mcp/interchange/client";
 import { credentialProvider, ROLE_TAG } from "@corbits-builder/plugin";
 import type { AgentTools, ToolEnv } from "@corbits-builder/plugin/tools";
-import { AgentPackage } from "@corbits-builder/plugin-host/catalog";
+import {
+  AgentPackage,
+  hasDocumentTools,
+} from "@corbits-builder/plugin-host/catalog";
 import {
   defineAgent,
   toolFactoryMeta,
@@ -101,7 +104,7 @@ if (workspace?.kind === "app" && workspace.browser) {
 }
 
 const factories = [];
-if (tools.includes("read_artifact") || tools.includes("write_artifact"))
+if (hasDocumentTools(role))
   factories.push(
     files === null
       ? createArtifactTools(role)

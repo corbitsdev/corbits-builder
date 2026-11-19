@@ -33,8 +33,10 @@ import {
   type Check,
   type CheckOutcome,
   type Fact,
+  type Json,
   type ProjectValues,
   type ProjectView,
+  type Proof,
   type ModelSetting,
   type OutputBudget,
   type Refused,
@@ -67,6 +69,7 @@ import type { Found } from "./folder.ts";
 import {
   presentsText,
   checkText,
+  modelWrites,
   requiresText,
   screenText,
   suppliedText,
@@ -225,7 +228,8 @@ export type ScreenAction = ActionBase & {
   answer: (output: unknown) =>
     | {
         ok: true;
-        values: Record<string, string>;
+        // null clears a value; the value's declared type decides whether anything else fits.
+        values: Record<string, Json>;
         preferences: Record<string, string>;
         approves: readonly Shown[];
       }
@@ -386,6 +390,33 @@ export const isScreenAction = (action: Action): action is ScreenAction =>
   action.kind === "screen";
 export const isCheckAction = (action: Action): action is CheckAction =>
   action.kind === "check";
+
+/** Whether a role's agent gets the hub's document tools, which is where report_values lives. */
+export const hasDocumentTools = (role: Pick<Role, "tools">) =>
+  role.tools.includes("read_artifact") || role.tools.includes("write_artifact");
+
+/**
+ * Whether a run of the role is offered report_values: it has the document tools, and an action that
+ * starts it saves project values a model may hold. A role whose actions save only private values,
+ * which its tools save, is not offered it.
+ */
+export function offersReportValues(
+  catalog: Pick<Catalog, "actions" | "packages" | "role" | "values">,
+  role: string,
+) {
+  const declared = catalog.role(role);
+  return (
+    declared !== undefined &&
+    hasDocumentTools(declared) &&
+    catalog.actions
+      .filter(isWorkflowAction)
+      .some(
+        (action) =>
+          catalog.packages.get(action.workflow)?.role === role &&
+          modelWrites(catalog.values, action.builder.writes).length > 0,
+      )
+  );
+}
 
 const lines = (
   name: string,
@@ -858,6 +889,13 @@ function installScreen(
     throw new Error(
       `${name}'s screen writes ${unknown}, which no plugin declares as a project value`,
     );
+  // A screen's answer is the coordinator's result, so a private value it saved would reach the
+  // model.
+  const hidden = writes.find(([value]) => values.get(value)?.private);
+  if (hidden !== undefined)
+    throw new Error(
+      `${name}'s screen writes ${hidden[0]}, which is private, and a screen's answer reaches the coordinator`,
+    );
   const prefers = Object.entries(screen.prefers ?? {});
   const unpreferred = prefers.find(([id]) => !preferences.has(id))?.[0];
   if (unpreferred !== undefined)
@@ -901,7 +939,10 @@ function installScreen(
       return {
         ok: true,
         values: Object.fromEntries(
-          writes.map(([value, from]) => [value, from(validated.output)]),
+          writes.flatMap(([value, from]) => {
+            const saved = from(validated.output);
+            return saved === undefined ? [] : [[value, saved]];
+          }),
         ),
         preferences: Object.fromEntries(
           prefers.map(([id, from]) => [id, from(validated.output)]),
@@ -959,13 +1000,37 @@ function checkProof(
   };
 }
 
+// The values whose content a proof's evidence prints: one it compares, and one whose commands it
+// runs.
+function shownValues(proof: Proof): string[] {
+  if ("all" in proof) return proof.all.flatMap(shownValues);
+  if ("any" in proof) return proof.any.flatMap(shownValues);
+  if ("not" in proof) return shownValues(proof.not);
+  if ("value" in proof && typeof proof.value !== "string")
+    return [proof.value.name];
+  if ("command" in proof && "value" in proof.command)
+    return [proof.command.value];
+  return [];
+}
+
 function installCheck(
   handle: string,
   action: string,
   { builder, definition }: Extract<Declared, { kind: "check" }>,
-  { known, factText }: Pick<Installing, "known" | "factText">,
+  {
+    known,
+    factText,
+    values,
+  }: Pick<Installing, "known" | "factText" | "values">,
 ): CheckAction {
   const name = `${handle} ${action}`;
+  const shown = [...(builder.all ?? builder.any ?? [])]
+    .flatMap(shownValues)
+    .find((value) => values.get(value)?.private);
+  if (shown !== undefined)
+    throw new Error(
+      `${name} proves what ${shown} holds, which is private, and a check's evidence reaches the models that read it`,
+    );
   const { description, input, validate, run, ms } = checkProof(
     name,
     builder,

@@ -51,6 +51,11 @@ export const ValueDeclaration = type({
     token: /^[a-z][a-z0-9-]*$/,
     "leads?": "true",
   },
+  // A value no model may read, such as a link that works like a password. The person sees it in the
+  // interface and a plugin's tool code reads it through the run's values. Any text a model reads
+  // shows the value's about in place of its content. Only the person or a plugin's tool code saves
+  // it.
+  "private?": "true",
 });
 export type ValueDeclaration = typeof ValueDeclaration.infer;
 
@@ -551,6 +556,15 @@ export type Field = {
   otherwise?: string;
 };
 
+// A JSON value, the form a json project value is saved in.
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | readonly Json[]
+  | { readonly [key: string]: Json };
+
 // The project's values a plugin reads, by name; undefined where the project has none yet.
 export type ProjectValues = Readonly<Record<string, unknown>>;
 
@@ -633,8 +647,11 @@ export type Screen<In, Out, Data, Prepared> = {
   describe: Describe<keyof Type<In>["inferIn"]> & {
     says?: ScreenSays<Type<In>["infer"], Type<Out>["infer"]>;
   };
-  // Each project value the answer saves, by its registered name, taken from the screen's output.
-  writes?: Record<string, (output: Type<Out>["infer"]) => string>;
+  // Each project value the answer saves, by its registered name, taken from the screen's output. It
+  // is checked against the value's declared type when saved, so only a json value can be more than
+  // text. null clears the value, for an answer that voids an earlier one; undefined leaves it as it
+  // is, for an answer that says nothing about it.
+  writes?: Record<string, (output: Type<Out>["infer"]) => Json | undefined>;
   // Each of the person's preferences the answer sets for the project, by its id, to the option
   // taken from the screen's output.
   prefers?: Record<string, (output: Type<Out>["infer"]) => string>;

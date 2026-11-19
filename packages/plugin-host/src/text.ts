@@ -49,6 +49,21 @@ export function wrongCall(
   ].join("\n");
 }
 
+/**
+ * What a run's assignment says about the project values its tools save. A run offered
+ * report_values saves values as it learns them; a run whose tools save them is told so, and does
+ * not go looking for a way to save them itself.
+ */
+export const savedByToolsText = (writes: readonly string[]) =>
+  `\n\nYour own tools save ${writes.join(", ")} to the project themselves; there is nothing for you to save or report about ${writes.length === 1 ? "it" : "them"}.`;
+
+/**
+ * The values of writes that a run's agent may save with report_values. Only the person or a
+ * plugin's tool code saves a private value, because a model saving it would have to read it.
+ */
+export const modelWrites = (values: Values, writes: readonly string[]) =>
+  writes.filter((name) => !values.get(name)?.private);
+
 /** What a run's assignment says about the project values it may save as it learns them. */
 export const writesText = (values: Values, writes: readonly string[]) =>
   [
@@ -126,13 +141,18 @@ export const assignedValuesText = (
     "\n\nProject values, as the project has them; follow each that is set:",
     ...Object.entries(read).map(
       ([name, value]) =>
-        `- ${name}: ${values.get(name)?.about} ${assignedValue(value)}`,
+        `- ${name}: ${values.get(name)?.about} ${assignedValue(value, values.get(name))}`,
     ),
   ].join("\n");
 
+// What a model reads in place of a private value that is set.
+export const PRIVATE_VALUE =
+  "Set. Builder keeps what it holds from you; tools that need it read it themselves.";
+
 // A value as a run reads it: a link as its address, a file as its name and where to read it.
-function assignedValue(value: unknown) {
+function assignedValue(value: unknown, declared: ValueDeclaration | undefined) {
   if (value === null) return "Not set.";
+  if (declared?.private) return PRIVATE_VALUE;
   if (LinkValue.allows(value))
     return `Value: ${value.link}\n  This is a link the person gave; what it points to is the value.`;
   if (FileValue.allows(value))
@@ -143,8 +163,9 @@ function assignedValue(value: unknown) {
 // How much of a value discover shows; the actions that read it get all of it.
 const SHOWN_VALUE = 200;
 
-const shownValue = (value: unknown) => {
+const shownValue = (value: unknown, declared: ValueDeclaration) => {
   if (value === null) return "Not set.";
+  if (declared.private) return `Now: ${PRIVATE_VALUE}`;
   if (LinkValue.allows(value)) return `Now: ${value.link}`;
   if (FileValue.allows(value)) return `Now: ${value.name ?? value.file}`;
   const json = JSON.stringify(value);
@@ -160,7 +181,8 @@ export const projectValuesText = (
   [
     "Project values (Builder hands each to the actions and screens that read it; the person sets them on screens, and an action that writes one saves it as its run learns it):",
     ...[...values].map(
-      ([name, { about }]) => `  ${name}: ${about} ${shownValue(read[name])}`,
+      ([name, declared]) =>
+        `  ${name}: ${declared.about} ${shownValue(read[name], declared)}`,
     ),
   ].join("\n");
 

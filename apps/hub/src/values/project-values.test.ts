@@ -4,6 +4,8 @@ import type { TenantEnv } from "@intx/hub-api";
 import { ProjectError } from "../projects/errors.ts";
 import { setThemeTokens } from "../artifacts/design-tweaks.ts";
 import type { createArtifactService } from "../artifacts/service.ts";
+import type { ValueDeclaration } from "@corbits-builder/plugin";
+import { projectValueWrites } from "./project-values.ts";
 import { mountValueRoutes } from "./routes.ts";
 
 const STARTER = new URL(
@@ -127,4 +129,31 @@ test("saving a value its schema refuses is refused", async () => {
     code: "invalid_project_value",
     key: "look.font-primary",
   });
+});
+
+test("a json value is saved as the object it is given, and a text value refuses one", () => {
+  const declared = new Map<string, ValueDeclaration>([
+    ["hoster.choice", { about: "The machine to rent", type: "json" }],
+    ["hoster.region", { about: "Where it runs", type: "text" }],
+  ]);
+  const state = { styles: undefined, stored: {}, materials: [] };
+  expect(
+    projectValueWrites(
+      {
+        "hoster.choice": { size: "small", region: "ams" },
+        "hoster.region": "ams",
+      },
+      state,
+      declared,
+    ),
+  ).toEqual({
+    tokens: {},
+    stored: {
+      "hoster.choice": { size: "small", region: "ams" },
+      "hoster.region": "ams",
+    },
+  });
+  expect(() =>
+    projectValueWrites({ "hoster.region": { region: "ams" } }, state, declared),
+  ).toThrow("invalid_project_value");
 });

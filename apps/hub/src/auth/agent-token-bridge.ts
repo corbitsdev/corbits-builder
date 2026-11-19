@@ -434,9 +434,10 @@ export function createAgentTokenBridge(
     }
     const base = "/api/tenants/" + encodeURIComponent(identity.tenantId);
     // Spawned specialists hold no project binding; their native grants decide
-    // which artifacts they may read and write. run-values saves only what the
-    // run's own plugin action writes, which the hub checks for the run, and run-block records and
-    // ends only the calling run. A specialist runs only the checks of its own plugin.
+    // which artifacts they may read and write. run-values
+    // reads and saves only what the run's own plugin action reads and writes, which the hub checks for
+    // the run, and run-block records and ends only the calling run. A specialist runs only the checks of its
+    // own plugin.
     const checkProject = c.req.path.match(
       /^\/api\/tenants\/[^/]+\/projects\/([^/]+)\/check-runs$/,
     )?.[1];
