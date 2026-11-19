@@ -22,6 +22,7 @@ How a request becomes work is in
 | `packages/plugin-ui`        | What a screen's view draws with: the view's props, the card, the actions row, the document block, the comparison, steps and markdown.                                                                                                                                                          |
 | `packages/app-checks`       | The check scripts a coding or design workspace runs, which the coder and the designer ship.                                                                                                                                                                                                    |
 | `packages/publish-contract` | The publish contract every target keeps: the values a release, a holding and a take-down are recorded under, and the checks and plan steps every target shares.                                                                                                                                |
+| `packages/ssh-publish`      | The SSH release a place that publishes to a Debian or Ubuntu machine shares: its scripts and failure codes.                                                                                                                                                                                    |
 | `packages/schemas`          | Types and schemas shared by the hub, the client and the plugins.                                                                                                                                                                                                                               |
 | `scripts/`                  | Dev and verification scripts: pin and vendor checks, the commit check, the Google sign-in emulator, React UI API generation and the repository import (`bun run import:repo`, which writes a directory as a project file the import reads).                                                    |
 | `deploy/`                   | The Dockerfile and Compose files ([SELF_HOST.md](https://github.com/corbitsdev/corbits-builder/blob/main/docs/SELF_HOST.md)).                                                                                                                                                                  |
@@ -61,7 +62,8 @@ A plugin imports the plugin API (`@corbits-builder/plugin`, which holds
 `defineWorkflow`, `defineScreen`, `defineCheck` and `defineStarter`), the plugin
 UI kit (`@corbits-builder/plugin-ui`, which holds what its screens draw with),
 the shared schemas (`@corbits-builder/schemas`) and shared packages such as
-`@corbits-builder/app-checks` and `@corbits-builder/publish-contract`. It never imports the hub, the web app, the plugin
+`@corbits-builder/app-checks`, `@corbits-builder/publish-contract` and
+`@corbits-builder/ssh-publish`. It never imports the hub, the web app, the plugin
 host or another plugin, and only the hub imports the plugin host. `bun run
 boundaries` checks this on every pull request. The reason is that a plugin can
 then be added, renamed or removed without touching anything else.

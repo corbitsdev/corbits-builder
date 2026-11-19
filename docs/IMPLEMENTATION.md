@@ -134,6 +134,7 @@ Environment files, installs and build output never leave the workspace.
 | `packages/plugin-ui`        | `@corbits-builder/plugin-ui`        | The shared pieces a screen's view draws with.                    |
 | `packages/app-checks`       | `@corbits-builder/app-checks`       | The check scripts a coding or design workspace runs.             |
 | `packages/publish-contract` | `@corbits-builder/publish-contract` | The publish contract every target plugin keeps.                  |
+| `packages/ssh-publish`      | `@corbits-builder/ssh-publish`      | The SSH release that places on a Debian or Ubuntu machine share. |
 | `plugins/*`                 | `@corbits-builder/<folder>`         | One package per plugin: specialists, ready-made plans and packs. |
 | `packages/schemas`          | `@corbits-builder/schemas`          | Types and schemas shared by the hub, client and plugins.         |
 | `vendor/interchange`        |                                     | Interchange at the pinned revision.                              |
