@@ -48,6 +48,14 @@ them read those folders and never write them, and name their programs by full
 path. Builder refuses a folder that holds its data folder or sits inside it.
 None is listed by default.
 
+A saved SSH credential connects only to public addresses, and the hub reads a
+server's host key, before a credential is saved, only at a public address.
+Builder refuses loopback, private-network and link-local addresses, so a
+credential cannot point at the machine Builder runs on or its network. For
+servers on a private network, or a test server on this machine, set
+`SIDECAR_SSH_ALLOW_PRIVATE_ADDRESSES=true`. Empty means off, and any value
+other than `true` or `false` stops startup.
+
 `PLUGIN_HINT` has the hub add a note to each message naming the plugin screens
 its words suggest, so the coordinator finds a picker it might otherwise not
 look for: `triggers` matches each plugin's trigger words, `fields` its handle,

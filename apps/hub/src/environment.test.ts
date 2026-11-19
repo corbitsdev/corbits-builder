@@ -227,6 +227,21 @@ describe("sandbox toolchain folders", () => {
   });
 });
 
+describe("ssh to private addresses", () => {
+  test("is off unless set to true, blank as unset, and anything else stops startup", () => {
+    const allowed = (SIDECAR_SSH_ALLOW_PRIVATE_ADDRESSES?: string) =>
+      readHubEnvironment({
+        ...environment,
+        SIDECAR_SSH_ALLOW_PRIVATE_ADDRESSES,
+      }).SIDECAR_SSH_ALLOW_PRIVATE_ADDRESSES;
+    expect(allowed()).toBe(false);
+    expect(allowed("")).toBe(false);
+    expect(allowed("false")).toBe(false);
+    expect(allowed("true")).toBe(true);
+    expect(() => allowed("yes")).toThrow("SIDECAR_SSH_ALLOW_PRIVATE_ADDRESSES");
+  });
+});
+
 describe("setup", () => {
   test("names the bootstrap account and the hub it signs in to", () => {
     expect(

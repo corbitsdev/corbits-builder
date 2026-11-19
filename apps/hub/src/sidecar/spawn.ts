@@ -23,6 +23,8 @@ type CreateSpawnLocalSidecarOpts = {
   readonly interchangeDir: string;
   readonly credentialEncryptionKey: string;
   readonly maxActiveDeployments: number;
+  /** Lets ssh credentials reach loopback and private addresses. */
+  readonly sshAllowPrivateAddresses: boolean;
   readonly processEnv: ChildProcessEnv;
 };
 
@@ -80,6 +82,7 @@ export function createSpawnLocalSidecar({
   interchangeDir,
   credentialEncryptionKey,
   maxActiveDeployments,
+  sshAllowPrivateAddresses,
   processEnv,
 }: CreateSpawnLocalSidecarOpts): SpawnLocalSidecar {
   return function spawnSidecar({ manifest, adapterManifest }) {
@@ -94,6 +97,7 @@ export function createSpawnLocalSidecar({
         SIDECAR_CREDENTIAL_ENCRYPTION_KEY: credentialEncryptionKey,
         SIDECAR_ADAPTER_MANIFEST: JSON.stringify(adapterManifest),
         SIDECAR_MAX_ACTIVE_DEPLOYMENTS: String(maxActiveDeployments),
+        SIDECAR_SSH_ALLOW_PRIVATE_ADDRESSES: String(sshAllowPrivateAddresses),
       },
       stdin: "ignore",
       stdout: "inherit",
