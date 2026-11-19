@@ -1007,9 +1007,7 @@ export const wording = {
     settledUnnamed: "the request",
     /** An ask by its tool and main argument. */
     tool: (tool: string, subject?: string) =>
-      subject === undefined
-        ? `Let the specialist use ${tool}?`
-        : `Let the specialist use ${tool} on ${subject}?`,
+      subject === undefined ? `Allow ${tool}?` : `Allow ${tool} on ${subject}?`,
     /** A document's name as an earlier-document warning says it. */
     shortName: {
       problem_brief: "brief",
