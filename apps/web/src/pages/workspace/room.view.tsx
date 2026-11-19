@@ -190,10 +190,10 @@ export function RoomView({
     observer.observe(room);
     return () => observer.disconnect();
   }, []);
-  const planShown = plan.length > 0 && (narrow ? drawerOpen : !planFolded);
+  const progress = planProgress(plan);
+  const planShown = progress !== null && (narrow ? drawerOpen : !planFolded);
   const setPlanShown = (shown: boolean) =>
     narrow ? setDrawerOpen(shown) : setPlanFolded(!shown);
-  const progress = planProgress(plan);
   // Focus goes into the project view as it opens and back to what opened it as it closes.
   useEffect(() => {
     if (!projectOpen) return;

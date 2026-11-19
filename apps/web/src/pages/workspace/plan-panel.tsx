@@ -82,11 +82,12 @@ const actionSteps = (steps: readonly PlanStep[]): PlanChild[] =>
 /**
  * How far along the plan is, over the steps the panel lists (a group's steps, not the group): a
  * mark per step still in play, how many are done, and the step state that should draw the person
- * to the plan (a failure before a step waiting on them), or null while the plan has no steps.
+ * to the plan (a failure before a step waiting on them), or null while the plan has no step left
+ * to finish: a finished plan is done with, so the room no longer shows it.
  */
 export function planProgress(steps: readonly PlanStep[]) {
-  if (steps.length === 0) return null;
   const counted = actionSteps(steps).filter((step) => !dropped(step));
+  if (counted.every((step) => step.state === "done")) return null;
   const marks = counted.map((step) => ({ id: step.id, mark: markOf(step) }));
   const has = (mark: PlanMark) => marks.some((each) => each.mark === mark);
   const alerts = ["failed", "needs_you"] as const;
