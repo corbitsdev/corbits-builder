@@ -73,7 +73,13 @@ export function mountPlanRoutes(
             personFacts: personFacts(listed.artifacts),
             asksApprovals: !agentDecidesApprovals(listed.preferences),
             checks: records,
-            runs: await artifacts.runs(current, projectId),
+            runs: await artifacts.stepRuns(
+              current,
+              projectId,
+              plan.steps.flatMap((step) =>
+                "steps" in step ? step.steps.map(({ id }) => id) : [step.id],
+              ),
+            ),
             questions: asked.flatMap((question) =>
               question.status === "open" && showsScreen(question)
                 ? [question.asked]
