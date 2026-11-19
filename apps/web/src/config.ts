@@ -1089,6 +1089,9 @@ export const wording = {
       percent === 100 ? "Zoom 100%" : `Zoom ${String(percent)}%, back to 100%`,
     zoomIn: "Zoom in",
     zoomOut: "Zoom out",
+    /** Opens what is said about a passage when the margin is too narrow to show it beside. */
+    passageNote: (quote: string) =>
+      `Comment on “${quote.length > 40 ? `${quote.slice(0, 40).trimEnd()}…` : quote}”`,
   },
   printDocument: "Save as PDF or print",
   removeAttachment: {

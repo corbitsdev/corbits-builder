@@ -20,8 +20,10 @@
 
 /* On dark the backdrop is pure black and so is the theme's page colour, so the sheet, the bar, the
    contents' open section and the margin's cards would all sink into it. They take the theme's first
-   raised step instead, and the backdrop stays black around them. */
-:global(.dark) .reader {
+   raised step instead, and the backdrop stays black around them. A card opened from its passage
+   is drawn outside the reader, so it takes the same step itself. */
+:global(.dark) .reader,
+:global(.dark) .card {
   --wb-pane: var(--muted);
   --wb-background: var(--muted);
 }
@@ -65,6 +67,7 @@
 }
 
 .column {
+  position: relative;
   grid-column: 2;
   display: flex;
   flex-direction: column;
@@ -213,6 +216,42 @@
   position: absolute;
   left: var(--space-8);
   width: var(--card-width);
+}
+
+/* With no room for cards beside the page, a passage's card opens from its underline. The mark's
+   button is there for the keyboard alone: the underline already shows the passage to the eye. */
+.sheet[data-pointing] {
+  cursor: pointer;
+}
+
+.mark {
+  position: absolute;
+  right: 4px;
+  width: 24px;
+  height: 24px;
+  color: var(--wb-primary);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.mark:focus-visible {
+  opacity: 1;
+  outline-offset: 0;
+}
+
+.card {
+  position: fixed;
+  z-index: 60;
+  width: min(var(--card-width), calc(100vw - 16px));
+  animation: global(fade-in) 150ms ease-out;
+}
+
+.card[data-keys] {
+  animation: none;
+}
+
+.card:focus {
+  outline: none;
 }
 
 /* Every passage something is said about is underlined in the attention orange; the one whose

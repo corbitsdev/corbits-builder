@@ -4,16 +4,20 @@
  * being read, the zoom and the download; the document's sections sit to the left; the right margin
  * holds whatever is placed beside a passage, level with it.
  */
-import { Minus, Plus } from "lucide-react";
+import { Button, useDismissablePopover } from "@corbits/react-ui";
+import { MessageSquare, Minus, Plus } from "lucide-react";
 import {
   useCallback,
   useEffect,
+  useId,
   useLayoutEffect,
   useRef,
   useState,
   type CSSProperties,
+  type MouseEvent,
   type ReactNode,
 } from "react";
+import { createPortal } from "react-dom";
 import { Fault } from "../../components.tsx";
 import { wording } from "../../config.ts";
 import {
@@ -63,11 +67,13 @@ const SCROLL_KEYS = new Set([
 // A margin item starts a little above its passage, so its first line sits level with it.
 const MARGIN_LEAD = 15;
 const MARGIN_GAP = 8;
-// A margin item is a card this wide; with less room than that beside the page, the margin stays
-// empty and the underlines alone mark the passages. The stylesheet takes the width from here.
+// A margin item is a card at most this wide; with less room than that beside the page, the cards
+// leave the margin and open from their passages instead. The stylesheet takes the width from here.
 const CARD_WIDTH = 280;
 // Cards sit --space-8 clear of the page and want --space-6 clear of the pane's edge.
 const MARGIN_INSET = 32 + 24;
+// The underline sits below the line's box, so a press just under the words still reaches it.
+const UNDERLINE_REACH = 8;
 // Each state is its own highlight, named as the stylesheet paints it.
 const HIGHLIGHTS: Readonly<Record<PassageState | "commented", string>> = {
   commented: "document-passage",
@@ -213,6 +219,21 @@ export function DocumentPage({
   const [page, setPage] = useState({ current: 1, total: 1 });
   const [places, setPlaces] = useState<readonly PassagePlace[]>([]);
   const [roomy, setRoomy] = useState(true);
+  const ranges = useRef(new Map<string, Range>());
+  const cardId = useId();
+  const [card, setCard] = useState<{
+    place: PassagePlace;
+    line: DOMRect;
+  } | null>(null);
+  const { rootRef: cardRef, triggerRef: cardTrigger } = useDismissablePopover<
+    HTMLDivElement,
+    HTMLButtonElement
+  >({
+    open: card !== null,
+    onOpenChange: (open) => {
+      if (!open) setCard(null);
+    },
+  });
 
   const follow = useCallback(() => {
     const view = scroller.current;
@@ -309,6 +330,7 @@ export function DocumentPage({
         range: hit.range,
       })),
     );
+    ranges.current = new Map(found.map((hit) => [hit.place.id, hit.range]));
     setPlaces((was) =>
       same(
         was,
@@ -361,7 +383,26 @@ export function DocumentPage({
     };
   }, [measure]);
 
-  const inMargin = margin !== undefined && roomy;
+  // A card opened from its passage sits under the line, or above it when the view ends first.
+  useLayoutEffect(() => {
+    const box = cardRef.current;
+    if (card === null || box === null) return;
+    const below = card.line.bottom + MARGIN_GAP;
+    const fitsBelow =
+      below + box.offsetHeight <= window.innerHeight - MARGIN_GAP;
+    box.style.top = `${String(fitsBelow ? below : card.line.top - MARGIN_GAP - box.offsetHeight)}px`;
+    box.style.left = `${String(Math.max(MARGIN_GAP, Math.min(card.line.left, window.innerWidth - box.offsetWidth - MARGIN_GAP)))}px`;
+    // Opened from the keyboard, the card takes focus so Escape can hand it back, and appears at
+    // once: a key press is answered without a flourish.
+    if (cardTrigger.current === null) delete box.dataset.keys;
+    else {
+      box.dataset.keys = "";
+      box.focus({ preventScroll: true });
+    }
+  }, [card, cardRef, cardTrigger]);
+
+  const narrow = margin !== undefined && !roomy;
+  const inMargin = margin !== undefined && !narrow;
 
   // Items too close to fit level with their passages stack below one another, in page order.
   // Every height is read before any top is written, so placing them costs one layout. An item
@@ -385,6 +426,48 @@ export function DocumentPage({
     for (const item of items) if (item !== null) resized.observe(item);
     return () => resized.disconnect();
   }, [places, inMargin]);
+
+  /** The passage under a point on the page, by the line of it that was pressed. */
+  const passageAt = (x: number, y: number) => {
+    for (const place of places) {
+      const lines = ranges.current.get(place.id)?.getClientRects() ?? [];
+      const line = [...lines].find(
+        (rect) =>
+          x >= rect.left &&
+          x <= rect.right &&
+          y >= rect.top &&
+          y <= rect.bottom + UNDERLINE_REACH,
+      );
+      if (line !== undefined) return { place, line };
+    }
+    return null;
+  };
+
+  // With the margin too narrow for its cards, a passage's underline opens its card instead.
+  const openFromMark = (event: MouseEvent) => {
+    if (!narrow || window.getSelection()?.isCollapsed === false) return;
+    const hit = passageAt(event.clientX, event.clientY);
+    if (hit === null) return;
+    // The card takes this press; quoting the passage into a message is not offered as well.
+    event.stopPropagation();
+    cardTrigger.current = null;
+    setCard(hit);
+  };
+
+  const pointAtMark = (event: MouseEvent<HTMLElement>) => {
+    if (!narrow) return;
+    event.currentTarget.toggleAttribute(
+      "data-pointing",
+      passageAt(event.clientX, event.clientY) !== null,
+    );
+  };
+
+  const openFromKeys = (place: PassagePlace, button: HTMLButtonElement) => {
+    const line = ranges.current.get(place.id)?.getClientRects()[0];
+    if (line === undefined) return;
+    cardTrigger.current = button;
+    setCard({ place, line });
+  };
 
   // The reader's scroll padding keeps a section clear of the bar; its scroll behaviour is smooth
   // unless the person asks for less motion.
@@ -461,6 +544,7 @@ export function DocumentPage({
         if (jumping.current === null) chosen.current = undefined;
         else settleJump();
         follow();
+        setCard(null);
       }}
       onWheel={scrollOn}
       onTouchMove={scrollOn}
@@ -485,7 +569,13 @@ export function DocumentPage({
           {notes === undefined || notes === null ? null : (
             <div className={styles.notes}>{notes}</div>
           )}
-          <article ref={sheet} className={styles.sheet} data-writing={writing}>
+          <article
+            ref={sheet}
+            className={styles.sheet}
+            data-writing={writing}
+            onClickCapture={openFromMark}
+            onPointerMove={pointAtMark}
+          >
             <header className={styles.head}>
               <span>{project}</span>
               <span>{meta}</span>
@@ -496,9 +586,29 @@ export function DocumentPage({
               <Fault onRetry={onResume}>{words.stopped}</Fault>
             ) : null}
           </article>
+          {narrow
+            ? places.map((place) => (
+                <Button
+                  key={place.id}
+                  variant="ghost"
+                  size="icon"
+                  className={styles.mark}
+                  style={{ top: place.top }}
+                  aria-label={words.passageNote(place.quote)}
+                  aria-haspopup="dialog"
+                  aria-expanded={card?.place.id === place.id}
+                  aria-controls={
+                    card?.place.id === place.id ? cardId : undefined
+                  }
+                  onClick={(event) => openFromKeys(place, event.currentTarget)}
+                >
+                  <MessageSquare aria-hidden="true" />
+                </Button>
+              ))
+            : null}
         </div>
         <div ref={marginColumn} className={styles.margin}>
-          {margin === undefined || !roomy
+          {margin === undefined || narrow
             ? null
             : places.map((place, index) => (
                 <div
@@ -514,6 +624,32 @@ export function DocumentPage({
               ))}
         </div>
       </div>
+      {card === null || margin === undefined
+        ? null
+        : createPortal(
+            <div
+              ref={cardRef}
+              className={styles.card}
+              style={
+                { "--card-width": `${String(CARD_WIDTH)}px` } as CSSProperties
+              }
+              id={cardId}
+              data-slot="document-margin-card"
+              role="dialog"
+              aria-label={words.passageNote(card.place.quote)}
+              tabIndex={-1}
+              onBlur={(event) => {
+                if (
+                  event.relatedTarget !== null &&
+                  !event.currentTarget.contains(event.relatedTarget)
+                )
+                  setCard(null);
+              }}
+            >
+              {margin(card.place)}
+            </div>,
+            document.body,
+          )}
     </div>
   );
 }
