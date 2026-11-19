@@ -402,6 +402,11 @@ export async function appBuilt(db: ArtifactDb, tenantId: string) {
 // A project is its own tenant, so the library's tenant scope is the project
 // scope. The hub adds project grants and the exact versions each resolved
 // native deploy approval covered.
+/** The saved app's version as a check records it: its commit, or v<N> for a filed version. */
+export const savedAppVersion = (
+  saved: { commit: string } | { version: number },
+) => ("commit" in saved ? saved.commit : `v${saved.version}`);
+
 export function createArtifactService(
   rawDB: DB["db"],
   runs: WorkflowRunReader,
@@ -723,14 +728,17 @@ export function createArtifactService(
   }
 
   // The app a download or an export's build/ carries: the filed version named, else the saved app;
-  // its bundle and the name of its version.
+  // its bundle, the name of its version, and the version as a check records it.
   async function appCopy(actor: Actor, projectId: string, version?: number) {
     if (version === undefined) {
       const saved = await savedApp(actor, projectId);
       if (!saved) return undefined;
-      return "commit" in saved
-        ? { name: saved.commit.slice(0, 7), bundle: saved.bundle }
-        : { name: `v${saved.version}`, bundle: saved.bundle };
+      return {
+        name:
+          "commit" in saved ? saved.commit.slice(0, 7) : `v${saved.version}`,
+        version: savedAppVersion(saved),
+        bundle: saved.bundle,
+      };
     }
     const [latest] = (
       await listArtifacts(db, actor.tenantId, { kind: "app", limit: 1 })
@@ -740,6 +748,7 @@ export function createArtifactService(
       throw new ProjectError(404, "app_not_filed", { version });
     return {
       name: `v${version}`,
+      version: `v${version}`,
       bundle: AppBundle.assert(parseJson(stored.content)),
     };
   }
@@ -1906,6 +1915,16 @@ export function createArtifactService(
       return allowed(projectResource(projectId), "manage");
     },
 
+    // The saved app to build. A build runs the app's own commands for up to five minutes and takes
+    // the project's only command slot, so a person must manage the project to build it. A run
+    // started for one of the project's actions needs only read access.
+    async appToBuild(actor: Actor, projectId: string) {
+      await requireProject(actor, projectId, "read");
+      if (!(await callingRun(actor, projectId)))
+        await requireProject(actor, projectId, "manage");
+      return savedApp(actor, projectId);
+    },
+
     async acceptance(
       actor: Actor,
       projectId: string,
@@ -2330,6 +2349,7 @@ export function createArtifactService(
         if (isContainedPath(path)) zip.file(`${name}/${path}`, data);
       return {
         filename: `${name}-${app.name}.zip`,
+        version: app.version,
         archive: await zip.generateAsync({
           type: "uint8array",
           compression: "DEFLATE",

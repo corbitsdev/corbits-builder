@@ -23,7 +23,8 @@ runs after `CHECKS.txt`: the web starter lists `check-app`, its browser
 pass. `coder build` may name a
 starter; the hub then saves it as `stack.starter`, with the starter's `checks`
 as `stack.checks` (the commands the `builds` check runs, which `build` and
-`change` may correct), and writes the starter's files onto the project's app
+`change` may correct), its `run` as `stack.run` and its `production`, how
+the app runs where people use it, as `stack.production`, and writes the starter's files onto the project's app
 repository before the coder clones it. Without a starter the workspace starts
 empty, the coder builds in whatever stack the task names, writes its own
 `CHECKS.txt` and reports its lines as `stack.checks` itself. There is one

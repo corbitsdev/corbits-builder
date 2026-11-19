@@ -46,3 +46,22 @@ test("hostile archives fail with a ZipError", async () => {
     ]),
   ).rejects.toBeInstanceOf(ZipError);
 });
+
+test("with plainOnly, an entry a Unix tool recorded as a link or a device is refused, and plain files and folders are read", async () => {
+  const typed = (mode: number) =>
+    patched("a", "/etc", (view, at) => {
+      view.setUint8(at + 5, 3);
+      view.setUint32(at + 38, (mode << 16) >>> 0, true);
+    });
+  for (const mode of [0o120777, 0o020644])
+    await expect(
+      unzip(await typed(mode), { plainOnly: true }),
+    ).rejects.toBeInstanceOf(ZipError);
+  for (const mode of [0o100644, 0o040755])
+    expect(
+      (await unzip(await typed(mode), { plainOnly: true })).map(
+        ({ path }) => path,
+      ),
+    ).toEqual(["a"]);
+  expect(await unzip(await typed(0o120777))).toHaveLength(1);
+});

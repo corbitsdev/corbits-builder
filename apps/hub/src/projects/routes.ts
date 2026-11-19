@@ -11,6 +11,7 @@ import { createPlanService } from "../plans/service.ts";
 import { mountValueRoutes } from "../values/routes.ts";
 import { createValueService } from "../values/service.ts";
 import { mountCheckRoutes, type Checks } from "../plugins/checks.ts";
+import type { AppBuilds } from "../artifacts/app-build.ts";
 import { mountRunCredentialRoutes } from "../credentials/routes.ts";
 import type { ServerKeys } from "../credentials/server-keys.ts";
 import { createSettingsService } from "../settings/service.ts";
@@ -200,6 +201,7 @@ export function createProjectRoutes(
     reason: string,
   ) => Promise<unknown>,
   checks?: Checks,
+  appBuilds?: AppBuilds,
   serverKeys?: ServerKeys,
 ) {
   const app = new Hono<TenantEnv>();
@@ -748,6 +750,7 @@ export function createProjectRoutes(
     answer,
     nativeFetch,
     checks,
+    appBuilds,
   });
   mountAnswerRoutes(app, answer);
   mountPlanRoutes(app, plans, artifacts, nativeFetch, checks);

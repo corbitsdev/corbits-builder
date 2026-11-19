@@ -72,18 +72,20 @@ export async function startInProcessHub(settings: Record<string, string> = {}) {
   const { app } = runtime;
 
   // The response, or the error naming its status and body; the person's session unless the
-  // credentials say otherwise.
+  // credentials say otherwise. signal aborts the request as a caller that goes away does.
   async function call(
     method: "GET" | "POST" | "PUT" | "DELETE",
     path: string,
     body?: object,
     credentials: Record<string, string> = { cookie },
+    signal?: AbortSignal,
   ) {
     const response = await app.fetch(
       new Request(`${origin}${path}`, {
         method,
         headers: { origin, "content-type": "application/json", ...credentials },
         ...(body ? { body: JSON.stringify(body) } : {}),
+        ...(signal ? { signal } : {}),
       }),
     );
     if (!response.ok)

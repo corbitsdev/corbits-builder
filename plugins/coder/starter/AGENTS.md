@@ -31,7 +31,7 @@ Every app with sign-in opens with a demo account, so whoever tries the app can a
 await seedDemoAccount({ has: (email) => /* the store has this email */, create: (account) => /* add it, hashing its password as every account's is */ });
 ```
 
-`seedDemoAccount` (`server/src/demo-account.ts`) creates the account on first run and leaves it as it is after. Name the demo account in `README.md`. An app without sign-in deletes `server/src/demo-account.ts` and `server/src/data/demo-account.json`.
+`seedDemoAccount` (`server/src/demo-account.ts`) creates the account on first run and leaves it as it is after, outside production only: its password is in the repository, so under `bun run start`, which sets `NODE_ENV=production`, it creates nothing. Call it unconditionally and leave that check to it. A published app therefore starts with no account, so it needs a way for its first person to get one, such as signing up. Name the demo account in `README.md` as one for development, and say there how the first account is made in production. An app without sign-in deletes `server/src/demo-account.ts` and `server/src/data/demo-account.json`.
 
 Use components from `@corbits/react-ui` before writing your own; its theme tokens (`bg-background`, `text-foreground`, `text-muted-foreground`, `border-border`, `bg-primary`) style everything else.
 

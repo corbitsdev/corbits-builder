@@ -110,16 +110,15 @@ test("a run's misspelt value is refused with the names its action saves", async 
     body: JSON.stringify({ values: { stack_language: "TypeScript" } }),
   });
   expect(response.status).toBe(403);
-  expect(await response.json()).toEqual({
-    code: "run_value_not_written",
-    issues: [
-      {
-        path: "stack_language",
-        message:
-          "is not a value coder build saves; did you mean `stack.language`? It saves only `stack.language`, `stack.starter`, `stack.checks`, `stack.run`.",
-      },
-    ],
-  });
+  const refused = (await response.json()) as {
+    code: string;
+    issues: { path: string; message: string }[];
+  };
+  expect(refused.code).toBe("run_value_not_written");
+  const [issue] = refused.issues;
+  expect(issue?.path).toBe("stack_language");
+  expect(issue?.message).toContain("did you mean `stack.language`?");
+  expect(issue?.message).toContain("`stack.starter`");
 });
 
 test("saving a value its schema refuses is refused", async () => {

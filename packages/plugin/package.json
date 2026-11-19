@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@corbits-builder/schemas": "workspace:*",
+    "@corbits/zip": "workspace:*",
     "@intx/agent": "workspace:*",
     "@intx/types": "workspace:*",
     "arktype": "catalog:"

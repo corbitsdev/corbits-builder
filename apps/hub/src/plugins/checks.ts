@@ -42,7 +42,10 @@ import {
   readProjectValues,
   type ProjectState,
 } from "../values/project-values.ts";
-import type { createArtifactService } from "../artifacts/service.ts";
+import {
+  savedAppVersion,
+  type createArtifactService,
+} from "../artifacts/service.ts";
 import {
   CHECK_SKIPPED,
   checkNote,
@@ -57,7 +60,7 @@ import { actorOf } from "../projects/authorization.ts";
 import { ProjectError } from "../projects/errors.ts";
 import { requestErrorMetadata } from "../request-error.ts";
 import { CATALOG, projectCatalog } from "./catalog.ts";
-import { createCommandRunner } from "./command-runner.ts";
+import type { createCommandRunner } from "./command-runner.ts";
 import { projectFacts } from "./facts.ts";
 
 const log = getLogger(["corbits-builder", "hub", "checks"]);
@@ -111,9 +114,7 @@ export function savedProject({
   runCommand,
 }: Stored) {
   const byKind = new Map(listed.artifacts.map((item) => [item.kind, item]));
-  let appVersion: string | undefined;
-  if (app !== undefined)
-    appVersion = "commit" in app ? app.commit : `v${app.version}`;
+  const appVersion = app === undefined ? undefined : savedAppVersion(app);
   const base = projectFacts({
     artifacts: listed.artifacts,
     preferences: listed.preferences,
@@ -353,10 +354,12 @@ export function createChecks(deps: {
   // The toolchain folders every build sandbox reads, from the hub's environment.
   toolchains: SandboxToolchains;
   artifacts: Artifacts;
+  // The runner of commands against saved apps, shared with app builds, so a project runs one
+  // command at a time whether a check or a build asked.
+  commands: ReturnType<typeof createCommandRunner>;
   fetch: (request: Request) => Promise<Response>;
 }) {
-  const { db, artifacts } = deps;
-  const commands = createCommandRunner();
+  const { db, artifacts, commands } = deps;
 
   // The latest record of each check of the project, one for each input it ran on.
   const latestRows = (projectId: string) =>

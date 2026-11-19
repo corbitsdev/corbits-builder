@@ -16,11 +16,29 @@ import {
 import { inflateRaw } from "./streams.ts";
 
 export type UnzippedEntry = { path: string; data: Uint8Array<ArrayBuffer> };
-export type UnzipOptions = { maxTotalBytes?: number };
+export type UnzipOptions = {
+  maxTotalBytes?: number;
+  // Refuses an entry that a Unix tool recorded as something other than a plain file or folder, such
+  // as a link or a device. An unzip that writes files would otherwise create it as a plain file.
+  plainOnly?: boolean;
+};
 
 const MAX_COMMENT = 0xffff;
 const ENCRYPTED = 0x1;
 const DEFAULT_MAX_TOTAL_BYTES = 256 * 1024 * 1024;
+// The Unix file type is in the high 16 bits of an entry's external attributes. The high byte of its
+// "version made by" names the system that made the entry; other systems record no file type there.
+const FILE_TYPE = 0o170000;
+const REGULAR_FILE = 0o100000;
+const DIRECTORY = 0o040000;
+const UNIX_MADE = 3;
+
+// Whether a central directory entry is a plain file or folder, by the type a Unix tool recorded.
+function isPlain(view: DataView, at: number) {
+  if (view.getUint8(at + 5) !== UNIX_MADE) return true;
+  const kind = (view.getUint32(at + 38, true) >>> 16) & FILE_TYPE;
+  return kind === 0 || kind === REGULAR_FILE || kind === DIRECTORY;
+}
 
 type Header = {
   path: string;
@@ -49,7 +67,11 @@ function endRecordOffset(view: DataView) {
   throw new ZipError("not a zip: no end of central directory record");
 }
 
-function readHeaders(bytes: Uint8Array<ArrayBuffer>, view: DataView): Header[] {
+function readHeaders(
+  bytes: Uint8Array<ArrayBuffer>,
+  view: DataView,
+  plainOnly: boolean,
+): Header[] {
   const end = endRecordOffset(view);
   const count = view.getUint16(end + 10, true);
   const directorySize = view.getUint32(end + 12, true);
@@ -83,6 +105,8 @@ function readHeaders(bytes: Uint8Array<ArrayBuffer>, view: DataView): Header[] {
     );
     checkName(path, seen);
     if (flags & ENCRYPTED) throw new ZipError(`${path} is encrypted`);
+    if (plainOnly && !isPlain(view, at))
+      throw new ZipError(`${path} is not a plain file or folder`);
 
     const packedSize = view.getUint32(at + 20, true);
     const size = view.getUint32(at + 24, true);
@@ -144,12 +168,15 @@ async function inflate(
 /** Reads every entry in central directory order, checking names, bounds, sizes and CRCs. */
 export async function unzip(
   bytes: Uint8Array<ArrayBuffer>,
-  { maxTotalBytes = DEFAULT_MAX_TOTAL_BYTES }: UnzipOptions = {},
+  {
+    maxTotalBytes = DEFAULT_MAX_TOTAL_BYTES,
+    plainOnly = false,
+  }: UnzipOptions = {},
 ): Promise<UnzippedEntry[]> {
   if (bytes.length < END_RECORD_SIZE)
     throw new ZipError("not a zip: too short");
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  const headers = readHeaders(bytes, view);
+  const headers = readHeaders(bytes, view, plainOnly);
   checkNoOverlap(headers);
   const total = headers.reduce((sum, { size }) => sum + size, 0);
   if (total > maxTotalBytes)
