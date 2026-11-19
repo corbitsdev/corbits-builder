@@ -20,6 +20,7 @@ import type {
   HostCredentialCapability,
   MediatedCredential,
 } from "@intx/types";
+import { UnboundCredentialError } from "@intx/types";
 import type { ToolCredentialDeclaration } from "@intx/types/package-json";
 
 import type { CredentialProviderRegistry } from "./credential-providers";
@@ -56,7 +57,9 @@ export function reconcileDeclaredCredentials(
   declared: readonly ToolCredentialDeclaration[],
   boundHandles: ReadonlySet<string>,
 ): void {
+  // An optional handle may go unbound: its resolve then rejects as unbound.
   const missing = declared
+    .filter((declaration) => declaration.optional !== true)
     .map((declaration) => declaration.handle)
     .filter((handle) => !boundHandles.has(handle));
   if (missing.length > 0) {
@@ -105,6 +108,10 @@ export function createCredentialCapability(
   function shapeHandle(handle: string): Promise<MediatedCredential> {
     return (async () => {
       const binding = deps.bindings.get(handle);
+      // Typed, so a consumer that works without an optional credential can
+      // tell an unbound handle from a refusal; it carries upstream's message.
+      if (binding === undefined)
+        throw new UnboundCredentialError(handle, deps.consumer);
       if (binding === undefined) {
         throw new Error(
           `no credential is bound to handle "${handle}" for consumer ${deps.consumer}`,

@@ -118,6 +118,32 @@ export interface CredentialCapability {
 }
 
 /**
+ * What `resolve` throws for a handle no binding resolves, as for an optional
+ * credential that was not delivered, so a consumer that works without it can
+ * tell that apart from a refusal.
+ */
+export class UnboundCredentialError extends Error {
+  constructor(
+    readonly handle: string,
+    consumer: string,
+  ) {
+    super(`no credential is bound to handle "${handle}" for consumer ${consumer}`);
+    this.name = "UnboundCredentialError";
+  }
+}
+
+/**
+ * Whether `error` is an `UnboundCredentialError`. It reads the error's name
+ * rather than its class, because a consumer bundled with its own copy of this
+ * package sees another class.
+ */
+export function isUnboundCredentialError(
+  error: unknown,
+): error is UnboundCredentialError {
+  return error instanceof Error && error.name === "UnboundCredentialError";
+}
+
+/**
  * A `CredentialCapability` plus a host-only `dispose`. The consumer sees only
  * `resolve`; the host runs `dispose` on teardown to release every handle shaped
  * through this capability (an http handle holds nothing; a future key-file /

@@ -57,6 +57,9 @@ const credentialBindingFields = {
   locator: BindingLocator.describe(
     "Which credential namespace the binding resolves the credential in. `tenant` resolves a tenant-owned credential by provider/name through the tenant walk-up; its use is authorized by tenant ownership.",
   ),
+  "optional?": type("true").describe(
+    "The consumer works without this credential. When no credential resolves the binding at launch, deploy delivers nothing for it instead of failing, and the consumer's resolve of the handle rejects. A credential that does resolve is delivered and authorized exactly as for a required binding.",
+  ),
 } as const;
 
 // Each branch forbids the other branch's key, so an object that names both
