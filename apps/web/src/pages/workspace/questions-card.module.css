@@ -318,6 +318,18 @@
     color-mix(in oklab, var(--primary-emphasis) 20%, transparent);
 }
 
+/* Its buttons drawn elsewhere, such as in the prompt box, leave no rule behind. */
+.footer:empty {
+  display: none;
+}
+
+/* The buttons where the host draws them, in the row they keep in the card. */
+.hosted {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
 /* Why the answers did not send, just above the buttons that send them again. */
 .fault {
   margin-top: var(--space-3);
@@ -343,4 +355,53 @@
   font-size: 0.875rem;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
+}
+
+/* In the prompt box: the heading asks the open question, so its legend and rule are read out
+   only; each answer is a plain row with a radio, marked once chosen by its dark edge and dot. */
+[data-place="box"] :is(.prompt, .rule) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+[data-place="box"] .choices {
+  gap: 6px;
+}
+
+[data-place="box"] .choice {
+  min-height: 2.5rem;
+  border-color: var(--wb-border);
+  border-radius: 8px;
+  background: var(--wb-background);
+}
+
+[data-place="box"] .choice:hover {
+  border-color: var(--wb-border-strong);
+}
+
+[data-place="box"] .choice[data-checked] {
+  border-color: var(--wb-foreground);
+  background: var(--wb-background);
+}
+
+[data-place="box"] .box {
+  width: 1rem;
+  height: 1rem;
+  border-color: var(--wb-border-strong);
+  border-radius: 999px;
+  background: none;
+  font-size: 0;
+}
+
+[data-place="box"] .box svg {
+  display: none;
+}
+
+[data-place="box"] .choice[data-checked] .box {
+  border: 5px solid var(--wb-foreground);
+  background: var(--wb-background);
 }
