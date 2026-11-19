@@ -15,27 +15,37 @@ const HOST = fileURLToPath(new URL("./command-host.ts", import.meta.url));
 // After its time is up the host is asked to stop, and killed if it has not stopped this much later.
 const STOP_MS = 5_000;
 
-const COMMAND_BUSY =
+export const COMMAND_BUSY =
   "another command is already running against this project's app";
+export const COMMAND_CANCELLED = "the command's caller went away";
 
-// Runs the host on one ask in a fresh workspace, stopping it once its time and STOP_MS are up.
+// The app paths to pack once the command succeeded, and the most files and bytes the pack may hold.
+export type CommandExport = Omit<NonNullable<CommandAsk["export"]>, "archive">;
+
+/** How a command ended, with the zip of the requested paths when an export was written. */
+export type CommandOutcome = CommandReport & { archive?: Uint8Array };
+
+// Runs the host on one ask in a fresh workspace, stopping it once its time and STOP_MS are up, or
+// as soon as signal aborts, and killing it STOP_MS after either if it has not stopped.
 async function runHost(
   workspace: string,
   ask: CommandAsk,
+  signal: AbortSignal | undefined,
 ): Promise<CommandReport> {
   const child = Bun.spawn(
     [process.execPath, ...process.execArgv, HOST, workspace],
     { env: hostEnv(), stdin: "pipe", stdout: "pipe", stderr: "pipe" },
   );
   let stopped = false;
-  const term = setTimeout(() => {
+  let kill: ReturnType<typeof setTimeout> | undefined;
+  const stop = () => {
+    if (stopped) return;
     stopped = true;
     child.kill("SIGTERM");
-  }, ask.timeoutMs + STOP_MS);
-  const kill = setTimeout(
-    () => child.kill("SIGKILL"),
-    ask.timeoutMs + 2 * STOP_MS,
-  );
+    kill = setTimeout(() => child.kill("SIGKILL"), STOP_MS);
+  };
+  const term = setTimeout(stop, ask.timeoutMs + STOP_MS);
+  signal?.addEventListener("abort", stop, { once: true });
   try {
     child.stdin.write(JSON.stringify(ask));
     await child.stdin.end();
@@ -44,6 +54,7 @@ async function runHost(
       new Response(child.stderr).text(),
       child.exited,
     ]);
+    if (signal?.aborted === true) return { error: COMMAND_CANCELLED };
     if (stopped)
       return {
         step: null,
@@ -62,18 +73,27 @@ async function runHost(
   } finally {
     clearTimeout(term);
     clearTimeout(kill);
+    signal?.removeEventListener("abort", stop);
   }
 }
 
 /**
- * Runs commands against saved app versions for checks: each in a host process of its own (one
- * sandbox per process) with a temporary workspace removed afterwards, and one at a time per
- * project. A second command for a project while one runs is refused, never queued.
+ * Runs commands against saved app versions for checks and builds. Each runs in a separate host
+ * process (one sandbox per process) with a temporary workspace that is removed afterwards, whatever
+ * the outcome. A project runs one command at a time: a second command while one runs is refused,
+ * never queued. When the caller's signal aborts, the command is stopped, which frees its project
+ * for the next.
  */
 export function createCommandRunner() {
   const running = new Set<string>();
   return {
-    async run(projectId: string, ask: CommandAsk): Promise<CommandReport> {
+    async run(
+      projectId: string,
+      ask: Omit<CommandAsk, "export">,
+      exported?: CommandExport,
+      signal?: AbortSignal,
+    ): Promise<CommandOutcome> {
+      if (signal?.aborted === true) return { error: COMMAND_CANCELLED };
       if (running.has(projectId)) return { error: COMMAND_BUSY };
       running.add(projectId);
       try {
@@ -81,7 +101,20 @@ export function createCommandRunner() {
         try {
           const workspace = join(root, "workspace");
           await mkdir(workspace);
-          return await runHost(workspace, ask);
+          // Next to the workspace, where the sandbox cannot write.
+          const archive = join(root, "export.zip");
+          const report = await runHost(
+            workspace,
+            exported ? { ...ask, export: { ...exported, archive } } : ask,
+            signal,
+          );
+          if (
+            "exported" in report &&
+            report.exported &&
+            "written" in report.exported
+          )
+            return { ...report, archive: await Bun.file(archive).bytes() };
+          return report;
         } finally {
           await rm(root, { recursive: true, force: true });
         }

@@ -533,8 +533,20 @@ agent can do when it fails. `checks` are the commands that prove the code; they
 are saved as the project's `stack.checks` and run by the coder's `builds` check
 before a build or change counts as finished. `run`, when the program serves
 something to open in the browser, says how it starts and on which port
-variable, as the `web-app` starter's does. No two plugins may declare a starter
-of the same name.
+variable, as the `web-app` starter's does. `production`, when the program can
+be published, gives the commands that install, build and start it where people
+use it, the port variable it answers on, and the folders (from the app's root)
+that hold what people entered and must survive each release. It is saved as
+the project's `stack.production`. A publishing tool that needs built output
+instead of source, because there is no server to build on, asks the hub for
+it. `GET /api/tenants/:tenantId/projects/:projectId/app/build-archive?path=client/dist`
+(`build` of `runHub` in `@corbits-builder/plugin/run-hub`) runs the project's
+own `install` and then `build` against the saved app in the checks' sandbox,
+and answers with a zip of only the named paths and the version built in
+`x-builder-app-version`. The caller names no command and sees none of the
+build's output, only a fixed code when it fails. The build gives up after
+five minutes. No two plugins may declare a
+starter of the same name.
 
 ### A ready-made plan
 

@@ -278,26 +278,46 @@ export async function mediatedHttpJson(options: {
     await response.body?.cancel();
     return undefined;
   }
+  const body = await cappedBody(response, options.maxResponseBytes);
+  if (body.length === 0) return undefined;
+  return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(body));
+}
+
+/**
+ * The body of a response, refused as response_too_large once it passes maxBytes without reading
+ * the rest: at once when it declares a longer length, else as soon as it streams past it.
+ */
+export async function cappedBody(
+  response: Response,
+  maxBytes: number,
+): Promise<Uint8Array<ArrayBuffer>> {
+  const tooLarge = () => new WorkflowHttpError(undefined, "response_too_large");
+  if (Number(response.headers.get("content-length")) > maxBytes) {
+    await response.body?.cancel();
+    throw tooLarge();
+  }
   const reader = response.body?.getReader();
-  if (!reader) return undefined;
+  if (!reader) return new Uint8Array();
   const chunks: Uint8Array[] = [];
   let length = 0;
   try {
-    while (true) {
+    for (;;) {
       const next = await reader.read();
       if (next.done) break;
       length += next.value.length;
-      if (length > options.maxResponseBytes)
-        throw new WorkflowHttpError(undefined, "response_too_large");
+      if (length > maxBytes) throw tooLarge();
       chunks.push(next.value);
     }
-    if (length === 0) return undefined;
-    return JSON.parse(
-      new TextDecoder("utf-8", { fatal: true }).decode(Buffer.concat(chunks)),
-    );
   } finally {
     await reader.cancel();
   }
+  const bytes = new Uint8Array(length);
+  let at = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, at);
+    at += chunk.length;
+  }
+  return bytes;
 }
 
 /**

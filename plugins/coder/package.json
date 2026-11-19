@@ -84,6 +84,15 @@
             "PORT"
           ]
         },
+        "production": {
+          "install": "bun install --frozen-lockfile",
+          "build": "bun run build",
+          "start": "bun run start",
+          "port": "PORT",
+          "data": [
+            "server/data"
+          ]
+        },
         "setup": "bun install --frozen-lockfile",
         "checks": [
           "bun install --frozen-lockfile",
@@ -125,7 +134,8 @@
           "stack.language",
           "stack.starter",
           "stack.checks",
-          "stack.run"
+          "stack.run",
+          "stack.production"
         ],
         "start": {
           "workflow": "coder",
@@ -150,7 +160,8 @@
         "writes": [
           "stack.language",
           "stack.checks",
-          "stack.run"
+          "stack.run",
+          "stack.production"
         ],
         "start": {
           "workflow": "coder",
@@ -199,7 +210,7 @@
         "type": "text"
       },
       "stack.starter": {
-        "about": "The starter the project's code started from, when it started from one: web-app for a web app with a browser client and a server, bare for a TypeScript project on Bun that is not a web app. Builder saves it, with the starter's checks as stack.checks and how it starts as stack.run, when a first build names a starter, and writes the starter's files as the project's first code before the coder starts; code that started from an empty project has none.",
+        "about": "The starter the project's code started from, when it started from one: web-app for a web app with a browser client and a server, bare for a TypeScript project on Bun that is not a web app. Builder saves it, with the starter's checks as stack.checks, how it starts as stack.run and how it runs in production as stack.production, when a first build names a starter, and writes the starter's files as the project's first code before the coder starts; code that started from an empty project has none.",
         "type": "text"
       },
       "stack.checks": {
@@ -208,6 +219,10 @@
       },
       "stack.run": {
         "about": "How the project's program starts so a person can open it in a browser, as { \"command\": the command that starts it, \"port\": the environment variable naming the port it answers on, \"waitFor\": a line it prints once it is ready, if any, \"extraPorts\": any other variables it needs a free port in }. A project without one serves nothing to open.",
+        "type": "json"
+      },
+      "stack.production": {
+        "about": "How the project's program runs where people use it, as { \"install\": the command that installs its dependencies, \"build\": the command that builds it, \"start\": the command that starts it, \"port\": the environment variable naming the port it answers on, \"data\": the folders, from the project's root, that hold what people entered and must survive from one release to the next }. A project without one says nothing about how to publish it.",
         "type": "json"
       }
     }

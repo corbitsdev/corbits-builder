@@ -33,6 +33,7 @@ test("a project with saved code and no stack values reads, and keeps, the web st
     "stack.starter": "web-app",
     "stack.checks": web.checks.join("\n"),
     "stack.run": web.run,
+    "stack.production": web.production,
   });
   expect(added).toHaveLength(1);
 
@@ -52,6 +53,32 @@ test("a project with no code, imported code, or one that recorded how its code s
   const bare = memoryStore({ "stack.starter": null }, "built");
   expect(await readStoredValues(bare.store)).toEqual({ "stack.starter": null });
   expect(bare.added).toHaveLength(0);
+});
+
+test("a project that recorded its starter before projects recorded production gets the starter's, once", async () => {
+  const web = CATALOG.appStarters.get("web-app")!;
+  const recorded = { "stack.starter": "web-app", "stack.run": web.run };
+  const { store, added } = memoryStore({ ...recorded }, "built");
+
+  expect(await readStoredValues(store)).toEqual({
+    ...recorded,
+    "stack.production": web.production,
+  });
+  await readStoredValues(store);
+  expect(added).toHaveLength(1);
+
+  // A starter that declares no production, or one the project replaced, adds nothing.
+  const bare = memoryStore({ "stack.starter": "bare" }, "built");
+  expect(await readStoredValues(bare.store)).toEqual({
+    "stack.starter": "bare",
+  });
+  const kept = memoryStore(
+    { "stack.starter": "web-app", "stack.production": null },
+    "built",
+  );
+  await readStoredValues(kept.store);
+  expect(bare.added).toHaveLength(0);
+  expect(kept.added).toHaveLength(0);
 });
 
 for (const { metadata, expected } of [

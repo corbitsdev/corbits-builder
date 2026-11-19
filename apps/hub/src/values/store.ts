@@ -7,7 +7,11 @@ import {
   type ArtifactDb,
 } from "@corbits/artifacts";
 import type { DB } from "@intx/db";
-import { STACK_VALUES, starterValues } from "@corbits-builder/plugin";
+import {
+  STACK_VALUES,
+  starterValues,
+  type AppStarter,
+} from "@corbits-builder/plugin";
 import { AppVersionMetadata } from "@corbits-builder/schemas/artifact";
 import { project } from "../db/schema.ts";
 import { CATALOG } from "../plugins/catalog.ts";
@@ -72,19 +76,25 @@ export function projectValueStore(
  * The project's stored values, the one way they are read. A project a coder built with none of the
  * values that record how its code started was built before projects recorded them, from the starter
  * an installed plugin marks as the legacy default: it gets that starter's values, saved on this
- * first read. Imported code and code of unknown origin get none; their first coder establishes and
- * reports them as a build from no starter does.
+ * first read. Projects that recorded their starter before projects recorded how their code runs in
+ * production get that starter's production the same way, if the starter declares one. Imported
+ * code and code of unknown origin get none; their first coder establishes and reports them as a
+ * build from no starter does.
  */
 export async function readStoredValues(
   store: ValueStore,
   legacy = CATALOG.legacyStarter,
+  starters: ReadonlyMap<string, AppStarter> = CATALOG.appStarters,
 ) {
   const stored = await store.read();
-  if (
-    legacy === undefined ||
-    STACK_VALUES.some((name) => Object.hasOwn(stored, name)) ||
-    (await store.code()) !== "built"
-  )
-    return stored;
+  if (STACK_VALUES.some((name) => Object.hasOwn(stored, name))) {
+    const name = stored["stack.starter"];
+    const production =
+      typeof name === "string" ? starters.get(name)?.production : undefined;
+    if (Object.hasOwn(stored, "stack.production") || production === undefined)
+      return stored;
+    return store.add({ "stack.production": production });
+  }
+  if (legacy === undefined || (await store.code()) !== "built") return stored;
   return store.add(starterValues(legacy));
 }

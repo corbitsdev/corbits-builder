@@ -321,6 +321,13 @@ test("on build-web-app's steps, coder build waits for the person's go-ahead whil
           port: "CLIENT_PORT",
           extraPorts: ["PORT"],
         },
+        "stack.production": {
+          install: "bun install --frozen-lockfile",
+          build: "bun run build",
+          start: "bun run start",
+          port: "PORT",
+          data: ["server/data"],
+        },
       },
     }),
   );
