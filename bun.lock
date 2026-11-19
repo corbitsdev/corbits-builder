@@ -166,6 +166,13 @@
         "@intx/types": "workspace:*",
       },
     },
+    "packages/environment": {
+      "name": "@corbits-builder/environment",
+      "version": "0.1.0-rc.3",
+      "dependencies": {
+        "arktype": "catalog:",
+      },
+    },
     "packages/pdf": {
       "name": "@corbits/pdf",
       "version": "0.1.0-rc.2",
@@ -883,6 +890,8 @@
     "@corbits-builder/designer": ["@corbits-builder/designer@workspace:plugins/designer"],
 
     "@corbits-builder/desktop-app-skills": ["@corbits-builder/desktop-app-skills@workspace:plugins/desktop-app-skills"],
+
+    "@corbits-builder/environment": ["@corbits-builder/environment@workspace:packages/environment"],
 
     "@corbits-builder/hub": ["@corbits-builder/hub@workspace:apps/hub"],
 

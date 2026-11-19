@@ -1,0 +1,16 @@
+{
+  "name": "@corbits-builder/environment",
+  "version": "0.1.0-rc.3",
+  "private": true,
+  "description": "Reads a process's environment through one validated schema.",
+  "license": "SEE LICENSE IN ../../LICENSE.md",
+  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./inherit": "./src/inherit.ts"
+  },
+  "dependencies": {
+    "arktype": "catalog:"
+  }
+}

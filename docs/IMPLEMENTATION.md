@@ -135,6 +135,7 @@ Environment files, installs and build output never leave the workspace.
 | `packages/app-checks`     | `@corbits-builder/app-checks`  | The check scripts a coding or design workspace runs.             |
 | `plugins/*`               | `@corbits-builder/<folder>`    | One package per plugin: specialists, ready-made plans and packs. |
 | `packages/schemas`        | `@corbits-builder/schemas`     | Types and schemas shared by the hub, client and plugins.         |
+| `packages/environment`    | `@corbits-builder/environment` | Reading a process's environment through one validated schema.    |
 | `vendor/interchange`      |                                | Interchange at the pinned revision.                              |
 | `deploy/`                 |                                | The Dockerfile and Compose files.                                |
 | `scripts/`                |                                | Dev and verification scripts.                                    |
