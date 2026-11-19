@@ -1,7 +1,7 @@
 /**
- * The hub's one refresher of oauth_token credentials: model logins are renewed ahead of their
- * expiry on one timer, each by the provider entry its credential's `oauthProvider` names, and the
- * new token is pushed to whatever holds the old one.
+ * Renews the hub's oauth_token credentials, model logins and plugin sign-ins alike, before they
+ * expire. One timer renews them all, each through the provider entry its credential's
+ * `oauthProvider` names, and the new token is pushed to every run that has the old one.
  */
 import {
   createOAuthRefreshStore,
@@ -9,6 +9,7 @@ import {
   type OAuthLoginProviders,
   type OAuthRefreshStore,
 } from "@corbits/oauth-core/hub";
+import type { OAuthLoginProvider } from "@corbits/oauth-core";
 import type { DB } from "@intx/db";
 import { getDescendantTenants } from "@intx/db";
 import { credential, workflowRun } from "@intx/db/schema";
@@ -170,14 +171,22 @@ export const credentialNames =
       ).map(({ id, name }) => [id, name]),
     );
 
-/** Starts the one refresher. */
+/**
+ * Starts the refresher. The hub's own routes start and finish a plugin sign-in, so its provider
+ * entry has only the refresh call. The library's login config and exchange are left out, because
+ * the refresher never reads them.
+ */
 export function startTokenRefresher(options: {
   db: DB["db"];
   cipher: CredentialCipher;
   models: OAuthLoginProviders;
+  signIns: Readonly<Record<string, Pick<OAuthLoginProvider, "refresh">>>;
   pushRenewed: (tenantId: string, credentialId: string) => Promise<void>;
 }) {
-  const providers = options.models;
+  const providers: OAuthLoginProviders = {
+    ...options.models,
+    ...(options.signIns as OAuthLoginProviders),
+  };
   const store = createOAuthRefreshStore({
     db: options.db,
     cipher: options.cipher,
@@ -189,10 +198,16 @@ export function startTokenRefresher(options: {
       onRefreshed: ({ tenantId, credentialId }) =>
         options.pushRenewed(tenantId, credentialId),
       onError: (error, context) =>
-        log.warn("Model token refresh failed for {credentialId}: {error}", {
-          credentialId: context.credentialId ?? "unknown",
-          error: error instanceof Error ? error.message : String(error),
-        }),
+        // A plugin's token endpoint may return more than a code; only the kind of failure is kept.
+        context.provider?.startsWith(PLUGIN)
+          ? log.warn("Sign-in refresh failed for {credentialId}: {failure}", {
+              credentialId: context.credentialId ?? "unknown",
+              failure: error instanceof Error ? error.name : "unknown",
+            })
+          : log.warn("Model token refresh failed for {credentialId}: {error}", {
+              credentialId: context.credentialId ?? "unknown",
+              error: error instanceof Error ? error.message : String(error),
+            }),
     },
   );
   refresher.start();

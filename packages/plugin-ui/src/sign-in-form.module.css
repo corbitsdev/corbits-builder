@@ -1,0 +1,41 @@
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.hint {
+  margin: 0;
+  color: var(--wb-muted-foreground);
+}
+
+/* The account the sign-in connected, as the provider names it. */
+.account {
+  margin: 0;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.link {
+  align-self: flex-start;
+  color: var(--wb-foreground);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.warning {
+  margin: 0;
+  color: var(--wb-muted-foreground);
+}
+
+.fault {
+  margin: 0;
+  color: var(--wb-destructive);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}

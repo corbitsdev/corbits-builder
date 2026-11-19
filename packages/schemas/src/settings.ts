@@ -101,8 +101,9 @@ export const SettingsProviders = type({
 export type SettingsProviders = typeof SettingsProviders.infer;
 // Each credential name the installed plugins declare: what it is, the origin it is sent to and how,
 // and the plugins that declare it, by label. No key is in it.
-// An API key names the origin it is sent to; a server key names none, because the server's address
-// is saved with the key, and says provisioned when the hub makes it for a server a plugin rents.
+// An API key names the origin it is sent to, and has signIn when the person may sign in at the
+// provider to get it. A server key names no origin, because the server's address is saved with the
+// key. It has provisioned when the hub makes it for a server a plugin rents.
 const PluginCredential = type({
   "+": "reject",
   name: "string > 0",
@@ -113,6 +114,7 @@ const PluginCredential = type({
     header: "string > 0",
     "prefix?": "string > 0",
   }),
+  "signIn?": "true",
   plugins: type("string > 0").array(),
 }).or({
   "+": "reject",
@@ -196,3 +198,51 @@ export const PersonServerKeyRefusal = type({
   code: PersonServerKeyRefusalCode,
 });
 export type PersonServerKeyRefusal = typeof PersonServerKeyRefusal.infer;
+
+// Starts a sign-in at a plugin's provider from the credential name alone. The installed plugin that
+// declares the credential says where the person signs in and what the hub asks for there.
+export const PluginSignInStart = type({
+  "+": "reject",
+  credential: "string > 0",
+});
+export type PluginSignInStart = typeof PluginSignInStart.infer;
+// The sign-in the hub started: the id to track it by, and the provider URL to open. The URL
+// contains none of the hub's secrets.
+export const PluginSignInStarted = type({
+  "+": "reject",
+  id: "string > 0",
+  url: "string > 0",
+});
+export type PluginSignInStarted = typeof PluginSignInStarted.infer;
+// Why a sign-in did not save a credential: the provider refused or failed to give a token, the
+// browser that came back was not signed in to Builder as the person who started it, the sign-in
+// took too long, or a newer one for the same credential replaced it.
+export const PluginSignInFailure = type(
+  "'sign_in_refused' | 'sign_in_failed' | 'sign_in_other_session' | 'sign_in_expired' | 'sign_in_replaced'",
+);
+export type PluginSignInFailure = typeof PluginSignInFailure.infer;
+export const PluginSignInState = type({
+  "+": "reject",
+  status: "'pending' | 'done' | 'cancelled'",
+}).or({ "+": "reject", status: "'failed'", code: PluginSignInFailure });
+export type PluginSignInState = typeof PluginSignInState.infer;
+// Why the hub would not start a sign-in or disconnect one: no installed plugin signs in for that
+// name, a sign-in is saved for one project only, the provider would not register the hub, or the
+// tenant has no signed-in credential of that name.
+export const PluginSignInRefusalCode = type(
+  "'invalid_sign_in' | 'sign_in_unknown' | 'sign_in_project_only' | 'sign_in_unregistered' | 'sign_in_not_found'",
+);
+export type PluginSignInRefusalCode = typeof PluginSignInRefusalCode.infer;
+export const PluginSignInRefusal = type({
+  "+": "reject",
+  code: PluginSignInRefusalCode,
+});
+export type PluginSignInRefusal = typeof PluginSignInRefusal.infer;
+// Builder no longer has the disconnected credential. The provider may still have the grant when the
+// plugin declares no revoke URL or the provider did not confirm the revoke, so the person is told
+// to remove it there.
+export const PluginSignInDisconnected = type({
+  "+": "reject",
+  code: "'disconnected' | 'provider_may_hold_grant'",
+});
+export type PluginSignInDisconnected = typeof PluginSignInDisconnected.infer;

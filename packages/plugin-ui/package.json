@@ -17,6 +17,8 @@
     "./screen-actions": "./src/screen-actions.tsx",
     "./screen-card": "./src/screen-card.tsx",
     "./server-key-form": "./src/server-key-form.tsx",
+    "./sign-in": "./src/sign-in.ts",
+    "./sign-in-form": "./src/sign-in-form.tsx",
     "./steps": "./src/steps.tsx"
   },
   "dependencies": {

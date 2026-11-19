@@ -52,6 +52,15 @@ test("a tools module that uses a credential its plugin does not declare stops th
   );
 });
 
+test("a sign-in on a credential sent in a header stops the hub", async () => {
+  await expect(
+    changed("hoster", [
+      ["credentials", "hoster", "sends"],
+      { header: "x-api-key" },
+    ]),
+  ).rejects.toThrow("builder.credentials.hoster.signIn must be removed");
+});
+
 test("a provisioned credential that the person could do without stops the hub", async () => {
   await expect(
     changed("hoster", [
@@ -61,6 +70,27 @@ test("a provisioned credential that the person could do without stops the hub", 
   ).rejects.toThrow(
     'builder.credentials["hoster-server"].notNeededWhile must be removed',
   );
+});
+
+test("a sign-in address with a query, a user or plain http to another machine stops the hub", async () => {
+  for (const token of [
+    "https://hoster.example/oauth/token?client=x",
+    "https://someone@hoster.example/oauth/token",
+    "http://hoster.example/oauth/token",
+  ])
+    await expect(
+      changed("hoster", [["credentials", "hoster", "signIn", "token"], token]),
+    ).rejects.toThrow("an https address with no user, query or fragment");
+});
+
+test("a sign-in that names where its account is with anything but dot-separated keys stops the hub", async () => {
+  for (const name of ["info..team_name", "info[0]", "$.info.team_name", ""])
+    await expect(
+      changed("hoster", [
+        ["credentials", "hoster", "signIn", "account", "name"],
+        name,
+      ]),
+    ).rejects.toThrow("dot-separated keys of the token answer");
 });
 
 test("a provisioned credential with a form stops the hub", async () => {
@@ -115,6 +145,19 @@ const asked = (action: string) => ({
   plugin: "hoster",
   action,
   input: { instruction: `Do the hoster ${action} work the person asked for.` },
+});
+
+test("a missing provisioned credential never opens a form; a missing sign-in opens its own", async () => {
+  const nothing = holding([]);
+  expect(await executePause(catalog, nothing, asked("create"))).toEqual({
+    plugin: "hoster",
+    action: "account",
+    input: {},
+    resume: "rerun",
+  });
+  expect(await executePause(catalog, nothing, asked("publish"))).toBeTypeOf(
+    "string",
+  );
 });
 
 test("only the credentials the started agent's tools use hold an action back", async () => {

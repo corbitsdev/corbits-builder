@@ -26,6 +26,22 @@
         "about": "Hoster account",
         "origin": "https://api.hoster.example",
         "sends": "bearer",
+        "signIn": {
+          "authorize": "https://hoster.example/oauth/authorize",
+          "token": "https://hoster.example/oauth/token",
+          "revoke": "https://hoster.example/oauth/revoke",
+          "scopes": [
+            "machine:create",
+            "machine:delete"
+          ],
+          "client": {
+            "register": "https://hoster.example/oauth/register"
+          },
+          "account": {
+            "name": "info.team_name",
+            "id": "info.team_uuid"
+          }
+        },
         "screen": "account"
       },
       "hoster-server": {

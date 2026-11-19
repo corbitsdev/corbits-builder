@@ -64,6 +64,13 @@ import {
   createRenewedPush,
   startTokenRefresher,
 } from "./credentials/refresher.ts";
+import { mountPluginSignIns } from "./credentials/sign-in-routes.ts";
+import {
+  createPluginSignIns,
+  signInCredentials,
+} from "./credentials/sign-ins.ts";
+import { CATALOG } from "./plugins/catalog.ts";
+import { signInWording } from "./config/sign-in.ts";
 import { createWorkflowMailPersistence } from "./projects/report-mail.ts";
 import {
   createSpecialistEndNotices,
@@ -678,11 +685,33 @@ export async function createHubRuntime(env: HubEnvironment) {
       sidecarRouter,
       loadRunCredentials,
     });
+    const pluginSignIns = createPluginSignIns({
+      db: handle.db,
+      cipher: credentialCipher,
+      credentials: signInCredentials(CATALOG.credentials),
+      publicURL,
+      clientName: signInWording(config.naming.productName).clientName,
+      pushRevoke: (tenantId, credentialId) =>
+        void pushCredentialRevoke(
+          handle.db,
+          sidecarRouter,
+          tenantId,
+          credentialId,
+        ),
+      pushRenewed: (tenantId, credentialId) =>
+        void pushRenewed(tenantId, credentialId),
+    });
     mountPersonServerKeys(app, serverKeys, { db: handle.db, requireGrant });
+    mountPluginSignIns(app, pluginSignIns, {
+      db: handle.db,
+      requireGrant,
+      productName: config.naming.productName,
+    });
     const tokenRefresher = startTokenRefresher({
       db: handle.db,
       cipher: credentialCipher,
       models: modelProviders,
+      signIns: pluginSignIns.refreshers,
       pushRenewed,
     });
     app.route(

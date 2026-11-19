@@ -1,7 +1,8 @@
 /**
- * Interchange's provider and credential routes, and the hub's server key routes, as the credential
- * helpers and forms call them, for a workspace "ws" and its project "p1": every row kept in memory
- * and every request kept. For tests only.
+ * A stand-in for the routes the credential helpers and forms call, for a workspace "ws" and its
+ * project "p1", which also reads the workspace's rows: Interchange's provider and credential routes,
+ * with their rows kept in memory, the hub's server key routes, and how a plugin sign-in stands. It
+ * records every request. For tests only.
  */
 
 // The public half of the one key the stubbed server key routes hand out.
@@ -14,6 +15,7 @@ const stamp = { createdAt: "2026-01-01", updatedAt: "2026-01-01" };
 export function interchange() {
   const providers: Row[] = [];
   const credentials: Row[] = [];
+  const signInStates: Record<string, unknown>[] = [];
   // How the server key routes answer: a read finds no key, an ask for a key is given ISSUED_KEY, and
   // a connect answers with the refusal when one is set and as connected otherwise.
   const serverKeys = {
@@ -44,6 +46,13 @@ export function interchange() {
       sent.push({ method, path: url.pathname + url.search, body });
       const [, , , tenant = "", kind = "", ...rest] = url.pathname.split("/");
       if (kind === "server-keys") return serverKey(method, rest[1]);
+      // Each read of a sign-in takes the next of signInStates and then keeps answering with the last;
+      // with none set the sign-in is pending.
+      if (kind === "plugin-sign-ins") {
+        const state =
+          signInStates.length > 1 ? signInStates.shift() : signInStates[0];
+        return json(state ?? { status: "pending" });
+      }
       const rows = kind === "providers" ? providers : credentials;
       const id = rest.join("/");
       if (method === "GET" && id === "" && kind === "providers")
@@ -94,6 +103,7 @@ export function interchange() {
     providers,
     credentials,
     sent,
+    signInStates,
     serverKeys,
     restore: () => {
       globalThis.fetch = realFetch;

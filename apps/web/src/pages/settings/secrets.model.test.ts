@@ -17,9 +17,9 @@ const server: PluginCredentials["credentials"][number] = {
 };
 
 // A key the person typed, active.
-const key = { status: "active" };
+const key = { type: "api_key", status: "active" };
 // What a typed key's row says of how it was had.
-const typed = { kind: "key" } as const;
+const typed = { kind: "key", account: null, signedOut: false } as const;
 
 test("names each plugin key by the plugins that declare it and where it is sent, and leaves out other and inactive credentials", () => {
   const groups = secretGroups(
@@ -86,5 +86,140 @@ test("names each plugin key by the plugins that declare it and where it is sent,
         },
       ],
     },
+  ]);
+});
+
+const hoster: PluginCredentials["credentials"][number] = {
+  name: "hoster",
+  about: "Hoster account",
+  origin: "https://api.hoster.example",
+  sends: "bearer",
+  signIn: true,
+  plugins: ["Renter"],
+};
+const rented: PluginCredentials["credentials"][number] = {
+  name: "hoster-server",
+  about: "the key to the rented machine",
+  sends: "ssh",
+  provisioned: true,
+  plugins: ["Renter"],
+};
+
+// The hoster's signed-in account, as stored while the provider takes it or once it stopped.
+const signedIn = (status: string) => ({
+  id: "c1",
+  name: "plugin.hoster",
+  type: "oauth_token",
+  status,
+  providerId: "w",
+  metadata: { oauthProvider: "plugin.hoster", account: "Acme team" },
+});
+
+test("a signed-in key shows its account and offers no replacement", () => {
+  const [project] = secretGroups(
+    [
+      {
+        tenant: "project",
+        project: "Shop",
+        credentials: [signedIn("active")],
+        servers: {},
+      },
+    ],
+    [hoster],
+  );
+  expect(project?.secrets).toEqual([
+    {
+      id: "c1",
+      label: "Hoster account",
+      usedBy: { plugins: ["Renter"], host: "api.hoster.example" },
+      replaceable: false,
+      kind: "signedIn",
+      account: "Acme team",
+      signedOut: false,
+    },
+  ]);
+});
+
+test("a key a plugin made for a server it rented is listed as made, by the server it opens, and offers no replacement", () => {
+  const [project] = secretGroups(
+    [
+      {
+        tenant: "project",
+        project: "Shop",
+        credentials: [
+          {
+            id: "c2",
+            name: "plugin.hoster-server",
+            type: "api_key",
+            status: "active",
+            providerId: "h",
+          },
+        ],
+        servers: { h: "203.0.113.7" },
+      },
+    ],
+    [rented],
+  );
+  expect(project?.secrets).toEqual([
+    {
+      id: "c2",
+      label: "the key to the rented machine",
+      usedBy: { plugins: ["Renter"], host: "203.0.113.7" },
+      replaceable: false,
+      kind: "provisioned",
+      account: null,
+      signedOut: false,
+    },
+  ]);
+});
+
+test("a signed-in key the provider stopped taking stays listed as signed out, though a typed key that failed is left out", () => {
+  const [lapsed] = secretGroups(
+    [
+      {
+        tenant: "project",
+        project: "Shop",
+        credentials: [
+          signedIn("error"),
+          {
+            id: "c3",
+            name: "plugin.exa",
+            type: "api_key",
+            status: "error",
+            providerId: "x",
+          },
+        ],
+        servers: {},
+      },
+    ],
+    [hoster, exa],
+  );
+  expect(lapsed?.secrets).toMatchObject([
+    { id: "c1", kind: "signedIn", signedOut: true },
+  ]);
+});
+
+test("a key pasted for a credential that may also be signed in for is replaced like any typed key", () => {
+  const [project] = secretGroups(
+    [
+      {
+        tenant: "project",
+        project: "Shop",
+        credentials: [
+          {
+            id: "c1",
+            name: "plugin.hoster",
+            type: "api_key",
+            status: "active",
+            providerId: "w",
+          },
+        ],
+        servers: {},
+      },
+    ],
+    [hoster],
+  );
+  expect(project?.secrets).toMatchObject([
+    { id: "c1", kind: "key", replaceable: true, account: null },
   ]);
 });

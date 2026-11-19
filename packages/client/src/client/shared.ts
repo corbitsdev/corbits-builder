@@ -11,6 +11,7 @@ import type {
 } from "@corbits-builder/schemas/models";
 import type {
   PluginCredentials,
+  PluginSignInDisconnected,
   SettingsSave,
   SettingsRecord,
   SettingsReceipt,
@@ -151,6 +152,12 @@ export type ProductApiClient = Readonly<{
     name: string,
     signal?: AbortSignal,
   ): Promise<{ id: string }>;
+  /** Revokes the signed-in credential `name` at its provider and here. */
+  disconnectPluginSignIn(
+    tenantId: string,
+    name: string,
+    signal?: AbortSignal,
+  ): Promise<PluginSignInDisconnected>;
 
   projectArtifacts(
     tenantId: string,
