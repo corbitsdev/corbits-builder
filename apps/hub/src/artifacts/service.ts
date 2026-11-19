@@ -1,7 +1,16 @@
 import { stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { type } from "arktype";
-import { and, desc, eq, inArray, ne, notInArray, sql } from "drizzle-orm";
+import {
+  and,
+  desc,
+  eq,
+  inArray,
+  ne,
+  notInArray,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 import { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import {
   createArtifact,
@@ -1009,6 +1018,81 @@ export function createArtifactService(
     return row?.record ?? undefined;
   }
 
+  const runRows = (actor: Actor, projectId: string, matching?: SQL) =>
+    rawDB
+      .select({
+        runId: runAction.runId,
+        plugin: runAction.plugin,
+        action: runAction.action,
+        step: runAction.planStep,
+        concept: designConcept.label,
+        status: workflowRun.status,
+        address: workflowRun.address,
+        startedAt: workflowRun.createdAt,
+        endedAt: workflowRun.endedAt,
+        failureCode: workflowRun.failureCode,
+        failureMessage: workflowRun.failureMessage,
+        blocked: runAction.blocked,
+      })
+      .from(runAction)
+      .innerJoin(workflowRun, eq(workflowRun.id, runAction.runId))
+      .leftJoin(designConcept, eq(designConcept.runId, runAction.runId))
+      .where(
+        and(
+          eq(runAction.tenantId, actor.tenantId),
+          eq(runAction.projectId, projectId),
+          matching,
+        ),
+      )
+      .orderBy(desc(workflowRun.createdAt));
+
+  async function runsHeldOnApproval(tenantId: string) {
+    const held = await rawDB
+      .select({ runId: approval.anchorRunId })
+      .from(approval)
+      .where(
+        and(eq(approval.tenantId, tenantId), eq(approval.status, "pending")),
+      );
+    return new Set(held.map((row) => row.runId));
+  }
+
+  async function listedRun(
+    row: Awaited<ReturnType<typeof runRows>>[number],
+    heldOnApproval: ReadonlySet<string>,
+  ): Promise<ProjectRun> {
+    const live = row.status === "deployed" || row.status === "running";
+    const progress = tracker?.progress(row.runId);
+    // The latest call with what it was given, as far as its turn's calls are kept.
+    const latest = tracker?.of(row.runId).tools.at(-1);
+    let lastActivity = progress?.recent.at(-1);
+    if (latest) lastActivity = latest.name;
+    if (latest?.subject) lastActivity = `${latest.name} ${latest.subject}`;
+    const error =
+      row.status === "failed" ? await runFailure(runs, row) : undefined;
+    const run: ProjectRun = {
+      runId: row.runId,
+      plugin: row.plugin,
+      action: row.action,
+      status: row.status,
+      startedAt: row.startedAt.toISOString(),
+    };
+    if (row.step !== null) run.step = row.step;
+    if (row.concept !== null) run.concept = row.concept;
+    if (live)
+      run.state = inFlightState(
+        heldOnApproval.has(row.runId),
+        tracker?.of(row.runId)?.working,
+      );
+    // The hub has seen nothing of a run that has not begun its first turn.
+    if (live && run.state === "waiting" && !progress) run.state = "starting";
+    if (row.endedAt) run.endedAt = row.endedAt.toISOString();
+    if (lastActivity) run.lastActivity = lastActivity;
+    if (progress) run.lastActivityAt = progress.lastActivityAt;
+    if (error) run.error = error.message;
+    if (row.blocked !== null) run.blocked = row.blocked;
+    return run;
+  }
+
   return {
     async list(actor: Actor, projectId: string): Promise<ArtifactList> {
       await requireProject(actor, projectId, "read");
@@ -1444,82 +1528,37 @@ export function createArtifactService(
     // that ended.
     async runs(actor: Actor, projectId: string): Promise<ProjectRun[]> {
       await requireProject(actor, projectId, "read");
-      const rows = await rawDB
-        .select({
-          runId: runAction.runId,
-          plugin: runAction.plugin,
-          action: runAction.action,
-          step: runAction.planStep,
-          concept: designConcept.label,
-          status: workflowRun.status,
-          address: workflowRun.address,
-          startedAt: workflowRun.createdAt,
-          endedAt: workflowRun.endedAt,
-          failureCode: workflowRun.failureCode,
-          failureMessage: workflowRun.failureMessage,
-          blocked: runAction.blocked,
-        })
-        .from(runAction)
-        .innerJoin(workflowRun, eq(workflowRun.id, runAction.runId))
-        .leftJoin(designConcept, eq(designConcept.runId, runAction.runId))
-        .where(
-          and(
-            eq(runAction.tenantId, actor.tenantId),
-            eq(runAction.projectId, projectId),
-          ),
-        )
-        .orderBy(desc(workflowRun.createdAt))
-        .limit(RECENT_RUNS * 4);
-      const heldOnApproval = new Set(
-        (
-          await rawDB
-            .select({ runId: approval.anchorRunId })
-            .from(approval)
-            .where(
-              and(
-                eq(approval.tenantId, actor.tenantId),
-                eq(approval.status, "pending"),
-              ),
-            )
-        ).map((row) => row.runId),
-      );
+      const rows = await runRows(actor, projectId).limit(RECENT_RUNS * 4);
+      const held = await runsHeldOnApproval(actor.tenantId);
       let ended = 0;
       const listed: ProjectRun[] = [];
       for (const row of rows) {
         const live = row.status === "deployed" || row.status === "running";
         if (!live) ended += 1;
         if (!live && ended > RECENT_RUNS) continue;
-        const progress = tracker?.progress(row.runId);
-        // The latest call with what it was given, as far as its turn's calls are kept.
-        const latest = tracker?.of(row.runId).tools.at(-1);
-        let lastActivity = progress?.recent.at(-1);
-        if (latest) lastActivity = latest.name;
-        if (latest?.subject) lastActivity = `${latest.name} ${latest.subject}`;
-        const error =
-          row.status === "failed" ? await runFailure(runs, row) : undefined;
-        const run: ProjectRun = {
-          runId: row.runId,
-          plugin: row.plugin,
-          action: row.action,
-          status: row.status,
-          startedAt: row.startedAt.toISOString(),
-        };
-        if (row.step !== null) run.step = row.step;
-        if (row.concept !== null) run.concept = row.concept;
-        if (live)
-          run.state = inFlightState(
-            heldOnApproval.has(row.runId),
-            tracker?.of(row.runId)?.working,
-          );
-        // The hub has seen nothing of a run that has not begun its first turn.
-        if (live && run.state === "waiting" && !progress)
-          run.state = "starting";
-        if (row.endedAt) run.endedAt = row.endedAt.toISOString();
-        if (lastActivity) run.lastActivity = lastActivity;
-        if (progress) run.lastActivityAt = progress.lastActivityAt;
-        if (error) run.error = error.message;
-        if (row.blocked !== null) run.blocked = row.blocked;
-        listed.push(run);
+        listed.push(await listedRun(row, held));
+      }
+      return listed;
+    },
+
+    // The newest run of each of these plan steps, however long ago it ended: the plan reads where
+    // a step stands from it.
+    async stepRuns(
+      actor: Actor,
+      projectId: string,
+      steps: readonly string[],
+    ): Promise<ProjectRun[]> {
+      await requireProject(actor, projectId, "read");
+      const rows = await runRows(
+        actor,
+        projectId,
+        inArray(runAction.planStep, [...steps]),
+      );
+      const held = await runsHeldOnApproval(actor.tenantId);
+      const listed: ProjectRun[] = [];
+      for (const row of rows) {
+        if (listed.some((run) => run.step === row.step)) continue;
+        listed.push(await listedRun(row, held));
       }
       return listed;
     },
