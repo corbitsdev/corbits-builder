@@ -1,0 +1,16 @@
+{
+  "name": "@corbits-builder/publish-contract",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The publish contract every target plugin keeps: the values a release, a holding and a take-down are recorded under, and the checks and steps every publish plan shares.",
+  "license": "SEE LICENSE IN ../../LICENSE.md",
+  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
+  "type": "module",
+  "exports": {
+    ".": "./src/publish.ts"
+  },
+  "dependencies": {
+    "@corbits-builder/plugin": "workspace:*",
+    "arktype": "catalog:"
+  }
+}

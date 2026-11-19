@@ -69,6 +69,7 @@
         "@corbits-builder/environment": "workspace:*",
         "@corbits-builder/plugin": "workspace:*",
         "@corbits-builder/plugin-host": "workspace:*",
+        "@corbits-builder/publish-contract": "workspace:*",
         "@corbits-builder/schemas": "workspace:*",
         "@corbits/agent-token": "0.2.2",
         "@corbits/artifacts": "0.3.0",
@@ -222,6 +223,14 @@
         "react-dom": "19.3.0",
       },
     },
+    "packages/publish-contract": {
+      "name": "@corbits-builder/publish-contract",
+      "version": "0.1.0",
+      "dependencies": {
+        "@corbits-builder/plugin": "workspace:*",
+        "arktype": "catalog:",
+      },
+    },
     "packages/schemas": {
       "name": "@corbits-builder/schemas",
       "version": "0.1.0-rc.3",
@@ -342,6 +351,25 @@
       "devDependencies": {
         "@types/react": "19.3.0",
       },
+    },
+    "plugins/publish": {
+      "name": "@corbits-builder/publish",
+      "version": "0.1.0",
+      "dependencies": {
+        "@corbits-builder/plugin": "workspace:*",
+        "@corbits-builder/plugin-ui": "workspace:*",
+        "@corbits-builder/publish-contract": "workspace:*",
+        "@corbits/react-ui": "0.5.1",
+        "arktype": "catalog:",
+        "react": "19.3.0",
+      },
+      "devDependencies": {
+        "@types/react": "19.3.0",
+      },
+    },
+    "plugins/publish-skills": {
+      "name": "@corbits-builder/publish-skills",
+      "version": "0.1.0-rc.3",
     },
     "plugins/react-router-skills": {
       "name": "@corbits-builder/react-router-skills",
@@ -915,6 +943,12 @@
     "@corbits-builder/presenter": ["@corbits-builder/presenter@workspace:plugins/presenter"],
 
     "@corbits-builder/project": ["@corbits-builder/project@workspace:plugins/project"],
+
+    "@corbits-builder/publish": ["@corbits-builder/publish@workspace:plugins/publish"],
+
+    "@corbits-builder/publish-contract": ["@corbits-builder/publish-contract@workspace:packages/publish-contract"],
+
+    "@corbits-builder/publish-skills": ["@corbits-builder/publish-skills@workspace:plugins/publish-skills"],
 
     "@corbits-builder/react-router-skills": ["@corbits-builder/react-router-skills@workspace:plugins/react-router-skills"],
 

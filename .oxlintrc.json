@@ -140,12 +140,14 @@
                   "!@corbits-builder/schemas/**",
                   "!@corbits-builder/app-checks",
                   "!@corbits-builder/app-checks/**",
+                  "!@corbits-builder/publish-contract",
+                  "!@corbits-builder/publish-contract/**",
                   "!@corbits-builder/hub",
                   "!@corbits-builder/hub/**",
                   "!@corbits-builder/plugin-host",
                   "!@corbits-builder/plugin-host/**"
                 ],
-                "message": "A plugin never imports another plugin; what plugins share belongs in @corbits-builder/plugin, @corbits-builder/plugin-ui, @corbits-builder/schemas or @corbits-builder/app-checks."
+                "message": "A plugin never imports another plugin; what plugins share belongs in @corbits-builder/plugin, @corbits-builder/plugin-ui, @corbits-builder/schemas, @corbits-builder/app-checks or @corbits-builder/publish-contract."
               }
             ]
           }
@@ -178,12 +180,14 @@
                   "!@corbits-builder/schemas/**",
                   "!@corbits-builder/app-checks",
                   "!@corbits-builder/app-checks/**",
+                  "!@corbits-builder/publish-contract",
+                  "!@corbits-builder/publish-contract/**",
                   "!@corbits-builder/hub",
                   "!@corbits-builder/hub/**",
                   "!@corbits-builder/plugin-host",
                   "!@corbits-builder/plugin-host/**"
                 ],
-                "message": "A plugin never imports another plugin; what plugins share belongs in @corbits-builder/plugin, @corbits-builder/plugin-ui, @corbits-builder/schemas or @corbits-builder/app-checks."
+                "message": "A plugin never imports another plugin; what plugins share belongs in @corbits-builder/plugin, @corbits-builder/plugin-ui, @corbits-builder/schemas, @corbits-builder/app-checks or @corbits-builder/publish-contract."
               },
               {
                 "regex": "^(\\.\\./){1}",
@@ -217,12 +221,14 @@
                   "!@corbits-builder/schemas/**",
                   "!@corbits-builder/app-checks",
                   "!@corbits-builder/app-checks/**",
+                  "!@corbits-builder/publish-contract",
+                  "!@corbits-builder/publish-contract/**",
                   "!@corbits-builder/hub",
                   "!@corbits-builder/hub/**",
                   "!@corbits-builder/plugin-host",
                   "!@corbits-builder/plugin-host/**"
                 ],
-                "message": "A plugin never imports another plugin; what plugins share belongs in @corbits-builder/plugin, @corbits-builder/plugin-ui, @corbits-builder/schemas or @corbits-builder/app-checks."
+                "message": "A plugin never imports another plugin; what plugins share belongs in @corbits-builder/plugin, @corbits-builder/plugin-ui, @corbits-builder/schemas, @corbits-builder/app-checks or @corbits-builder/publish-contract."
               },
               {
                 "regex": "^(\\.\\./){2}",
@@ -256,12 +262,14 @@
                   "!@corbits-builder/schemas/**",
                   "!@corbits-builder/app-checks",
                   "!@corbits-builder/app-checks/**",
+                  "!@corbits-builder/publish-contract",
+                  "!@corbits-builder/publish-contract/**",
                   "!@corbits-builder/hub",
                   "!@corbits-builder/hub/**",
                   "!@corbits-builder/plugin-host",
                   "!@corbits-builder/plugin-host/**"
                 ],
-                "message": "A plugin never imports another plugin; what plugins share belongs in @corbits-builder/plugin, @corbits-builder/plugin-ui, @corbits-builder/schemas or @corbits-builder/app-checks."
+                "message": "A plugin never imports another plugin; what plugins share belongs in @corbits-builder/plugin, @corbits-builder/plugin-ui, @corbits-builder/schemas, @corbits-builder/app-checks or @corbits-builder/publish-contract."
               },
               {
                 "regex": "^(\\.\\./){3}",
@@ -295,12 +303,14 @@
                   "!@corbits-builder/schemas/**",
                   "!@corbits-builder/app-checks",
                   "!@corbits-builder/app-checks/**",
+                  "!@corbits-builder/publish-contract",
+                  "!@corbits-builder/publish-contract/**",
                   "!@corbits-builder/hub",
                   "!@corbits-builder/hub/**",
                   "!@corbits-builder/plugin-host",
                   "!@corbits-builder/plugin-host/**"
                 ],
-                "message": "A plugin never imports another plugin; what plugins share belongs in @corbits-builder/plugin, @corbits-builder/plugin-ui, @corbits-builder/schemas or @corbits-builder/app-checks."
+                "message": "A plugin never imports another plugin; what plugins share belongs in @corbits-builder/plugin, @corbits-builder/plugin-ui, @corbits-builder/schemas, @corbits-builder/app-checks or @corbits-builder/publish-contract."
               },
               {
                 "regex": "^(\\.\\./){4}",
@@ -334,12 +344,14 @@
                   "!@corbits-builder/schemas/**",
                   "!@corbits-builder/app-checks",
                   "!@corbits-builder/app-checks/**",
+                  "!@corbits-builder/publish-contract",
+                  "!@corbits-builder/publish-contract/**",
                   "!@corbits-builder/hub",
                   "!@corbits-builder/hub/**",
                   "!@corbits-builder/plugin-host",
                   "!@corbits-builder/plugin-host/**"
                 ],
-                "message": "A plugin never imports another plugin; what plugins share belongs in @corbits-builder/plugin, @corbits-builder/plugin-ui, @corbits-builder/schemas or @corbits-builder/app-checks."
+                "message": "A plugin never imports another plugin; what plugins share belongs in @corbits-builder/plugin, @corbits-builder/plugin-ui, @corbits-builder/schemas, @corbits-builder/app-checks or @corbits-builder/publish-contract."
               },
               {
                 "regex": "^(\\.\\./){5}",

@@ -16,6 +16,10 @@ export default defineWorkflow({
     says: {
       doing: "Taking it down from Hoster",
       done: "Taken down from Hoster",
+      removes: {
+        what: "The machine rented at Hoster and the app on it.",
+        entered: "What people entered in the app goes with the machine.",
+      },
     },
     fields: {
       instruction: { about: "What to do." },

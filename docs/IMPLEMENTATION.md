@@ -123,23 +123,24 @@ Environment files, installs and build output never leave the workspace.
 
 ## Package layout
 
-| Path                      | Package                        | What it holds                                                    |
-| ------------------------- | ------------------------------ | ---------------------------------------------------------------- |
-| `apps/hub`                | `@corbits-builder/hub`         | The server: routes, services, hub tools, provisioning, live app. |
-| `packages/client`         | `@corbits-builder/client`      | The typed client for the hub's API.                              |
-| `apps/web`                | `@corbits-builder/web`         | The interface, built only on the client and the schemas.         |
-| `workflows/coordinator`   | `@corbits-builder/coordinator` | The coordinator's agent, prompt and workflow.                    |
-| `packages/plugin`         | `@corbits-builder/plugin`      | The plugin contract every plugin and the hub import.             |
-| `packages/plugin-host`    | `@corbits-builder/plugin-host` | Loading, searching, checking and starting plugins; the plan.     |
-| `packages/plugin-ui`      | `@corbits-builder/plugin-ui`   | The shared pieces a screen's view draws with.                    |
-| `packages/app-checks`     | `@corbits-builder/app-checks`  | The check scripts a coding or design workspace runs.             |
-| `plugins/*`               | `@corbits-builder/<folder>`    | One package per plugin: specialists, ready-made plans and packs. |
-| `packages/schemas`        | `@corbits-builder/schemas`     | Types and schemas shared by the hub, client and plugins.         |
-| `vendor/interchange`      |                                | Interchange at the pinned revision.                              |
-| `deploy/`                 |                                | The Dockerfile and Compose files.                                |
-| `scripts/`                |                                | Dev and verification scripts.                                    |
-| `skills/`                 |                                | Agent skills to install Builder and drive it through its API.    |
-| `test/integration`, `e2e` |                                | Cross-module and full-stack tests.                               |
+| Path                        | Package                             | What it holds                                                    |
+| --------------------------- | ----------------------------------- | ---------------------------------------------------------------- |
+| `apps/hub`                  | `@corbits-builder/hub`              | The server: routes, services, hub tools, provisioning, live app. |
+| `packages/client`           | `@corbits-builder/client`           | The typed client for the hub's API.                              |
+| `apps/web`                  | `@corbits-builder/web`              | The interface, built only on the client and the schemas.         |
+| `workflows/coordinator`     | `@corbits-builder/coordinator`      | The coordinator's agent, prompt and workflow.                    |
+| `packages/plugin`           | `@corbits-builder/plugin`           | The plugin contract every plugin and the hub import.             |
+| `packages/plugin-host`      | `@corbits-builder/plugin-host`      | Loading, searching, checking and starting plugins; the plan.     |
+| `packages/plugin-ui`        | `@corbits-builder/plugin-ui`        | The shared pieces a screen's view draws with.                    |
+| `packages/app-checks`       | `@corbits-builder/app-checks`       | The check scripts a coding or design workspace runs.             |
+| `packages/publish-contract` | `@corbits-builder/publish-contract` | The publish contract every target plugin keeps.                  |
+| `plugins/*`                 | `@corbits-builder/<folder>`         | One package per plugin: specialists, ready-made plans and packs. |
+| `packages/schemas`          | `@corbits-builder/schemas`          | Types and schemas shared by the hub, client and plugins.         |
+| `vendor/interchange`        |                                     | Interchange at the pinned revision.                              |
+| `deploy/`                   |                                     | The Dockerfile and Compose files.                                |
+| `scripts/`                  |                                     | Dev and verification scripts.                                    |
+| `skills/`                   |                                     | Agent skills to install Builder and drive it through its API.    |
+| `test/integration`, `e2e`   |                                     | Cross-module and full-stack tests.                               |
 
 The coordinator and each plugin with agent code declare their agents and
 workflows with Interchange's definition exports (`@intx/agent/authoring`,

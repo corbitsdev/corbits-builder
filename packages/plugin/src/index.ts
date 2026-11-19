@@ -12,12 +12,17 @@ import { Tier } from "@corbits-builder/schemas/models";
 import type {
   PlanStepStateName,
   ReadyPlanOffer,
+  Removes,
   ScreenRender,
   ScreenStatus,
 } from "@corbits-builder/schemas/project";
 import { SpecialistInstruction } from "@corbits-builder/schemas/native-specialist";
 
-export type { ScreenStatus };
+export type { ReadyPlanOffer, Removes, ScreenStatus };
+
+/** The value an arktype type checked, or undefined when the check failed. */
+export const parsed = <T>(checked: T | ArkErrors) =>
+  checked instanceof type.errors ? undefined : checked;
 
 // Something true of the project that Builder works out from what it stores, such as "app_exists". A
 // workflow's fact may name one of its input fields, as "filed:{kind}", for the value passed there.
@@ -199,6 +204,7 @@ const Common = type({
   // else the one that says it is the default. Exactly one of them must.
   handle: "string > 0",
   "default?": "true",
+  // The groups discover finds it by.
   groups: "string[] > 0",
   when: "string > 0",
   unless: "string > 0",
@@ -672,6 +678,13 @@ export const ReadyPlanBuilder = Common.merge({
   steps: ReadyPlanStepBuilder.array().atLeastLength(1),
   // The fact that ends the plan. A plan with none is followed until the coordinator leaves it.
   "ends?": "string > 0",
+  // The workflow action that removes what the plan made. It starts with no input, so nothing the
+  // coordinator writes can widen what the person agreed to remove, and the person is told what it
+  // removes from that action's definition.
+  "takeDown?": { "+": "reject", plugin: "string > 0", action: "string > 0" },
+  // What the person reads, in plain words, before the plan first does its work for the project:
+  // where that work goes and the one thing they should know first.
+  "firstRun?": "string > 0",
 });
 export type ReadyPlanBuilder = typeof ReadyPlanBuilder.infer;
 
@@ -739,7 +752,9 @@ export type Describe<Fields extends PropertyKey> = {
 // What a person reads of a started action while it works and once done, such as "Writing the
 // build plan". {thing} stands for the document or concept its work is about; a phrase that names
 // one reads as its role's status while none is known.
-export type Says = { doing: string; done: string };
+// An action a ready-made plan names as its takeDown also says what it removes, which the person
+// reads before agreeing.
+export type Says = { doing: string; done: string; removes?: Removes };
 
 // What a person reads of a screen in the conversation's map: its label from the input it was
 // opened with, and what an answer chose.

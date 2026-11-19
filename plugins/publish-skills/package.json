@@ -1,0 +1,19 @@
+{
+  "name": "@corbits-builder/publish-skills",
+  "version": "0.1.0-rc.3",
+  "private": true,
+  "description": "How the coder makes an app ready to publish anywhere: production commands, data folders, accounts, configuration and the README.",
+  "license": "SEE LICENSE IN ../../LICENSE.md",
+  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
+  "type": "module",
+  "builder": {
+    "handle": "publish-skills",
+    "runs": "skills",
+    "extends": "coder",
+    "actions": [
+      "change"
+    ],
+    "when": "The app is being made ready to publish, or a publish was held back because the app does not install, build or start the way the project's stack.production says.",
+    "skills": "./skills"
+  }
+}

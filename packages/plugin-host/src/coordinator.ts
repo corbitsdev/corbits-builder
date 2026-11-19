@@ -855,6 +855,16 @@ export type ExecutePause = {
   resume: "result" | "rerun";
 };
 
+// Whether a ready-made plan names action as its takeDown. A takeDown action provisions its plugin's
+// credential only to start without it, not to make one, so it is not offered as a way to make it.
+const takesDown = (catalog: Catalog, action: Action) =>
+  catalog.plugins
+    .filter(isReadyPlan)
+    .some(
+      ({ builder: { takeDown } }) =>
+        takeDown?.plugin === action.plugin && takeDown.action === action.action,
+    );
+
 // The input a screen takes to make these facts true: each templated fact it returns, such as
 // "approved:{kinds}", fills its field with what each fact it makes names, as { kinds: ["build_plan"] }.
 const inputMaking = (screen: ScreenAction, facts: readonly Fact[]) =>
@@ -946,6 +956,7 @@ export async function executePause(
         plugin.actions
           .filter(isWorkflowAction)
           .filter(({ builder }) => builder.provisions?.includes(name))
+          .filter((maker) => !takesDown(catalog, maker))
           .map((maker) => maker.name),
       );
     const form = catalog.screens.find(
