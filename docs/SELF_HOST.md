@@ -48,12 +48,11 @@ them read those folders and never write them, and name their programs by full
 path. Builder refuses a folder that holds its data folder or sits inside it.
 None is listed by default.
 
-`PLUGIN_HINT`, which `.env.hub.example` does not list, has the hub add a note
-to each message naming the plugin screens its words suggest, so the
-coordinator finds a picker it might otherwise not look for: `triggers` matches
-each plugin's trigger words, `fields` its handle, groups, `when`, examples and
-descriptions, and `off` (the default) adds nothing. Any other value stops
-startup.
+`PLUGIN_HINT` has the hub add a note to each message naming the plugin screens
+its words suggest, so the coordinator finds a picker it might otherwise not
+look for: `triggers` matches each plugin's trigger words, `fields` its handle,
+groups, `when`, examples and descriptions, and `off` (the default) adds
+nothing. Any other value stops startup.
 
 `BUILDER_VERSION` picks the published images
 (`ghcr.io/corbitsdev/corbits-builder-hub` and `-sidecar`): `rc` (default, the

@@ -23,7 +23,7 @@ How a request becomes work is in
 | `packages/app-checks`   | The check scripts a coding or design workspace runs, which the coder and the designer ship.                                                                                                                                                                                                    |
 | `packages/schemas`      | Types and schemas shared by the hub, the client and the plugins.                                                                                                                                                                                                                               |
 | `packages/environment`  | How a process reads its environment: one validated schema per process, in its `environment.ts`.                                                                                                                                                                                                |
-| `scripts/`              | Dev and verification scripts: pin and vendor checks, the commit check, the Google sign-in emulator, React UI API generation and the repository import (`bun run import:repo`, which writes a directory as a project file the import reads).                                                    |
+| `scripts/`              | Dev and verification scripts: pin, vendor and environment checks, the commit check, the Google sign-in emulator, React UI API generation and the repository import (`bun run import:repo`, which writes a directory as a project file the import reads).                                       |
 | `deploy/`               | The Dockerfile and Compose files ([SELF_HOST.md](https://github.com/corbitsdev/corbits-builder/blob/main/docs/SELF_HOST.md)).                                                                                                                                                                  |
 
 Each role runs on the model setting its plugin declares, and the person's
@@ -529,10 +529,11 @@ refuses a look whose `theme` is not a folder under `themes/`.
 bun run lint
 bun run format:check
 bun run typecheck
-bun run test          # unit and integration tests, plugins included
-bun run pins:verify   # pinned dependency versions
-bun run vendor:verify # vendored Interchange matches its manifest
-bun run test:e2e      # end-to-end tests against an isolated Postgres
+bun run test               # unit and integration tests, plugins included
+bun run pins:verify        # pinned dependency versions
+bun run vendor:verify      # vendored Interchange matches its manifest
+bun run environment:verify # the example env files match the environment schemas
+bun run test:e2e           # end-to-end tests against an isolated Postgres
 ```
 
 `bun run test:e2e` reads the `E2E_DB_*` values from `.env.hub`. Start its
@@ -568,25 +569,26 @@ installation instead.
 
 ## Other scripts
 
-| Script                    | What it does                                                                                                                                                                             |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `bun run start`           | Starts the hub alone, without the migrations or the UI dev server.                                                                                                                       |
-| `bun run dev:hub`         | Starts the hub alone for the UI dev server on `UI_PORT` (from the shell; `bun run dev` also reads it from `.env.web`).                                                                   |
-| `bun run dev:web`         | Starts the UI dev server alone.                                                                                                                                                          |
-| `bun run dev:stop`        | Stops every Builder process on this machine (hubs, migrations, UI dev servers, what they spawned) and names whatever else holds a port `bun run dev` needs; `--dry-run` only lists them. |
-| `bun run format`          | Formats the tree with bun fmt.                                                                                                                                                           |
-| `bun run lint`            | oxlint, warnings are errors.                                                                                                                                                             |
-| `bun run typecheck`       | Typechecks the hub, the client API and the UI.                                                                                                                                           |
-| `bun run db:migrate`      | Applies the migrations.                                                                                                                                                                  |
-| `bun run db:generate`     | Generates a migration from `apps/hub/src/db/schema.ts`.                                                                                                                                  |
-| `bun run docker:up`       | Builds and starts Builder in Docker ([SELF_HOST.md](https://github.com/corbitsdev/corbits-builder/blob/main/docs/SELF_HOST.md)).                                                         |
-| `bun run docker:sidecar`  | Builds the sidecar Docker image.                                                                                                                                                         |
-| `bun run auth:bootstrap`  | Migrates and creates the `BOOTSTRAP_*` machine account and workspace.                                                                                                                    |
-| `bun run auth:emulate`    | Starts a loopback Google sign-in emulator (`GOOGLE_EMULATE_URL` in `.env.hub.example`).                                                                                                  |
-| `bun run dev:seed`        | Seeds dummy projects (`habit-tracker`, `field-service-dispatch`, `clinical-trial-intake`) at a chosen point in their work.                                                               |
-| `bun run import:repo`     | Writes a directory, usually a git repository, as the project file **Import project** reads and names the Builder documents it lacks (`--help` lists the options).                        |
-| `bun run vendor:verify`   | Checks `vendor/interchange` matches its pinned upstream commit.                                                                                                                          |
-| `bun run skills:react-ui` | Regenerates the designer's `@corbits/react-ui` API reference.                                                                                                                            |
+| Script                       | What it does                                                                                                                                                                             |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bun run start`              | Starts the hub alone, without the migrations or the UI dev server.                                                                                                                       |
+| `bun run dev:hub`            | Starts the hub alone for the UI dev server on `UI_PORT` (from the shell; `bun run dev` also reads it from `.env.web`).                                                                   |
+| `bun run dev:web`            | Starts the UI dev server alone.                                                                                                                                                          |
+| `bun run dev:stop`           | Stops every Builder process on this machine (hubs, migrations, UI dev servers, what they spawned) and names whatever else holds a port `bun run dev` needs; `--dry-run` only lists them. |
+| `bun run format`             | Formats the tree with bun fmt.                                                                                                                                                           |
+| `bun run lint`               | oxlint, warnings are errors.                                                                                                                                                             |
+| `bun run typecheck`          | Typechecks the hub, the client API and the UI.                                                                                                                                           |
+| `bun run db:migrate`         | Applies the migrations.                                                                                                                                                                  |
+| `bun run db:generate`        | Generates a migration from `apps/hub/src/db/schema.ts`.                                                                                                                                  |
+| `bun run docker:up`          | Builds and starts Builder in Docker ([SELF_HOST.md](https://github.com/corbitsdev/corbits-builder/blob/main/docs/SELF_HOST.md)).                                                         |
+| `bun run docker:sidecar`     | Builds the sidecar Docker image.                                                                                                                                                         |
+| `bun run auth:bootstrap`     | Migrates and creates the `BOOTSTRAP_*` machine account and workspace.                                                                                                                    |
+| `bun run auth:emulate`       | Starts a loopback Google sign-in emulator (`GOOGLE_EMULATE_URL` in `.env.hub.example`).                                                                                                  |
+| `bun run dev:seed`           | Seeds dummy projects (`habit-tracker`, `field-service-dispatch`, `clinical-trial-intake`) at a chosen point in their work.                                                               |
+| `bun run import:repo`        | Writes a directory, usually a git repository, as the project file **Import project** reads and names the Builder documents it lacks (`--help` lists the options).                        |
+| `bun run vendor:verify`      | Checks `vendor/interchange` matches its pinned upstream commit.                                                                                                                          |
+| `bun run environment:verify` | Checks `.env.hub.example` and `.env.web.example` document every variable their processes read, and only those.                                                                           |
+| `bun run skills:react-ui`    | Regenerates the designer's `@corbits/react-ui` API reference.                                                                                                                            |
 
 ## Environment variables
 
@@ -600,10 +602,12 @@ read returns down. A process that finds anything wrong stops and lists every
 variable to fix, never their values.
 
 A new variable goes in its process's schema and in `.env.hub.example` or
-`.env.web.example`. `bun run lint` refuses a read of `process.env`, `Bun.env`
-or `import.meta.env` anywhere else, and `bun run boundaries` refuses an
-import of `@corbits-builder/environment` outside an `environment.ts`. A child
-process gets `PATH`, `HOME` or `TMPDIR` through `inherit` from
+`.env.web.example`, as a set line when it is required and otherwise as a
+commented one; `bun run environment:verify` fails until they agree.
+`bun run lint` refuses a read of `process.env`, `Bun.env` or `import.meta.env`
+anywhere else, and `bun run boundaries` refuses an import of
+`@corbits-builder/environment` outside an `environment.ts`. A child process
+gets `PATH`, `HOME` or `TMPDIR` through `inherit` from
 `@corbits-builder/environment/inherit`.
 
 ## Migrations
