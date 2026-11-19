@@ -37,11 +37,8 @@ const whileWorking = {
 function Page({ children }: { children: ReactNode }) {
   return (
     <div style={{ position: "relative", height: "100vh" }}>
-      <div className={room.page}>
-        <div
-          className={room.pageScreen}
-          style={{ overflow: "auto", background: "var(--wb-frame)" }}
-        >
+      <div className={room.page} style={{ background: "var(--wb-frame)" }}>
+        <div className={room.pageScreen} style={{ overflow: "auto" }}>
           <article
             style={{
               width: "min(640px, calc(100% - 32px))",
