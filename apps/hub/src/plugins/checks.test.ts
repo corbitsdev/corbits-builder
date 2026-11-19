@@ -1,6 +1,17 @@
 import { expect, test } from "bun:test";
 import type { ArtifactListItem } from "@corbits-builder/schemas/artifact";
-import { savedProject, type Row } from "./checks.ts";
+import { isCheckAction } from "@corbits-builder/plugin-host/catalog";
+import { CATALOG } from "./catalog.ts";
+import { runLeaves, savedProject, type Row } from "./checks.ts";
+
+const appArtifact: ArtifactListItem = {
+  artifactId: "app",
+  kind: "app",
+  title: "App",
+  version: 1,
+  sha256: "a".repeat(64),
+  filedAt: new Date(0).toISOString(),
+};
 
 test("a check's command reaches the hosts the project's builds reach", async () => {
   const asked: boolean[] = [];
@@ -80,4 +91,106 @@ test("a check's approval means what the project's facts mean, handed-over approv
   );
   expect(await approvedFor({}, 1)).toBe(true);
   expect(await approvedFor({}, undefined)).toBe(false);
+});
+
+// The project at an app version with its stored values, and a record of an installed check run on it.
+const checkedProject = (
+  commit: string,
+  files: Record<string, string>,
+  stored: Record<string, unknown>,
+  rows: Row[] = [],
+) =>
+  savedProject({
+    listed: { artifacts: [{ ...appArtifact }], preferences: {} },
+    app: { commit, bundle: { files } },
+    state: { styles: undefined, stored, materials: [] },
+    rows,
+    readDocument: async () => "",
+    runCommand: async () => ({
+      step: 0,
+      exitCode: 0,
+      output: "",
+      timedOut: false,
+    }),
+  });
+
+// An installed check, as the hub runs it.
+const installed = (plugin: string, action: string) => {
+  const check = CATALOG.actions
+    .filter(isCheckAction)
+    .find((each) => each.plugin === plugin && each.action === action);
+  if (!check) throw new Error(`${plugin} ${action} is not installed`);
+  return check;
+};
+
+// One run of an installed check on the project by whoever triggeredBy names, as the hub keeps it:
+// the record it adds and the note the coordinator may be sent of it, or nothing.
+const ranBy = async (
+  triggeredBy: string,
+  plugin: string,
+  action: string,
+  project: ReturnType<typeof checkedProject>,
+) => {
+  const check = installed(plugin, action);
+  const { saved, versions } = project.view();
+  const outcome = await check.run(
+    { ...saved, check: () => Promise.reject(new Error("no ready-made check")) },
+    {},
+  );
+  const left = runLeaves(
+    check,
+    { projectId: "project", input: {} },
+    { id: `${plugin}-${action}`, tenantId: "tenant", triggeredBy },
+    { outcome, versions },
+  );
+  return (
+    left && {
+      row: { ...left.record, skippedBy: null, createdAt: new Date() } as Row,
+      note: left.note,
+    }
+  );
+};
+
+// The record a run the coordinator asked for adds, which every run it asks for does.
+const recorded = async (
+  plugin: string,
+  action: string,
+  project: ReturnType<typeof checkedProject>,
+): Promise<Row> => {
+  const left = await ranBy("run:coordinator", plugin, action, project);
+  if (!left) throw new Error(`${plugin} ${action} left no record`);
+  return left.row;
+};
+
+const due = (project: ReturnType<typeof checkedProject>) =>
+  project.due.map(({ record }) => `${record.plugin} ${record.action}`);
+
+test("a check that re-runs on a change is not run again for a new commit alone, only once a file it read changed", async () => {
+  const stored = {
+    "stack.production": {
+      install: "bun install --frozen-lockfile",
+      build: "bun run build",
+      start: "bun run start",
+      port: "PORT",
+      data: [],
+    },
+  };
+  const ready = await recorded(
+    "cloudflare",
+    "ready",
+    checkedProject("first", { "wrangler.jsonc": "{}" }, stored),
+  );
+  expect(
+    due(checkedProject("second", { "wrangler.jsonc": "{}" }, stored, [ready])),
+  ).toEqual([]);
+  expect(
+    due(
+      checkedProject(
+        "second",
+        { "wrangler.jsonc": '{ "name": "app" }' },
+        stored,
+        [ready],
+      ),
+    ),
+  ).toEqual(["cloudflare ready"]);
 });

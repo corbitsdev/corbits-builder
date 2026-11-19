@@ -2,7 +2,7 @@
   "name": "@corbits-builder/cloudflare-publish",
   "version": "0.1.0-rc.3",
   "private": true,
-  "description": "Gets a built app ready to publish on Cloudflare Workers: checks it has what a deploy needs, then that the Worker is routed to a domain.",
+  "description": "Cloudflare: a secure (https) web address of its own. Free to start, and no account needed.",
   "license": "SEE LICENSE IN ../../LICENSE.md",
   "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
   "type": "module",
@@ -10,29 +10,59 @@
     "handle": "publish-to-cloudflare",
     "runs": "plan",
     "groups": [
-      "deploy",
+      "publish",
       "plan"
     ],
-    "when": "The project has an app and the person wants it published on Cloudflare Workers.",
-    "unless": "The app is meant for another host, or the project has no app yet.",
+    "when": "The project has an app and the person wants it published on Cloudflare, so people can open it at its own address, with their own Cloudflare account or without one.",
+    "unless": "The project has no app yet, or the person wants it published somewhere else.",
     "guidance": "./SKILL.md",
     "steps": [
       {
         "plugin": "cloudflare",
         "action": "ready",
-        "title": "Check the app is ready for Cloudflare",
-        "requires": []
+        "title": "Check your app is ready for Cloudflare",
+        "requires": [
+          "app_exists"
+        ]
+      },
+      {
+        "plugin": "publish",
+        "action": "confirm",
+        "title": "Confirm where your app goes",
+        "requires": [
+          "app_exists"
+        ],
+        "input": {
+          "plan": "publish-to-cloudflare"
+        }
       },
       {
         "plugin": "cloudflare",
-        "action": "routes",
-        "title": "Check the Worker is routed to a domain",
+        "action": "publish",
+        "title": "Publish the app to Cloudflare",
         "requires": [
+          "app_exists",
           "ready:cloudflare"
+        ],
+        "input": {
+          "instruction": "Publish the project's saved app to Cloudflare and report the address people open it at, and, when it went out without the person's own Cloudflare account, how long they have to keep it."
+        }
+      },
+      {
+        "plugin": "cloudflare",
+        "action": "live",
+        "title": "Confirm the saved version is the one published",
+        "requires": [
+          "app_exists"
         ]
       }
     ],
-    "ends": "routed:cloudflare",
+    "ends": "published:cloudflare",
+    "firstPublish": "It goes on Cloudflare, at a secure web address of its own.",
+    "takeDown": {
+      "plugin": "cloudflare",
+      "action": "remove"
+    },
     "examples": [
       "publish my app on Cloudflare",
       "put the app on Cloudflare Workers"

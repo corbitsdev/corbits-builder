@@ -164,7 +164,19 @@ Interchange's ssh provider then runs commands on that server only. While the
 key is missing, starting an action whose agent's tools use
 it opens that screen first, unless the value `notNeededWhile` names is set, as
 for a plugin that can also work without a key: its tools find the key unbound
-and work that way.
+and work that way. `plugins/cloudflare` does both:
+
+```json
+"credentials": {
+  "cloudflare": {
+    "about": "Your Cloudflare API token",
+    "origin": "https://api.cloudflare.com",
+    "sends": "bearer",
+    "screen": "account",
+    "notNeededWhile": "cloudflare.terms"
+  }
+}
+```
 
 A bearer credential may add `signIn`, so the person can sign in at the provider
 instead of pasting a key. Its `authorize`, `token` and, when the provider has

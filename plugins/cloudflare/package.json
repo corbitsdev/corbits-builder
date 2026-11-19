@@ -2,59 +2,183 @@
   "name": "@corbits-builder/cloudflare",
   "version": "0.1.0-rc.3",
   "private": true,
-  "description": "Checks that the app is ready to deploy to Cloudflare Workers.",
+  "description": "Publishes the project's app to Cloudflare, so people can open it at its own address, with the person's own Cloudflare account or without one.",
   "license": "SEE LICENSE IN ../../LICENSE.md",
   "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
   "type": "module",
   "dependencies": {
-    "@corbits-builder/plugin": "workspace:*"
+    "@corbits-builder/plugin": "workspace:*",
+    "@corbits-builder/plugin-ui": "workspace:*",
+    "@corbits-builder/schemas": "workspace:*",
+    "@corbits/react-ui": "0.5.1",
+    "@corbits/zip": "workspace:*",
+    "@intx/agent": "workspace:*",
+    "@intx/types": "workspace:*",
+    "arktype": "catalog:",
+    "react": "19.3.0"
+  },
+  "devDependencies": {
+    "@types/react": "19.3.0"
   },
   "builder": {
     "handle": "cloudflare",
     "runs": "specialist",
     "groups": [
-      "deploy"
+      "publish"
     ],
-    "when": "The person wants the app on Cloudflare Workers, or asks whether it is ready to go there.",
-    "unless": "The app is meant for another host.",
+    "when": "The person wants their app published to, checked on or taken off Cloudflare, so people can open it at its own address, or asks whether it is ready to go there.",
+    "unless": "The project has no saved app yet, or the person wants it published somewhere other than Cloudflare.",
+    "values": {
+      "cloudflare.terms": {
+        "about": "When the person accepted Cloudflare's Terms of Service and Privacy Policy for Builder to publish the app in a new temporary Cloudflare account, as an ISO time. It stands for one such account and for an hour; none once that account was made or the person published with their own account. Only the Publish to Cloudflare screen saves it.",
+        "type": "text",
+        "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$"
+      },
+      "cloudflare.site": {
+        "about": "What a publish made on Cloudflare, so the next one updates it: the account, the app's name there, its database, whether the account was a temporary one and, for one, when Cloudflare removes it unless the person keeps it. Only Cloudflare's own tools save it.",
+        "type": "json"
+      }
+    },
+    "credentials": {
+      "cloudflare": {
+        "about": "Your Cloudflare API token",
+        "origin": "https://api.cloudflare.com",
+        "sends": "bearer",
+        "screen": "account",
+        "notNeededWhile": "cloudflare.terms"
+      }
+    },
+    "roles": [
+      {
+        "name": "cloudflare",
+        "label": "Cloudflare publisher",
+        "model": "publisher",
+        "limits": "publisher",
+        "tools": [],
+        "status": {
+          "working": "Publishing to Cloudflare",
+          "done": "Published to Cloudflare"
+        }
+      }
+    ],
+    "settings": {
+      "publisher": {
+        "label": "Publisher",
+        "hint": "Publishes the app where the person chose and explains what went wrong.",
+        "tier": "low"
+      }
+    },
+    "budgets": {
+      "publisher": {
+        "maxOutputTokens": 8192
+      }
+    },
+    "agents": {
+      "cloudflare": {
+        "prompt": "./prompt.md",
+        "skills": "./skills",
+        "tools": "./src/tools.ts"
+      },
+      "cloudflare-remove": {
+        "prompt": "./remove.md",
+        "skills": "./skills",
+        "tools": "./src/remove-tools.ts"
+      }
+    },
     "actions": {
+      "account": {
+        "place": "publish",
+        "reads": [
+          "cloudflare.site",
+          "publish.release",
+          "publish.holding",
+          "publish.keep",
+          "publish.take-down"
+        ],
+        "host": [
+          "tenants"
+        ]
+      },
       "ready": {
         "rerun": "change",
-        "all": [
-          {
-            "file": "wrangler.toml"
-          },
-          {
-            "file": "src/index.ts"
-          },
-          {
-            "fileContains": {
-              "path": "package.json",
-              "text": "wrangler"
-            }
-          },
-          {
-            "approved": "build_plan"
-          }
-        ],
         "returns": [
           "ready:cloudflare"
         ]
       },
-      "routes": {
+      "publish": {
         "requires": [
           [
+            "app_exists",
             "ready:cloudflare"
           ]
         ],
+        "reads": [
+          "stack.production",
+          "publish.release",
+          "cloudflare.site",
+          "cloudflare.terms"
+        ],
+        "writes": [
+          "publish.release",
+          "publish.keep",
+          "cloudflare.site",
+          "cloudflare.terms"
+        ],
+        "returns": [],
+        "start": {
+          "agent": "cloudflare"
+        }
+      },
+      "live": {
+        "rerun": "value",
+        "requires": [
+          [
+            "app_exists"
+          ]
+        ],
         "returns": [
-          "routed:cloudflare"
+          "published:cloudflare"
         ]
+      },
+      "removable": {
+        "rerun": "value",
+        "returns": [
+          "removable:cloudflare"
+        ],
+        "skip": "never"
+      },
+      "remove": {
+        "requires": [
+          [
+            "removable:cloudflare"
+          ]
+        ],
+        "reads": [
+          "publish.release",
+          "publish.holding",
+          "publish.take-down",
+          "cloudflare.site"
+        ],
+        "writes": [
+          "publish.release",
+          "publish.keep"
+        ],
+        "returns": [],
+        "start": {
+          "agent": "cloudflare-remove"
+        }
       }
     },
     "facts": {
-      "ready:cloudflare": "the app has what a Cloudflare Workers deploy needs and the person approved its build plan",
-      "routed:cloudflare": "the app's wrangler.toml routes the Worker to a domain"
-    }
+      "ready:cloudflare": "the saved app is made to run on Cloudflare Workers and says how it is built for production",
+      "published:cloudflare": "the app as saved now is published on Cloudflare",
+      "removable:cloudflare": "the person agreed, on the take-down screen, to take down the app as it is published on Cloudflare now"
+    },
+    "examples": [
+      "put my app on Cloudflare",
+      "publish the app to Cloudflare Workers",
+      "is my app still up on Cloudflare",
+      "take the app off Cloudflare"
+    ]
   }
 }

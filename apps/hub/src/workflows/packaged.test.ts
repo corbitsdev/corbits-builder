@@ -30,8 +30,16 @@ async function installed(name: string) {
   browser ??= JSON.stringify(await browserCatalog());
   process.env.BUILDER_AGENT = JSON.stringify(brought.agent);
   process.env.BUILDER_BROWSER = browser;
+  if (brought.agent.tools === null) delete process.env.BUILDER_TOOLS;
+  else process.env.BUILDER_TOOLS = resolve(PLUGINS_FOLDER, brought.agent.tools);
   return (await import(`${AGENT_ENTRY}?${name}`)).default;
 }
+
+// The workflow a package is built from, as build-packages.ts finds it: a plugin's, else the hub's own.
+const source = async (name: string) =>
+  CATALOG.packages.has(name)
+    ? installed(name)
+    : (await import(`./entries/${name}.ts`)).default;
 
 // Each named package in turn, never two at once.
 async function installedInTurn(names: readonly string[]) {
@@ -169,6 +177,7 @@ test("built npm tarballs contain importable production workflow metadata and def
   );
   try {
     const manifest = await buildWorkflowPackages(directory, "1.0.0", inference);
+    let optional = 0;
     for (const metadata of manifest) {
       const extracted = join(directory, metadata.assetName);
       await mkdir(extracted);
@@ -190,7 +199,24 @@ test("built npm tarballs contain importable production workflow metadata and def
       );
       expect(entry.director).toBeDefined();
       expect(Object.keys(entry.default.steps)).toHaveLength(1);
-      expect(entry.default.credentialBindings ?? []).toEqual([]);
+      const name = [...WORKFLOW_PACKAGES.keys()].find(
+        (each) => nativePackageName(each) === metadata.packageName,
+      );
+      if (name === undefined)
+        throw new Error(`${metadata.packageName} is no installed package`);
+      const bindings: { handle: string; optional?: true }[] =
+        entry.default.credentialBindings ?? [];
+      expect(bindings).toEqual((await source(name)).credentialBindings ?? []);
+      // A credential the run may start without, one the person can do without or one the hub makes,
+      // stays optional in the package.
+      const brought = CATALOG.packages.get(name);
+      if (brought !== undefined && "agent" in brought)
+        for (const binding of bindings) {
+          expect(binding.optional === true).toBe(
+            brought.agent.optional.includes(binding.handle),
+          );
+          if (binding.optional) optional += 1;
+        }
       // The hub accepts a run as a specialist's only when its launch bundle yields a role.
       if (metadata.packageName !== nativePackageName("coordinator"))
         expect(
@@ -199,7 +225,8 @@ test("built npm tarballs contain importable production workflow metadata and def
           }),
         ).toBeDefined();
     }
-    expect(manifest).toHaveLength(10);
+    expect(manifest).toHaveLength(WORKFLOW_PACKAGES.size);
+    expect(optional).toBeGreaterThan(0);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

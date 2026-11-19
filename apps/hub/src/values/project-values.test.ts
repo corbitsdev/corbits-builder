@@ -14,10 +14,11 @@ const STARTER = new URL(
 );
 
 function harness(
-  stored: string | undefined,
+  filed: string | undefined,
   saved: Record<string, string>[] = [],
+  stored: Record<string, unknown>[] = [],
 ) {
-  let styles = stored;
+  let styles = filed;
   const app = new Hono<TenantEnv>();
   app.onError((error, c) => {
     if (error instanceof ProjectError)
@@ -46,7 +47,12 @@ function harness(
   } as unknown as ReturnType<typeof createArtifactService>;
   mountValueRoutes(
     app,
-    { saveRunValues: async () => {}, saveStoredValues: async () => {} },
+    {
+      saveRunValues: async () => {},
+      saveStoredValues: async (_actor, _project, values) => {
+        stored.push(values);
+      },
+    },
     service,
   );
   return app;
@@ -125,6 +131,24 @@ test("saving a value its schema refuses is refused", async () => {
   const response = await save(harness(undefined), { "look.font-primary": "" });
   expect(response.status).toBe(400);
   expect(await response.json()).toMatchObject({
+    code: "invalid_project_value",
+    key: "look.font-primary",
+  });
+});
+
+test("saving null clears a value whatever its type refuses, but not a filed design's token", async () => {
+  const stored: Record<string, unknown>[] = [];
+  const cleared = await save(harness(undefined, [], stored), {
+    "cloudflare.terms": null,
+  });
+  expect(cleared.status).toBe(200);
+  expect(stored).toEqual([{ "cloudflare.terms": null }]);
+
+  const styled = await save(harness(await Bun.file(STARTER).text()), {
+    "look.font-primary": null,
+  });
+  expect(styled.status).toBe(400);
+  expect(await styled.json()).toMatchObject({
     code: "invalid_project_value",
     key: "look.font-primary",
   });

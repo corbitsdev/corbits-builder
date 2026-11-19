@@ -273,6 +273,17 @@
       "version": "0.1.0-rc.3",
       "dependencies": {
         "@corbits-builder/plugin": "workspace:*",
+        "@corbits-builder/plugin-ui": "workspace:*",
+        "@corbits-builder/schemas": "workspace:*",
+        "@corbits/react-ui": "0.5.1",
+        "@corbits/zip": "workspace:*",
+        "@intx/agent": "workspace:*",
+        "@intx/types": "workspace:*",
+        "arktype": "catalog:",
+        "react": "19.3.0",
+      },
+      "devDependencies": {
+        "@types/react": "19.3.0",
       },
     },
     "plugins/cloudflare-publish": {
@@ -368,6 +379,10 @@
       "name": "@corbits-builder/rust-skills",
       "version": "0.1.0-rc.3",
     },
+    "plugins/serverless-skills": {
+      "name": "@corbits-builder/serverless-skills",
+      "version": "0.1.0-rc.3",
+    },
     "plugins/sveltekit-skills": {
       "name": "@corbits-builder/sveltekit-skills",
       "version": "0.1.0-rc.3",
@@ -388,6 +403,10 @@
         "@corbits-builder/schemas": "workspace:*",
         "arktype": "catalog:",
       },
+    },
+    "plugins/workers-skills": {
+      "name": "@corbits-builder/workers-skills",
+      "version": "0.1.0-rc.3",
     },
     "plugins/writer": {
       "name": "@corbits-builder/writer",
@@ -943,6 +962,8 @@
 
     "@corbits-builder/schemas": ["@corbits-builder/schemas@workspace:packages/schemas"],
 
+    "@corbits-builder/serverless-skills": ["@corbits-builder/serverless-skills@workspace:plugins/serverless-skills"],
+
     "@corbits-builder/sveltekit-skills": ["@corbits-builder/sveltekit-skills@workspace:plugins/sveltekit-skills"],
 
     "@corbits-builder/web": ["@corbits-builder/web@workspace:apps/web"],
@@ -952,6 +973,8 @@
     "@corbits-builder/web-app-starter-skills": ["@corbits-builder/web-app-starter-skills@workspace:plugins/web-app-starter-skills"],
 
     "@corbits-builder/worker": ["@corbits-builder/worker@workspace:plugins/worker"],
+
+    "@corbits-builder/workers-skills": ["@corbits-builder/workers-skills@workspace:plugins/workers-skills"],
 
     "@corbits-builder/writer": ["@corbits-builder/writer@workspace:plugins/writer"],
 
