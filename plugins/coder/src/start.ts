@@ -48,10 +48,9 @@ function startedFrom(name: unknown) {
 }
 
 // A change starts from the code as last saved; a first build's manifest requires that there is
-// none. A coder still on the code refuses at once rather than wait for it. A first build saves the
-// starter it names, or that it names none, as the project's stack before the run is assigned; the
-// hub writes that starter's files as the project's first code when the coder first asks for push
-// access.
+// none. A first build saves the starter it names, or that it names none, as the project's stack
+// before the run is assigned; the hub writes that starter's files as the project's first code when
+// the coder first asks for push access.
 export default defineStarter(
   type({
     "+": "reject",
@@ -62,8 +61,6 @@ export default defineStarter(
   // The build action may also name a starter, which a change does not.
   type({ instruction: "string", "[string]": "unknown" }),
   async ({ correlation, app }, input, project, skills) => {
-    const live = (await project.working()).find((run) => run.role === "coder");
-    if (live) throw coderBusy(project, live);
     const { runId } = await project.startAlone({
       workflow: "coder",
       correlation,

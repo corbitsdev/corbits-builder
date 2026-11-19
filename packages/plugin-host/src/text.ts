@@ -25,7 +25,7 @@ export const PLAN_DESCRIPTION =
 
 // What to do about a run that holds back the next one, named as runIds lists it.
 export const startAfter = (runIds: string) =>
-  `Its report reaches you as a message: end your turn and call execute again then. To start sooner, runs({ operation: "stop", runIds: [${runIds}] }) stops it; then call execute again.`;
+  `Its report reaches you as a message: end your turn and call execute again then. If you already have its report, it is saving its last files: call execute again once. To start sooner, runs({ operation: "stop", runIds: [${runIds}] }) stops it; then call execute again.`;
 
 /** Why a tool call was not run, every wrong field at once, then everything the tool takes. */
 export function wrongCall(
