@@ -4,6 +4,7 @@
   "options": {
     "denyWarnings": true
   },
+  "jsPlugins": ["./scripts/oxlint-environment.ts"],
   "rules": {
     "eslint/eqeqeq": "error",
     "eslint/prefer-const": "error",
@@ -15,6 +16,20 @@
     "typescript/prefer-nullish-coalescing": "error",
     "unicorn/require-module-specifiers": "error",
     "import/no-cycle": "error",
+    "eslint/no-restricted-properties": [
+      "error",
+      {
+        "object": "process",
+        "property": "env",
+        "message": "Read the environment through this process's environment.ts, which validates it with @corbits-builder/environment; hand a child process PATH or HOME with inherit from @corbits-builder/environment/inherit."
+      },
+      {
+        "object": "Bun",
+        "property": "env",
+        "message": "Read the environment through this process's environment.ts, which validates it with @corbits-builder/environment."
+      }
+    ],
+    "environment/no-direct-read": "error",
     "eslint/complexity": [
       "error",
       {
@@ -49,6 +64,51 @@
     ]
   },
   "overrides": [
+    // The environment package, the only code that reads the environment, and tests, which set and
+    // restore it.
+    {
+      "files": [
+        "packages/environment/src/**",
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "test/**"
+      ],
+      "rules": {
+        "eslint/no-restricted-properties": "off",
+        "environment/no-direct-read": "off"
+      }
+    },
+    // Not Builder's processes. The starter is the template a generated app grows from. The app
+    // checks are compiled alone from their source text in a project's sandbox, where no workspace
+    // package resolves. Both run with the project's environment.
+    {
+      "files": ["plugins/coder/starter/**", "packages/app-checks/check/**"],
+      "rules": {
+        "eslint/no-restricted-properties": "off",
+        "environment/no-direct-read": "off"
+      }
+    },
+    // Build constants, not environment reads: build-packages.ts has Bun.build's define replace these
+    // exact expressions in each workflow package. BUILDER_TOOLS must stay a literal inside import()
+    // for the bundler to inline the plugin's tools module. Tests set them in the
+    // environment in place of a build.
+    {
+      "files": [
+        "apps/hub/src/workflows/agent-package.ts",
+        "apps/hub/src/workflows/role-inference.ts"
+      ],
+      "rules": {
+        "eslint/no-restricted-properties": "off"
+      }
+    },
+    // The interface's only reader of Vite's build mode, which browser code cannot get from the
+    // environment package.
+    {
+      "files": ["apps/web/src/build-mode.ts"],
+      "rules": {
+        "environment/no-direct-read": "off"
+      }
+    },
     {
       "files": [
         "apps/hub/src/auth/agent-token-bridge.ts",

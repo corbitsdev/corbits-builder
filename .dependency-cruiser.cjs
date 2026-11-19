@@ -34,6 +34,49 @@ module.exports = {
       to: { path: "^packages/plugin-host/" },
     },
     {
+      name: "environment-read-in-environment-ts",
+      comment:
+        "Each process holds every variable it reads in one environment.ts, so only those files read through the environment package; any module may hand a child process its inherited PATH or HOME.",
+      severity: "error",
+      from: {
+        pathNot: [
+          "(^|/)environment\\.ts$",
+          "^packages/environment/",
+          "\\.test\\.tsx?$",
+        ],
+      },
+      to: {
+        path: "^packages/environment/src/",
+        pathNot: "^packages/environment/src/inherit\\.ts$",
+        dependencyTypesNot: ["type-only"],
+      },
+    },
+    {
+      name: "environment-not-in-browser",
+      comment:
+        "The environment package reads Node globals, so the interface's browser code never bundles it; Vite's build mode comes from src/build-mode.ts.",
+      severity: "error",
+      from: { path: "^apps/web/src/" },
+      to: { path: "^packages/environment/" },
+    },
+    {
+      name: "hub-environment-read-by-entry-points",
+      comment:
+        "The hub's entry points read the environment once and pass it down; any other module takes the settings it needs as arguments, so it imports only the environment's types.",
+      severity: "error",
+      from: {
+        path: "^apps/hub/src/",
+        pathNot: [
+          "^apps/hub/src/(server|migrate|setup)\\.ts$",
+          "\\.test\\.ts$",
+        ],
+      },
+      to: {
+        path: "^apps/hub/src/environment\\.ts$",
+        dependencyTypesNot: ["type-only"],
+      },
+    },
+    {
       name: "packages-stay-below-apps-and-plugins",
       comment:
         "Packages are shared building blocks, so they must not depend on the apps or plugins that use them.",

@@ -22,9 +22,12 @@ const { PORT, address } = readServerEnvironment();
 ## Where it fits
 
 This package is the only code that reads `process.env`, `Bun.env` or
-`import.meta.env`. Each process keeps its schema in one `environment.ts`, and
-only that file imports the package, `inherit` aside. The process's entry
-point calls the reader and passes what it returns down.
+`import.meta.env`; `bun run lint` refuses a read anywhere else. Each process
+keeps its schema in one `environment.ts` (the hub's in
+[apps/hub/src/environment.ts][hub], the interface dev server's in
+[apps/web/environment.ts][web]), and `bun run boundaries` refuses an import of
+the package anywhere else, `inherit` aside. The process's entry point calls
+the reader and passes what it returns down.
 
 It reads Node globals, so the interface's browser code never imports it.
 
@@ -59,4 +62,6 @@ It reads Node globals, so the interface's browser code never imports it.
 [test/integration/environment.test.ts][leak] feeds a recognisable value into
 every variable of every process's schema and checks no error repeats it.
 
+[hub]: https://github.com/corbitsdev/corbits-builder/tree/main/apps/hub/src/environment.ts
+[web]: https://github.com/corbitsdev/corbits-builder/tree/main/apps/web/environment.ts
 [leak]: https://github.com/corbitsdev/corbits-builder/tree/main/test/integration/environment.test.ts

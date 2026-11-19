@@ -588,6 +588,24 @@ installation instead.
 | `bun run vendor:verify`   | Checks `vendor/interchange` matches its pinned upstream commit.                                                                                                                          |
 | `bun run skills:react-ui` | Regenerates the designer's `@corbits/react-ui` API reference.                                                                                                                            |
 
+## Environment variables
+
+Each process reads its environment once, at its entry point, through one
+ArkType schema in its `environment.ts`: the hub's in
+`apps/hub/src/environment.ts` (the server, `db:migrate` and `auth:bootstrap`),
+the UI dev server's in `apps/web/environment.ts`, the scripts' in
+`scripts/environment.ts`. A schema field keeps the variable's own name and
+holds its parsing, default and rules, and the entry point passes what the
+read returns down. A process that finds anything wrong stops and lists every
+variable to fix, never their values.
+
+A new variable goes in its process's schema and in `.env.hub.example` or
+`.env.web.example`. `bun run lint` refuses a read of `process.env`, `Bun.env`
+or `import.meta.env` anywhere else, and `bun run boundaries` refuses an
+import of `@corbits-builder/environment` outside an `environment.ts`. A child
+process gets `PATH`, `HOME` or `TMPDIR` through `inherit` from
+`@corbits-builder/environment/inherit`.
+
 ## Migrations
 
 A change to the hub's schema ships as one migration. Edit
