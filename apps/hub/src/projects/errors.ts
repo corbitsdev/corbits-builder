@@ -1,4 +1,5 @@
 import { type, type ArkError, type ArkErrors } from "arktype";
+import type { getLogger } from "@intx/log";
 import { ProjectId } from "@corbits-builder/schemas/project";
 
 // Agents see a rejection's reasons only in this list form.
@@ -32,6 +33,26 @@ export class ProjectError extends Error {
     }
     this.details =
       listed === undefined ? details : { ...details, issues: listed };
+  }
+}
+
+/**
+ * Answers with `answer`, logging the code of a ProjectError it throws before passing it on. A
+ * refused run gets the reason in its answer and nothing else at the default log level shows it, so
+ * the log records the code and `asked`, whose run asked, never what it sent.
+ */
+export async function logRefusals<T>(
+  log: ReturnType<typeof getLogger>,
+  message: string,
+  asked: Record<string, string>,
+  answer: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await answer();
+  } catch (error) {
+    if (error instanceof ProjectError)
+      log.info(message, { code: error.code, ...asked });
+    throw error;
   }
 }
 export const projectResource = (id: string) =>

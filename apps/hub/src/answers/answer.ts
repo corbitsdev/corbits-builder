@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import type { Context } from "hono";
 import type { TenantEnv } from "@intx/hub-api";
 import type { QuestionAnswer } from "@intx/types/signals";
@@ -117,8 +118,9 @@ export function createAnswer({
           c,
           projectId,
           Object.fromEntries(
+            // A json value is a new object in each answer, so only its content shows a change.
             Object.entries(answered.values).filter(
-              ([name, value]) => held[name] !== value,
+              ([name, value]) => !isDeepStrictEqual(held[name], value),
             ),
           ),
           CATALOG.values,

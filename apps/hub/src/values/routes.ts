@@ -2,18 +2,22 @@ import { type } from "arktype";
 import type { Hono } from "hono";
 import { describeRoute, resolver } from "hono-openapi";
 import type { TenantEnv } from "@intx/hub-api";
+import { getLogger } from "@intx/log";
 import {
   ProjectValues,
   ProjectValuesWrite,
 } from "@corbits-builder/schemas/artifact";
+import type { Actor } from "../lib/actor.ts";
 import { actorOf } from "../projects/authorization.ts";
-import { ProjectError } from "../projects/errors.ts";
-import { CATALOG, catalogOf, isWorkflowAction } from "../plugins/catalog.ts";
+import { logRefusals, ProjectError } from "../projects/errors.ts";
+import { CATALOG, callingAction } from "../plugins/catalog.ts";
 import type { createArtifactService } from "../artifacts/service.ts";
 import { body, security } from "../http/route-parts.ts";
 import { saveValues, undeclaredValue } from "./save.ts";
 import { projectValueWrites, readProjectValues } from "./project-values.ts";
 import type { createValueService } from "./service.ts";
+
+const log = getLogger(["corbits-builder", "run-values"]);
 
 // Why a run may not save a value, with the names it may save as they are spelled. A specialist
 // that wrote stack_language for stack.language resent it until it was stopped as a loop.
@@ -34,6 +38,26 @@ export function mountValueRoutes(
   artifacts: ReturnType<typeof createArtifactService>,
   nativeFetch?: (request: Request) => Promise<Response>,
 ) {
+  // A refused run gets the reason in its answer, and the log records its code, never the values.
+  const refusingRun = <T>(
+    asked: Record<string, string>,
+    answer: () => Promise<T>,
+  ) => logRefusals(log, "A run's values were refused: {code}", asked, answer);
+  // The calling run and the installed action it was started for. The run may touch only the values
+  // that action reads and writes, and none once the action is no longer installed.
+  async function installedAction(
+    current: Actor,
+    projectId: string,
+    asked: Record<string, string>,
+  ) {
+    const { run, action } = await callingAction(artifacts, current, projectId);
+    Object.assign(asked, { plugin: run.plugin, action: run.action });
+    if (!action)
+      throw new ProjectError(403, "run_action_not_installed", {
+        hint: `${run.plugin} ${run.action} is not installed, so this run reads and saves no values.`,
+      });
+    return { run, action };
+  }
   app.post(
     "/:projectId/run-values",
     describeRoute({
@@ -56,53 +80,103 @@ export function mountValueRoutes(
         400: { description: "A value its type refuses" },
         403: {
           description:
-            "A value the run's action does not write, named with the values it does",
+            "A value the run's action does not write, named with the values it does, or a caller that is not a run started for an installed action",
         },
       },
     }),
     async (c) => {
       const current = actorOf(c);
       const projectId = c.req.param("projectId");
-      const input = ProjectValuesWrite(await body(c));
-      if (input instanceof type.errors)
-        throw new ProjectError(400, "invalid_project_values", {
-          issues: input,
-        });
-      const run = await artifacts.valuesRun(current, projectId);
-      const catalog = await catalogOf(
-        artifacts.projectState,
-        current,
-        projectId,
-      );
-      const action = catalog.actions
-        .filter(isWorkflowAction)
-        .find(
-          (installed) =>
-            installed.plugin === run.plugin && installed.action === run.action,
+      const asked: Record<string, string> = { projectId };
+      const input = await refusingRun(asked, async () => {
+        const input = ProjectValuesWrite(await body(c));
+        if (input instanceof type.errors)
+          throw new ProjectError(400, "invalid_project_values", {
+            issues: input,
+          });
+        const { run, action } = await installedAction(
+          current,
+          projectId,
+          asked,
         );
-      if (!action) throw new ProjectError(403, "run_value_not_written");
-      const { writes } = action.builder;
-      const refused = Object.keys(input.values).filter(
-        (name) => !writes.includes(name),
-      );
-      if (refused.length > 0)
-        throw new ProjectError(403, "run_value_not_written", {
-          issues: refused.map((name) => ({
-            path: name,
-            message: notWritten(name, `${run.plugin} ${run.action}`, writes),
-          })),
-        });
-      // Refuses a value its declared type does not take. Every value an action writes is one a
-      // plugin declares, kept in the plain store, so the values are stored as they came.
-      projectValueWrites(
-        input.values,
-        await artifacts.projectState(current, projectId),
-        CATALOG.values,
-      );
+        const { writes } = action.builder;
+        const refused = Object.keys(input.values).filter(
+          (name) => !writes.includes(name),
+        );
+        if (refused.length > 0)
+          throw new ProjectError(403, "run_value_not_written", {
+            issues: refused.map((name) => ({
+              path: name,
+              message: notWritten(name, `${run.plugin} ${run.action}`, writes),
+            })),
+          });
+        // Refuses a value its declared type does not take. Every value an action writes is one a
+        // plugin declares, kept in the plain store, so the values are stored as they came.
+        projectValueWrites(
+          input.values,
+          await artifacts.projectState(current, projectId),
+          CATALOG.values,
+        );
+        return input;
+      });
       await service.saveRunValues(current, projectId, input.values);
       return c.json({
         values: readProjectValues(
           Object.keys(input.values),
+          await artifacts.projectState(current, projectId),
+          CATALOG.values,
+        ),
+      });
+    },
+  );
+  app.get(
+    "/:projectId/run-values",
+    describeRoute({
+      tags: ["Artifacts"],
+      operationId: "readRunValues",
+      description:
+        "A specialist run reads project values named in keys, comma separated: only those the plugin action it was started for reads, each read as the values route reads it. A value the project has none of yet is null.",
+      security,
+      responses: {
+        200: {
+          description: "Each named value, or null",
+          content: { "application/json": { schema: resolver(ProjectValues) } },
+        },
+        400: { description: "No keys" },
+        403: {
+          description:
+            "A value the run's action does not read, or a caller that is not a run started for an installed action",
+        },
+      },
+    }),
+    async (c) => {
+      const current = actorOf(c);
+      const projectId = c.req.param("projectId");
+      const asked: Record<string, string> = { projectId };
+      const names = await refusingRun(asked, async () => {
+        const keys = c.req.query("keys");
+        if (keys === undefined || keys === "")
+          throw new ProjectError(400, "project_value_keys_required");
+        const names = keys.split(",");
+        const { run, action } = await installedAction(
+          current,
+          projectId,
+          asked,
+        );
+        const reads = action.builder.reads ?? [];
+        const refused = names.filter((name) => !reads.includes(name));
+        if (refused.length > 0)
+          throw new ProjectError(403, "run_value_not_read", {
+            issues: refused.map((name) => ({
+              path: name,
+              message: `is not a value ${run.plugin} ${run.action} reads`,
+            })),
+          });
+        return names;
+      });
+      return c.json({
+        values: readProjectValues(
+          names,
           await artifacts.projectState(current, projectId),
           CATALOG.values,
         ),
@@ -166,7 +240,7 @@ export function mountValueRoutes(
       tags: ["Artifacts"],
       operationId: "readProjectValues",
       description:
-        "The project values named in keys, comma separated, each read from its home: a value its plugin keeps in the design's styles from the filed design's styles.css once a design is filed, and before that, like every other declared value, from the project's own store. A value the project has none of yet is null.",
+        "The project values named in keys, comma separated, each read from its home: a value its plugin keeps in the design's styles from the filed design's styles.css once a design is filed, and before that, like every other declared value, from the project's own store. A value the project has none of yet is null, and so is a private one to a caller who may not manage the project.",
       security,
       responses: {
         200: {
@@ -184,12 +258,15 @@ export function mountValueRoutes(
       const unknown = undeclaredValue(names, CATALOG.values);
       if (unknown !== undefined)
         throw new ProjectError(400, "unknown_project_value", { key: unknown });
-      const state = await artifacts.projectState(
-        actorOf(c),
-        c.req.param("projectId"),
-      );
+      const current = actorOf(c);
+      const projectId = c.req.param("projectId");
+      const state = await artifacts.projectState(current, projectId);
+      // Only a private value needs to know whether the caller manages the project.
+      const manages =
+        !names.some((name) => CATALOG.values.get(name)?.private) ||
+        (await artifacts.managesProject(current, projectId));
       return c.json({
-        values: readProjectValues(names, state, CATALOG.values),
+        values: readProjectValues(names, state, CATALOG.values, manages),
       });
     },
   );
