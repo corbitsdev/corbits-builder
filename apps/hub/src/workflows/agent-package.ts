@@ -53,6 +53,7 @@ function hostPluginTool(factory: AnnotatedToolFactory<ToolEnv>) {
 // The longest writer step in stored runs took 276 s; ten minutes leaves room for a slower model.
 const STEP_TIMEOUT_MS = 600_000;
 
+// The BUILDER_* reads are build constants named in build-constants.ts.
 const inlined = process.env.BUILDER_AGENT;
 if (!inlined) throw new Error("agent_package_required");
 const {

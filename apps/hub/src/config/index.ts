@@ -1,9 +1,11 @@
-export type ProductConfigEnvironment = Readonly<{
-  [key: string]: string | undefined;
-  PRODUCT_CONFIGURED_NAMING?: string | undefined;
-  PRODUCT_NAME?: string | undefined;
-  PRODUCT_HELLO_WORDING?: string | undefined;
-}>;
+import type { HubEnvironment } from "../environment.ts";
+
+export type ProductConfigEnvironment = Partial<
+  Pick<
+    HubEnvironment,
+    "PRODUCT_CONFIGURED_NAMING" | "PRODUCT_NAME" | "PRODUCT_HELLO_WORDING"
+  >
+>;
 
 export type ProductConfig = Readonly<{
   features: Readonly<{
@@ -15,26 +17,16 @@ export type ProductConfig = Readonly<{
 
 const neutralProductName = "Builder";
 
-function toggle(
-  environment: ProductConfigEnvironment,
-  key: keyof ProductConfigEnvironment,
-): boolean {
-  const value = environment[key] ?? "false";
-  if (value !== "true" && value !== "false")
-    throw new Error(`${key} must be true or false.`);
-  return value === "true";
-}
-
 export function createProductConfig(
   environment: ProductConfigEnvironment = {},
 ): ProductConfig {
-  const configuredNaming = toggle(environment, "PRODUCT_CONFIGURED_NAMING");
+  const configuredNaming = environment.PRODUCT_CONFIGURED_NAMING ?? false;
   const productName = configuredNaming
-    ? environment.PRODUCT_NAME?.trim() || neutralProductName
+    ? (environment.PRODUCT_NAME ?? neutralProductName)
     : neutralProductName;
   const neutralHello = `Hello from ${productName}`;
   const hello = configuredNaming
-    ? environment.PRODUCT_HELLO_WORDING?.trim() || neutralHello
+    ? (environment.PRODUCT_HELLO_WORDING ?? neutralHello)
     : neutralHello;
 
   return Object.freeze({

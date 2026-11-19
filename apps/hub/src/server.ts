@@ -1,6 +1,7 @@
 import { getLogger } from "@intx/log";
 import { dispose } from "@logtape/logtape";
 import { createHubRuntime } from "./app.ts";
+import { readHubEnvironment } from "./environment.ts";
 import { setupHubLogging } from "./logging.ts";
 import { errorCode, requestErrorMetadata } from "./request-error.ts";
 
@@ -10,7 +11,8 @@ const errorMetadata = (error: unknown) => ({
 });
 
 if (import.meta.main) {
-  await setupHubLogging();
+  const environment = readHubEnvironment();
+  await setupHubLogging(environment);
   const log = getLogger(["corbits-builder", "hub"]);
   let close = async () => {};
   let stopping: Promise<void> | undefined;
@@ -50,7 +52,7 @@ if (import.meta.main) {
   process.once("SIGTERM", requestStop);
   process.once("SIGINT", requestStop);
   const start = async () => {
-    const runtime = await createHubRuntime();
+    const runtime = await createHubRuntime(environment);
     close = () => runtime.close();
     // A stop requested meanwhile must not open the port; the stop after startup closes the runtime.
     if (stopRequested) return;

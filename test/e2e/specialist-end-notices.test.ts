@@ -17,6 +17,10 @@ import {
   createMailAuditStore,
 } from "@intx/storage-isogit/node";
 import { createHubRuntime } from "@corbits-builder/hub/app";
+import {
+  readHubEnvironment,
+  readMigrationEnvironment,
+} from "@corbits-builder/hub/environment";
 import { migrateDatabase } from "@corbits-builder/hub/migrate";
 
 function required(name: string): string {
@@ -76,8 +80,8 @@ test("an undeliverable notice does not hold back a later notice", async () => {
   });
   let runtime: Awaited<ReturnType<typeof createHubRuntime>> | undefined;
   try {
-    await migrateDatabase(environment);
-    runtime = await createHubRuntime(environment);
+    await migrateDatabase(readMigrationEnvironment(environment));
+    runtime = await createHubRuntime(readHubEnvironment(environment));
     const call = (path: string, body: object, cookie = "") =>
       runtime!.app.fetch(
         new Request(`${origin}${path}`, {

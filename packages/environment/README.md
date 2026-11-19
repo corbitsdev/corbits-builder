@@ -40,7 +40,7 @@ It reads Node globals, so the interface's browser code never imports it.
   declares and whether it must be set.
 - `EnvironmentError`: what a reader throws, with one line per problem in
   `problems`. A line names the variable and the rule, such as
-  `BETTER_AUTH_SECRET must be at least length 32`, and never the value.
+  `PORT must be an integer between 1 and 65535`, and never the value.
 - Pieces for what variables repeat: `flag(fallback)` (`true`, `false`, or
   `fallback` when unset or empty), `positiveInteger`, `port`, `origin` (an
   HTTP(S) origin, read as its origin), `hexKey` (64 hexadecimal characters),
@@ -55,4 +55,8 @@ It reads Node globals, so the interface's browser code never imports it.
 
 ## Working on it
 
-`bun run test` checks every piece here, and that no error repeats a value.
+`bun run test` checks every piece here, and
+[test/integration/environment.test.ts][leak] feeds a recognisable value into
+every variable of every process's schema and checks no error repeats it.
+
+[leak]: https://github.com/corbitsdev/corbits-builder/tree/main/test/integration/environment.test.ts

@@ -1,4 +1,4 @@
-import type { Environment } from "../environment.ts";
+import type { HubEnvironment } from "../environment.ts";
 
 // The install's root tenant. Every workspace is created under it, so every workspace and project
 // inherits what it owns: the server's provider keys.
@@ -34,22 +34,22 @@ export type ServerProviderKeys = Readonly<{
 }>;
 
 /** The provider keys the server environment sets; SERVER_PROVIDER_KEYS=false turns seeding off. */
-export function readServerProviderKeys(
-  environment: Environment,
+export function serverProviderKeys(
+  environment: Pick<
+    HubEnvironment,
+    | "SERVER_PROVIDER_KEYS"
+    | (typeof SERVER_PROVIDER_KEYS)[number]["env"]
+    | (typeof UNSUPPORTED_PROVIDER_KEYS)[number]
+  >,
 ): ServerProviderKeys {
-  const flag = environment["SERVER_PROVIDER_KEYS"] ?? "true";
-  if (flag !== "true" && flag !== "false")
-    throw new Error("SERVER_PROVIDER_KEYS must be true or false.");
-  const set = (name: string) => Boolean(environment[name]?.trim());
   return {
-    enabled: flag === "true",
-    keys: SERVER_PROVIDER_KEYS.filter(({ env }) => set(env)).map(
-      ({ env, provider }) => ({
-        env,
-        provider,
-        secret: environment[env]!.trim(),
-      }),
+    enabled: environment.SERVER_PROVIDER_KEYS,
+    keys: SERVER_PROVIDER_KEYS.flatMap(({ env, provider }) => {
+      const secret = environment[env];
+      return secret === undefined ? [] : [{ env, provider, secret }];
+    }),
+    unsupported: UNSUPPORTED_PROVIDER_KEYS.filter(
+      (name) => environment[name] !== undefined,
     ),
-    unsupported: UNSUPPORTED_PROVIDER_KEYS.filter(set),
   };
 }

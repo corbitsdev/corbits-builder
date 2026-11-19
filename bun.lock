@@ -42,6 +42,7 @@
         "@anthropic-ai/sandbox-runtime": "0.0.81",
         "@corbits-builder/client": "workspace:*",
         "@corbits-builder/coordinator": "workspace:*",
+        "@corbits-builder/environment": "workspace:*",
         "@corbits-builder/hub": "workspace:*",
         "@corbits-builder/schemas": "workspace:*",
         "@corbits/slidedeck": "workspace:*",
@@ -63,6 +64,7 @@
       "dependencies": {
         "@anthropic-ai/sandbox-runtime": "0.0.81",
         "@corbits-builder/coordinator": "workspace:*",
+        "@corbits-builder/environment": "workspace:*",
         "@corbits-builder/plugin": "workspace:*",
         "@corbits-builder/plugin-host": "workspace:*",
         "@corbits-builder/schemas": "workspace:*",

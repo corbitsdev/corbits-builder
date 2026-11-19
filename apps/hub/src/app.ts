@@ -44,17 +44,11 @@ import {
 import { getLogger } from "@intx/log";
 import { hexDecode, hexEncode } from "@intx/types";
 import { createProductConfig } from "./config/index.ts";
-import {
-  readCoordinatorStartTimeoutMs,
-  readHubEnvironment,
-  readPluginHint,
-  readGoogleEmulateBaseUrl,
-  required,
-} from "./environment.ts";
+import type { HubEnvironment } from "./environment.ts";
 import { loadHubSigningKey } from "./signing-key.ts";
 import { createWorkspaceRoutes } from "./workspaces.ts";
 import { ensureInstallRoot, joinInstallRoot } from "./install-root.ts";
-import { readServerProviderKeys } from "./config/install-root.ts";
+import { serverProviderKeys } from "./config/install-root.ts";
 import { createProjectRoutes } from "./projects/routes.ts";
 import { createAppRepositoryRoutes } from "./projects/app-repository.ts";
 import { createInstalledCoordinatorStartup } from "./projects/coordinator-startup.ts";
@@ -117,68 +111,53 @@ import { version } from "../package.json";
 
 const log = getLogger(["corbits-builder", "hub"]);
 
-export async function createHubRuntime(
-  rawEnvironment: Record<string, string | undefined> = process.env,
-) {
-  const env = readHubEnvironment(rawEnvironment);
-  const coordinatorStartTimeoutMs =
-    readCoordinatorStartTimeoutMs(rawEnvironment);
-  const pluginHint = readPluginHint(rawEnvironment);
+export async function createHubRuntime(env: HubEnvironment) {
   const handle = createDB(env.database);
   let authEmail: ReturnType<typeof createAuthEmail>;
   try {
     await handle.db.execute(sql`select 1`);
-    const publicURL = new URL(rawEnvironment["HUB_PUBLIC_URL"] ?? env.baseURL);
-    if (
-      !["http:", "https:"].includes(publicURL.protocol) ||
-      publicURL.username ||
-      publicURL.password
-    ) {
-      throw new Error(
-        "HUB_PUBLIC_URL must be an HTTP(S) URL without credentials",
-      );
-    }
-    const config = createProductConfig(rawEnvironment);
-    authEmail = createAuthEmail(rawEnvironment, config);
+    const publicURL = env.publicURL;
+    const config = createProductConfig(env);
+    authEmail = createAuthEmail(env, config);
     // Local development: the loopback emulator answers for Google with seeded
     // users, so the sign-in flow runs without real Google credentials. Real
     // credentials still take precedence when both are provided.
-    const emulateBaseUrl = readGoogleEmulateBaseUrl(rawEnvironment);
+    const emulateBaseUrl = env.GOOGLE_EMULATE_URL;
     const authGoogleConfig = emulateBaseUrl
       ? {
           clientId:
-            rawEnvironment["GOOGLE_CLIENT_ID"] ??
-            GOOGLE_EMULATE_DEFAULT_CLIENT.clientId,
+            env.GOOGLE_CLIENT_ID ?? GOOGLE_EMULATE_DEFAULT_CLIENT.clientId,
           clientSecret:
-            rawEnvironment["GOOGLE_CLIENT_SECRET"] ??
+            env.GOOGLE_CLIENT_SECRET ??
             GOOGLE_EMULATE_DEFAULT_CLIENT.clientSecret,
           emulateBaseUrl,
         }
-      : rawEnvironment["GOOGLE_CLIENT_ID"] &&
-          rawEnvironment["GOOGLE_CLIENT_SECRET"]
+      : env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET
         ? {
-            clientId: rawEnvironment["GOOGLE_CLIENT_ID"],
-            clientSecret: rawEnvironment["GOOGLE_CLIENT_SECRET"],
+            clientId: env.GOOGLE_CLIENT_ID,
+            clientSecret: env.GOOGLE_CLIENT_SECRET,
           }
         : undefined;
     const credentialCipher = createEnvKeyCredentialCipher(
-      hexDecode(env.credentialKey),
+      hexDecode(env.CREDENTIAL_ENCRYPTION_KEY),
     );
     const principalKeyStore = createPrincipalKeyStore({
       db: handle.db,
-      cipher: createEnvKeyCredentialCipher(hexDecode(env.principalKey)),
+      cipher: createEnvKeyCredentialCipher(
+        hexDecode(env.PRINCIPAL_KEY_ENCRYPTION_KEY),
+      ),
     });
     const installRootId = await ensureInstallRoot(
       handle.db,
       credentialCipher,
-      readServerProviderKeys(rawEnvironment),
+      serverProviderKeys(env),
     );
     const rootPrincipals = createPrincipalStore(handle.db, principalKeyStore);
     const auth = createHubAuth(handle.db, {
       onUserCreated: (userId) =>
         joinInstallRoot(handle.db, rootPrincipals, installRootId, userId),
       baseURL: env.baseURL,
-      secret: required(rawEnvironment, "BETTER_AUTH_SECRET"),
+      secret: env.BETTER_AUTH_SECRET,
       trustedOrigins: [
         ...new Set([
           new URL(env.baseURL).origin,
@@ -189,7 +168,9 @@ export async function createHubRuntime(
       device: {
         verificationUri: new URL("/device", publicURL.origin).toString(),
       },
-      ...(env.allowedEmails ? { allowedEmails: env.allowedEmails } : {}),
+      ...(env.AUTH_ALLOWED_EMAILS
+        ? { allowedEmails: env.AUTH_ALLOWED_EMAILS }
+        : {}),
       ...(authEmail
         ? {
             verifyEmail: authEmail.verifyEmail,
@@ -199,10 +180,10 @@ export async function createHubRuntime(
         : {}),
       ...(authGoogleConfig ? { google: authGoogleConfig } : {}),
     });
-    const reportMailDirectory = join(env.dataDir, "report-mail");
-    const key = await loadHubSigningKey(env.dataDir);
+    const reportMailDirectory = join(env.HUB_DATA_DIR, "report-mail");
+    const key = await loadHubSigningKey(env.HUB_DATA_DIR);
     const agentRepoStore = createAgentRepoStore({
-      dataDir: env.dataDir,
+      dataDir: env.HUB_DATA_DIR,
       signingKey: key,
     });
     const httpRegistries = new Map([
@@ -332,7 +313,7 @@ export async function createHubRuntime(
       historyReceives,
       cipher: credentialCipher,
       principalKeyStore,
-      environment: rawEnvironment,
+      environment: env,
       publicURL,
       hubId: hexEncode(key.publicKey).slice(0, 24),
     });
@@ -372,19 +353,18 @@ export async function createHubRuntime(
           throw error;
         }
       },
-      coordinatorStartTimeoutMs,
+      env.COORDINATOR_START_TIMEOUT_MS,
       workflows.services.workflowLifecycleService.requestCancellation,
     );
     const sidecarWebSocket = createSidecarWebSocket(sidecarRouter);
     const agentActivity = createAgentActivity(sidecarRouter.events);
-    const runExport = createRunExport(rawEnvironment);
+    const runExport = createRunExport(env);
     const runTracing = runExport
       ? createRunTracing({
           events: sidecarRouter.events,
           runSpans: createRunSpans({
             captureContent:
-              rawEnvironment.OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT ===
-              "true",
+              env.OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT,
           }),
           runExport,
           describeRun: (runId) => runTelemetry(handle.db, runId),
@@ -423,8 +403,8 @@ export async function createHubRuntime(
       mail: hubMail,
     });
     const liveAppProxy = createLiveAppProxy({
-      hostname: env.hostname,
-      ports: env.liveAppPorts,
+      hostname: env.HOST,
+      ports: env.LIVE_APP_PORTS,
       publicOrigin: new URL(env.uiOrigin),
       hubCookiePrefix: sessionCookieName.split(".")[0] + ".",
       authorize: async (request, scope) => {
@@ -445,7 +425,7 @@ export async function createHubRuntime(
     const liveApps = {
       proxy: liveAppProxy,
       runner: createLiveAppRunner({
-        dataDir: env.dataDir,
+        dataDir: env.HUB_DATA_DIR,
         lastUsed: liveAppProxy.lastUsed,
         onStop: liveAppProxy.withdraw,
       }),
@@ -455,7 +435,10 @@ export async function createHubRuntime(
     app.use(gitTokens.middleware);
     const coordinatorTokens = createAgentTokenBridge(
       handle.db,
-      { paths: env.toolchainPaths, dataDir: resolve(env.dataDir) },
+      {
+        paths: env.SANDBOX_TOOLCHAIN_PATHS,
+        dataDir: resolve(env.HUB_DATA_DIR),
+      },
       runTokenStore,
       {
         install: (actor, projectId) =>
@@ -484,7 +467,7 @@ export async function createHubRuntime(
         authMethods(
           {
             google: authGoogleConfig !== undefined,
-            allowedEmails: env.allowedEmails,
+            allowedEmails: env.AUTH_ALLOWED_EMAILS,
           },
           authEmail !== undefined,
         ),
@@ -512,7 +495,7 @@ export async function createHubRuntime(
         db: handle.db,
         runs: createWorkflowRunReader(agentRepoStore.repoStore),
         repoStore: agentRepoStore.repoStore,
-        pluginHint,
+        pluginHint: env.PLUGIN_HINT,
       }),
     );
     // Only a signed-in member of the tenant reaches the note; Interchange's route reuses the
@@ -526,7 +509,10 @@ export async function createHubRuntime(
     // hub's own mail route.
     const checks = createChecks({
       db: handle.db,
-      toolchains: { paths: env.toolchainPaths, dataDir: resolve(env.dataDir) },
+      toolchains: {
+        paths: env.SANDBOX_TOOLCHAIN_PATHS,
+        dataDir: resolve(env.HUB_DATA_DIR),
+      },
       artifacts: createArtifactService(
         handle.db,
         createWorkflowRunReader(agentRepoStore.repoStore),
@@ -684,7 +670,7 @@ export async function createHubRuntime(
         },
       },
     });
-    if (env.webDir) mountWebUi(app, env.webDir);
+    if (env.HUB_WEB_DIR) mountWebUi(app, env.HUB_WEB_DIR);
     app.onError((error, c) => {
       if (error instanceof ProjectError)
         return c.json({ code: error.code, ...error.details }, error.status);
@@ -725,8 +711,8 @@ export async function createHubRuntime(
       );
     return {
       app,
-      hostname: env.hostname,
-      port: env.port,
+      hostname: env.HOST,
+      port: env.PORT,
       websocket: sidecarWebSocket.websocket,
       workflowCapacityConfigured: workflows.configured,
       start() {

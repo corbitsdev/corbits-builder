@@ -5,7 +5,11 @@ import {
   listArtifacts,
   type ArtifactDb,
 } from "@corbits/artifacts";
-import { readHubEnvironment } from "@corbits-builder/hub/environment";
+import type { RawEnvironment } from "@corbits-builder/environment";
+import {
+  readHubEnvironment,
+  readMigrationEnvironment,
+} from "@corbits-builder/hub/environment";
 import { migrateDatabase } from "@corbits-builder/hub/migrate";
 import { appBuilt } from "@corbits-builder/hub/artifacts/service";
 import type { ApproachesMeta } from "@corbits-builder/schemas/approaches";
@@ -1080,17 +1084,20 @@ export function parseSeedCliArgs(argv: readonly string[]): ParsedSeedCliArgs {
   return { help, options };
 }
 
+// Reads the hub's environment from `rawEnvironment`, or this process's own when none is given.
 export async function runDevelopmentSeed(
-  rawEnvironment: Record<string, string | undefined> = process.env,
+  rawEnvironment?: RawEnvironment,
   options: SeedDevelopmentProjectsOptions = {},
 ): Promise<SeedDevelopmentProjectsResult> {
-  const env = readHubEnvironment(rawEnvironment);
-  await migrateDatabase(rawEnvironment);
-  const handle = createDB(env.database);
+  const environment = readHubEnvironment(rawEnvironment);
+  await migrateDatabase(readMigrationEnvironment(rawEnvironment));
+  const handle = createDB(environment.database);
   try {
     const principalKeyStore = createPrincipalKeyStore({
       db: handle.db,
-      cipher: createEnvKeyCredentialCipher(hexDecode(env.principalKey)),
+      cipher: createEnvKeyCredentialCipher(
+        hexDecode(environment.PRINCIPAL_KEY_ENCRYPTION_KEY),
+      ),
     });
     const deps = createDatabaseSeedDeps(handle.db, principalKeyStore);
     return await seedDevelopmentProjects(deps, options);
@@ -1106,7 +1113,7 @@ export async function main(argv: readonly string[] = process.argv.slice(2)) {
     return;
   }
 
-  const result = await runDevelopmentSeed(process.env, parsed.options);
+  const result = await runDevelopmentSeed(undefined, parsed.options);
   console.log(
     JSON.stringify(
       {

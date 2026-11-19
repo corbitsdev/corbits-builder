@@ -69,6 +69,7 @@ export function resolveRoleInference(
 
 // build-packages.ts inlines what the project's profile resolved for this role, so the frozen
 // definition carries it; an entry imported directly reads the one its importer set.
+// BUILDER_ROLE_INFERENCE is a build constant named in build-constants.ts.
 export function roleInference(role: string): RoleInference {
   const inlined = process.env.BUILDER_ROLE_INFERENCE;
   if (!inlined) throw new Error(`role_inference_required:${role}`);

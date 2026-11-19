@@ -1,6 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { inherit } from "@corbits-builder/environment/inherit";
 import { getLogger } from "@intx/log";
 import { errorCode, requestErrorMetadata } from "../request-error.ts";
 import { liveAppWording } from "../config/live-app.ts";
@@ -18,8 +19,7 @@ const SWEEP_MS = 5_000;
 /** A sandbox host's environment: none of the hub's, which holds its secrets. */
 export const hostEnv = () => ({
   PATH: `${dirname(process.execPath)}:/usr/local/bin:/usr/bin:/bin`,
-  ...(process.env["HOME"] ? { HOME: process.env["HOME"] } : {}),
-  ...(process.env["TMPDIR"] ? { TMPDIR: process.env["TMPDIR"] } : {}),
+  ...inherit(["HOME", "TMPDIR"]),
 });
 
 // A source the host already follows is not sent again: a directory by its path, a bundle by its hash.

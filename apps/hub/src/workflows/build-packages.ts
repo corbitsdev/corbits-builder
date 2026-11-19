@@ -12,6 +12,7 @@ import {
 } from "../plugins/catalog.ts";
 import { browserCatalog } from "../builds/browser-catalog.ts";
 import type { AgentPackage } from "@corbits-builder/plugin-host/catalog";
+import { defineKey } from "./build-constants.ts";
 import { nativePackageName } from "./package-name.ts";
 import { workflowStep } from "./spawn-role.ts";
 import type { RoleInference } from "./role-inference.ts";
@@ -63,21 +64,21 @@ export async function buildWorkflowPackages(
     const resolved = inference[role];
     if (!resolved) throw new Error(`role_inference_required:${role}`);
     const define: Record<string, string> = {
-      "process.env.BUILDER_ROLE_INFERENCE": JSON.stringify(
+      [defineKey("BUILDER_ROLE_INFERENCE")]: JSON.stringify(
         JSON.stringify(resolved),
       ),
     };
     if ("agent" in built) {
-      define["process.env.BUILDER_AGENT"] = JSON.stringify(
+      define[defineKey("BUILDER_AGENT")] = JSON.stringify(
         JSON.stringify(built.agent),
       );
-      define["process.env.BUILDER_TOOLS"] =
+      define[defineKey("BUILDER_TOOLS")] =
         built.agent.tools === null
           ? "undefined"
           : JSON.stringify(resolve(PLUGINS_FOLDER, built.agent.tools));
     }
     if ("agent" in built && hasBrowser(built.agent))
-      define["process.env.BUILDER_BROWSER"] = JSON.stringify(browser);
+      define[defineKey("BUILDER_BROWSER")] = JSON.stringify(browser);
     const result = await Bun.build({
       define,
       entrypoints: [entry],

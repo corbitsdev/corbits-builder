@@ -7,17 +7,6 @@ import type {
 /** The variables a sidecar needs to find binaries and scratch space; nothing else from the hub env crosses over. */
 type ChildProcessEnv = { PATH?: string; HOME?: string; TMPDIR?: string };
 
-export function childProcessEnv(
-  env: Record<string, string | undefined>,
-): ChildProcessEnv {
-  const { PATH, HOME, TMPDIR } = env;
-  return {
-    ...(PATH !== undefined && { PATH }),
-    ...(HOME !== undefined && { HOME }),
-    ...(TMPDIR !== undefined && { TMPDIR }),
-  };
-}
-
 type CreateSpawnLocalSidecarOpts = {
   readonly interchangeDir: string;
   readonly credentialEncryptionKey: string;

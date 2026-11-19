@@ -27,6 +27,8 @@ Give each secret `.env.hub` marks its own random value, for example from
 changing the encryption keys makes stored provider keys unreadable. Every other
 setting is optional and described in
 [.env.hub.example](https://github.com/corbitsdev/corbits-builder/blob/main/.env.hub.example).
+When a setting is missing or wrong, Builder stops at startup and lists every
+variable to fix, without their values.
 
 Behind a proxy or on a public domain, set `BETTER_AUTH_BASE_URL` to the URL
 people open, and `HUB_PUBLIC_URL`, `HUB_API_ORIGIN` and `UI_PUBLIC_URL` when
