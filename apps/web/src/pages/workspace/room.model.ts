@@ -175,7 +175,7 @@ import type {
 } from "./screen-question.tsx";
 import { inShort } from "@corbits-builder/schemas/in-short";
 import { roleLabel, roleOf, screenWords } from "./roles.ts";
-import { screensFor, selectionNames } from "./screens.ts";
+import { readyPlansIn, screensFor, selectionNames } from "./screens.ts";
 
 // The stream says when the room moved. This read covers what it cannot see,
 // such as a coordinator run replaced while its old stream stays quiet.
@@ -1654,6 +1654,7 @@ export function useRoom({
       runTenantId === undefined || workspaceRead.data === undefined
         ? null
         : { project: runTenantId, workspace: workspaceRead.data },
+    readyPlans: readyPlansIn,
   };
   const pageHost = {
     close: () => setClosedPage(pageQuestion?.signalName ?? null),

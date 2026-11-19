@@ -44,6 +44,26 @@ function changed(
   );
 }
 
+test("a plugin with a sign-in credential, a provisioned one and a plan that takes down loads", () => {
+  expect(catalog.credentials.map(({ name }) => name)).toContain(
+    "hoster-server",
+  );
+  const agent = (name: string) => {
+    const built = catalog.packages.get(name);
+    if (!built || !("agent" in built)) throw new Error(`${name} is not built`);
+    return built.agent;
+  };
+  // Each agent binds only what its tools use, and a key the hub makes is bound optional.
+  expect(agent("hoster")).toMatchObject({
+    credentials: ["hoster"],
+    optional: [],
+  });
+  expect(agent("hoster-release")).toMatchObject({
+    credentials: ["hoster-server"],
+    optional: ["hoster-server"],
+  });
+});
+
 test("a tools module that uses a credential its plugin does not declare stops the hub", async () => {
   await expect(
     changed("hoster", [["credentials", "hoster"], undefined]),
@@ -124,6 +144,23 @@ test("a provisioned credential no action of its plugin provisions stops the hub"
   );
 });
 
+test("a plan that takes down with anything but an installed workflow action stops the hub", async () => {
+  for (const action of ["account", "removable", "destroy"])
+    await expect(
+      changed("hoster-publish", [["takeDown", "action"], action]),
+    ).rejects.toThrow(
+      `publish-to-hoster takes down with hoster ${action}, which is not an installed workflow action of every plugin with that handle`,
+    );
+});
+
+test("a plan that takes down with an action the coordinator must give input stops the hub", async () => {
+  await expect(
+    changed("hoster-publish", [["takeDown", "action"], "publish"]),
+  ).rejects.toThrow(
+    "publish-to-hoster takes down with hoster publish, which does not start on no input: give each of its fields a default",
+  );
+});
+
 // A project with the app, these credentials saved and nothing else.
 const holding = (saved: readonly string[]) =>
   ({
@@ -145,6 +182,27 @@ const asked = (action: string) => ({
   plugin: "hoster",
   action,
   input: { instruction: `Do the hoster ${action} work the person asked for.` },
+});
+
+test("a missing provisioned credential lets the actions that make it start and refuses the others, naming those actions", async () => {
+  const signedIn = holding(["plugin.hoster"]);
+  expect(
+    await executePause(catalog, signedIn, asked("create")),
+  ).toBeUndefined();
+  expect(
+    await executePause(catalog, signedIn, asked("remove")),
+  ).toBeUndefined();
+  const refused = await executePause(catalog, signedIn, asked("publish"));
+  expect(refused).toBeTypeOf("string");
+  expect(refused).toContain("hoster create");
+  expect(refused).not.toContain("hoster remove");
+  expect(
+    await executePause(
+      catalog,
+      holding(["plugin.hoster", "plugin.hoster-server"]),
+      asked("publish"),
+    ),
+  ).toBeUndefined();
 });
 
 test("a missing provisioned credential never opens a form; a missing sign-in opens its own", async () => {

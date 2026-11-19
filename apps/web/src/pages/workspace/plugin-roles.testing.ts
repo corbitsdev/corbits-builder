@@ -21,10 +21,15 @@ async function each<Loaded>(
   );
 }
 
-installRoles({
-  manifests: await each("*/package.json", (path) => Bun.file(path).json()),
-  definitions: await each(
-    "*/src/*/definition.ts",
-    async (path) => (await import(path)).default,
-  ),
-});
+/** Installs the plugins' own roles again, for a test that installed others in their place. */
+export async function installPluginRoles() {
+  installRoles({
+    manifests: await each("*/package.json", (path) => Bun.file(path).json()),
+    definitions: await each(
+      "*/src/*/definition.ts",
+      async (path) => (await import(path)).default,
+    ),
+  });
+}
+
+await installPluginRoles();

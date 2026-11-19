@@ -9,6 +9,7 @@
     ".": "./src/index.ts",
     "./http-json": "./src/http-json.ts",
     "./project-scope": "./src/project-scope.ts",
+    "./publish": "./src/publish.ts",
     "./run-hub": "./src/run-hub.ts",
     "./server-address": "./src/server-address.ts",
     "./server-key": "./src/server-key.ts",

@@ -1322,27 +1322,53 @@ async function readyPlanPlugin(
 }
 
 // Every action a ready-made plan names is an action of each installed specialist with its handle, so
-// whichever of them a project uses has it. A screen is a step too: asking the person is work.
+// whichever of them a project uses has it. A screen is a step too: asking the person is work. A
+// plan's takeDown action must be work an agent does, not a screen or a check, and it starts with no
+// input, so nothing the coordinator writes can widen what the person agreed to remove.
 function checkCatalog(plugins: readonly Plugin[]) {
   const specialists = plugins.filter(isSpecialist);
-  const offered = (handle: string, name: string) => {
+  const offered = (
+    handle: string,
+    name: string,
+    fits: (action: Action) => boolean = () => true,
+  ) => {
     const sharing = specialists.filter(
       ({ builder }) => builder.handle === handle,
     );
     return (
       sharing.length > 0 &&
       sharing.every(({ actions }) =>
-        actions.some((action) => action.action === name),
+        actions.some((action) => action.action === name && fits(action)),
       )
     );
   };
-  for (const { builder } of plugins)
-    if (builder.runs === "plan")
-      for (const step of builder.steps)
-        if (!offered(step.plugin, step.action))
-          throw new Error(
-            `${builder.handle} names ${step.plugin} ${step.action}, which is not an installed action of every plugin with that handle`,
-          );
+  for (const { builder } of plugins) {
+    if (builder.runs !== "plan") continue;
+    for (const step of builder.steps)
+      if (!offered(step.plugin, step.action))
+        throw new Error(
+          `${builder.handle} names ${step.plugin} ${step.action}, which is not an installed action of every plugin with that handle`,
+        );
+    const { takeDown } = builder;
+    if (
+      takeDown !== undefined &&
+      !offered(takeDown.plugin, takeDown.action, isWorkflowAction)
+    )
+      throw new Error(
+        `${builder.handle} takes down with ${takeDown.plugin} ${takeDown.action}, which is not an installed workflow action of every plugin with that handle`,
+      );
+    if (
+      takeDown !== undefined &&
+      !offered(
+        takeDown.plugin,
+        takeDown.action,
+        (action) => isWorkflowAction(action) && action.validate({}).ok,
+      )
+    )
+      throw new Error(
+        `${builder.handle} takes down with ${takeDown.plugin} ${takeDown.action}, which does not start on no input: give each of its fields a default`,
+      );
+  }
 }
 
 // A ready-made plan's step asks for the person's go-ahead only through its approval, so what it

@@ -15,6 +15,7 @@ import {
   type Offer,
   type PageControls,
   type ProjectValues,
+  type ReadyPlanOffer,
   type Screen,
   type ScreenActionBuilder,
 } from "@corbits-builder/plugin";
@@ -77,6 +78,8 @@ export type HostSupplies = {
   reply: ReplyBox;
   /** The project's and its workspace's tenants, where a credential is saved; null until both are read. */
   tenants: Tenants | null;
+  /** The installed ready-made plans that list the group a screen names, in their manifests' words. */
+  readyPlans: (group: string) => readonly ReadyPlanOffer[];
 };
 
 export type Tenants = { project: string; workspace: string };
@@ -88,6 +91,7 @@ export type ViewResources = {
   documents: { list: readonly ShownDocument[] };
   designConcepts: readonly ChoosableConcept[];
   tenants: Tenants;
+  readyPlans: HostSupplies["readyPlans"];
 };
 
 /** What the prompt box sends in place of the person's words while a screen has feedback staged. */
@@ -121,6 +125,7 @@ const SUPPLIED: ReadonlySet<string> = new Set<keyof HostSupplies>([
   "documents",
   "designConcepts",
   "tenants",
+  "readyPlans",
 ]);
 
 /** The pending items an offer would send back, in the decision's words; null while there are none. */
@@ -336,6 +341,7 @@ export function screenHost<In, Out, Data, Prepared>(
             documents: { list: host.documents.list },
             designConcepts: host.designConcepts,
             tenants,
+            readyPlans: host.readyPlans,
           },
         }}
         draft={answering.draft ?? {}}

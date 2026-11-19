@@ -431,6 +431,11 @@ The specialists installed today:
 - The project plugin (`plugins/project`) has two screens and no agent: one
   hands the person's approvals to Builder or takes them back, and one shows
   what they must set up outside Builder.
+- The publish plugin (`plugins/publish`) has three screens and no agent: one
+  asks where to publish when more than one place is installed, one asks the
+  person's go-ahead before each publish, and one asks it before the app is
+  taken down. It declares the values every place shares (`publish.release`,
+  `publish.plan`, `publish.keep`, `publish.holding`, `publish.take-down`).
 - The Cloudflare plugin (`plugins/cloudflare`) has checks only: whether the app
   is ready for Cloudflare Workers, and whether it is routed to a domain.
 
@@ -449,7 +454,7 @@ The ready-made plans installed today:
 The skill packs installed today, each for the coder or a pack it narrows:
 `web-app-skills`, narrowed by `react-router-skills` and `sveltekit-skills`;
 `web-app-starter-skills` for the `web-app` starter; `rust-skills`;
-`desktop-app-skills`; and `chat-bot-skills`.
+`desktop-app-skills`; `chat-bot-skills`; and `publish-skills`.
 
 Every specialist run is triggered by mail, takes exactly one assignment and
 ends; only the coordinator keeps its agent and takes each later message as
@@ -461,6 +466,97 @@ change, and the next asks again.
 Only the coordinator talks to the person. Specialists put questions in their
 reply to it, and it settles them with a stated assumption unless the answer
 changes what gets built, in which case it asks.
+
+## Publishing
+
+Publishing puts the saved app where people can open it. Every place it can go
+is a plugin in the `publish` group, so the host names none. When the person
+presses Publish, the interface sends their own message. The coordinator finds
+the ready-made plans in the group, opens `publish choose` when more than one is
+installed, and follows the chosen plan: the place's `ready` check, `publish
+confirm` for the go-ahead, then the place's `publish` action. That action
+pauses on its key screen while a key its agent's tools use is missing
+([DEV.md](https://github.com/corbitsdev/corbits-builder/blob/main/docs/DEV.md#the-folder-and-the-manifest)). The place's tools do the
+work in fixed steps and record `publish.release`. Its `live` check turns that
+record into the fact that ends the plan, `published:<place>`, which lapses when
+a newer version is saved. The Publish tab works out its state from these
+records alone.
+
+`publish choose` lists each plan by its package's `description`: what the
+person gets, what it costs and who bills. `publish confirm` shows, before the
+app first goes out by a plan, the plan's `firstPublish`: where it goes and the
+one thing to know first, such as an address that is not secure (https) yet. For
+changes it says only that the address people open will show the version saved
+last. A publish that cannot update the release recorded, because it goes to
+another place or one that cannot update it yet, shows `firstPublish` and says
+the app gets a new address while the earlier one keeps the earlier version.
+
+The confirm saves the go-ahead as `publish.go-ahead`, `{ plan, at }`, dated by
+the hub. The `publish agreed` check, which cannot be skipped, returns
+`agreed:publish` from that answer until a release is recorded after it, `publish.plan` names another plan, or the take-down screen
+clears it. A screen cannot read the saved app's version yet, so the release
+recorded after the go-ahead is what says the publish it allowed went out. Each
+plan's guidance runs `publish agreed` before opening the confirm and carries on
+under it through an attempt that fails, is blocked or needs another step
+first. The check is guidance for now: no vendor's `publish` action requires
+`agreed:publish`, since a go-ahead that cannot name the version the person
+agreed to is the coordinator's sign not to ask again, not a gate.
+
+Taking the app down works the same way. The person presses Take it down in the
+Publish tab, or asks in their own words, and the coordinator opens `publish
+take-down` with the plan whose place `publish.holding` or `publish.release`
+names. The screen shows, in the take-down action's own words (its definition's
+`says.removes`), what goes and what becomes of what people entered, with the
+address people open and, for something held, where it is and what it costs.
+"Take it down" saves `publish.take-down` as `{ target, release?, holding? }`,
+with the `at` of the release and the `since` of the holding the person was
+shown, and clears `publish.go-ahead`, so a later publish asks again; "Keep it"
+saves it as null, and so does the go-ahead to publish again on the confirm
+screen, so a later take-down asks again. The coordinator then runs the place's
+`removable` check and starts the plan's `takeDown` action, which the hub refuses until that
+check's fact holds. The take-down's agent holds only tools that take the app
+down and look, never one that publishes, and the publish agent holds none that
+takes it down. A republish, or a take-down that cleared what the person was
+shown, changes what the check read, so an old go-ahead never takes down a later
+release; a take-down that failed can be tried again on the same one.
+
+A new place implements this contract:
+
+- It lists `publish` in its groups, and its ready-made plan ends on
+  `published:<place>`, using `publishedCheck` for its `live` check.
+- Its own tool writes `publish.release` and, for an app the person must still
+  keep, `publish.keep`, with `replaceable: false` on a release the next publish
+  cannot update.
+- Its screens set `place: "publish"`, so they draw in the Publish tab.
+- Its tools are `fixedTools` that reach the hub through `runHub` and answer
+  with fixed codes and a few typed fields, never the place's own output.
+- Its account key is an http credential, which may declare `signIn` so the
+  person signs in at the provider instead of pasting it. A machine key the hub
+  makes for it is an ssh credential that says `provisioned: true` and has no
+  form; the actions that make it list it in `provisions`.
+- For as long as something it made costs money, such as a rented server, its
+  own tool records `publish.holding` (`target`, `place`, `since`, and `costs`
+  as the person reads it), and it clears that only once the provider confirms
+  the thing is gone.
+- Its plan declares `takeDown`, the workflow action that takes down what it
+  published or holds. That action starts on no input (each field has a
+  default), so nothing the coordinator writes widens what the person agreed
+  to. Its definition's `says.removes` says what goes and whether what people
+  entered is destroyed or kept, and the take-down screen shows that. The
+  action runs its own agent, whose tools only take down and look, and it
+  requires the fact of a check built with `removableCheck` (`"rerun": "value"`,
+  `"skip": "never"`). That check passes only while `publish.take-down` names
+  this place and each release and holding recorded now is the one the person
+  was shown, so a go-ahead for an earlier release never takes down a later
+  one, even while the machine it is on is still held. The person cannot skip
+  the check: a skipped check's fact counts, and only their answer on the
+  take-down screen may make this one true. `recordedFor`
+  in `@corbits-builder/plugin/publish` decides which release and holding a
+  take-down covers, and `takeDownStands` whether the go-ahead still stands for
+  them; the check, the screens, the place's own tools and the Publish tab all
+  read them through those. Each place's take-down tool checks it again for
+  itself through `takeDownAgreed` before it acts and answers `not_agreed`, so
+  "Keep it" pressed after the coordinator started the removal is seen.
 
 ### Hub-made server keys
 

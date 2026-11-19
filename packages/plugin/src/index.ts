@@ -8,6 +8,10 @@ import {
 import { Tier } from "@corbits-builder/schemas/models";
 import { SpecialistInstruction } from "@corbits-builder/schemas/native-specialist";
 
+/** The value an arktype type checked, or undefined when the check failed. */
+export const parsed = <T>(checked: T | ArkErrors) =>
+  checked instanceof type.errors ? undefined : checked;
+
 // Something true of the project that Builder works out from what it stores, such as "app_exists". A
 // workflow's fact may name one of its input fields, as "filed:{kind}", for the value passed there.
 // What an action requires may also name a fact that must not hold, as "!app_exists".
@@ -188,6 +192,8 @@ const Common = type({
   // else the one that says it is the default. Exactly one of them must.
   handle: "string > 0",
   "default?": "true",
+  // The groups discover finds it by. The host also reads the group "publish" (PUBLISH_GROUP in
+  // ./publish.ts): the Publish tab offers every target and ready-made plan in it.
   groups: "string[] > 0",
   when: "string > 0",
   unless: "string > 0",
@@ -218,9 +224,10 @@ export const ScreenActionBuilder = type({
   // The facts the person's answer can make true, each recorded from what the definition's approves
   // names; a templated fact names an input field, so the person approves only what was asked.
   "returns?": Facts,
-  // "page" draws the screen over the whole room with the prompt box still in reach; without it the
-  // screen draws in the conversation.
-  "place?": "'page'",
+  // "page" draws the screen over the whole room with the prompt box still in reach; "publish" draws
+  // it in the Publish tab, where the person follows publishing; without it the screen draws in the
+  // conversation.
+  "place?": "'page' | 'publish'",
   // What the host itself supplies the view, by the names its registry knows: data too large or too
   // live for the input or project values, or a part only the host may draw.
   "host?": "string[]",
@@ -660,6 +667,16 @@ export const ReadyPlanBuilder = Common.merge({
   steps: ReadyPlanStepBuilder.array().atLeastLength(1),
   // The fact that ends the plan. A plan with none is followed until the coordinator leaves it.
   "ends?": "string > 0",
+  // The workflow action that removes what the plan published. It starts with no input, and the
+  // person is told what it removes from that action's definition. Only a plan that publishes or
+  // holds something names one. The take-down screen offers it for what the plan's target recorded,
+  // and nothing else starts it.
+  "takeDown?": { "+": "reject", plugin: "string > 0", action: "string > 0" },
+  // What the person reads, in plain words, before a plan that publishes first sends the app out:
+  // where it goes and the one thing they should know first. Only the confirm screen reads it, for a
+  // plan in the publish group and only on a first publish there. The list of places shows the
+  // plan's description instead.
+  "firstPublish?": "string > 0",
 });
 export type ReadyPlanBuilder = typeof ReadyPlanBuilder.infer;
 
@@ -721,7 +738,31 @@ export type Describe<Fields extends PropertyKey> = {
 // What a person reads of a started action while it works and once done, such as "Writing the
 // build plan". {thing} stands for the document or concept its work is about; a phrase that names
 // one reads as its role's status while none is known.
-export type Says = { doing: string; done: string };
+// Only an action that a ready-made plan names as its takeDown says removes. The take-down screen
+// shows it before the person agrees.
+export type Says = { doing: string; done: string; removes?: Removes };
+
+// What the person reads before agreeing to an action that removes what a publish made: what goes,
+// and whether what people entered in the app is destroyed with it or kept.
+export type Removes = { what: string; entered: string };
+
+/** An installed ready-made plan as the host offers it to a screen, in its manifest's words. */
+export type ReadyPlanOffer = {
+  handle: string;
+  // What it does, as its package describes it.
+  about: string;
+  // What the person reads before the app first goes out by it, when it publishes.
+  firstPublish?: string | undefined;
+  // When it is the right plan, as its manifest says.
+  when: string;
+  // The handles of the plugins its steps name, each once.
+  plugins: readonly string[];
+  // The action that takes down what it published, when it declares one, with what that action's
+  // definition tells the person it removes.
+  takeDown?:
+    | { plugin: string; action: string; removes?: Removes | undefined }
+    | undefined;
+};
 
 // What a person reads of a screen in the conversation's map: its label from the input it was
 // opened with, and what an answer chose.

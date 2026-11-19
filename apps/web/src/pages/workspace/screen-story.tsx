@@ -79,6 +79,47 @@ export const storySupplies: HostSupplies = {
   ],
   reply: { drafted: false, stage: () => undefined },
   tenants: { project: "tenant-project", workspace: "tenant-workspace" },
+  readyPlans: (group) =>
+    group === "publish"
+      ? [
+          {
+            handle: "publish-to-server",
+            about:
+              "Your own server: one you already rent. Your hosting provider bills you.",
+            firstPublish:
+              "It goes on your own server, at its IP address. That address isn't secure (https) yet, so don't use the app for passwords or payments.",
+            when: "The project has an app and the person wants it published on a server of their own that they rent, so people can open it.",
+            plugins: ["publish", "server"],
+            takeDown: {
+              plugin: "server",
+              action: "remove",
+              removes: {
+                what: "Your app stops answering at its address. The server stays yours, and your hosting provider bills you for it until you cancel it there.",
+                entered:
+                  "What people entered in the app stays on your server, and comes back if you publish again.",
+              },
+            },
+          },
+          {
+            handle: "publish-to-host",
+            about:
+              "Example Host: a secure (https) web address of its own. Free to start, and no account needed.",
+            firstPublish:
+              "It goes on Example Host, at a secure web address of its own.",
+            when: "The project has an app and the person wants it published on a hosting service, so people can open it.",
+            plugins: ["host", "publish"],
+            takeDown: {
+              plugin: "host",
+              action: "remove",
+              removes: {
+                what: "Builder deletes the space your app runs in at Example Host, and your app stops answering at its address.",
+                entered:
+                  "What people entered in the app is deleted with it, for good.",
+              },
+            },
+          },
+        ]
+      : [],
 };
 
 /** One plugin's screen action, hosted as the interface hosts it. */

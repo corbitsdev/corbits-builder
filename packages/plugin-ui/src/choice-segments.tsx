@@ -37,7 +37,11 @@ export function chosenIndex(
   );
 }
 
-/** Options as radios: one tab stop on the chosen one, and arrow keys that move the choice. */
+/**
+ * Options as a radio group: one tab stop, on the chosen option, and arrow keys move the choice. A
+ * null choice means the person has chosen nothing yet: nothing is checked, the tab stop is on the
+ * first option, and an arrow key or a press chooses, as in a native radio group.
+ */
 export function RadioGroup<Option extends Choice>({
   id,
   label,
@@ -47,12 +51,14 @@ export function RadioGroup<Option extends Choice>({
   disabled = false,
   look,
   children,
-}: ChoiceProps<Option> & {
+}: Omit<ChoiceProps<Option>, "choice"> & {
+  choice: string | null;
   look: { slot: string; group: string; option: string };
   children: (option: Option) => ReactNode;
 }) {
   const buttons = useRef<(HTMLButtonElement | null)[]>([]);
-  const chosen = chosenIndex(options, choice);
+  const chosen = choice === null ? -1 : chosenIndex(options, choice);
+  const stop = Math.max(0, chosen);
   const move = (event: KeyboardEvent, index: number) => {
     const step = ARROW_STEP[event.key];
     if (step === undefined) return;
@@ -74,12 +80,12 @@ export function RadioGroup<Option extends Choice>({
           ref={(element) => {
             buttons.current[index] = element;
           }}
-          id={index === chosen ? id : undefined}
+          id={index === stop ? id : undefined}
           type="button"
           role="radio"
           aria-label={option.label}
           aria-checked={index === chosen}
-          tabIndex={index === chosen ? 0 : -1}
+          tabIndex={index === stop ? 0 : -1}
           disabled={disabled}
           className={look.option}
           onClick={() => onChoose(option.id)}

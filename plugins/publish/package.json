@@ -1,0 +1,99 @@
+{
+  "name": "@corbits-builder/publish",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Records where the project's app was last published, which every publish target writes, and asks the person where to publish, for their go-ahead to each publish they ask for, and before taking the app down. It publishes nothing itself: a ready-made plan in the publish group does, such as publish-to-server.",
+  "license": "SEE LICENSE IN ../../LICENSE.md",
+  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
+  "type": "module",
+  "dependencies": {
+    "@corbits-builder/plugin": "workspace:*",
+    "@corbits-builder/plugin-ui": "workspace:*",
+    "@corbits/react-ui": "0.5.1",
+    "arktype": "catalog:",
+    "react": "19.3.0"
+  },
+  "devDependencies": {
+    "@types/react": "19.3.0"
+  },
+  "builder": {
+    "handle": "publish",
+    "runs": "specialist",
+    "groups": [
+      "publish"
+    ],
+    "when": "The person asks to publish their app or the changes they made to it, or to take it down. The app is published through a ready-made plan in the publish group, one for each kind of place it can go: when more than one is installed the person chooses with choose. Each publish the person asks for needs their go-ahead from confirm once, which publish agreed then says stands until it went out; an attempt that fails or waits on another step goes on under it. Taking it down needs their go-ahead from take-down, opened with the plan whose place publish.release or publish.holding names; that plan's guidance says what follows.",
+    "unless": "The project has no saved app yet, or the person only asks where or whether it is published, which publish.release records.",
+    "values": {
+      "publish.release": {
+        "about": "Where the project's app was last published, as { \"target\": the plugin that published it, such as server, \"url\": the address people open it at, \"version\": the saved app's version that went out, \"at\": when, as an ISO time, and \"replaceable\": false when the next publish there makes a new address rather than updating it }; null once it was taken down or is gone, and none while it was never published.",
+        "type": "json"
+      },
+      "publish.plan": {
+        "about": "The handle of the ready-made publish plan the person chose to publish the app by, such as publish-to-server; none while they never chose, as when only one is installed.",
+        "type": "text"
+      },
+      "publish.go-ahead": {
+        "about": "The person's go-ahead to publish, from publish confirm, as { \"plan\": the handle of the ready-made plan it is for, \"at\": when they gave it, as an ISO time }; null once they agreed to take the app down, and none while they never gave one. It stands until a release is recorded after it, as publish agreed says. Only the publish plugin's screens set it.",
+        "type": "json"
+      },
+      "publish.keep": {
+        "about": "The link the person opens to keep an app that was published without an account at its host, until when, and where it was published, as { \"link\": the link, \"until\": an ISO time, \"place\": the plain name of the host, such as Cloudflare }; none while there is nothing to keep. Only a target's own tool sets it, and the person clears it from the Publish tab once they kept the app or it is gone.",
+        "type": "json",
+        "private": true
+      },
+      "publish.holding": {
+        "about": "Something that costs money that a publish target made for the project, such as a server it rented, as { \"target\": the plugin that made it, such as digitalocean, \"place\": the plain name of where it is, \"since\": when it was made, as an ISO time, and \"costs\": what it costs, as the person reads it, such as $6 a month }; none while nothing is held. Only that target's own tools set it, and clear it once the thing is gone; the person may also clear it from the Publish tab once they removed it themselves.",
+        "type": "json"
+      },
+      "publish.take-down": {
+        "about": "The person's go-ahead to take down what a publish target published or holds, as { \"target\": the plugin that published or holds it, \"release\": the at of the release they were shown, \"holding\": the since of the holding they were shown, each as an ISO time and left out when there was none }; null when they chose to keep it or gave their go-ahead to publish again. Only the publish plugin's screens set it.",
+        "type": "json"
+      }
+    },
+    "actions": {
+      "choose": {
+        "place": "publish",
+        "host": [
+          "readyPlans"
+        ]
+      },
+      "confirm": {
+        "place": "publish",
+        "reads": [
+          "publish.release",
+          "publish.keep"
+        ],
+        "host": [
+          "readyPlans"
+        ]
+      },
+      "take-down": {
+        "place": "publish",
+        "reads": [
+          "publish.release",
+          "publish.holding"
+        ],
+        "host": [
+          "readyPlans"
+        ]
+      },
+      "agreed": {
+        "rerun": "value",
+        "returns": [
+          "agreed:publish"
+        ],
+        "skip": "never"
+      }
+    },
+    "facts": {
+      "agreed:publish": "the person's go-ahead to publish by the chosen plan stands: they gave it on publish confirm and the publish it allows has not gone out yet"
+    },
+    "examples": [
+      "publish my app",
+      "put my app online",
+      "publish my changes",
+      "take my app down"
+    ]
+  }
+}

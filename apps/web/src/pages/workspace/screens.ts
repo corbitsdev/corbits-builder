@@ -8,10 +8,12 @@ import type { ScreenViewProps } from "@corbits-builder/plugin-ui/screen";
 import type { ComponentType } from "react";
 import {
   isScreen,
+  ReadyPlanBuilder,
   ScreenActionBuilder,
   SpecialistBuilder,
+  type ReadyPlanOffer,
 } from "@corbits-builder/plugin";
-import { byAction, pluginFolder } from "./roles.ts";
+import { actionRole, byAction, pluginFolder } from "./roles.ts";
 import {
   screenHost,
   type ViewResources,
@@ -20,7 +22,10 @@ import {
 
 /** The plugins' files the interface bundles, by path from this folder. */
 export type ScreenFiles = {
-  manifests: Record<string, { name: string; builder?: unknown }>;
+  manifests: Record<
+    string,
+    { name: string; description?: string; builder?: unknown }
+  >;
   definitions: Record<string, unknown>;
   data: Record<string, unknown>;
   views: Record<
@@ -32,6 +37,13 @@ export type ScreenFiles = {
 type Installed = { host: ComponentType<ScreenHostProps>; page: boolean };
 
 let installed: ReadonlyMap<string, Installed> = new Map();
+
+type ReadyPlan = Omit<ReadyPlanOffer, "takeDown"> & {
+  takeDown: { plugin: string; action: string } | undefined;
+  groups: readonly string[];
+};
+
+let readyPlans: readonly ReadyPlan[] = [];
 
 // The specialist packages sharing each handle, and which of them says it is the default.
 let packages: ReadonlyMap<
@@ -108,7 +120,61 @@ export function installScreens({
     ),
   );
   packages = sharing;
+  readyPlans = offeredPlans(manifests);
 }
+
+// One plan per handle. When plans share a handle, the one marked as the default wins, as it does
+// for a project that selects none.
+function offeredPlans(manifests: ScreenFiles["manifests"]): ReadyPlan[] {
+  const plans = Object.values(manifests).flatMap(({ description, builder }) => {
+    if (
+      typeof builder !== "object" ||
+      builder === null ||
+      !("runs" in builder) ||
+      builder.runs !== "plan"
+    )
+      return [];
+    const plan = ReadyPlanBuilder.assert(builder);
+    return [
+      {
+        handle: plan.handle,
+        about: description ?? plan.when,
+        firstPublish: plan.firstPublish,
+        when: plan.when,
+        plugins: [...new Set(plan.steps.map((step) => step.plugin))],
+        takeDown: plan.takeDown,
+        groups: plan.groups,
+        isDefault: plan.default === true,
+      },
+    ];
+  });
+  return plans.flatMap(({ isDefault, ...plan }) =>
+    isDefault ||
+    !plans.some((other) => other.handle === plan.handle && other.isDefault)
+      ? [plan]
+      : [],
+  );
+}
+
+/** The installed ready-made plans that list a group, worded by their manifests and actions. */
+export const readyPlansIn = (group: string): readonly ReadyPlanOffer[] =>
+  readyPlans
+    .filter((plan) => plan.groups.includes(group))
+    .map(({ handle, about, firstPublish, when, plugins, takeDown }) => ({
+      handle,
+      about,
+      firstPublish,
+      when,
+      plugins,
+      takeDown:
+        takeDown === undefined
+          ? undefined
+          : {
+              ...takeDown,
+              removes: actionRole(`${takeDown.plugin} ${takeDown.action}`)?.says
+                ?.removes,
+            },
+    }));
 
 /**
  * Finds the screen a question names for a project with these values: the package its selection
