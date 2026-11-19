@@ -453,6 +453,22 @@ export const wording = {
     noProjectLead:
       "Pick a project from the list. Its outputs open from the conversation.",
   },
+  /** What frames an open project: its name and sidebar top left. */
+  projectShell: {
+    /** The project's name opens and closes its sidebar; the shortcut does the same. */
+    openSidebar: "Open the project sidebar",
+    closeSidebar: "Close the project sidebar",
+    shortcut: { mac: "⌘\\", other: "Ctrl+\\" },
+    sidebar: "Project",
+    notStarted: "Not started",
+    /** Read after a document's name where its mark says more than the name does. */
+    documentState: {
+      needs_you: "needs you",
+      writing: "being written",
+      failed: "could not be written",
+    },
+    projectSettings: "Project settings",
+  },
   whatsNew: {
     title: "What's new",
     sections: "What's new features",

@@ -1,0 +1,307 @@
+.sidebar {
+  --width: var(--rail-width);
+  /* Closing is the system answering, so it is quicker than opening. */
+  --speed: var(--duration-standard);
+
+  position: relative;
+  display: flex;
+  flex: none;
+  width: 0;
+  height: 100%;
+  color: var(--wb-foreground);
+  transition: width var(--speed) var(--ease-out);
+}
+
+.sidebar[data-open] {
+  --speed: var(--duration-large);
+
+  width: var(--width);
+}
+
+/* Opened or closed from the keyboard it moves at once: a shortcut is pressed too often to wait on. */
+.sidebar[data-instant],
+.sidebar[data-instant] :is(.toggle, .room, .panel) {
+  transition: none;
+}
+
+.room {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* The panel keeps its full width while the room around it opens and closes: the edge reveals the
+   rows where they stand, so they never move, wrap or squeeze on the way. */
+.panel {
+  display: flex;
+  flex-direction: column;
+  width: var(--width);
+  height: 100%;
+  /* Below the project's name, which floats over the panel's top. */
+  padding: 54px var(--space-2) 10px;
+  overflow-y: auto;
+  background: var(--card);
+  transition: visibility 0s;
+}
+
+/* Hidden once it has closed, so nothing in it takes focus or is read out. */
+.sidebar:not([data-open]) .panel {
+  visibility: hidden;
+  transition: visibility 0s var(--speed);
+}
+
+.sidebar[data-drawer] {
+  width: 0;
+  z-index: 5;
+}
+
+.sidebar[data-drawer] .room {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  width: var(--width);
+  max-width: 100vw;
+  box-shadow: var(--wb-shadow);
+  translate: -100% 0;
+  transition: translate var(--speed) var(--ease-out);
+}
+
+.sidebar[data-drawer][data-open] .room {
+  translate: 0;
+}
+
+.toggle {
+  position: absolute;
+  inset-block-start: 10px;
+  inset-inline-start: 12px;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  /* Sized by its words, not by the closed sidebar, which has no width to give it. */
+  width: max-content;
+  max-width: calc(var(--width) - 24px);
+  height: 2.25rem;
+  padding: 6px var(--space-1) 6px 6px;
+  border: 0;
+  border-radius: var(--radius-lg);
+  background: var(--card);
+  color: var(--wb-foreground);
+  font: inherit;
+  text-align: start;
+  white-space: nowrap;
+  cursor: pointer;
+  translate: var(--space-2) 10px;
+  transition:
+    translate var(--speed) var(--ease-out),
+    background-color var(--speed) var(--ease-out);
+}
+
+.sidebar[data-open] .toggle {
+  background: transparent;
+  translate: 0;
+}
+
+.toggle:hover,
+.sidebar[data-open] .toggle:hover {
+  background: var(--wb-muted);
+}
+
+.toggle > svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 4px;
+  color: var(--wb-muted-foreground);
+}
+
+.toggle:hover > svg {
+  color: var(--wb-foreground);
+}
+
+.mark {
+  flex: none;
+  overflow: hidden;
+  border-radius: 7px;
+}
+
+.project {
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--wb-text-control);
+  font-weight: 600;
+  line-height: var(--wb-text-control--line-height);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tree,
+.documents,
+.utilities {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* The tree item holds focus; its row draws the ring, so a step's ring stops above its documents. */
+.item:focus-visible {
+  outline: none;
+}
+
+.item:focus-visible > .row,
+.toggle:focus-visible {
+  outline: 2px solid var(--wb-ring);
+  outline-offset: -2px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 1.75rem;
+  border-radius: var(--radius-md);
+  font-size: var(--wb-text-control);
+  line-height: var(--wb-text-control--line-height);
+  cursor: pointer;
+}
+
+.row:hover {
+  background: var(--wb-muted);
+}
+
+.row[data-row="step"] {
+  gap: 6px;
+  padding: 0 var(--space-2);
+}
+
+/* Not started: named in line with the other steps' names, with nothing to fold or press. */
+.row[data-empty] {
+  padding-inline-start: 28px;
+  color: var(--wb-muted-foreground);
+  cursor: default;
+}
+
+.row[data-empty]:hover {
+  background: transparent;
+}
+
+.chevron {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  transition: rotate var(--duration-micro) var(--ease-out);
+}
+
+.item[data-open] > .row .chevron {
+  rotate: 90deg;
+}
+
+.name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row[data-row="step"] .name {
+  font-weight: 600;
+}
+
+.note {
+  flex: none;
+  color: var(--wb-muted-foreground);
+  font-size: var(--text-xs);
+  line-height: var(--text-xs--line-height);
+  white-space: nowrap;
+}
+
+/* Folded, a step's documents stay mounted but hidden, so they can slide shut and nothing in them
+   takes focus or is read out. */
+.fold {
+  display: grid;
+  grid-template-rows: 0fr;
+  visibility: hidden;
+  transition:
+    grid-template-rows var(--duration-micro) var(--ease-out),
+    visibility var(--duration-micro);
+}
+
+.item[data-open] > .fold {
+  grid-template-rows: 1fr;
+  visibility: visible;
+}
+
+/* Folding from the keyboard is instant: it is repeated too often to wait on. */
+.tree[data-keyboard] :is(.fold, .chevron) {
+  transition: none;
+}
+
+.documents {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.documents > :first-child {
+  margin-block-start: 2px;
+}
+
+.documents > :last-child {
+  margin-block-end: var(--space-2);
+}
+
+/* Indented so a document's name starts under its step's name. */
+.documents > .item {
+  padding-inline-start: 20px;
+}
+
+.row[data-row="document"] {
+  padding: 0 var(--space-2);
+  color: var(--wb-muted-foreground);
+}
+
+/* A document that wants a look reads as plainly as the open one. */
+.row[data-row="document"]:is(
+    :hover,
+    [data-state="needs_you"],
+    [data-state="failed"]
+  ) {
+  color: var(--wb-foreground);
+}
+
+/* The open document is marked by its words alone. */
+.item[aria-current="page"] > .row {
+  color: var(--wb-foreground);
+  font-weight: 500;
+}
+
+/* Builder is writing it: the library's typing dots, the same ones the chat and comments show. */
+.writing {
+  display: flex;
+  flex: none;
+}
+
+.utilities {
+  margin-block-start: auto;
+  padding-block-start: var(--space-4);
+}
+
+.utilities + .utilities {
+  margin-block-start: var(--space-3);
+  padding-block-start: 0;
+}
+
+.workspace {
+  display: flex;
+  padding: var(--space-2) var(--space-2) 0;
+}
