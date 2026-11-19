@@ -14,10 +14,11 @@ import { queryCacheReady, queryClient } from "./queries/client.ts";
 import { openSharedEventSource } from "./shared-event-source.ts";
 import { redirectHashLink } from "./routes.ts";
 import { wording } from "./config.ts";
+import { developmentBuild } from "./build-mode.ts";
 
 // Compiled out of a production bundle: `bun run dev` rebuilds the interface on
 // every edit, and this is how the window hears about it.
-if (import.meta.env.DEV) {
+if (developmentBuild) {
   // Through the shared source so a hidden tab holds no connection for it.
   const source = openSharedEventSource("/api/dev/reload", false);
   source.addEventListener("rebuilt", () => location.reload());
