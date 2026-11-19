@@ -18,14 +18,14 @@ export const EXECUTE_DESCRIPTION =
   "Start a specialist's action, run a check, or open a screen for the person, by the plugin's handle and the action's name as discover lists them. A workflow action starts its specialist and returns at once with { started, runs: [{ runId }], presents, advice }, where advice is what its plan step suggested doing first; each run's report arrives later as a message that begins with its run id. Independent pieces of work can start in the same turn, one execute each. A check returns its record, { ran, result, summary, evidence }, or, for one that keeps trying, its checkId now and its result later as a hub note. A screen waits for the person and returns { output }, their answer, or { reply } when they wrote back instead. When the person's approval is all that holds a start back and one screen gives it, execute shows that screen and starts the action once they answer; if they write back instead, nothing starts. A refusal starts nothing and says why. When the action lacks something, it names which action makes it true: start that first or ask the person. When the person declined the action's plan step, or asked to be consulted before it, carry on with the rest of the plan. A ready-made plan is added with the plan tool, not started here.";
 
 export const RUNS_DESCRIPTION =
-  "See and steer the runs you started with execute. list returns each run you started in this project that is at work or ended lately, with its plugin and action, status, state while it runs, when it started, its last activity, and why a failed run stopped. wait returns which of runIds ended and which still work, once the first ends or the time is up. You need not wait for a report: it reaches you as a message after your turn. stop returns which runs it stopped and which had already ended; what a stopped run filed or pushed is kept. A run id that is not one of yours is refused with the list of yours.";
+  "See and steer the runs you started with execute. list returns each run you started in this project that is at work or ended lately, with its plugin and action, status, state while it runs, when it started, its last activity, and why a failed run stopped. A run's report reaches you as a message when it replies, so there is nothing to wait for. stop returns which runs it stopped and which had already ended; what a stopped run filed or pushed is kept. A run id that is not one of yours is refused with the list of yours.";
 
 export const PLAN_DESCRIPTION =
   "Keep the project's plan, which shows the person what is coming and where work of several steps stands, and holds each step until what it waits for is true. It is the only way a plan is set. Each operation answers with the plan as it now stands, each step with its id; pass that id as execute's step when you start the step. Write a plan of your own with set from the actions that fit, which is the normal case, or take up a ready-made plan with add and plan, which also has the project follow it while its group is on the plan. Once added, a ready-made plan's steps can be adjusted like any others: add your own before, after or between them, inside its group or next to it, and remove those that do not fit. A refusal saves nothing. It names each wrong field, or the first step the plan cannot hold, such as an action that is not installed or an input that does not fit: correct it and call again. Adding a ready-made plan whose work is already done is refused too: start the action the person's request needs directly.";
 
-// What runs offers for a run that holds back the next one, named as runIds lists it.
-export const waitOrStop = (runIds: string) =>
-  `runs({ operation: "wait", runIds: [${runIds}] }) waits for it to end, or runs({ operation: "stop", runIds: [${runIds}] }) stops it; then call execute again.`;
+// What to do about a run that holds back the next one, named as runIds lists it.
+export const startAfter = (runIds: string) =>
+  `Its report reaches you as a message: end your turn and call execute again then. If you already have its report, it is saving its last files: call execute again once. To start sooner, runs({ operation: "stop", runIds: [${runIds}] }) stops it; then call execute again.`;
 
 /** Why a tool call was not run, every wrong field at once, then everything the tool takes. */
 export function wrongCall(
@@ -284,12 +284,11 @@ export const unknownAction = (
 
 /** Why runs did nothing with run ids that are not runs the coordinator started here. */
 export const unknownRuns = (
-  operation: string,
   unknown: readonly string[],
   yours: readonly { runId: string; plugin: string; action: string }[],
 ) =>
   [
-    `${unknown.join(", ")} ${unknown.length === 1 ? "is not a run" : "are not runs"} you started in this project, so nothing was done with ${operation}.`,
+    `${unknown.join(", ")} ${unknown.length === 1 ? "is not a run" : "are not runs"} you started in this project, so nothing was stopped.`,
     "",
     yours.length === 0
       ? "You have started no runs here yet; execute starts one."

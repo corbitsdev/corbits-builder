@@ -24,7 +24,7 @@ capability adds no tool:
   person's answer, which the hub records.
 - `plan`: the only way the project's plan is set, from steps it writes or by
   taking up a ready-made plan such as `build-web-app`.
-- `runs`: lists, waits on and stops the runs it started.
+- `runs`: lists and stops the runs it started.
 - `question`: asks the person in words; it is Interchange's and waits for the
   answer. A choice an action has a screen for goes through `execute` instead.
 - `read_artifact`: the document list and each document; it writes none.

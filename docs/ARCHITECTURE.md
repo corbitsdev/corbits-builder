@@ -126,8 +126,7 @@ installed.
 - `execute` acts. It starts a specialist's action, runs a check, or opens a
   screen for the person, by the plugin's handle and the action's name.
 - `plan` keeps the project's plan. It is the only way a plan is set.
-- `runs` lists the runs the coordinator started, waits for one to end, or stops
-  one.
+- `runs` lists the runs the coordinator started or stops one.
 - `question` asks the person something in words: up to a handful of questions,
   each with options, and their answers come back as the call's result. It is
   Interchange's question tool, offered with Builder's wording. A choice that a

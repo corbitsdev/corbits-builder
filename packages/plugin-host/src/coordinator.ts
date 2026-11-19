@@ -1,4 +1,3 @@
-import { setTimeout as sleep } from "node:timers/promises";
 import { isDeepStrictEqual } from "node:util";
 import { type } from "arktype";
 import {
@@ -236,12 +235,9 @@ export const Execute = type({
 });
 export const Runs = type({
   "+": "reject",
-  operation: "'list' | 'wait' | 'stop'",
+  operation: "'list' | 'stop'",
   "runIds?": type("string > 0").array().atLeastLength(1),
-  "seconds?": "1 <= number.integer <= 120",
 });
-
-const WAIT_SECONDS = 60;
 
 const DISCOVER_FIELDS = {
   query: {
@@ -286,20 +282,14 @@ const RUNS_FIELDS = {
     about: "What to do.",
     choices: {
       list: "List the runs you started that are at work or ended lately.",
-      wait: "Wait for the first of runIds to end, up to seconds.",
       stop: "Stop each of runIds.",
     },
   },
   runIds: {
     about:
-      "The runs to wait for or stop, as execute and list name them. Set it for wait and stop; leave it out for list.",
-  },
-  seconds: {
-    about: `For wait: how long to wait at most, 1 to 120. Leave it out to wait ${WAIT_SECONDS} seconds.`,
+      "The runs to stop, as execute and list name them. Set it for stop; leave it out for list.",
   },
 } satisfies Record<keyof typeof Runs.infer, Described>;
-
-const WAIT_POLL_MS = 2_000;
 
 const groupsOf = (plugins: readonly Plugin[]) => {
   const groups = new Map<string, Plugin[]>();
@@ -1002,23 +992,18 @@ export async function execute(
 const ended = (run: Run) =>
   run.status !== "deployed" && run.status !== "running";
 
-/** The coordinator's runs: listed, waited on for the first to end, or stopped. */
 export async function manageRuns(
   project: Project,
   raw: unknown,
-  signal: AbortSignal,
 ): Promise<Outcome> {
   const asked = Runs(raw);
   const wrong = asked instanceof type.errors ? wrongFields(asked) : [];
   if (
     !(asked instanceof type.errors) &&
-    asked.operation !== "list" &&
+    asked.operation === "stop" &&
     asked.runIds === undefined
   )
-    wrong.push({
-      field: "runIds",
-      problem: `${asked.operation} needs the runs to ${asked.operation === "wait" ? "wait for" : "stop"}`,
-    });
+    wrong.push({ field: "runIds", problem: "stop needs the runs to stop" });
   if (asked instanceof type.errors || wrong.length > 0)
     return {
       content: wrongCall("runs", "nothing was done", wrong, RUNS_FIELDS),
@@ -1032,32 +1017,17 @@ export async function manageRuns(
   );
   if (unknown.length > 0)
     return {
-      content: unknownRuns(asked.operation, unknown, runs),
+      content: unknownRuns(unknown, runs),
       isError: true,
     };
-  if (asked.operation === "stop") {
-    const live = runs.filter((run) => named.includes(run.runId) && !ended(run));
-    for (const run of live) await project.stop(run.runId);
-    return {
-      content: JSON.stringify({
-        stopped: live.map(({ runId }) => runId),
-        alreadyEnded: runs
-          .filter((run) => named.includes(run.runId) && ended(run))
-          .map(({ runId, status }) => ({ runId, status })),
-      }),
-    };
-  }
-  const deadline = Date.now() + (asked.seconds ?? WAIT_SECONDS) * 1000;
-  let watched = runs.filter((run) => named.includes(run.runId));
-  while (!watched.some(ended) && Date.now() < deadline) {
-    await sleep(WAIT_POLL_MS, undefined, { signal });
-    watched = (await project.runs()).filter((run) => named.includes(run.runId));
-  }
+  const live = runs.filter((run) => named.includes(run.runId) && !ended(run));
+  for (const run of live) await project.stop(run.runId);
   return {
     content: JSON.stringify({
-      ended: watched.filter(ended),
-      working: watched.filter((run) => !ended(run)).map(({ runId }) => runId),
-      note: "A finished run's report reaches you as a message after this turn.",
+      stopped: live.map(({ runId }) => runId),
+      alreadyEnded: runs
+        .filter((run) => named.includes(run.runId) && ended(run))
+        .map(({ runId, status }) => ({ runId, status })),
     }),
   };
 }
