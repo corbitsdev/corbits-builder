@@ -4,6 +4,7 @@ import { Message, MessageContent, TypingIndicator } from "@corbits/react-ui";
 import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 import { PullHandle } from "./chat-sheet.tsx";
 import { composer, working } from "./prompt-box.fixtures.ts";
+import room from "./index.module.css";
 import { RoomDockView } from "./room.view.tsx";
 
 /** The conversation behind the box, drawn with the thread's own message parts. */
@@ -31,62 +32,54 @@ const whileWorking = {
   ),
 };
 
-// A stand-in for the page the box sits under: a document on the canvas.
+// A stand-in for the page the box sits under: a document in the room's own page, which hides
+// everything but the box while the chat is full screen.
 function Page({ children }: { children: ReactNode }) {
   return (
-    <div
-      style={{
-        position: "relative",
-        height: "100vh",
-        overflow: "hidden",
-        background: "var(--wb-frame)",
-      }}
-    >
-      <article
-        style={{
-          width: "min(640px, calc(100% - 32px))",
-          margin: "64px auto 0",
-          padding: "40px 64px 120px",
-          minHeight: "100%",
-          background: "var(--wb-pane)",
-          color: "var(--wb-foreground)",
-        }}
-      >
-        <h1 style={{ fontSize: 30, fontWeight: 600, margin: "0 0 10px" }}>
-          Problem brief
-        </h1>
-        <p>
-          Small bakeries take cake orders by phone and on paper, and lose some
-          of them on busy days.
-        </p>
-        <h2 style={{ fontSize: 18, fontWeight: 600, marginTop: 24 }}>
-          Who has it
-        </h2>
-        <ul>
-          <li>Owners who bake and serve at once</li>
-          <li>Counter staff who answer the phone mid-shift</li>
-          <li>Regulars who order the same cake every month</li>
-        </ul>
-        <h2 style={{ fontSize: 18, fontWeight: 600, marginTop: 24 }}>
-          What it must do
-        </h2>
-        <ul>
-          <li>Take a cake order online: size, flavour, message and pickup</li>
-          <li>Flag allergies and dietary needs on every order</li>
-          <li>Tell the customer when their cake is ready</li>
-        </ul>
-      </article>
-      <div
-        style={{
-          position: "absolute",
-          insetInline: 0,
-          bottom: 0,
-          display: "flex",
-          justifyContent: "center",
-          paddingBottom: 4,
-        }}
-      >
-        <div style={{ width: "min(672px, 100%)" }}>{children}</div>
+    <div style={{ position: "relative", height: "100vh" }}>
+      <div className={room.page}>
+        <div
+          className={room.pageScreen}
+          style={{ overflow: "auto", background: "var(--wb-frame)" }}
+        >
+          <article
+            style={{
+              width: "min(640px, calc(100% - 32px))",
+              margin: "64px auto 0",
+              padding: "40px 64px",
+              flex: 1,
+              background: "var(--wb-pane)",
+              color: "var(--wb-foreground)",
+            }}
+          >
+            <h1 style={{ fontSize: 30, fontWeight: 600, margin: "0 0 10px" }}>
+              Problem brief
+            </h1>
+            <p>
+              Small bakeries take cake orders by phone and on paper, and lose
+              some of them on busy days.
+            </p>
+            <h2 style={{ fontSize: 18, fontWeight: 600, marginTop: 24 }}>
+              Who has it
+            </h2>
+            <ul>
+              <li>Owners who bake and serve at once</li>
+              <li>Counter staff who answer the phone mid-shift</li>
+              <li>Regulars who order the same cake every month</li>
+            </ul>
+            <h2 style={{ fontSize: 18, fontWeight: 600, marginTop: 24 }}>
+              What it must do
+            </h2>
+            <ul>
+              <li>
+                Take a cake order online: size, flavour, message and pickup
+              </li>
+              <li>Flag allergies and dietary needs on every order</li>
+              <li>Tell the customer when their cake is ready</li>
+            </ul>
+          </article>
+        </div>
+        {children}
       </div>
     </div>
   );
@@ -94,12 +87,19 @@ function Page({ children }: { children: ReactNode }) {
 
 type Args = Parameters<typeof RoomDockView>[0];
 
+const brief = { title: "Problem brief", version: "Version 2" };
+
 function Screen(args: Args) {
   const dock = args.dock.kind === "composer" ? args.dock : composer;
   const [text, setText] = useState(dock.text);
   return (
     <Page>
-      <RoomDockView {...args} dock={{ ...dock, text, onTextChange: setText }} />
+      <RoomDockView
+        {...args}
+        dock={{ ...dock, text, onTextChange: setText }}
+        // Full screen names the page above, from whichever state it was taken to.
+        chatStart={{ returnTo: brief, ...args.chatStart }}
+      />
     </Page>
   );
 }
@@ -135,27 +135,9 @@ export const ChatOpen: Story = {
 
 /** Full screen: only the way back down, and the page the person left named at the top. */
 export const FullScreen: Story = {
-  // The chat stands in for the page it was pulled over, so here it has the whole height.
-  render: (args) => (
-    <div
-      style={{
-        height: "100vh",
-        display: "flex",
-        flexDirection: "column",
-        width: "min(672px, 100%)",
-        margin: "0 auto",
-        background: "var(--wb-background)",
-      }}
-    >
-      <RoomDockView {...args} />
-    </div>
-  ),
   args: {
     ...whileWorking,
-    chatStart: {
-      defaultState: "full",
-      returnTo: { title: "Problem brief", version: "Version 2" },
-    },
+    chatStart: { defaultState: "full" },
   },
 };
 
