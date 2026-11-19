@@ -77,7 +77,7 @@ const composer: RoomComposer & { kind: "composer" } = {
     onRemove: fn(),
   },
   sendFault: null,
-  caution: null,
+  caution: false,
   onSendAnyway: fn(),
   onCancelCaution: fn(),
   suggestedReplies: [],
@@ -232,14 +232,14 @@ export const SendFailed: Story = {
   },
 };
 
-/** The message changes a document a specialist already builds from, so it waits on a second yes. */
+/** The message changes a document work already builds from, so it waits on a second yes. */
 export const EarlierDocumentCaution: Story = {
   args: {
     ...withDocuments,
     dock: {
       ...composer,
       text: "Change the problem brief: we also take orders by email.",
-      caution: "Designer",
+      caution: true,
     },
   },
 };

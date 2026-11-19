@@ -177,7 +177,7 @@ import type {
   ShownDocument,
 } from "./screen-question.tsx";
 import { inShort } from "@corbits-builder/schemas/in-short";
-import { roleLabel, roleOf, screenWords } from "./roles.ts";
+import { roleOf, screenWords } from "./roles.ts";
 import { screensFor, selectionNames } from "./screens.ts";
 
 // The stream says when the room moved. This read covers what it cannot see,
@@ -1820,7 +1820,7 @@ export function useRoom({
       },
       sendFault:
         questionFault(outcomes) ?? (sendFailed && sendFault ? sendFault : null),
-      caution: caution === null ? null : roleLabel(caution),
+      caution: caution !== null,
       onSendAnyway: sendNow,
       onCancelCaution: () => {
         setCaution(null);

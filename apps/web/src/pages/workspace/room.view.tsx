@@ -85,8 +85,8 @@ export type RoomComposer = {
   };
   /** Why the last message did not reach the coordinator. */
   sendFault: string | null;
-  /** The specialist already building from a document this message changes; the send waits on a second yes. */
-  caution: string | null;
+  /** Work already builds from a document this message changes, so the send waits on a second yes. */
+  caution: boolean;
   onSendAnyway: () => void;
   onCancelCaution: () => void;
   /** The answers the coordinator's last message offers, each sent as it is. */
@@ -481,9 +481,9 @@ function RoomComposerView({
             <Fault>{attachments.fault}</Fault>
           )}
           {sendFault === null ? null : <Fault>{sendFault}</Fault>}
-          {caution === null ? null : (
+          {!caution ? null : (
             <div className={styles.caution} role="alert">
-              <p>{wording.earlierDocument.warning(caution)}</p>
+              <p>{wording.earlierDocument.warning}</p>
               <div className={styles.cautionActions}>
                 <UiButton type="button" size="sm" onClick={onSendAnyway}>
                   {wording.earlierDocument.sendAnyway}

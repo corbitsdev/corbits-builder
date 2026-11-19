@@ -655,7 +655,6 @@ export const wording = {
   },
   /** The composer's placeholder when no approval is open. An open approval keeps approval.composerPlaceholder. */
   composer: {
-    passAlong: (role: string) => `Ask the ${role}…`,
     change: "What needs to change…",
     fix: "What needs fixing…",
     making: "What are you making…",
@@ -908,8 +907,8 @@ export const wording = {
   },
   /** Before a message changes a document a specialist is building from. */
   earlierDocument: {
-    warning: (specialist: string) =>
-      `The ${specialist} is already working from this. Changing it now may cost more and restart some of their work.`,
+    warning:
+      "Work has already started from this. Changing it now may cost more and restart some of that work.",
     sendAnyway: "Send anyway",
   },
   /** Files the person attaches to a message, filed as materials the coordinator reads. */
