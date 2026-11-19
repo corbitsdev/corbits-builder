@@ -1050,6 +1050,13 @@ export const wording = {
   },
   passage: { addToPrompt: "Add to prompt" },
   documentBar: "Document controls",
+  /** The print-like page a written document is read on, with its contents beside it. */
+  documentViewer: {
+    contents: "Contents",
+    contentsLabel: "Sections of this document",
+    /** A section someone has commented on. */
+    commented: "Has comments",
+  },
   printDocument: "Save as PDF or print",
   removeAttachment: {
     menu: "Remove attachment…",

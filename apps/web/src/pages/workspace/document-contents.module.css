@@ -1,0 +1,80 @@
+.contents {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 220px;
+}
+
+.label {
+  margin: 0;
+  padding: 0 10px var(--space-2);
+  color: var(--wb-muted-foreground);
+  font-size: 0.75rem;
+  line-height: 1rem;
+}
+
+.document,
+.section {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  font: inherit;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    color 120ms ease,
+    background-color 120ms ease;
+}
+
+.document {
+  padding: 6px 10px;
+  color: var(--wb-foreground);
+  font-weight: 500;
+}
+
+/* The rail starts under the document's name and runs the length of its sections. */
+.sections {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0 0 0 12px;
+  padding: 0 0 0 12px;
+  border-left: 1px solid var(--wb-border);
+  list-style: none;
+}
+
+.section {
+  gap: var(--space-2);
+  padding: 6px var(--space-2) 6px 10px;
+  color: var(--wb-muted-foreground);
+}
+
+.section:hover,
+.document:hover {
+  color: var(--wb-foreground);
+}
+
+.section[aria-current] {
+  background: var(--wb-background);
+  color: var(--wb-foreground);
+}
+
+.section svg {
+  flex-shrink: 0;
+  color: var(--wb-muted-foreground);
+}
+
+.name {
+  flex: 1;
+  min-width: 0;
+}
+
+.document:focus-visible,
+.section:focus-visible {
+  outline-offset: -2px;
+}
