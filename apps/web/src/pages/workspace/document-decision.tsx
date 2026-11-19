@@ -4,9 +4,14 @@
  * existing approve call; Not yet records a denial and takes the person to the
  * composer to say what to change.
  */
-import type { ReactNode } from "react";
+import { useContext, type ReactNode } from "react";
 import { wording } from "../../config.ts";
-import { ToolApproval, type ToolApprovalDecision } from "@corbits/react-ui";
+import {
+  Button,
+  ToolApproval,
+  type ToolApprovalDecision,
+} from "@corbits/react-ui";
+import { ActionsSlot } from "@corbits-builder/plugin-ui/screen-actions";
 import { approvalQuestion, approvalToolPart } from "./collaboration.ts";
 import type { ApprovalOutcome, DocumentApproval } from "./transcript.tsx";
 import styles from "./document-decision.module.css";
@@ -34,6 +39,7 @@ export function DocumentDecision({
   onYes,
   onNo,
   countdown,
+  place = "conversation",
 }: {
   approval: DocumentApproval;
   disabled?: boolean;
@@ -43,7 +49,41 @@ export function DocumentDecision({
   onNo: () => void;
   /** A typed yes about to approve this card. */
   countdown?: ReactNode;
+  /** In the conversation, or inside the prompt box above the words. */
+  place?: "conversation" | "box";
 }) {
+  const slot = useContext(ActionsSlot);
+  // Waiting in the prompt box, the ask is one line and its two answers stand where Send is. The
+  // library's card keeps its buttons inside it, so the box draws the ask itself.
+  if (place === "box" && approval.outcome === undefined) {
+    const buttons = (
+      <div className={styles.answers} inert={disabled}>
+        <Button type="button" size="sm" variant="outline" onClick={onNo}>
+          {text.notYet}
+        </Button>
+        <Button type="button" size="sm" onClick={onYes}>
+          {text.approve}
+        </Button>
+      </div>
+    );
+    return (
+      <section
+        className={styles.inBox}
+        aria-label={approvalQuestion(approval.toolName, approval.subject)}
+      >
+        <p className={styles.ask}>
+          {approvalQuestion(approval.toolName, approval.subject)}
+        </p>
+        {countdown}
+        {error === undefined ? null : (
+          <p className={styles.error} role="alert">
+            {error}
+          </p>
+        )}
+        {slot === null ? buttons : slot(buttons)}
+      </section>
+    );
+  }
   const decide = (decision: ToolApprovalDecision) => {
     if (decision.outcome === "rejected") onNo();
     else onYes();

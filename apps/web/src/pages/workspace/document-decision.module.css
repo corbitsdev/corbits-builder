@@ -58,3 +58,29 @@
   color: var(--wb-muted-foreground);
   font-size: 0.75rem;
 }
+
+/* Waiting in the prompt box: the ask, with the box's own inset; its answers stand where Send is. */
+.inBox {
+  display: grid;
+  gap: var(--space-3);
+  padding: 0.875rem;
+}
+
+.ask {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.error {
+  margin: 0;
+  color: var(--wb-destructive);
+  font-size: 0.8125rem;
+}
+
+.answers {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
