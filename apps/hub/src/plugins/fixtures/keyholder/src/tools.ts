@@ -25,6 +25,8 @@ export default defineTools(() => [
         const api = await env.capabilities
           .resolve("credentials")
           .resolve("keyholder-api");
+        if (api.kind !== "http")
+          throw new Error("keyholder-api is not an http credential");
         const response = await api.fetch("/check");
         return {
           callId: call.id,

@@ -83,12 +83,102 @@ export interface HttpMediatedCredential extends MediatedCredentialBase {
   fetch(input: string | URL | Request, init?: RequestInit): Promise<Response>;
 }
 
+/** How one command run through an ssh mediated credential is bounded. */
+export interface SshExecOptions {
+  /** Bytes written to the command's standard input, which is then closed. */
+  readonly stdin?: Uint8Array;
+  /**
+   * The call rejects as `timeout` once this long has passed, and the command
+   * is asked to stop as an abort asks it.
+   */
+  readonly timeoutMs: number;
+  /** The most bytes kept of each output stream; the rest is dropped. */
+  readonly maxOutputBytes?: number;
+  /**
+   * Aborting it rejects the call as `cancelled` and asks the command to stop:
+   * a KILL signal request, then its session closed. A server that takes signal
+   * requests (OpenSSH 7.9 and later, unless turned off) kills it; elsewhere it
+   * ends only once it writes to its closed output or its shell hangs it up, so
+   * a command that must not run on is one that stops itself, such as under
+   * `timeout`.
+   */
+  readonly signal?: AbortSignal;
+}
+
+/** What one command run through an ssh mediated credential left behind. */
+export interface SshExecResult {
+  /** The command's exit status, or null when a signal ended it. */
+  readonly code: number | null;
+  readonly stdout: string;
+  readonly stderr: string;
+  /** Whether either stream was longer than the cap and cut. */
+  readonly truncated: boolean;
+}
+
+/** Why an ssh handle refused or failed, each a code a caller branches on. */
+export const SSH_CREDENTIAL_FAILURES = [
+  "invalid_origin",
+  "invalid_secret",
+  "address_mismatch",
+  "address_refused",
+  "unreachable",
+  "host_key_changed",
+  "auth_failed",
+  "timeout",
+  "cancelled",
+  "invalid_command",
+] as const;
+export type SshCredentialFailure = (typeof SSH_CREDENTIAL_FAILURES)[number];
+
+/**
+ * The failure an ssh handle's error names, or undefined for any other error.
+ * It reads the error's name and code rather than its class, because a
+ * consumer bundled with its own copy of the provider sees another class.
+ */
+export function sshCredentialFailure(
+  error: unknown,
+): SshCredentialFailure | undefined {
+  if (
+    !(error instanceof Error) ||
+    error.name !== "SshCredentialError" ||
+    !("failure" in error)
+  )
+    return undefined;
+  const { failure } = error;
+  return SSH_CREDENTIAL_FAILURES.find((known) => known === failure);
+}
+
+/**
+ * An SSH-authenticated mediated credential: one `exec` on a connection pinned
+ * to the credential's provider origin (`ssh://host:port`) and to the host key
+ * the credential was saved with. It connects nowhere else, and a server that
+ * presents another host key is refused before anything is sent to it. The
+ * command is an argument list the handle quotes itself, so a caller's values
+ * never reach the remote shell as syntax. No shell session, file transfer
+ * subsystem or forwarding is offered; a file is sent as a command's standard
+ * input.
+ */
+export interface SshMediatedCredential extends MediatedCredentialBase {
+  readonly kind: "ssh";
+  /**
+   * The server the handle is pinned to, as its provider origin names it. An
+   * address is not secret, and a holder needs it to reach what the server
+   * serves to everyone else, such as its web port.
+   */
+  readonly address: { readonly host: string; readonly port: number };
+  exec(
+    argv: readonly string[],
+    options: SshExecOptions,
+  ): Promise<SshExecResult>;
+}
+
 /**
  * A mediated credential handed to a consumer at resolve time. A discriminated
  * union on `kind`; `http` is the only variant today. Future provider kinds
  * (e.g. an ssh key-file + agent socket) extend the union with their own `kind`.
+ * Builder adds `ssh` as such a kind; a consumer narrows on `kind` before use.
  */
-export type MediatedCredential = HttpMediatedCredential;
+export type MediatedCredential = HttpMediatedCredential | SshMediatedCredential;
 
 /**
  * A provider plugin: the seam that owns how a mediated credential is shaped for
