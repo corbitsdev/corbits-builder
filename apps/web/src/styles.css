@@ -249,20 +249,6 @@ h3 {
   }
 }
 
-/* While the specialist writes, a thin ring sweeps the composer's border,
-   after aicss.dev's input. The wait is at the box, so the box says so. */
-@property --ring-angle {
-  syntax: "<angle>";
-  inherits: false;
-  initial-value: 0deg;
-}
-
-@keyframes ring-spin {
-  to {
-    --ring-angle: 360deg;
-  }
-}
-
 @keyframes fade-in {
   from {
     opacity: 0;

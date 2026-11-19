@@ -16,39 +16,10 @@
   padding: 0;
 }
 
-.composer > form {
-  position: relative;
-}
-
-/* While the specialist writes, a thin ring sweeps the box's border. */
-.composer[data-working] > form::after {
-  content: "";
-  position: absolute;
-  inset: -1px;
-  border-radius: inherit;
-  padding: 2px;
-  background: conic-gradient(
-    from var(--ring-angle),
-    var(--wb-primary),
-    color-mix(in srgb, var(--wb-primary) 15%, transparent),
-    var(--wb-primary)
-  );
-  /* The mask only needs an opaque colour; which one is irrelevant. */
-  -webkit-mask:
-    linear-gradient(currentColor 0 0) content-box,
-    linear-gradient(currentColor 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  animation:
-    global(ring-spin) 1.1s linear infinite,
-    global(fade-in) 220ms ease-out both;
-  pointer-events: none;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .composer[data-working] > form::after {
-    animation: none;
-  }
+/* The chat taken full screen fills what the composer sits in, the box at its foot. */
+.composer:has(> [data-slot="chat-sheet"][data-state="full"]) {
+  flex: 1;
+  max-height: none;
 }
 
 .notes {
@@ -62,12 +33,90 @@
   display: none;
 }
 
-.composer > [data-slot="prompt-input"] {
-  flex-shrink: 0;
+/* The rounded box: what waits on the person on top, the typing row beneath.
+   It does not clip, so the attachment tray can float above the words; the
+   panel rounds its own top corners instead. */
+.box {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border: 1px solid var(--wb-border);
+  border-radius: var(--radius-xl);
+  background: var(--wb-card);
+  box-shadow: var(--wb-shadow);
+  transition: border-color var(--duration-micro);
 }
 
-/* The library's prompt input: the rounded box around the words and controls. */
-.composer [data-slot="prompt-input"] {
+/* The box is the page's one action, so its edge takes the action colour
+   while it has focus. */
+.box:focus-within {
+  border-color: var(--wb-primary);
+}
+
+.panel {
+  display: grid;
+  flex: none;
+  min-height: 0;
+  max-height: 50vh;
+  overflow: hidden auto;
+  border-bottom: 1px solid var(--wb-border);
+  border-radius: calc(var(--radius-xl) - 1px) calc(var(--radius-xl) - 1px) 0 0;
+}
+
+/* The box is the frame, so a question card, a plugin's screen or an approval drops its own and
+   takes the box's width; it keeps its own padding. */
+.panel :is([data-gate-kind], [data-slot="tool-approval-card"]) {
+  max-width: none;
+  border: 0;
+  border-radius: 0;
+  background: none;
+}
+
+/* A card that hands its buttons to the typing row leaves its own row empty behind it. */
+.panel [data-gate-kind] > div:has(> [data-slot="screen-actions"]:empty) {
+  display: none;
+}
+
+/* What waits on the person keeps its buttons here, where Send stands until the person types. */
+.box [data-slot="composer-actions"] {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.box [data-slot="composer-actions"][hidden] {
+  display: none;
+}
+
+/* A screen leads its row with its main action; here the row ends on it, where Send stands, and
+   keeps one line. */
+.box [data-slot="composer-actions"] [data-slot="screen-buttons"] {
+  flex-direction: row-reverse;
+  flex-wrap: nowrap;
+}
+
+.box [data-slot="composer-actions"] [data-slot="screen-buttons"] > * {
+  flex-basis: auto;
+}
+
+/* The box's main action is filled like Send, whichever card it comes from. The library's Button
+   names its variant only in its classes. */
+.box [data-slot="button"][class~="bg-primary"] {
+  background: var(--wb-foreground);
+  color: var(--wb-background);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .box [data-slot="button"][class~="bg-primary"]:hover {
+    background: color-mix(in oklab, var(--wb-foreground) 75%, transparent);
+  }
+}
+
+/* The library's prompt input: the typing row, one line tall until the words
+   need more. Its border is the box's. */
+.box [data-slot="prompt-input"] {
   display: flex;
   flex-flow: row wrap;
   align-items: flex-end;
@@ -75,45 +124,41 @@
   min-width: 0;
   min-height: 0;
   max-height: min(50vh, 480px);
-  border: 1px solid var(--wb-border);
-  border-radius: var(--radius-lg);
-  background: var(--wb-card);
-  padding: 6px 6px 6px var(--space-2);
-  transition: border-color 150ms;
+  border: 0;
+  border-radius: 0 0 var(--radius-xl) var(--radius-xl);
+  background: transparent;
+  padding: var(--space-2) var(--space-2) var(--space-2) 14px;
+  box-shadow: none;
 }
 
-/* The box is the page's one action, so its border takes the action colour
-   while it has focus. */
-.composer [data-slot="prompt-input"]:focus-within {
+/* The box's edge is the focus mark; the form's own ring would double it. */
+.box [data-slot="prompt-input"]:focus-within {
   outline: none;
-  border-color: var(--wb-primary);
 }
 
-.composer [data-slot="prompt-input"] [data-slot="prompt-input-field"] {
+.box [data-slot="prompt-input"] [data-slot="prompt-input-field"] {
   align-self: center;
-  font-size: 15px;
-  line-height: 1.5;
+  font-size: var(--text-sm);
+  line-height: 20px;
 }
 
-.composer
+.box
   [data-slot="prompt-input"]
   :is(textarea, [data-slot="prompt-input-mirror"]) {
-  padding-block: 4px;
-}
-
-.composer [data-slot="prompt-input"] > div:has(> textarea) {
-  align-self: stretch;
+  padding-block: 6px;
+  padding-inline: 0;
 }
 
 /* The words share a line with the controls only while they fit on it. The
    textarea is content-sized, so an `auto` basis is the width of its longest
    line: once that no longer fits beside the controls they wrap beneath, and
    the words take the box's whole width instead of a column beside them. */
-.composer [data-slot="prompt-input"] > div:has(> textarea) {
+.box [data-slot="prompt-input"] > div:has(> textarea) {
   flex: 1 1 auto;
+  align-self: stretch;
 }
 
-.composer [data-slot="prompt-input"] textarea {
+.box [data-slot="prompt-input"] textarea {
   width: 100%;
   min-height: 0;
   max-height: min(200px, 30vh);
@@ -121,49 +166,100 @@
   display: block;
 }
 
-.composer [data-slot="prompt-input"] textarea:placeholder-shown {
+.box [data-slot="prompt-input"] textarea::placeholder {
+  color: var(--wb-muted-foreground);
+}
+
+.box [data-slot="prompt-input"] textarea:placeholder-shown {
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 
-.composer [data-slot="prompt-input"] textarea::placeholder {
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.composer [data-slot="prompt-input"] [data-slot="prompt-input-toolbar"] {
+.box [data-slot="prompt-input"] [data-slot="prompt-input-toolbar"] {
   flex: none;
   /* At the end of its line, whether or not the words share it, and never
-     wider than the box: a profile's name may be longer than the box is wide. */
+     wider than the box. */
   margin-left: auto;
   max-width: 100%;
   gap: var(--space-1);
   padding: 0;
 }
 
-.composer [data-slot="prompt-input"] [data-slot="prompt-input-submit"] {
+/* Attach: quiet until hovered, so the row leads with the words. Dictation's
+   microphone draws itself the same way in a toolbar. */
+.box [data-slot="prompt-input-toolbar"] [data-slot="prompt-input-button"] {
   width: 32px;
   height: 32px;
   min-width: 32px;
   min-height: 32px;
   padding: 0;
   border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--wb-muted-foreground);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .box
+    [data-slot="prompt-input-toolbar"]
+    [data-slot="prompt-input-button"]:hover {
+    background: var(--wb-muted);
+    color: var(--wb-foreground);
+  }
+}
+
+/* Send: muted until there is something to send, dark once there is, and Stop
+   while work runs. */
+.box [data-slot="prompt-input"] [data-slot="prompt-input-submit"] {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  min-height: 32px;
+  margin-left: var(--space-1);
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
   background: var(--wb-foreground);
   color: var(--wb-background);
-  border-radius: 50%;
   box-shadow: none;
+  opacity: 1;
+  transition:
+    background-color var(--duration-micro),
+    scale var(--duration-micro) var(--ease-out);
 }
 
-.composer
-  [data-slot="prompt-input"]
-  [data-slot="prompt-input-submit"]:hover:not(:disabled) {
-  background: var(--wb-foreground);
-  opacity: 0.85;
+/* Over the library's fill, so the app's muted disabled look still wins here. */
+.box [data-slot="prompt-input-submit"][aria-disabled],
+.box [data-slot="prompt-input-submit"]:disabled {
+  background: var(--wb-muted);
+  color: var(--wb-muted-foreground);
 }
 
-.composer
-  [data-slot="prompt-input"]
-  [data-slot="prompt-input-submit"]:disabled {
-  opacity: 0.2;
+.box [data-slot="prompt-input-submit"][data-status="streaming"] > svg {
+  width: 10px;
+  height: 10px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .box
+    [data-slot="prompt-input-submit"]:not([aria-disabled]):hover:not(
+      :disabled
+    ) {
+    background: color-mix(in oklab, var(--wb-foreground) 75%, transparent);
+    color: var(--wb-background);
+  }
+}
+
+.box
+  [data-slot="prompt-input-submit"]:active:not(:disabled):not([aria-disabled]) {
+  scale: 0.96;
+}
+
+.box [data-slot="prompt-input-submit"]:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--wb-background),
+    0 0 0 4px var(--wb-ring);
 }

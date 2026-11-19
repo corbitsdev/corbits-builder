@@ -4,13 +4,15 @@
  * over it from a card or the project control and closes back to the conversation.
  */
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
   type ReactNode,
   type RefObject,
 } from "react";
-import { FolderOpen, Paperclip, Sparkles } from "lucide-react";
+import { createPortal } from "react-dom";
+import { FolderOpen, Paperclip, Sparkles, TriangleAlert } from "lucide-react";
 import {
   Attachment,
   type AttachmentItem,
@@ -29,6 +31,7 @@ import {
   PromptInputToolbar,
 } from "@corbits/react-ui";
 import type { ScreenStatus } from "@corbits-builder/plugin";
+import { ActionsSlot } from "@corbits-builder/plugin-ui/screen-actions";
 import type { PlanView } from "@corbits-builder/schemas/project";
 import { wording } from "../../config.ts";
 import { Banner, BannerAction, Fault } from "../../components.jsx";
@@ -41,7 +44,9 @@ import {
   type ArtifactPaneSlots,
 } from "./artifact-pane.tsx";
 import { pastedFiles } from "./pasted-files.ts";
+import { ChatSheet, type ChatSheetProps } from "./chat-sheet.tsx";
 import { PlanPanel, planProgress, usePlanCollapsed } from "./plan-panel.tsx";
+import type { StatusPillContent } from "./status-pill.tsx";
 import { StageView } from "./stage-view.tsx";
 import { RoomThread, type RoomThreadContent } from "./transcript.tsx";
 import styles from "./index.module.css";
@@ -54,7 +59,14 @@ export type RoomSlots = {
   paneParts: ArtifactPaneSlots;
   /** The coordinator's open question drawn over the whole room; null while there is none. */
   page: ReactNode;
-  chat: ReactNode;
+  /** Plugin screens meant for the chat, under the conversation. */
+  chatScreens: ReactNode;
+  /**
+   * The conversation for the chat sheet that pulls up around the prompt box over the project view
+   * or a page. The room's own conversation already shows the thread, so its box has no sheet.
+   * Absent, no box has a handle.
+   */
+  chat?: ReactNode;
 };
 
 /** The box the person writes to the coordinator in. */
@@ -65,7 +77,7 @@ export type RoomComposer = {
   placeholder: string;
   /** The box itself, which the room puts the cursor in. */
   inputRef: RefObject<HTMLTextAreaElement | null>;
-  /** The coordinator is mid-turn or a message is on its way, so a ring sweeps the box. */
+  /** The coordinator is mid-turn, so Stop stands where Send is while the box is empty. */
   working: boolean;
   /** A message or a decision is on its way to the hub, so the box waits. */
   busy: boolean;
@@ -94,6 +106,10 @@ export type RoomComposer = {
   onReply: (reply: string) => void;
   /** What Send says, beside it and as its name, while an open screen has feedback to send with nothing typed. */
   sendLabel: string | null;
+  /** What is happening, in the pill above the box; null or absent while nothing is. Comments waiting to be made let Send go with nothing typed. */
+  status?: StatusPillContent | null;
+  /** Stops the work in progress; Stop stands in for Send while the box is empty. */
+  onStop?: () => void;
 };
 
 /** What sits under the conversation: the composer, or why the person cannot write yet. */
@@ -177,6 +193,7 @@ export function RoomView({
   nextStep,
   paneParts,
   page,
+  chatScreens,
   chat,
 }: RoomViewProps) {
   const { projectReady, projectOpen, onProjectOpenChange, pageOpen } = layout;
@@ -216,7 +233,14 @@ export function RoomView({
   useEffect(() => {
     if (!projectOpen || pageOpen) return;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !event.defaultPrevented) closeProject();
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      // An open chat sheet takes the key to put itself back, whichever listener hears it first;
+      // the view closes on the next one.
+      const sheet =
+        roomRef.current?.querySelector(
+          '[data-slot="chat-sheet"]:not([data-state="closed"])',
+        ) ?? null;
+      if (sheet === null) closeProject();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
@@ -224,7 +248,12 @@ export function RoomView({
   // The prompt box stays in reach under whatever covers the conversation.
   const dockInProject = projectOpen && !pageOpen;
   const dockInConversation = !projectOpen && !pageOpen;
-  const roomDock = <Dock dock={dock} answersShell={shell.answers} />;
+  const conversationDock = (
+    <RoomDockView dock={dock} answersShell={shell.answers} />
+  );
+  const roomDock = (
+    <RoomDockView dock={dock} chat={chat} answersShell={shell.answers} />
+  );
   return (
     <StageView aria-label={`Conversation for ${title}`}>
       <div ref={roomRef} className={styles.room}>
@@ -316,8 +345,8 @@ export function RoomView({
             <RoomThread {...conversation.thread}>
               <EmptyConversation empty={conversation.empty} />
             </RoomThread>
-            {chat}
-            {dockInConversation ? roomDock : null}
+            {chatScreens}
+            {dockInConversation ? conversationDock : null}
           </div>
         </section>
         {planShown ? (
@@ -381,12 +410,32 @@ function EmptyConversation({ empty }: { empty: "archived" | "new" | null }) {
 /** Takes a shell request typed into the composer, so it is answered rather than sent. */
 type AnswersShell = (text: string) => boolean;
 
-function Dock({
+/** Where the chat sheet starts, before the person moves it. */
+type ChatStart = Pick<
+  ChatSheetProps,
+  "defaultState" | "defaultPull" | "returnTo"
+>;
+
+/**
+ * What sits under the conversation: the prompt box with its pill, handle and chat sheet, or the
+ * banner saying why there is none. Stories draw the dock's states with it.
+ */
+export function RoomDockView({
   dock,
+  waiting,
+  chat,
+  chatStart,
   answersShell,
 }: {
   dock: RoomDock;
-  answersShell: AnswersShell;
+  /**
+   * What waits on the person inside the box, as the card the conversation would show it in: a
+   * question card, a plugin's screen or an approval. Absent while nothing does.
+   */
+  waiting?: ReactNode;
+  chat?: ReactNode;
+  chatStart?: ChatStart | undefined;
+  answersShell?: AnswersShell;
 }) {
   if (dock.kind === "archived")
     return (
@@ -438,7 +487,15 @@ function Dock({
         </BannerAction>
       </Banner>
     );
-  return <RoomComposerView {...dock} answersShell={answersShell} />;
+  return (
+    <RoomComposerView
+      {...dock}
+      waiting={waiting}
+      chat={chat}
+      chatStart={chatStart}
+      answersShell={answersShell}
+    />
+  );
 }
 
 function RoomComposerView({
@@ -460,45 +517,207 @@ function RoomComposerView({
   suggestedReplies,
   onReply,
   sendLabel,
+  status = null,
+  onStop,
+  waiting,
+  chat,
+  chatStart,
   answersShell,
-}: RoomComposer & { answersShell: AnswersShell }) {
+}: RoomComposer & {
+  waiting: ReactNode;
+  chat: ReactNode;
+  chatStart?: ChatStart | undefined;
+  answersShell?: AnswersShell | undefined;
+}) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { files } = attachments;
   const accept = needsProvider ? null : attachments.accept;
   // Files can be attached while the hub offers kinds it reads, the provider is set and nothing is
   // mid-send; the drop zone, the paperclip and a paste all follow this.
   const attaching = accept !== null && !busy;
+  const typed = text.trim() !== "" || files.length > 0;
   const send = () => {
-    if (files.length === 0 && answersShell(text)) return onTextChange("");
+    if (files.length === 0 && answersShell?.(text) === true)
+      return onTextChange("");
     onSend();
   };
+  const stopping = working && onStop !== undefined && !typed;
+  // What waits on the person hands its buttons to the typing row, where they stand in for Send
+  // until the person types, so the box has one main action at a time. The warning about an
+  // earlier document holds its own two even as they type: it is about the words.
+  const [actionsAt, setActionsAt] = useState<HTMLDivElement | null>(null);
+  const toRow = useCallback(
+    (buttons: ReactNode) =>
+      actionsAt === null ? null : createPortal(buttons, actionsAt),
+    [actionsAt],
+  );
+  const waitingActions = waiting !== undefined && !caution;
+  const box = (
+    <AttachmentDropZone
+      onFiles={attachments.onAdd}
+      disabled={!attaching}
+      label={wording.conversation.dropFiles}
+    >
+      <Dictated value={text} onValueChange={onTextChange} disabled={busy}>
+        {(mic) => (
+          <PromptInput
+            value={text}
+            onValueChange={onTextChange}
+            onSubmit={send}
+            canSubmit={
+              typed || sendLabel !== null || status?.state === "commentsWaiting"
+            }
+            status={busy ? "submitted" : stopping ? "streaming" : "ready"}
+            disabled={disabled || needsProvider}
+          >
+            {files.length === 0 ? null : (
+              <PromptInputFloat>
+                <Attachments
+                  variant="stack"
+                  total={files.length}
+                  returnFocusTo={inputRef}
+                >
+                  {files.map((item) => (
+                    <Attachment key={item.id} data={item}>
+                      <AttachmentPreview />
+                      <AttachmentInfo />
+                      <AttachmentRemove
+                        onClick={() => attachments.onRemove(item.id)}
+                      />
+                    </Attachment>
+                  ))}
+                </Attachments>
+              </PromptInputFloat>
+            )}
+            <PromptInputTextarea
+              ref={inputRef}
+              // A picture on the clipboard attaches like a chosen file, while attaching is
+              // offered at all; text, and anything else, pastes as the browser would.
+              onPaste={(event) => {
+                if (!attaching) return;
+                const pasted = pastedFiles(event.clipboardData);
+                if (pasted.length === 0) return;
+                event.preventDefault();
+                attachments.onAdd(pasted);
+              }}
+              placeholder={
+                needsProvider ? wording.conversation.enableAiFirst : placeholder
+              }
+            />
+            <PromptInputToolbar>
+              {accept === null ? null : (
+                <>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    hidden
+                    accept={accept}
+                    onChange={(event) => {
+                      if (event.target.files !== null)
+                        attachments.onAdd(event.target.files);
+                      event.target.value = "";
+                    }}
+                  />
+                  <PromptInputButton
+                    aria-label={wording.attach.add}
+                    title={wording.attach.add}
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <Paperclip size={16} aria-hidden="true" />
+                  </PromptInputButton>
+                </>
+              )}
+              {needsProvider ? null : mic}
+              {needsProvider ? (
+                <UiButton
+                  type="button"
+                  size="sm"
+                  className="ms-auto"
+                  onClick={onEnableAi}
+                >
+                  {wording.action.enableAi}
+                  <Sparkles size={14} aria-hidden="true" />
+                </UiButton>
+              ) : caution ? (
+                <div data-slot="composer-actions">
+                  <UiButton
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={onCancelCaution}
+                  >
+                    {wording.action.cancel}
+                  </UiButton>
+                  <UiButton type="button" size="sm" onClick={onSendAnyway}>
+                    {wording.earlierDocument.sendAnyway}
+                  </UiButton>
+                </div>
+              ) : (
+                <>
+                  {/* Kept while the person types, only hidden, so the buttons in it keep their
+                      place and focus. */}
+                  {waitingActions ? (
+                    <div
+                      ref={setActionsAt}
+                      data-slot="composer-actions"
+                      hidden={typed}
+                    />
+                  ) : null}
+                  {waitingActions && !typed ? null : (
+                    <>
+                      {sendLabel === null ? null : (
+                        <span className={styles.sendLabel} aria-hidden="true">
+                          {sendLabel}
+                        </span>
+                      )}
+                      <PromptInputSubmit
+                        {...(stopping ? { onStop } : {})}
+                        aria-label={sendLabel ?? undefined}
+                        aria-busy={busy || undefined}
+                      />
+                    </>
+                  )}
+                </>
+              )}
+            </PromptInputToolbar>
+          </PromptInput>
+        )}
+      </Dictated>
+    </AttachmentDropZone>
+  );
   return (
     <Composer
-      working={working}
+      panel={
+        caution || waiting !== undefined ? (
+          <>
+            <ActionsSlot value={waitingActions ? toRow : null}>
+              {waiting}
+            </ActionsSlot>
+            {/* Nearest the words it is about, after anything else that waits; its two ways on
+                stand where Send is. */}
+            {caution ? (
+              <p className={styles.caution} role="alert">
+                <TriangleAlert size={16} aria-hidden="true" />
+                {wording.earlierDocument.warning}
+              </p>
+            ) : null}
+          </>
+        ) : undefined
+      }
+      // Always the sheet, even with nothing to pull up, so the box is never remounted (and never
+      // loses the cursor) when work starts and the pill appears.
+      around={(inner) => (
+        <ChatSheet {...chatStart} status={status} box={inner}>
+          {chat}
+        </ChatSheet>
+      )}
       notes={
         <>
           {attachments.fault === null ? null : (
             <Fault>{attachments.fault}</Fault>
           )}
           {sendFault === null ? null : <Fault>{sendFault}</Fault>}
-          {!caution ? null : (
-            <div className={styles.caution} role="alert">
-              <p>{wording.earlierDocument.warning}</p>
-              <div className={styles.cautionActions}>
-                <UiButton type="button" size="sm" onClick={onSendAnyway}>
-                  {wording.earlierDocument.sendAnyway}
-                </UiButton>
-                <UiButton
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  onClick={onCancelCaution}
-                >
-                  {wording.action.cancel}
-                </UiButton>
-              </div>
-            </div>
-          )}
           {suggestedReplies.length > 0 && !needsProvider ? (
             <div
               className={styles.replies}
@@ -521,112 +740,7 @@ function RoomComposerView({
         </>
       }
     >
-      <AttachmentDropZone
-        onFiles={attachments.onAdd}
-        disabled={!attaching}
-        label={wording.conversation.dropFiles}
-      >
-        <Dictated value={text} onValueChange={onTextChange} disabled={busy}>
-          {(mic) => (
-            <PromptInput
-              value={text}
-              onValueChange={onTextChange}
-              onSubmit={send}
-              canSubmit={
-                text.trim() !== "" || files.length > 0 || sendLabel !== null
-              }
-              status={busy ? "submitted" : "ready"}
-              disabled={disabled || needsProvider}
-            >
-              {files.length === 0 ? null : (
-                <PromptInputFloat>
-                  <Attachments
-                    variant="stack"
-                    total={files.length}
-                    returnFocusTo={inputRef}
-                  >
-                    {files.map((item) => (
-                      <Attachment key={item.id} data={item}>
-                        <AttachmentPreview />
-                        <AttachmentInfo />
-                        <AttachmentRemove
-                          onClick={() => attachments.onRemove(item.id)}
-                        />
-                      </Attachment>
-                    ))}
-                  </Attachments>
-                </PromptInputFloat>
-              )}
-              <PromptInputTextarea
-                ref={inputRef}
-                // A picture on the clipboard attaches like a chosen file, while attaching is
-                // offered at all; text, and anything else, pastes as the browser would.
-                onPaste={(event) => {
-                  if (!attaching) return;
-                  const pasted = pastedFiles(event.clipboardData);
-                  if (pasted.length === 0) return;
-                  event.preventDefault();
-                  attachments.onAdd(pasted);
-                }}
-                placeholder={
-                  needsProvider
-                    ? wording.conversation.enableAiFirst
-                    : placeholder
-                }
-              />
-              <PromptInputToolbar>
-                {needsProvider ? null : mic}
-                {accept === null ? null : (
-                  <>
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      multiple
-                      hidden
-                      accept={accept}
-                      onChange={(event) => {
-                        if (event.target.files !== null)
-                          attachments.onAdd(event.target.files);
-                        event.target.value = "";
-                      }}
-                    />
-                    <PromptInputButton
-                      aria-label={wording.attach.add}
-                      title={wording.attach.add}
-                      onClick={() => fileInputRef.current?.click()}
-                    >
-                      <Paperclip size={16} aria-hidden="true" />
-                    </PromptInputButton>
-                  </>
-                )}
-                {needsProvider ? (
-                  <UiButton
-                    type="button"
-                    size="sm"
-                    className="ms-auto"
-                    onClick={onEnableAi}
-                  >
-                    {wording.action.enableAi}
-                    <Sparkles size={14} aria-hidden="true" />
-                  </UiButton>
-                ) : (
-                  <>
-                    {sendLabel === null ? null : (
-                      <span className={styles.sendLabel} aria-hidden="true">
-                        {sendLabel}
-                      </span>
-                    )}
-                    <PromptInputSubmit
-                      className={sendLabel === null ? "ms-auto" : undefined}
-                      aria-label={sendLabel ?? undefined}
-                    />
-                  </>
-                )}
-              </PromptInputToolbar>
-            </PromptInput>
-          )}
-        </Dictated>
-      </AttachmentDropZone>
+      {box}
     </Composer>
   );
 }

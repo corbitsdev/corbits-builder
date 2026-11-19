@@ -125,7 +125,7 @@ const meta = {
     tabStatus: [],
     paneRef: createRef(),
     nextStep: <NextStepLineView {...nextStep.args} />,
-    chat: null,
+    chatScreens: null,
     page: null,
   },
   render: (args) => <Room {...args} />,

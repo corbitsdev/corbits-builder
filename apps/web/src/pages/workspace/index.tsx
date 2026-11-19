@@ -50,7 +50,7 @@ function ReadyRoom(props: ReadyRoomProps) {
             <ScreenQuestion {...pageScreen} />
           )
         }
-        chat={pluginScreens.chat}
+        chatScreens={pluginScreens.chat}
         paneParts={{
           liveApp: liveApp === null ? null : <LiveApp {...liveApp} />,
           conceptMockup: (concept, frame) => (

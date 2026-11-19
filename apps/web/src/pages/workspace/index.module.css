@@ -148,8 +148,17 @@
   padding: var(--space-2) var(--space-4) var(--space-4);
 }
 
-/* A quiet line with its ways on: before a change to what a specialist builds from, or on an
-   archived project. */
+/* The chat taken full screen stands in for the project view or page it was pulled up over; that
+   stays mounted, only hidden. */
+.page:has(
+    > [data-slot="composer"] > [data-slot="chat-sheet"][data-state="full"]
+  )
+  > :not([data-slot="composer"]) {
+  display: none;
+}
+
+/* A quiet line: before a change to what work already builds from, its ways on where Send is; on an
+   archived project, with its way on beside it. */
 .caution {
   display: flex;
   flex-wrap: wrap;
@@ -165,14 +174,31 @@
   flex: 1 1 18rem;
 }
 
-.cautionActions {
-  display: flex;
-  gap: var(--space-1);
+/* In the prompt box, a tinted line across the box's top, so it reads before the words it is about. */
+[data-slot="composer-panel"] > .caution {
+  flex-wrap: nowrap;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0;
+  padding: var(--space-3) var(--space-4) var(--space-3) 14px;
+  background: var(--primary-tint);
+  color: var(--primary-tint-foreground);
+  font-size: var(--text-sm);
+  line-height: 20px;
+}
+
+/* The tint ends where the words begin, so it is the divider. */
+[data-slot="composer-panel"]:has(> .caution:last-child) {
+  border-bottom: 0;
+}
+
+[data-slot="composer-panel"] > .caution > svg {
+  flex: none;
+  margin-top: 2px;
 }
 
 /* Says what Send carries while a screen has feedback staged, so the one send control names its load. */
 .sendLabel {
-  margin-inline-start: auto;
   color: var(--wb-muted-foreground);
   font-size: 0.8125rem;
   white-space: nowrap;
