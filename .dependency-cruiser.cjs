@@ -1,3 +1,5 @@
+const { builtinModules } = require("node:module");
+
 module.exports = {
   forbidden: [
     {
@@ -83,6 +85,25 @@ module.exports = {
       severity: "error",
       from: { path: "^packages/" },
       to: { path: "^(apps|plugins)/" },
+    },
+    {
+      name: "browser-files-stay-off-node",
+      comment:
+        "The interface bundles each plugin's definitions and views, so nothing they reach may need Node or Bun; a browser build only externalizes those modules and the page fails when it loads.",
+      severity: "error",
+      from: {
+        path: [
+          "^plugins/[^/]+/src/[^/]+/(definition\\.ts|view\\.tsx)$",
+          "^apps/web/src/",
+        ],
+        pathNot: "\\.(test|stories|testing)\\.tsx?$",
+      },
+      to: {
+        // Core modules resolve by bare name, without the node: prefix. Each module has its own
+        // pattern because one alternation of them all is refused as an unsafe regular expression.
+        path: [...builtinModules.map((name) => `^${name}$`), "^bun(:|$)"],
+        reachable: true,
+      },
     },
   ],
   options: {
