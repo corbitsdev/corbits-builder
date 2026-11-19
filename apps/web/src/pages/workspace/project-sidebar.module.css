@@ -291,6 +291,32 @@
   flex: none;
 }
 
+/* No dot: the switch and its words already say whether the app runs, and an orange dot here would
+   read as the "needs you" dot on the documents above. Its name lines up with the steps' names. */
+.live {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 1.75rem;
+  padding: 0 var(--space-2) 0 28px;
+}
+
+.liveName {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--wb-text-control);
+  font-weight: 600;
+  line-height: var(--wb-text-control--line-height);
+  white-space: nowrap;
+}
+
+/* A start or stop is on its way: the switch stays in reach but holds, rather than leaving the tab
+   order as a disabled one would. */
+.live[data-changing] .switch {
+  opacity: 0.6;
+  cursor: progress;
+}
+
 .utilities {
   margin-block-start: auto;
   padding-block-start: var(--space-4);

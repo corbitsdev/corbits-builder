@@ -1,6 +1,7 @@
 /**
  * An open project's sidebar: the project's name, which opens and closes it, then the project's steps
- * (Plan, Design, Build) as a tree, each listing the documents it has made. Settings and the ways out of the project sit small at the bottom, the workspace menu
+ * (Plan, Design, Build) as a tree, each listing the documents it has made, and the live app once
+ * there is one. Settings and the ways out of the project sit small at the bottom, the workspace menu
  * last. Closed, only the project's name stays. Where the room is narrow it is a drawer over the page.
  */
 import {
@@ -25,6 +26,7 @@ import {
 import {
   SidebarItem,
   StatusDot,
+  Switch,
   TypingIndicator,
   type StatusDotTone,
 } from "@corbits/react-ui";
@@ -61,6 +63,13 @@ export type SidebarStep = {
   open: boolean;
 };
 
+/** The project's app, once there is one to run. */
+export type SidebarLiveApp = {
+  running: boolean;
+  /** A start or stop is on its way; the switch holds until it lands. */
+  changing: boolean;
+};
+
 export type ProjectSidebarViewProps = {
   project: string;
   /** Closed, only the project's name shows, to open it again. */
@@ -70,11 +79,14 @@ export type ProjectSidebarViewProps = {
   steps: readonly SidebarStep[];
   /** The document on the page; its row is marked. */
   selectedDocument: string | null;
+  /** Null until the project has an app. */
+  liveApp: SidebarLiveApp | null;
   /** The workspace menu, last in the sidebar. */
   workspaceMenu: ReactNode;
   onToggleSidebar: () => void;
   onToggleStep: (stepId: string) => void;
   onOpenDocument: (documentId: string) => void;
+  onToggleLiveApp: (running: boolean) => void;
   onProjectSettings: () => void;
   onSecrets: () => void;
   onAllProjects: () => void;
@@ -87,10 +99,12 @@ export function ProjectSidebarView({
   drawer,
   steps,
   selectedDocument,
+  liveApp,
   workspaceMenu,
   onToggleSidebar,
   onToggleStep,
   onOpenDocument,
+  onToggleLiveApp,
   onProjectSettings,
   onSecrets,
   onAllProjects,
@@ -151,6 +165,9 @@ export function ProjectSidebarView({
               onToggleStep={onToggleStep}
               onOpenDocument={onOpenDocument}
             />
+            {liveApp === null ? null : (
+              <LiveApp app={liveApp} onToggle={onToggleLiveApp} />
+            )}
             <ul className={styles.utilities}>
               <SidebarItem asChild icon={<Settings />}>
                 <button type="button" onClick={onProjectSettings}>
@@ -437,5 +454,44 @@ function DocumentItem({
         )}
       </span>
     </li>
+  );
+}
+
+/**
+ * The live app's switch keeps one name and is described by how the app stands. While a start or
+ * stop is on its way the switch stays in reach but holds.
+ */
+function LiveApp({
+  app,
+  onToggle,
+}: {
+  app: SidebarLiveApp;
+  onToggle: (running: boolean) => void;
+}) {
+  const stateId = `live-state-${useId()}`;
+  const state = app.changing
+    ? app.running
+      ? words.stopping
+      : words.starting
+    : app.running
+      ? words.running
+      : words.stopped;
+  return (
+    <div className={styles.live} data-changing={app.changing ? "" : undefined}>
+      <span className={styles.liveName}>{wording.liveApp.tab}</span>
+      {/* The switch already shows on, off and holding; there is no room for the words beside it. */}
+      <span id={stateId} className="sr-only" aria-live="polite">
+        {state}
+      </span>
+      <Switch
+        className={styles.switch}
+        checked={app.running}
+        label={wording.liveApp.tab}
+        describedBy={stateId}
+        onCheckedChange={(running) => {
+          if (!app.changing) onToggle(running);
+        }}
+      />
+    </div>
   );
 }
