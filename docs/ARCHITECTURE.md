@@ -50,6 +50,7 @@ flowchart TD
     ui["packages/plugin-ui"]
     client["packages/client"]
     checks["packages/app-checks"]
+    ssh["packages/ssh-publish"]
   end
   subgraph base["Schemas"]
     schemas["packages/schemas"]
@@ -71,8 +72,10 @@ flowchart TD
   plugins --> api
   plugins --> ui
   plugins --> checks
+  plugins --> ssh
   plugins --> schemas
   api --> schemas
+  ssh --> api
   client --> schemas
 ```
 

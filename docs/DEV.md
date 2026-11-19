@@ -21,6 +21,7 @@ How a request becomes work is in
 | `packages/plugin-host`  | Loads, searches, checks and starts plugins for the hub; the coordinator's tools' logic and how a plan step's state is worked out.                                                                                                                                                              |
 | `packages/plugin-ui`    | What a screen's view draws with: the view's props, the card, the actions row, the document block, the comparison, steps and markdown.                                                                                                                                                          |
 | `packages/app-checks`   | The check scripts a coding or design workspace runs, which the coder and the designer ship.                                                                                                                                                                                                    |
+| `packages/ssh-publish`  | The SSH release a place that publishes to a Debian or Ubuntu machine shares: its scripts, failure codes and production-ready check.                                                                                                                                                            |
 | `packages/schemas`      | Types and schemas shared by the hub, the client and the plugins.                                                                                                                                                                                                                               |
 | `packages/environment`  | How a process reads its environment: one validated schema per process, in its `environment.ts`.                                                                                                                                                                                                |
 | `scripts/`              | Dev and verification scripts: pin, vendor and environment checks, the commit check, the Google sign-in emulator, React UI API generation and the repository import (`bun run import:repo`, which writes a directory as a project file the import reads).                                       |
@@ -61,7 +62,7 @@ A plugin imports the plugin API (`@corbits-builder/plugin`, which holds
 `defineWorkflow`, `defineScreen`, `defineCheck` and `defineStarter`), the plugin
 UI kit (`@corbits-builder/plugin-ui`, which holds what its screens draw with),
 the shared schemas (`@corbits-builder/schemas`) and shared packages such as
-`@corbits-builder/app-checks`. It never imports the hub, the web app, the plugin
+`@corbits-builder/app-checks` and `@corbits-builder/ssh-publish`. It never imports the hub, the web app, the plugin
 host or another plugin, and only the hub imports the plugin host. `bun run
 boundaries` checks this on every pull request. The reason is that a plugin can
 then be added, renamed or removed without touching anything else.
