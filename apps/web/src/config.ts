@@ -1049,6 +1049,22 @@ export const wording = {
     always: (line: string) => `${line} · from now on`,
   },
   passage: { addToPrompt: "Add to prompt" },
+  /** A comment left beside a passage, which travels with the person's next message. */
+  comments: {
+    /** The comment field's label. */
+    field: "Comment",
+    placeholder: "Add a comment",
+    save: "Save comment",
+    edit: "Edit comment",
+    remove: "Delete comment",
+    /** The tick on a changed comment, which clears it once the change is seen. */
+    resolve: "Mark as seen",
+    /** Beside the dots while the change is being made. */
+    making: "Being changed",
+    changed: "Changed",
+    changedIn: (version: number) => `Changed in Version ${String(version)}`,
+    saveFailed: "Your comment was not saved. Try again.",
+  },
   documentBar: "Document controls",
   /** The print-like page a written document is read on, with its contents beside it. */
   documentViewer: {

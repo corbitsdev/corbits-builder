@@ -1,0 +1,184 @@
+/* One box, as in a document editor's margin: the comment, and a line beneath it only when its
+   step has something to say. */
+.card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 16rem;
+  padding: 10px var(--space-3);
+  border: 1px solid var(--wb-border);
+  border-radius: var(--radius-lg);
+  background: var(--wb-background);
+  box-shadow: var(--wb-shadow);
+  transition:
+    border-color 120ms ease,
+    box-shadow 120ms ease;
+  animation: global(settle-in) 180ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.card:is(:hover, :focus-within, [data-paired]) {
+  border-color: var(--wb-border-strong);
+}
+
+/* While it is written the box is the field: raised as the pane is, so it reads as the one in hand. */
+.card[data-state="writing"] {
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3);
+  box-shadow: var(--wb-pane-shadow);
+}
+
+.card:has([aria-invalid="true"]) {
+  border-color: var(--wb-destructive);
+}
+
+.comment {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 20px;
+  color: var(--wb-foreground);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.card:is([data-state="making"], [data-state="changed"]) .comment {
+  color: var(--wb-muted-foreground);
+}
+
+/* Edit and delete sit over the box's corner rather than on a row of their own. */
+.actions {
+  position: absolute;
+  inset-block-start: 6px;
+  inset-inline-end: 6px;
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--radius-md);
+  background: var(--wb-background);
+  /* The words they cover fade into them instead of stopping at an edge. */
+  box-shadow: -16px 0 12px -4px var(--wb-background);
+}
+
+/* Where there is a pointer they wait until the card or its passage is pointed at, or the card is
+   reached by keyboard. Hidden by opacity, not visibility, so Tab still reaches them. */
+@media (hover: hover) {
+  .actions {
+    opacity: 0;
+    transition: opacity 120ms ease;
+  }
+
+  .card:is(:hover, :focus-within, [data-paired]) .actions {
+    opacity: 1;
+  }
+}
+
+.iconButton {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-md);
+  color: var(--wb-muted-foreground);
+}
+
+.iconButton:hover {
+  color: var(--wb-foreground);
+}
+
+.iconButton svg,
+.save svg {
+  width: 14px;
+  height: 14px;
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 16px;
+  color: var(--wb-muted-foreground);
+}
+
+/* The indicator pads its dots; pulled back so they start where the comment's words do. */
+.status > [role="status"] {
+  margin-inline-start: calc(-1 * var(--space-1));
+}
+
+.changed {
+  flex: 1;
+  min-width: 0;
+  color: var(--wb-okay);
+}
+
+.status .iconButton {
+  margin-inline-end: -6px;
+  color: var(--wb-foreground);
+}
+
+.writing {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* A short comment and its send button share one line. Once the words wrap, the button moves to a
+   row of its own in the bottom corner, so the words keep the box's whole width. */
+.field {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+
+.field[data-wrapped] {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+/* The card's right padding is narrower while writing, to sit the button in its corner; the words
+   keep the same margin on both sides. */
+.field[data-wrapped] .input {
+  flex: none;
+  padding-inline-end: var(--space-1);
+}
+
+.field[data-wrapped] .save {
+  align-self: flex-end;
+}
+
+.input {
+  flex: 1;
+  min-width: 0;
+  /* Eight whole lines and the padding, so past them it scrolls between lines, not through one. */
+  max-height: calc(8 * 20px + 4px);
+  padding: 2px 0;
+  border: 0;
+  background: none;
+  resize: none;
+  font-size: 0.875rem;
+  line-height: 20px;
+  color: var(--wb-foreground);
+  overflow-wrap: anywhere;
+}
+
+.input::placeholder {
+  color: var(--wb-muted-foreground);
+}
+
+.input:focus-visible {
+  outline: none;
+}
+
+/* Dark, like every primary action, with the page colour for its arrow. */
+.save {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 9999px;
+  background: var(--wb-foreground);
+  color: var(--wb-background);
+}
+
+.save[aria-busy="true"] {
+  opacity: 0.6;
+}
