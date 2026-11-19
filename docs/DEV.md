@@ -687,6 +687,15 @@ requires it.
 
 The publish agent's own tools never take the app down.
 
+A target that publishes to a Debian or Ubuntu machine over SSH builds on
+`@corbits-builder/ssh-publish`, as `plugins/server` does. Its publish tools are
+`sshReleaseTools`, named and described in its own words, and its remove tools
+call `unpublish` and `status`, each with its own target handle and with
+`sshReleaseDeps` over its own `ssh` credential; its `ready` check runs
+`productionReady` from `@corbits-builder/publish-contract`. Every target's take-down tool checks the person's go-ahead
+for itself with `takeDownAgreed` from `@corbits-builder/publish-contract` and
+answers `not_agreed` without it, as `unpublish` does.
+
 ### A ready-made plan
 
 A ready-made plan is a manifest and a guidance file. Its steps name other
