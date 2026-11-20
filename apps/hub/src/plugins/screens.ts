@@ -65,12 +65,17 @@ export const shownScreens = (
       : [{ plugin, action, render, state: drawn }];
   });
 
-/** Runs a person's task on the project and saves the values it returns, each one it writes. */
+/** Runs a person's task on the project and saves the values it returns, each one it writes; tells its note, when it returns one. */
 export async function runTask(
   c: Context<TenantEnv>,
   projectId: string,
   catalog: Catalog,
-  ran: { task: Catalog["tasks"][number]; read: ProjectRead; input: unknown },
+  ran: {
+    task: Catalog["tasks"][number];
+    read: ProjectRead;
+    input: unknown;
+    tell: (note: string) => Promise<void>;
+  },
   stores: ValueStores,
   nativeFetch?: (request: Request) => Promise<Response>,
 ) {
@@ -89,4 +94,5 @@ export async function runTask(
     stores,
     nativeFetch,
   );
+  if (done.note !== undefined) await ran.tell(done.note);
 }

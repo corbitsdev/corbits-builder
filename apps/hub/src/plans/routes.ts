@@ -21,7 +21,11 @@ import { askedQuestions } from "../plugins/question.ts";
 import type { Checks } from "../plugins/checks.ts";
 import { personFacts, projectFacts } from "../plugins/facts.ts";
 import { agentDecidesApprovals } from "../config/preferences.ts";
-import { actionUnmetText, workflowAddedNote } from "../config/answers.ts";
+import {
+  actionUnmetText,
+  taskNote,
+  workflowAddedNote,
+} from "../config/answers.ts";
 import type { createArtifactService } from "../artifacts/service.ts";
 import { body, security } from "../http/route-parts.ts";
 import { CATALOG, catalogOf, projectCatalog } from "../plugins/catalog.ts";
@@ -243,6 +247,12 @@ export function mountPlanRoutes(
           task: action,
           read: projectRead(catalog, state, facts, steps),
           input: checked.input,
+          tell: (note) =>
+            service.tellCoordinator(
+              projectId,
+              taskNote(action.definition.says, action.name, note),
+              mailRun,
+            ),
         },
         { artifacts, values },
         nativeFetch,

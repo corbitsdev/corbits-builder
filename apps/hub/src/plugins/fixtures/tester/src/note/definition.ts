@@ -8,6 +8,5 @@ export default defineTask({
   writes: ["tester.notes"],
   run: (_project, { text }) => ({
     saves: [{ name: "tester.notes", value: text }],
-    note: `Look into: ${text}`,
   }),
 });

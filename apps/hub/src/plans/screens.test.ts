@@ -218,23 +218,28 @@ test("the route refuses an action whose requires do not hold, adds it once they 
   expect(finished.added).toMatchObject([{ goAhead: ["same"] }]);
 });
 
-test("a task saves the values it returns, and may write only its own plugin's values kept in the project's store", async () => {
-  const task = catalog.tasks.find(
+// Runs the tester's note task from the given catalog, keeping what it saves and tells.
+async function runNote(on: typeof catalog) {
+  const task = on.tasks.find(
     ({ plugin, action }) => plugin === "tester" && action === "note",
   );
   if (!task) throw new Error("the tester note task is not installed");
   const saved: Record<string, unknown>[] = [];
+  const told: string[] = [];
   const app = new Hono<TenantEnv>();
   app.use("*", signedIn);
   app.post("/", async (c) => {
     await runTask(
       c,
       "project-1",
-      catalog,
+      on,
       {
         task,
-        read: projectRead(catalog, empty, new Set(), []),
+        read: projectRead(on, empty, new Set(), []),
         input: { text: "the contact form" },
+        tell: async (note) => {
+          told.push(note);
+        },
       },
       {
         artifacts: {
@@ -253,7 +258,14 @@ test("a task saves the values it returns, and may write only its own plugin's va
     return c.body(null, 204);
   });
   expect((await app.request("/", { method: "POST" })).status).toBe(204);
-  expect(saved).toEqual([{ "tester.notes": "the contact form" }]);
+  return { saved, told };
+}
+
+test("a task saves the values it returns, tells nothing without a note, and may write only its own plugin's values kept in the project's store", async () => {
+  expect(await runNote(catalog)).toEqual({
+    saved: [{ "tester.notes": "the contact form" }],
+    told: [],
+  });
 
   const writing = (writes: string[]) =>
     loadCatalog(
@@ -275,4 +287,29 @@ test("a task saves the values it returns, and may write only its own plugin's va
   await expect(writing(["brand.guidelines"])).rejects.toThrow(
     "tester note writes brand.guidelines, which tester does not declare",
   );
+});
+
+test("a task that returns a note tells it once", async () => {
+  const telling = await loadCatalog(
+    [
+      ...installed,
+      tester(
+        "./src/note/definition.ts",
+        defineTask({
+          says: "The person left the tester a note.",
+          input: type({ "+": "reject", text: "string > 0" }),
+          describe: { fields: { text: { about: "What to look into" } } },
+          writes: ["tester.notes"],
+          run: (_project, { text }) => ({
+            saves: [{ name: "tester.notes", value: text }],
+            note: `Look into: ${text}`,
+          }),
+        }),
+      ),
+    ],
+    HOST,
+  );
+  expect((await runNote(telling)).told).toEqual([
+    "Look into: the contact form",
+  ]);
 });

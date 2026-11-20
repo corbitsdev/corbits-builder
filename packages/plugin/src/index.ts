@@ -633,7 +633,7 @@ export type ProjectRead = {
 
 export type TaskDone = {
   saves: readonly { name: string; value: unknown }[];
-  note: string;
+  note?: string;
 };
 
 export type Task<In> = {
