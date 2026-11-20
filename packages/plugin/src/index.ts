@@ -13,8 +13,11 @@ import type {
   PlanStepStateName,
   ReadyPlanOffer,
   ScreenRender,
+  ScreenStatus,
 } from "@corbits-builder/schemas/project";
 import { SpecialistInstruction } from "@corbits-builder/schemas/native-specialist";
+
+export type { ScreenStatus };
 
 // Something true of the project that Builder works out from what it stores, such as "app_exists". A
 // workflow's fact may name one of its input fields, as "filed:{kind}", for the value passed there.
@@ -851,6 +854,9 @@ export type Screen<In, Out, Data, Prepared> = {
   // When, in the hub's milliseconds since the epoch, the clock alone next changes what state
   // returns, such as a countdown's next minute; undefined while nothing it shows waits on the clock.
   changesAt?: (project: ProjectRead) => number | undefined;
+  // Where a screen rendered as a plugin-bar tab stands, from its state, worked out in the hub;
+  // undefined to show none.
+  status?: (state: Prepared) => ScreenStatus | undefined;
   // Run in the hub for each question that opens this screen, each time a person reads the plan:
   // what the view draws, from the question's input and the project as a shown screen's state reads
   // it. A screen that has it is prepared nowhere else.

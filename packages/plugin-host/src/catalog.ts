@@ -50,6 +50,7 @@ import {
   type OutputBudget,
   type Refused,
   type Screen,
+  type ScreenStatus,
   type ProjectRead,
   type Task,
   type DesignBuilder,
@@ -245,6 +246,7 @@ export type ScreenAction = ActionBase & {
   render: ScreenRender;
   state?: (project: ProjectRead) => unknown;
   changesAt?: (project: ProjectRead) => number | undefined;
+  status?: (state: unknown) => ScreenStatus | undefined;
   // What the view of a question with this input draws, prepared in the hub.
   fromProject?: (input: unknown, project: ProjectRead) => unknown;
   // Why this input cannot be shown, or undefined when it can.
@@ -1069,6 +1071,13 @@ function installScreen(
       throw new Error(`${name}'s definition ${part} must be a function`);
   if (screen.changesAt !== undefined && screen.state === undefined)
     throw new Error(`${name}'s definition changesAt needs a state to change`);
+  if (
+    screen.status !== undefined &&
+    (screen.state === undefined || render !== "plugin-bar")
+  )
+    throw new Error(
+      `${name}'s definition status is shown only for a plugin-bar screen with a state`,
+    );
   if (screen.fromProject !== undefined && screen.state !== undefined)
     throw new Error(
       `${name}'s definition fromProject prepares a question, which a screen with a state never asks`,
@@ -1115,6 +1124,7 @@ function installScreen(
   };
   if (screen.state) installed.state = screen.state;
   if (screen.changesAt) installed.changesAt = screen.changesAt;
+  if (screen.status) installed.status = screen.status;
   const { fromProject } = screen;
   if (fromProject)
     installed.fromProject = (input, project) =>

@@ -388,7 +388,10 @@ project), facts, plan steps and the ready-made plans on the plan, the hub's
 time, the saved app's version, whether the coordinator is mid-turn, the
 coordinator's runs, the screens of open questions, and the ready-made plans a
 group lists. `changesAt` says when the clock alone next changes the state, and
-the room reads it again then. The browser never saves the state. The view runs
+the room reads it again then. The browser never saves the state. A
+`"plugin-bar"` screen's `status`, also run in the hub, says from its state where
+it stands in a word or two, which the room shows beside the plan and opens the
+tab from. The view runs
 its plugin's actions through `act`; a task (`defineTask`) runs in the hub on
 that press, saves the values it `writes`, and may tell the coordinator a note.
 

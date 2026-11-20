@@ -1,4 +1,5 @@
-import type { ReactElement } from "react";
+import { Component, type ReactElement, type ReactNode } from "react";
+import type { ScreenStatus } from "@corbits-builder/plugin";
 import type {
   ScreenRender,
   ShownScreen,
@@ -20,7 +21,29 @@ type PluginScreensRoom = {
   act: ListedHostProps["act"];
 };
 
-export type PluginTab = { value: string; label: string; pane: ReactElement };
+export type PluginTab = {
+  value: string;
+  label: string;
+  pane: ReactElement;
+  status: ScreenStatus | undefined;
+};
+
+/** One plugin's screen that fails to draw shows nothing, and the room around it carries on. */
+class Contained extends Component<
+  { name: string; children: ReactNode },
+  { failed: boolean }
+> {
+  override state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  override componentDidCatch(error: unknown) {
+    console.error(`${this.props.name} failed to draw.`, error);
+  }
+  override render() {
+    return this.state.failed ? null : this.props.children;
+  }
+}
 
 export function pluginSlots(room: PluginScreensRoom) {
   const slots: {
@@ -33,15 +56,14 @@ export function pluginSlots(room: PluginScreensRoom) {
   for (const screen of room.screens) {
     const Listed = room.screenOf(screen)?.listed;
     if (Listed === undefined) continue;
-    if (screen.changesIn !== undefined)
-      slots.rereadIn = Math.min(slots.rereadIn ?? Infinity, screen.changesIn);
+    const { changesIn } = screen;
+    if (changesIn !== undefined)
+      slots.rereadIn = Math.min(slots.rereadIn ?? Infinity, changesIn);
+    const key = `${screen.plugin} ${screen.action}`;
     const element = (
-      <Listed
-        key={`${screen.plugin} ${screen.action}`}
-        state={screen.state}
-        act={room.act}
-        host={room.supplies}
-      />
+      <Contained key={key} name={key}>
+        <Listed state={screen.state} act={room.act} host={room.supplies} />
+      </Contained>
     );
     const slot = SLOT[screen.render];
     if (slot === "tab")
@@ -50,6 +72,7 @@ export function pluginSlots(room: PluginScreensRoom) {
         label:
           screenWords(screen.plugin, screen.action)?.label({}) ?? screen.action,
         pane: element,
+        status: screen.status,
       });
     else slots[slot].push(element);
   }

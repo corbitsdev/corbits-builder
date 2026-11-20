@@ -182,6 +182,14 @@ const PlanViewGroup = type({
 });
 export const ScreenRender = type("'main-page' | 'inline-chat' | 'plugin-bar'");
 export type ScreenRender = typeof ScreenRender.infer;
+// Where a screen shown in its own tab stands, in a word or two, which the room shows beside the plan
+// and opens the tab from. mark draws the plan's mark for a step in that state.
+export const ScreenStatus = type({
+  "+": "reject",
+  label: "string > 0",
+  "mark?": "'needs_you' | 'failed' | 'done'",
+});
+export type ScreenStatus = typeof ScreenStatus.infer;
 export const ShownScreen = type({
   "+": "reject",
   plugin: "string > 0",
@@ -191,6 +199,8 @@ export const ShownScreen = type({
   // How many milliseconds after this read the clock alone changes the state, so the reader reads
   // it again then.
   "changesIn?": "number > 0",
+  // Where it stands, for a screen in its own tab that says so.
+  "status?": ScreenStatus,
 });
 export type ShownScreen = typeof ShownScreen.infer;
 // An installed ready-made plan as a screen reads it, in its manifest's words.
