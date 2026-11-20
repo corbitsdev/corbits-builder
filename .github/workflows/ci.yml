@@ -116,6 +116,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/corbits-builder/workflow-packages
+          key: workflow-packages-${{ runner.os }}-${{ hashFiles('apps/**', 'packages/**', 'plugins/**', 'workflows/**', 'vendor/**', 'patches/**', 'bun.lock', 'package.json', 'tsconfig.json') }}
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/corbits-builder/workflow-packages
+          key: workflow-packages-${{ runner.os }}-${{ hashFiles('apps/**', 'packages/**', 'plugins/**', 'workflows/**', 'vendor/**', 'patches/**', 'bun.lock', 'package.json', 'tsconfig.json') }}
       - uses: ./.github/actions/setup
       # Each check runs even when an earlier one failed, so every check reports its own result.
       - name: format:check
@@ -204,6 +212,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/corbits-builder/workflow-packages
+          key: workflow-packages-${{ runner.os }}-${{ hashFiles('apps/**', 'packages/**', 'plugins/**', 'workflows/**', 'vendor/**', 'patches/**', 'bun.lock', 'package.json', 'tsconfig.json') }}
       - uses: ./.github/actions/postgres
       - uses: ./.github/actions/setup
       - uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9 # v1.6.3

@@ -1,10 +1,12 @@
 import { and, eq } from "drizzle-orm";
 import { type } from "arktype";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { createHash } from "node:crypto";
+import { cp, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
+import { dirname, join, sep } from "node:path";
 import { listVisibleOfferings, listVisibleProviders, type DB } from "@intx/db";
 import { getLogger } from "@intx/log";
+import { hasCode } from "@intx/types/has-code";
 import {
   asset,
   credential,
@@ -37,7 +39,12 @@ import {
 import { projectModelChoice } from "../projects/model-choice.ts";
 import { ProjectError } from "../projects/errors.ts";
 import { buildWorkflowPackages } from "./build-packages.ts";
-import { roleModel, runRole, WORKFLOW_PACKAGES } from "../plugins/catalog.ts";
+import {
+  PLUGINS_FOLDER,
+  roleModel,
+  runRole,
+  WORKFLOW_PACKAGES,
+} from "../plugins/catalog.ts";
 import { nativePackageName } from "./package-name.ts";
 import { resolveRoleInference, type RoleInference } from "./role-inference.ts";
 import type { Actor } from "../lib/actor.ts";
@@ -121,7 +128,45 @@ export function installedFrom(
   return { status: "current", installed: parsed };
 }
 
+// Built packages are kept on disk under a hash of everything their bytes come from, so a fresh
+// process reuses them instead of building again.
+const BUILT = join(homedir(), ".cache", "corbits-builder", "workflow-packages");
+const ROOT = dirname(PLUGINS_FOLDER);
+const SOURCES = new Bun.Glob(
+  "{apps,packages,plugins,workflows,vendor,patches}/**",
+);
+
+async function buildKey(inference: Inference) {
+  const files = ["bun.lock", "package.json", "tsconfig.json"];
+  for await (const path of SOURCES.scan({ cwd: ROOT, dot: true }))
+    if (!path.split(sep).includes("node_modules")) files.push(path);
+  const hash = createHash("sha256").update(
+    `${Bun.version}\0${PACKAGE_VERSION}\0${JSON.stringify(inference)}\0`,
+  );
+  for (const path of files.sort()) {
+    const bytes = await Bun.file(join(ROOT, path)).bytes();
+    hash.update(`${path}\0${bytes.length}\0`).update(bytes);
+  }
+  return hash.digest("hex");
+}
+
+type Manifest = Awaited<ReturnType<typeof buildWorkflowPackages>>;
+
+async function readBuilt(directory: string, manifest: Manifest) {
+  return await Promise.all(
+    manifest.map(async (item) => ({
+      ...item,
+      bytes: new Uint8Array(
+        await Bun.file(join(directory, item.file)).arrayBuffer(),
+      ),
+    })),
+  );
+}
+
 async function buildAndRead(key: string, inference: Inference) {
+  const built = join(BUILT, await buildKey(inference));
+  const saved = Bun.file(join(built, "manifest.json"));
+  if (await saved.exists()) return readBuilt(built, await saved.json());
   const directory = await mkdtemp(join(tmpdir(), "sb-hub-packages-"));
   try {
     const manifest = await buildWorkflowPackages(
@@ -129,14 +174,18 @@ async function buildAndRead(key: string, inference: Inference) {
       PACKAGE_VERSION,
       inference,
     );
-    return await Promise.all(
-      manifest.map(async (item) => ({
-        ...item,
-        bytes: new Uint8Array(
-          await Bun.file(join(directory, item.file)).arrayBuffer(),
-        ),
-      })),
-    );
+    const read = await readBuilt(directory, manifest);
+    await writeFile(join(directory, "manifest.json"), JSON.stringify(manifest));
+    const staged = `${built}.${process.pid}`;
+    await cp(directory, staged, { recursive: true });
+    try {
+      await rename(staged, built);
+    } catch (error) {
+      // Another process saved the same build first; its copy is identical.
+      if (!hasCode(error) || error.code !== "ENOTEMPTY") throw error;
+      await rm(staged, { recursive: true, force: true });
+    }
+    return read;
   } catch (error) {
     packages.delete(key);
     throw error;
