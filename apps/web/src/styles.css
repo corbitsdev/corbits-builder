@@ -73,6 +73,9 @@
   --wb-ring: var(--ring);
   --wb-okay: var(--ok);
   --wb-destructive: var(--destructive);
+  /* White on the destructive fill in both themes; the library's own turns black in dark, which
+     made the Stop square read as a hole. */
+  --wb-destructive-foreground: #ffffff;
   /* Sending what the person typed, such as Send once there are words. Blue, so it never reads as
      the brand orange or as a yes; dark below. */
   --wb-action: #2370d6;

@@ -299,7 +299,7 @@
 
 .box [data-slot="prompt-input-submit"][data-status="streaming"] {
   background: var(--wb-destructive);
-  color: var(--destructive-foreground);
+  color: var(--wb-destructive-foreground);
 }
 
 .box [data-slot="prompt-input-submit"][data-status="streaming"] > svg {
