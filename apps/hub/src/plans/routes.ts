@@ -8,7 +8,6 @@ import {
   PlanView,
   PlanWrite,
   StoredPlan,
-  type PlanStepStateName,
 } from "@corbits-builder/schemas/project";
 import type { Catalog } from "@corbits-builder/plugin-host/catalog";
 import { planRefusal } from "@corbits-builder/plugin-host/coordinator";
@@ -36,12 +35,6 @@ import { projectRead, runTask, shownScreens } from "../plugins/screens.ts";
 import type { createValueService } from "../values/service.ts";
 import type { createPlanService } from "./service.ts";
 
-// A plan step that has not begun, which a click on its action gives the go-ahead instead of adding it again.
-const NOT_STARTED: ReadonlySet<PlanStepStateName> = new Set([
-  "not_started",
-  "waiting",
-  "needs_you",
-]);
 const AskFirst = type({ "+": "reject", askFirst: "boolean" });
 const ActionRun = type({ "+": "reject", "input?": "Record<string, unknown>" });
 
@@ -213,6 +206,16 @@ export function mountPlanRoutes(
         mailRunAsCaller(c, nativeFetch, current.tenantId, runId, content);
       const ran = { plugin, action: name };
       if (action.kind === "workflow") {
+        // Planned work runs again under its own step ids, so a click never adds it twice; a step
+        // already running is left as it is.
+        const planned = steps
+          .flatMap((step) => ("steps" in step ? step.steps : [step]))
+          .filter(
+            (step) =>
+              step.plugin === plugin &&
+              step.action === name &&
+              isDeepStrictEqual(step.input, input),
+          );
         await service.addPlanStep(
           current,
           projectId,
@@ -224,15 +227,12 @@ export function mountPlanRoutes(
             askFirst: false,
           },
           {
-            waiting: steps
-              .flatMap((step) => ("steps" in step ? step.steps : [step]))
-              .find(
-                (step) =>
-                  step.plugin === plugin &&
-                  step.action === name &&
-                  NOT_STARTED.has(step.state) &&
-                  isDeepStrictEqual(step.input, input),
-              )?.id,
+            goAhead:
+              planned.length === 0
+                ? undefined
+                : planned
+                    .filter(({ state }) => state !== "running")
+                    .map(({ id }) => id),
             note: workflowAddedNote(action.description, action.name),
             mailRun,
           },

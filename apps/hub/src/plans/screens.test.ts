@@ -69,8 +69,9 @@ const empty = { styles: undefined, stored: {}, materials: [] };
 function hub(project: {
   artifacts: { kind: string; version: number }[];
   steps?: StoredPlanStep[];
+  runs?: unknown[];
 }) {
-  const added: { step: unknown; waiting: string | undefined }[] = [];
+  const added: { step: unknown; goAhead: readonly string[] | undefined }[] = [];
   const app = new Hono<TenantEnv>();
   app.onError((error, c) => {
     if (error instanceof ProjectError)
@@ -81,7 +82,7 @@ function hub(project: {
   const artifacts = {
     projectState: async () => empty,
     list: async () => ({ artifacts: project.artifacts, preferences: {} }),
-    stepRuns: async () => [],
+    stepRuns: async () => project.runs ?? [],
   } as unknown as ReturnType<typeof createArtifactService>;
   const plans = {
     authorizeAction: async () => {},
@@ -90,9 +91,9 @@ function hub(project: {
       _actor: unknown,
       _project: unknown,
       step: unknown,
-      told: { waiting: string | undefined },
+      told: { goAhead: readonly string[] | undefined },
     ) => {
-      added.push({ step, waiting: told.waiting });
+      added.push({ step, goAhead: told.goAhead });
     },
   } as unknown as ReturnType<typeof createPlanService>;
   const checks = { latest: async () => [] } as unknown as Checks;
@@ -166,7 +167,7 @@ test("a screen is listed, with its state, only while its state returns one, and 
   expect(shown(failing, { "tester.notes": "Try the save button" })).toEqual([]);
 });
 
-test("the route refuses an action whose requires do not hold, adds it once they do, and gives the go-ahead to the same step not yet begun", async () => {
+test("the route refuses an action whose requires do not hold, adds it once they do, and gives the go-ahead to the same step not yet begun or finished", async () => {
   const change = {
     instruction: "Make the save button on the contact page save the form.",
   };
@@ -179,7 +180,7 @@ test("the route refuses an action whose requires do not hold, adds it once they 
   const ready = hub({ artifacts: app });
   expect((await ready.act("coder", "change", change)).status).toBe(200);
   expect(ready.added).toMatchObject([
-    { step: { plugin: "coder", action: "change" }, waiting: undefined },
+    { step: { plugin: "coder", action: "change" }, goAhead: undefined },
   ]);
   const step = (id: string, instruction: string) => ({
     id,
@@ -197,7 +198,24 @@ test("the route refuses an action whose requires do not hold, adds it once they 
     ],
   });
   expect((await planned.act("coder", "change", change)).status).toBe(200);
-  expect(planned.added).toMatchObject([{ waiting: "same" }]);
+  expect(planned.added).toMatchObject([{ goAhead: ["same"] }]);
+  const finished = hub({
+    artifacts: app,
+    steps: [step("same", change.instruction)],
+    runs: [
+      {
+        runId: "run-1",
+        plugin: "coder",
+        action: "change",
+        step: "same",
+        status: "completed",
+        startedAt: "2026-11-18T10:00:00.000Z",
+        endedAt: "2026-11-18T10:05:00.000Z",
+      },
+    ],
+  });
+  expect((await finished.act("coder", "change", change)).status).toBe(200);
+  expect(finished.added).toMatchObject([{ goAhead: ["same"] }]);
 });
 
 test("a task saves the values it returns, and may write only its own plugin's values kept in the project's store", async () => {
