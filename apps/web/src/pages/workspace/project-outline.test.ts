@@ -219,6 +219,19 @@ describe("the files", () => {
     ]);
   });
 
+  test("an unfiled design whose concepts are all drawn waits on a pick, with no writing dots", () => {
+    const design = projectOutline({
+      ...designing,
+      draft: false,
+      concepts: [
+        { label: "Bold", drawn: true },
+        { label: "Calm", drawn: true },
+      ],
+    }).files.find((file) => file.id === "design");
+    expect(design?.state).toBe("ready");
+    expect(design?.opens).toBe(conceptTab("Bold"));
+  });
+
   test("concepts with no mockup drawn open the first concept", () => {
     const design = projectOutline({
       ...designing,

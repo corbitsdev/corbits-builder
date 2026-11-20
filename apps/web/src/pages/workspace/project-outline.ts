@@ -235,7 +235,7 @@ function documentFile(document: OutlineDocument): OutlineFile {
 
 /**
  * Every file the project has, in the project's flow: a row per filed document, the design with its
- * mockup and concepts under it (a design being drawn has its row before it is filed), the user
+ * mockup and concepts under it (a design being drawn or chosen has its row before it is filed), the user
  * manual after the build plan, and attached files last.
  */
 export function outlineFiles(input: OutlineInput): OutlineFile[] {
@@ -250,7 +250,11 @@ export function outlineFiles(input: OutlineInput): OutlineFile[] {
       file: {
         id: "design",
         name: wording.documentTab["design"] ?? "design",
-        state: design === undefined ? "drawing" : "ready",
+        // Unfiled, it is drawn only while a part still is; drawn concepts wait on the person's pick.
+        state:
+          design === undefined && parts.some((part) => part.state === "drawing")
+            ? "drawing"
+            : "ready",
         newVersion: design?.unread ?? false,
         printable: false,
         removable: false,
