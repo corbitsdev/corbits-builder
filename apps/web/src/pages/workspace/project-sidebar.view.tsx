@@ -18,8 +18,11 @@ import {
 import {
   Check,
   ChevronRight,
+  Ellipsis,
   PanelLeftClose,
   PanelLeftOpen,
+  Printer,
+  Trash2,
 } from "lucide-react";
 import {
   SidebarItem,
@@ -27,8 +30,14 @@ import {
   TypingIndicator,
   type StatusDotTone,
 } from "@corbits/react-ui";
+import {
+  Menu,
+  MenuContent,
+  MenuItem,
+  MenuTrigger,
+} from "@corbits/react-ui/ui/menu";
 import { wording } from "../../config.ts";
-import { Mark } from "../../components.jsx";
+import { DangerMenuItem, Mark } from "../../components.jsx";
 import styles from "./project-sidebar.module.css";
 
 const words = wording.projectShell;
@@ -54,6 +63,10 @@ export type SidebarStep = {
   id: string;
   name: string;
   state: SidebarStepState;
+  /** Builder asks before it starts the step; null once that can no longer change. */
+  askFirst: boolean | null;
+  /** The person declined the step; null where it cannot be declined. */
+  declined: boolean | null;
 };
 
 /** A part of the plan; its name is a heading only when the plan has more than one. */
@@ -80,6 +93,10 @@ export type SidebarFileRow = {
 };
 
 export type SidebarFile = SidebarFileRow & {
+  /** A written document, which its row's menu prints. */
+  printable: boolean;
+  /** An attached file, which its row's menu removes from the project. */
+  removable: boolean;
   /** The rows under it, such as the design's mockup, its draft and its concepts. */
   parts: readonly SidebarFileRow[];
 };
@@ -96,6 +113,10 @@ export type ProjectSidebarViewProps = {
   selectedFile: string | null;
   onToggleSidebar: () => void;
   onOpenFile: (fileId: string) => void;
+  onPrintFile: (fileId: string) => void;
+  onRemoveFile: (fileId: string) => void;
+  onAskFirst: (stepId: string, askFirst: boolean) => void;
+  onDecline: (stepId: string, declined: boolean) => void;
   onProjectSettings: () => void;
   onSecrets: () => void;
   onAllProjects: () => void;
@@ -113,6 +134,10 @@ export function ProjectSidebarView({
   selectedFile,
   onToggleSidebar,
   onOpenFile,
+  onPrintFile,
+  onRemoveFile,
+  onAskFirst,
+  onDecline,
   onProjectSettings,
   onSecrets,
   onAllProjects,
@@ -175,6 +200,10 @@ export function ProjectSidebarView({
                 files={files}
                 selectedFile={selectedFile}
                 onOpenFile={onOpenFile}
+                onPrintFile={onPrintFile}
+                onRemoveFile={onRemoveFile}
+                onAskFirst={onAskFirst}
+                onDecline={onDecline}
               />
               <ul className={styles.links}>
                 <Link onClick={onProjectSettings}>{words.projectSettings}</Link>
@@ -249,6 +278,8 @@ type TreeRow = {
   branch: Branch;
   /** What Enter or Space does on it. */
   activate: (() => void) | null;
+  /** It has a menu, which Shift+F10 or the context-menu key opens. */
+  menu: boolean;
 };
 
 /** What every row of the tree takes to hold the tree's one tab stop. */
@@ -259,8 +290,9 @@ type TreeItemProps = Required<
 /**
  * Plan and Files as one tree with a single tab stop, after the WAI-ARIA tree view pattern: the
  * arrows move between rows and fold Plan and Files, Home and End jump, a letter finds the next row
- * starting with it, and Enter or Space opens a file or folds a branch. Folding only changes the
- * look, so it is held here.
+ * starting with it, Enter or Space opens a file, folds a branch or opens a step's menu, and
+ * Shift+F10 or the context-menu key opens a row's menu. Folding and menus only change the look, so
+ * they are held here.
  */
 function ProjectTree({
   label,
@@ -268,13 +300,24 @@ function ProjectTree({
   files,
   selectedFile,
   onOpenFile,
+  onPrintFile,
+  onRemoveFile,
+  onAskFirst,
+  onDecline,
 }: {
   label: string;
   plan: readonly SidebarPlanGroup[];
   files: readonly SidebarFile[];
   selectedFile: string | null;
   onOpenFile: (fileId: string) => void;
+  onPrintFile: (fileId: string) => void;
+  onRemoveFile: (fileId: string) => void;
+  onAskFirst: (stepId: string, askFirst: boolean) => void;
+  onDecline: (stepId: string, declined: boolean) => void;
 }) {
+  // The row whose menu is open, and what to do once it has closed and handed focus back.
+  const [menu, setMenu] = useState<string | null>(null);
+  const afterMenu = useRef<(() => void) | null>(null);
   const [folded, setFolded] = useState<ReadonlySet<Branch>>(new Set());
   const toggle = (branch: Branch) => {
     const next = new Set(folded);
@@ -289,16 +332,22 @@ function ProjectTree({
     name,
     branch,
     activate: folds[branch] ? () => toggle(branch) : null,
+    menu: false,
   });
   const allRows: TreeRow[] = [
     branchRow(PLAN, words.plan),
-    ...steps.map((step): TreeRow => ({
-      key: stepKey(step.id),
-      parent: PLAN,
-      name: step.name,
-      branch: PLAN,
-      activate: null,
-    })),
+    ...steps.map((step): TreeRow => {
+      const key = stepKey(step.id);
+      const menu = stepHasMenu(step);
+      return {
+        key,
+        parent: PLAN,
+        name: step.name,
+        branch: PLAN,
+        activate: menu ? () => setMenu(key) : null,
+        menu,
+      };
+    }),
     branchRow(FILES, words.files),
     ...files.flatMap((file) =>
       [file, ...file.parts].map((row): TreeRow => ({
@@ -307,6 +356,7 @@ function ProjectTree({
         name: row.name,
         branch: FILES,
         activate: () => onOpenFile(row.id),
+        menu: row === file && fileHasMenu(file),
       })),
     ),
   ];
@@ -334,6 +384,12 @@ function ProjectTree({
     items.current.get(key)?.focus();
   };
   const onKeyDown = (event: KeyboardEvent<HTMLUListElement>) => {
+    // A row's menu is drawn elsewhere on the page, but its keys still pass through here.
+    if (
+      event.target instanceof Node &&
+      !event.currentTarget.contains(event.target)
+    )
+      return;
     const index = rows.findIndex((row) => row.key === tabStop);
     const row = rows[index];
     if (row === undefined || event.altKey || event.metaKey || event.ctrlKey)
@@ -368,6 +424,13 @@ function ProjectTree({
       case " ":
         row.activate?.();
         break;
+      case "ContextMenu":
+        if (row.menu) setMenu(row.key);
+        break;
+      case "F10":
+        if (!event.shiftKey) return;
+        if (row.menu) setMenu(row.key);
+        break;
       default: {
         if (event.key.length !== 1 || event.key === " ") return;
         const letter = event.key.toLowerCase();
@@ -390,6 +453,17 @@ function ProjectTree({
     tabIndex: key === tabStop ? 0 : -1,
     onFocus: (event) => {
       if (event.target === event.currentTarget) setFocused(key);
+    },
+  });
+  const menuOf = (key: string, name: string): RowMenuProps => ({
+    label: words.rowMenu(name),
+    open: menu === key,
+    onOpenChange: (open) => setMenu(open ? key : null),
+    onClosed: () => {
+      focus(key);
+      const then = afterMenu.current;
+      afterMenu.current = null;
+      then?.();
     },
   });
   const many = plan.length > 1;
@@ -428,6 +502,16 @@ function ProjectTree({
                 <StepItem
                   key={step.id}
                   step={step}
+                  menu={
+                    stepHasMenu(step) ? (
+                      <StepMenu
+                        step={step}
+                        menu={menuOf(stepKey(step.id), step.name)}
+                        onAskFirst={(askFirst) => onAskFirst(step.id, askFirst)}
+                        onDecline={(declined) => onDecline(step.id, declined)}
+                      />
+                    ) : null
+                  }
                   {...itemProps(stepKey(step.id))}
                 />
               ))}
@@ -450,6 +534,19 @@ function ProjectTree({
               level={2}
               selected={file.id === selectedFile}
               onOpen={() => onOpenFile(file.id)}
+              menu={
+                fileHasMenu(file) ? (
+                  <FileMenu
+                    file={file}
+                    menu={menuOf(fileKey(file.id), file.name)}
+                    // Printed once the menu has gone, so the menu is not printed with it.
+                    onPrint={() => {
+                      afterMenu.current = () => onPrintFile(file.id);
+                    }}
+                    onRemove={() => onRemoveFile(file.id)}
+                  />
+                ) : null
+              }
               {...itemProps(fileKey(file.id))}
             >
               {file.parts.length === 0 ? null : (
@@ -534,13 +631,18 @@ const stepTone: Partial<Record<SidebarStepState, StatusDotTone>> = {
   failed: "danger",
 };
 
-function StepItem({ step, ...item }: { step: SidebarStep } & TreeItemProps) {
+function StepItem({
+  step,
+  menu,
+  ...item
+}: { step: SidebarStep; menu: ReactNode } & TreeItemProps) {
   const { state } = step;
   const tone = stepTone[state];
   return (
     <li
       role="treeitem"
       aria-level={2}
+      aria-haspopup={menu === null ? undefined : "menu"}
       aria-label={`${step.name}, ${words.stepState[state]}`}
       className={styles.item}
       title={step.name}
@@ -557,6 +659,7 @@ function StepItem({ step, ...item }: { step: SidebarStep } & TreeItemProps) {
         ) : tone === undefined ? null : (
           <StatusDot label="" size="xs" tone={tone} />
         )}
+        {menu}
       </span>
     </li>
   );
@@ -572,6 +675,7 @@ function FileItem({
   level,
   selected,
   onOpen,
+  menu = null,
   children,
   ...item
 }: {
@@ -579,6 +683,7 @@ function FileItem({
   level: 2 | 3;
   selected: boolean;
   onOpen: () => void;
+  menu?: ReactNode;
   children?: ReactNode;
 } & TreeItemProps) {
   const { state } = row;
@@ -596,6 +701,7 @@ function FileItem({
       role="treeitem"
       aria-level={level}
       aria-current={selected ? "page" : undefined}
+      aria-haspopup={menu === null ? undefined : "menu"}
       aria-label={said === null ? row.name : `${row.name}, ${said}`}
       className={styles.item}
       title={row.name}
@@ -605,7 +711,14 @@ function FileItem({
         className={styles.row}
         data-row="file"
         data-state={state}
-        onClick={onOpen}
+        onClick={(event) => {
+          // A click in the row's menu, drawn elsewhere on the page, still passes through here.
+          if (
+            event.target instanceof Node &&
+            event.currentTarget.contains(event.target)
+          )
+            onOpen();
+        }}
       >
         <span className={styles.name}>{row.name}</span>
         {state === "writing" || state === "drawing" ? (
@@ -615,8 +728,163 @@ function FileItem({
         ) : tone === undefined ? null : (
           <StatusDot label="" size="xs" tone={tone} />
         )}
+        {menu}
       </span>
       {children}
     </li>
+  );
+}
+
+const stepHasMenu = (step: SidebarStep) =>
+  step.askFirst !== null || step.declined !== null;
+
+const fileHasMenu = (file: SidebarFile) => file.printable || file.removable;
+
+type RowMenuProps = {
+  label: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  /** The menu has closed, by a choice or by Escape. */
+  onClosed: () => void;
+};
+
+/**
+ * A row's menu, from its button or the keyboard. The button is for the pointer only: the row
+ * itself holds focus and says it has a menu, which Shift+F10 opens.
+ */
+function RowMenu({
+  label,
+  open,
+  onOpenChange,
+  onClosed,
+  children,
+}: RowMenuProps & { children: ReactNode }) {
+  return (
+    <Menu open={open} onOpenChange={onOpenChange}>
+      <MenuTrigger asChild>
+        <button
+          type="button"
+          className={styles.more}
+          tabIndex={-1}
+          aria-hidden="true"
+          title={label}
+          onClick={(event) => event.stopPropagation()}
+        >
+          <Ellipsis />
+        </button>
+      </MenuTrigger>
+      <MenuContent
+        align="start"
+        aria-label={label}
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          onClosed();
+        }}
+      >
+        {children}
+      </MenuContent>
+    </Menu>
+  );
+}
+
+/** A setting in a row's menu, ticked while it is on. */
+function CheckItem({
+  checked,
+  onSelect,
+  children,
+}: {
+  checked: boolean;
+  onSelect: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <MenuItem
+      role="menuitemcheckbox"
+      aria-checked={checked}
+      onSelect={onSelect}
+    >
+      <Check
+        className={styles.tick}
+        data-checked={checked ? "" : undefined}
+        aria-hidden="true"
+      />
+      {children}
+    </MenuItem>
+  );
+}
+
+function StepMenu({
+  step,
+  menu,
+  onAskFirst,
+  onDecline,
+}: {
+  step: SidebarStep;
+  menu: RowMenuProps;
+  onAskFirst: (askFirst: boolean) => void;
+  onDecline: (declined: boolean) => void;
+}) {
+  const { askFirst, declined } = step;
+  return (
+    <RowMenu {...menu}>
+      {askFirst === null ? null : (
+        <CheckItem checked={askFirst} onSelect={() => onAskFirst(!askFirst)}>
+          {wording.conversation.plan.askFirst}
+        </CheckItem>
+      )}
+      {declined === null ? null : (
+        <CheckItem checked={declined} onSelect={() => onDecline(!declined)}>
+          {words.decline}
+        </CheckItem>
+      )}
+    </RowMenu>
+  );
+}
+
+/** Print for a written document; Remove from project for an attached file, which asks first. */
+function FileMenu({
+  file,
+  menu,
+  onPrint,
+  onRemove,
+}: {
+  file: SidebarFile;
+  menu: RowMenuProps;
+  onPrint: () => void;
+  onRemove: () => void;
+}) {
+  // Removing takes two choices, both in the menu: the second only exists after the first.
+  const [confirming, setConfirming] = useState(false);
+  return (
+    <RowMenu
+      {...menu}
+      onOpenChange={(open) => {
+        setConfirming(false);
+        menu.onOpenChange(open);
+      }}
+    >
+      {file.printable ? (
+        <MenuItem onSelect={onPrint}>
+          <Printer size={16} aria-hidden="true" />
+          {wording.printDocument}
+        </MenuItem>
+      ) : null}
+      {!file.removable ? null : confirming ? (
+        <DangerMenuItem onSelect={onRemove}>
+          <Trash2 size={16} aria-hidden="true" />
+          {wording.removeAttachment.confirm}
+        </DangerMenuItem>
+      ) : (
+        <DangerMenuItem
+          onSelect={(event) => {
+            event.preventDefault();
+            setConfirming(true);
+          }}
+        >
+          <Trash2 size={16} aria-hidden="true" />
+          {words.removeFromProject}
+        </DangerMenuItem>
+      )}
+    </RowMenu>
   );
 }

@@ -476,6 +476,10 @@ export const wording = {
       failed: "failed",
       declined: "declined",
     },
+    /** A row's menu: a step's settings, or what can be done with a file. */
+    rowMenu: (name: string) => `More for ${name}`,
+    decline: "Decline",
+    removeFromProject: "Remove from project…",
     files: "Files",
     noFiles: "None yet",
     /** Read after a file's name where its mark says more than the name does. */

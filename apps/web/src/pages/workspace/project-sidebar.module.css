@@ -336,3 +336,53 @@
   display: flex;
   flex: none;
 }
+
+/* A row's menu button, for the pointer: it shows on the row being hovered or focused, and while
+   its menu is open. Where nothing hovers it always shows. */
+.more {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin-inline-end: -4px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--wb-muted-foreground);
+  opacity: 0;
+  cursor: pointer;
+}
+
+.more > svg {
+  width: 14px;
+  height: 14px;
+}
+
+.more:hover {
+  color: var(--wb-foreground);
+}
+
+.row:hover .more,
+.item:focus-visible > .row .more,
+.more[data-state="open"] {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .more {
+    opacity: 1;
+  }
+}
+
+/* A setting's tick keeps its place when the setting is off, so the words line up. */
+.tick {
+  width: 16px;
+  height: 16px;
+  visibility: hidden;
+}
+
+.tick[data-checked] {
+  visibility: visible;
+}

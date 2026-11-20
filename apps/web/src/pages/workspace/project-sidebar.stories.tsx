@@ -16,11 +16,23 @@ import {
 const tab = wording.documentTab;
 const designName = tab["design"] ?? "design";
 
+/**
+ * A step not yet started can be set to ask first; once it runs, neither setting changes. Only an
+ * optional step can be declined.
+ */
 const step = (
   id: string,
   name: string,
   state: SidebarStepState = "to_do",
-): SidebarStep => ({ id, name, state });
+  settings: Partial<Pick<SidebarStep, "askFirst" | "declined">> = {},
+): SidebarStep => ({
+  id,
+  name,
+  state,
+  askFirst: state === "to_do" || state === "needs_you" ? false : null,
+  declined: state === "declined" ? true : null,
+  ...settings,
+});
 
 /** A plan of one part: its steps stand on their own, with no heading. */
 const onePart = (steps: readonly SidebarStep[]): SidebarPlanGroup[] => [
@@ -34,6 +46,15 @@ const row = (
   newVersion = false,
 ): SidebarFileRow => ({ id, name, state, newVersion });
 
+/** The documents written as prose, which print. */
+const written = new Set([
+  "problem_brief",
+  "constraints",
+  "approaches",
+  "product_requirements",
+  "build_plan",
+]);
+
 const file = (
   id: string,
   state: SidebarFileState = "ready",
@@ -41,9 +62,12 @@ const file = (
     name?: string;
     newVersion?: boolean;
     parts?: readonly SidebarFileRow[];
+    attached?: boolean;
   } = {},
 ): SidebarFile => ({
   ...row(id, state, options.name, options.newVersion),
+  printable: written.has(id),
+  removable: options.attached ?? false,
   parts: options.parts ?? [],
 });
 
@@ -51,7 +75,8 @@ const planning = onePart([
   step("brief", "Write the brief", "done"),
   step("constraints", "List the constraints", "done"),
   step("approaches", "Compare approaches", "running"),
-  step("requirements", "Write the requirements"),
+  step("requirements", "Write the requirements", "to_do", { askFirst: true }),
+  step("research", "Research other bakeries", "to_do", { declined: false }),
   step("design", "Design the screens"),
   step("build", "Build the app"),
 ]);
@@ -81,7 +106,7 @@ const buildingFiles = [
   file("build_plan"),
   design("ready"),
   file("approval_package"),
-  file("menu.pdf", "ready", { name: "Spring menu.pdf" }),
+  file("menu.pdf", "ready", { name: "Spring menu.pdf", attached: true }),
   file("user_manual", "writing"),
 ];
 
@@ -153,6 +178,10 @@ const meta = {
     selectedFile: "problem_brief",
     onToggleSidebar: fn(),
     onOpenFile: fn(),
+    onPrintFile: fn(),
+    onRemoveFile: fn(),
+    onAskFirst: fn(),
+    onDecline: fn(),
     onProjectSettings: fn(),
     onSecrets: fn(),
     onAllProjects: fn(),
@@ -322,6 +351,62 @@ export const Keyboard: Story = {
     });
     await expect(files).toHaveFocus();
     await expect(files).toHaveAttribute("aria-expanded", "false");
+  },
+};
+
+/**
+ * A step's menu, opened from the keyboard: Enter on a step opens it. Ask me first is ticked on a
+ * step set to ask; Decline shows only on an optional step.
+ */
+export const StepMenu: Story = {
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    const requirements = canvas.getByRole("treeitem", {
+      name: /^Write the requirements/,
+    });
+    await expect(requirements).toHaveAttribute("aria-haspopup", "menu");
+    requirements.focus();
+    await userEvent.keyboard("{Enter}");
+    const page = within(document.body);
+    const askFirst = await page.findByRole("menuitemcheckbox", {
+      name: wording.conversation.plan.askFirst,
+    });
+    await expect(askFirst).toHaveAttribute("aria-checked", "true");
+    await expect(
+      page.queryByRole("menuitemcheckbox", {
+        name: wording.projectShell.decline,
+      }),
+    ).toBeNull();
+    await userEvent.click(askFirst);
+    await expect(args.onAskFirst).toHaveBeenCalledWith("requirements", false);
+    await expect(requirements).toHaveFocus();
+  },
+};
+
+/**
+ * An attached file's menu, opened by Shift+F10: Remove from project asks once more before it
+ * removes. A written document's menu prints it instead.
+ */
+export const FileMenu: Story = {
+  args: buildingArgs,
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    const attached = canvas.getByRole("treeitem", { name: "Spring menu.pdf" });
+    attached.focus();
+    await userEvent.keyboard("{Shift>}{F10}{/Shift}");
+    const page = within(document.body);
+    await userEvent.click(
+      await page.findByRole("menuitem", {
+        name: wording.projectShell.removeFromProject,
+      }),
+    );
+    await expect(args.onRemoveFile).not.toHaveBeenCalled();
+    await expect(
+      page.getByRole("menuitem", { name: wording.removeAttachment.confirm }),
+    ).toBeVisible();
+    await expect(
+      page.queryByRole("menuitem", { name: wording.printDocument }),
+    ).toBeNull();
   },
 };
 
