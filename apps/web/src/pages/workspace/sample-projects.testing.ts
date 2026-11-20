@@ -4,6 +4,7 @@
  */
 import type { PlanView } from "@corbits-builder/schemas/project";
 import type { WaitingRoom } from "./waiting.ts";
+import type { RoomStatusFacts } from "./room-status.ts";
 
 type PlanChild = Exclude<PlanView["steps"][number], { steps: unknown }>;
 
@@ -140,3 +141,102 @@ export const waitingRooms = {
     restarts: "Sending this restarts the design.",
   },
 } satisfies Record<string, WaitingRoom>;
+
+const quietFacts: RoomStatusFacts = {
+  sending: false,
+  thinking: false,
+  working: [],
+  failed: [],
+  lastSentAt: null,
+  plan: [],
+  documents: [],
+  app: null,
+};
+
+/** What is happening in each sample project, as the status line reads it. */
+export const statusRooms = {
+  /** Nothing moving, nothing new. */
+  quiet: quietFacts,
+  /** A message on its way to the coordinator. */
+  sending: { ...quietFacts, sending: true, thinking: true },
+  /** The coordinator works on its reply, with no specialist at work. */
+  thinking: { ...quietFacts, thinking: true },
+  /** The writer drafts the brief while the coordinator thinks. */
+  writing: {
+    ...quietFacts,
+    thinking: true,
+    working: [{ runId: "run-writer", doing: "Writing the problem brief" }],
+  },
+  /** Two specialists at work at once. */
+  writingAndDesigning: {
+    ...quietFacts,
+    working: [
+      { runId: "run-writer", doing: "Writing the problem brief" },
+      { runId: "run-designer", doing: "Designing the app" },
+    ],
+  },
+  /** The build stopped after the person's last message, and nothing has run since. */
+  buildFailed: {
+    ...quietFacts,
+    failed: [
+      {
+        doing: "Writing the problem brief",
+        endedAt: at("2026-11-20T09:00:00Z"),
+      },
+      { doing: "Building the app", endedAt: at("2026-11-20T10:10:00Z") },
+    ],
+    lastSentAt: at("2026-11-20T10:00:00Z"),
+    documents: [
+      { id: "build_plan", title: "Build plan", version: 1, seen: false },
+    ],
+  },
+  /** The build failed before the person wrote again, so they already know. */
+  failedBeforeMessage: {
+    ...quietFacts,
+    failed: [
+      { doing: "Building the app", endedAt: at("2026-11-20T09:00:00Z") },
+    ],
+    lastSentAt: at("2026-11-20T10:00:00Z"),
+  },
+  /** A step of the plan failed. */
+  stepFailed: {
+    ...quietFacts,
+    plan: [
+      step("brief", "Write the problem brief", "done"),
+      {
+        id: "build",
+        title: "Build",
+        state: "failed",
+        steps: [step("code", "Build the app", "failed")],
+      },
+    ],
+  },
+  /** A new version of the build plan the person has not opened, beside an older one they have. */
+  newVersion: {
+    ...quietFacts,
+    documents: [
+      { id: "problem_brief", title: "Problem brief", version: 2, seen: false },
+      { id: "build_plan", title: "Build plan", version: 3, seen: false },
+      { id: "design", title: "Design", version: 1, seen: true },
+    ],
+  },
+  /** The first build plan, not yet opened. */
+  firstVersion: {
+    ...quietFacts,
+    documents: [
+      { id: "build_plan", title: "Build plan", version: 1, seen: false },
+    ],
+  },
+  /** Everything opened, and the app running. */
+  appRunning: {
+    ...quietFacts,
+    documents: [
+      { id: "build_plan", title: "Build plan", version: 1, seen: true },
+    ],
+    app: "running",
+  },
+  /** The app could not start. */
+  appFailed: { ...quietFacts, app: "failed" },
+  /** The app is still starting, which says nothing on its own. */
+  appStarting: { ...quietFacts, app: "starting" },
+} satisfies Record<string, RoomStatusFacts>;
