@@ -5,7 +5,7 @@ import { projectLiveToInert } from "@intx/workflow/projection";
 import { browserCatalog } from "../builds/browser-catalog.ts";
 import { nativePackageName } from "./package-name.ts";
 import { resolveRoleInference, type RoleInference } from "./role-inference.ts";
-import { spawnedWorkflowRole } from "./spawn-role.ts";
+import { spawnedWorkflowRole, workflowStep } from "./spawn-role.ts";
 import { resolve } from "node:path";
 import {
   CATALOG,
@@ -237,6 +237,11 @@ test("built npm tarballs contain importable production workflow metadata and def
           );
           if (binding.optional) optional += 1;
         }
+      // A package is installed for the role its agent's tags name.
+      expect(
+        workflowStep({ projection: projectLiveToInert(entry.default) }, CATALOG)
+          ?.role,
+      ).toBe(WORKFLOW_PACKAGES.get(name));
       // The hub accepts a run as a specialist's only when its launch bundle yields a role.
       if (metadata.packageName !== nativePackageName("coordinator"))
         expect(

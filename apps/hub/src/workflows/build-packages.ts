@@ -2,8 +2,6 @@ import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
-import { pathToFileURL } from "node:url";
-import { projectLiveToInert } from "@intx/workflow/projection";
 import { bundledPlugins } from "@corbits-builder/plugin-host/bundle";
 import {
   CATALOG,
@@ -13,7 +11,6 @@ import {
 import { browserCatalog } from "../builds/browser-catalog.ts";
 import type { AgentPackage } from "@corbits-builder/plugin-host/catalog";
 import { nativePackageName } from "./package-name.ts";
-import { workflowStep } from "./spawn-role.ts";
 import type { RoleInference } from "./role-inference.ts";
 
 // The version follows the bundle bytes, so a rebuilt workflow publishes beside the old one instead of
@@ -56,7 +53,7 @@ export async function buildWorkflowPackages(
   const browses = PACKAGES.some(
     (built) => "agent" in built && hasBrowser(built.agent),
   );
-  const phases = { catalog: 0, build: 0, import: 0, pack: 0 };
+  const phases = { catalog: 0, build: 0, pack: 0, bytes: 0 };
   let mark = performance.now();
   const browser = browses ? JSON.stringify(await browserCatalog()) : undefined;
   phases.catalog += performance.now() - mark;
@@ -107,6 +104,7 @@ export async function buildWorkflowPackages(
       );
     const bundle = await result.outputs[0]!.text();
     phases.build += performance.now() - mark;
+    phases.bytes += bundle.length;
     const version = contentVersion(base, bundle);
     const staging = await mkdtemp(join(tmpdir(), "sb-workflow-package-"));
     const packageName = nativePackageName(name);
@@ -116,17 +114,6 @@ export async function buildWorkflowPackages(
       const builtEntry = join(staging, "package", "dist", "workflow.mjs");
       await writeFile(builtEntry, bundle);
       // Inference is chosen by the declared role, but a run is known by its agent's tags.
-      mark = performance.now();
-      const definition = await import(pathToFileURL(builtEntry).href);
-      phases.import += performance.now() - mark;
-      const tagged = workflowStep(
-        { projection: projectLiveToInert(definition.default) },
-        CATALOG,
-      )?.role;
-      if (tagged !== role)
-        throw new Error(
-          `The workflow package ${name} is installed for the role ${role}, but its agent's tags say ${tagged ?? "no one role"}`,
-        );
       await writeFile(
         join(staging, "package", "package.json"),
         JSON.stringify({
