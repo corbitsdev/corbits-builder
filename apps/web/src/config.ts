@@ -288,9 +288,6 @@ export const wording = {
     ],
   },
   liveApp: {
-    tab: "Live preview",
-    title: "What the coder is building, as it runs",
-    manualTitle: "How to use it, with pictures of it as built",
     frameTitle: "The running preview",
     notBuiltTitle: "Anything that runs appears here",
     notBuilt: "When the coder builds something you can run, it shows here.",
@@ -1061,7 +1058,6 @@ export const wording = {
   },
   printDocument: "Save as PDF or print",
   removeAttachment: {
-    menu: "Remove attachment…",
     confirm: "Yes, remove it",
     done: (name: string, told: boolean) =>
       told

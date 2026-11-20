@@ -1,10 +1,7 @@
-import { FileText, Printer, Trash2 } from "lucide-react";
+import { FileText } from "lucide-react";
 import {
   useEffect,
-  useRef,
   useState,
-  type KeyboardEvent,
-  type MouseEvent,
   type ReactElement,
   type ReactNode,
   type Ref,
@@ -17,18 +14,8 @@ import {
   PanelContent,
   PanelHeader,
   PanelPane,
-  PanelTab,
-  PanelTabs,
   panelTabIds,
-  StatusDot,
 } from "@corbits/react-ui";
-import {
-  Menu,
-  MenuContent,
-  MenuItem,
-  MenuTrigger,
-} from "@corbits/react-ui/ui/menu";
-import { DangerMenuItem } from "../../components.tsx";
 import styles from "./artifact-pane.module.css";
 import {
   DeliverableBody,
@@ -58,13 +45,12 @@ import {
 } from "../../stored-preference.ts";
 import { printDocument } from "./print-document.ts";
 import { DRAFT_TAB, LIVE_TAB, MANUAL_TAB, MOCKUP_TAB } from "./tab-follow.ts";
-import { useTabStrip } from "./tab-strip.ts";
 import type { ApproachChoice } from "./approach-choice.ts";
 import type { PluginTab } from "./plugin-screens.tsx";
 
-/** A filed document as its tab shows it. */
+/** A filed document as the pane shows it. */
 export type PaneDocument = {
-  /** Names its tab: the document's kind, or an attached file's own id. */
+  /** Names its pane: the document's kind, or an attached file's own id. */
   id: string;
   title: string;
   /** Where it stands, in words: drafted at a version, or approved at one. */
@@ -171,18 +157,8 @@ export function availableTab(
 const liveIds = panelTabIds(TAB_PREFIX, LIVE_TAB);
 // A pane whose page fills it edge to edge: the app, a mockup, a spreadsheet or the design draft.
 const FILL_PANE = styles.fill;
-const POINTER_TABS = "data-pointer-tabs";
-const TAB_KEYS = new Set([
-  "ArrowLeft",
-  "ArrowRight",
-  "Home",
-  "End",
-  "Tab",
-  "Enter",
-  " ",
-]);
 
-// Each document's tabs: one per document, two for the design.
+// Each document's panes: one per document, two for the design.
 function documentViews(
   item: PaneDocument,
 ): { value: string; label: string; part?: DesignPart }[] {
@@ -193,20 +169,6 @@ function documentViews(
     { value: MOCKUP_TAB, label: wording.design.mockupTab, part: "mockup" },
   ];
 }
-// Tabs follow the project's flow; a kind outside it comes last.
-const FLOW = [
-  "problem_brief",
-  "constraints",
-  "approaches",
-  "product_requirements",
-  "design",
-  "build_plan",
-  "approval_package",
-];
-const flowRank = (kind: string) => {
-  const rank = FLOW.indexOf(kind);
-  return rank === -1 ? FLOW.length : rank;
-};
 
 /** The parts of the pane that read the hub for themselves, which whoever draws the pane fills. */
 export type ArtifactPaneSlots = DeliverableSlots & {
@@ -240,7 +202,7 @@ export type ArtifactPaneContent = {
   printTab?: { value: string } | null;
   /** Hears which tab the pane shows, so the room can mark it. */
   onShownChange?: (tab: string | null) => void;
-  /** The filed documents, a tab each. */
+  /** The filed documents, a pane each. */
   documents: readonly PaneDocument[];
   /** The document the pane reads, by its id. */
   selectedId: string | null;
@@ -249,8 +211,6 @@ export type ArtifactPaneContent = {
   onSelect: (id: string) => void;
   /** The person has the document open, so its current version is no longer unread. */
   onSeen: (id: string) => void;
-  /** Takes an attached file back; absent where nothing can be removed. */
-  onRemove?: ((id: string) => void) | undefined;
   onRetry?: (() => void) | undefined;
   onReadVersion?: (version: number) => Promise<ReadVersion>;
   onAddToPrompt?: (passage: PassageQuote) => void;
@@ -273,9 +233,8 @@ export type ArtifactPaneProps = ArtifactPaneContent &
   };
 
 /**
- * One tab per open document, using the vendored panel tabs. A tab is marked
- * only while its current version is one this viewer has not opened. Panes
- * stay mounted so a later editor can keep its place.
+ * The project view: one pane per file the project sidebar lists, the chosen one shown. Panes stay
+ * mounted so a later editor can keep its place.
  */
 export function ArtifactPane({
   projectId,
@@ -293,7 +252,6 @@ export function ArtifactPane({
   state,
   onSelect,
   onSeen,
-  onRemove,
   paneRef,
   open,
   onClose,
@@ -445,72 +403,13 @@ export function ArtifactPane({
     setToPrint(null);
     if (state?.status === "ready") print(toPrint);
   }, [toPrint, shown?.id, state?.status]);
-  const strip = useTabStrip();
-  // A written document's tab has a menu, by right-click or Shift+F10, that prints it; a mockup is a
-  // page of its own. Opening the menu selects the tab, so its pane is the one printed.
-  const [tabMenu, setTabMenu] = useState<{
-    value: string;
-    x: number;
-    y: number;
-  } | null>(null);
-  const printing = useRef<string | null>(null);
-  // Removing takes two clicks, both in the menu: the second item only exists after the first.
-  const [confirmingRemove, setConfirmingRemove] = useState(false);
-  const openTabMenu = (value: string, x: number, y: number) => {
-    choose(value);
-    setConfirmingRemove(false);
-    setTabMenu({ value, x, y });
-  };
-  const tabMenuProps = (value: string) => ({
-    onContextMenu: (event: MouseEvent<HTMLButtonElement>) => {
-      event.preventDefault();
-      openTabMenu(value, event.clientX, event.clientY);
-    },
-    onKeyDown: (event: KeyboardEvent<HTMLButtonElement>) => {
-      if (
-        event.key !== "ContextMenu" &&
-        !(event.shiftKey && event.key === "F10")
-      )
-        return;
-      event.preventDefault();
-      const tab = event.currentTarget.getBoundingClientRect();
-      openTabMenu(value, tab.left, tab.bottom);
-    },
-  });
   const print = (value: string) => {
     const item = documents.find((entry) => entry.id === value);
     const pane = document.getElementById(panelTabIds(TAB_PREFIX, value).pane);
     if (item !== undefined && pane !== null)
       printDocument(pane, item.title, item.status);
   };
-  // The menu's remove item for an attached file's tab: a first click asks, the second removes.
-  const removeItem = (value: string) => {
-    const removable = documents.some(
-      (item) => item.id === value && item.removable,
-    );
-    if (onRemove === undefined || !removable) return null;
-    if (confirmingRemove)
-      return (
-        <DangerMenuItem onSelect={() => onRemove(value)}>
-          <Trash2 size={16} aria-hidden="true" />
-          {wording.removeAttachment.confirm}
-        </DangerMenuItem>
-      );
-    return (
-      <DangerMenuItem
-        onSelect={(event) => {
-          event.preventDefault();
-          setConfirmingRemove(true);
-        }}
-      >
-        <Trash2 size={16} aria-hidden="true" />
-        {wording.removeAttachment.menu}
-      </DangerMenuItem>
-    );
-  };
   const outputs = documents.length > 0 || draftShown || concepts.length > 0;
-  const hasTabs =
-    outputs || liveApp !== null || manual !== null || plugins.length > 0;
   useEffect(() => {
     if (open && shown?.unread) onSeen(shown.id);
   }, [open, shown?.id, shown?.unread]);
@@ -521,189 +420,15 @@ export function ArtifactPane({
       data-slot="artifact-pane"
       aria-label="Documents"
     >
-      {hasTabs ? (
-        <PanelHeader
-          // Chromium rings a clicked tab once any key is pressed, a modifier included, so a tab
-          // chosen by pointer stays ringless until the keyboard actually moves between tabs.
-          onPointerDown={(event) =>
-            event.currentTarget.setAttribute(POINTER_TABS, "")
-          }
-          onKeyDown={(event) => {
-            if (TAB_KEYS.has(event.key))
-              event.currentTarget.removeAttribute(POINTER_TABS);
-          }}
-          onBlur={(event) => {
-            if (!event.currentTarget.contains(event.relatedTarget))
-              event.currentTarget.removeAttribute(POINTER_TABS);
-          }}
-        >
-          <PanelTabs
-            label="Documents"
-            value={openId}
-            onValueChange={choose}
-            idPrefix={TAB_PREFIX}
-            ref={strip.ref}
-            onScroll={strip.onScroll}
-            onWheel={strip.onWheel}
-          >
-            {[
-              ...documents.map((item) => {
-                const unread = item.unread && item.id !== shown?.id;
-                const status = unread
-                  ? `${item.status}, ${wording.documentUnread}`
-                  : item.status;
-                return {
-                  rank: flowRank(item.id),
-                  tabs: documentViews(item).map((view) => (
-                    <PanelTab
-                      key={view.value}
-                      value={view.value}
-                      title={`${item.title}. ${status}`}
-                      aria-label={`${view.label}, ${status}`}
-                      icon={
-                        unread ? (
-                          <StatusDot label="" size="xs" tone="emphasis" />
-                        ) : undefined
-                      }
-                      {...(view.part === "mockup"
-                        ? {}
-                        : tabMenuProps(view.value))}
-                    >
-                      {view.label}
-                    </PanelTab>
-                  )),
-                };
-              }),
-              // After the build plan when there is one; an app built from requirements alone, or
-              // imported, has none.
-              {
-                rank: flowRank("build_plan"),
-                tabs: [
-                  liveApp !== null ? (
-                    <PanelTab
-                      key={LIVE_TAB}
-                      value={LIVE_TAB}
-                      title={wording.liveApp.title}
-                    >
-                      {wording.liveApp.tab}
-                    </PanelTab>
-                  ) : null,
-                  manual !== null ? (
-                    <PanelTab
-                      key={MANUAL_TAB}
-                      value={MANUAL_TAB}
-                      title={wording.liveApp.manualTitle}
-                    >
-                      {wording.documentTab["user_manual"]}
-                    </PanelTab>
-                  ) : null,
-                ],
-              },
-              ...(draftShown
-                ? [
-                    {
-                      rank: flowRank("design"),
-                      tabs: [
-                        <PanelTab
-                          key={DRAFT_TAB}
-                          value={DRAFT_TAB}
-                          title={wording.design.draftInProgress}
-                          icon={
-                            <StatusDot
-                              label=""
-                              size="xs"
-                              tone="emphasis"
-                              live
-                            />
-                          }
-                        >
-                          {wording.design.mockupTab}
-                        </PanelTab>,
-                      ],
-                    },
-                  ]
-                : []),
-              {
-                rank: flowRank("design"),
-                tabs: concepts.map((concept, index) => (
-                  <PanelTab
-                    key={conceptTab(concept.label)}
-                    value={conceptTab(concept.label)}
-                    title={
-                      concept.direction ??
-                      wording.design.conceptTitle(concept.label)
-                    }
-                    {...(concept.content === undefined
-                      ? {
-                          icon: (
-                            <StatusDot
-                              label=""
-                              size="xs"
-                              tone="emphasis"
-                              live
-                            />
-                          ),
-                        }
-                      : {})}
-                  >
-                    {wording.design.conceptTab(index + 1, concept.label)}
-                  </PanelTab>
-                )),
-              },
-            ]
-              .sort((left, right) => left.rank - right.rank)
-              .flatMap((entry) => entry.tabs)}
-            {plugins.map((tab) => (
-              <PanelTab key={tab.value} value={tab.value} title={tab.label}>
-                {tab.label}
-              </PanelTab>
-            ))}
-          </PanelTabs>
-          {tabMenu === null ? null : (
-            <Menu
-              open
-              onOpenChange={(open) => {
-                if (open) return;
-                setTabMenu(null);
-                setConfirmingRemove(false);
-              }}
-            >
-              <MenuTrigger asChild>
-                <span
-                  className={styles.menuAnchor}
-                  style={{ left: tabMenu.x, top: tabMenu.y }}
-                  aria-hidden="true"
-                />
-              </MenuTrigger>
-              <MenuContent
-                align="start"
-                onCloseAutoFocus={(event) => {
-                  event.preventDefault();
-                  document
-                    .getElementById(panelTabIds(TAB_PREFIX, tabMenu.value).tab)
-                    ?.focus();
-                  const value = printing.current;
-                  printing.current = null;
-                  if (value !== null) print(value);
-                }}
-              >
-                <MenuItem onSelect={() => (printing.current = tabMenu.value)}>
-                  <Printer size={16} aria-hidden="true" />
-                  {wording.printDocument}
-                </MenuItem>
-                {removeItem(tabMenu.value)}
-              </MenuContent>
-            </Menu>
-          )}
-          <PanelActions>
-            <PanelClose
-              label={wording.conversation.closeProject}
-              title={wording.conversation.closeProject}
-              onClick={onClose}
-            />
-          </PanelActions>
-        </PanelHeader>
-      ) : null}
+      <PanelHeader>
+        <PanelActions>
+          <PanelClose
+            label={wording.conversation.closeProject}
+            title={wording.conversation.closeProject}
+            onClick={onClose}
+          />
+        </PanelActions>
+      </PanelHeader>
       {!outputs && openId === null ? (
         <div className={styles.content}>
           <div className={styles.empty}>
@@ -733,8 +458,6 @@ export function ArtifactPane({
                     ? { className: FILL_PANE }
                     : {})}
                   id={ids.pane}
-                  role="tabpanel"
-                  aria-labelledby={ids.tab}
                 >
                   <DeliverableBody
                     state={current ? state : undefined}
@@ -787,13 +510,7 @@ export function ArtifactPane({
             }),
           )}
           {liveApp !== null ? (
-            <PanelPane
-              value={LIVE_TAB}
-              className={FILL_PANE}
-              id={liveIds.pane}
-              role="tabpanel"
-              aria-labelledby={liveIds.tab}
-            >
+            <PanelPane value={LIVE_TAB} className={FILL_PANE} id={liveIds.pane}>
               {liveApp}
             </PanelPane>
           ) : null}
@@ -805,8 +522,6 @@ export function ArtifactPane({
                 value={conceptTab(concept.label)}
                 className={FILL_PANE}
                 id={ids.pane}
-                role="tabpanel"
-                aria-labelledby={ids.tab}
               >
                 {conceptMockup(concept, {
                   device: conceptDevice,
@@ -816,12 +531,7 @@ export function ArtifactPane({
             );
           })}
           {manual !== null ? (
-            <PanelPane
-              value={MANUAL_TAB}
-              id={manualIds.pane}
-              role="tabpanel"
-              aria-labelledby={manualIds.tab}
-            >
+            <PanelPane value={MANUAL_TAB} id={manualIds.pane}>
               <UserManualView manual={manual} />
             </PanelPane>
           ) : null}
@@ -830,8 +540,6 @@ export function ArtifactPane({
               value={DRAFT_TAB}
               className={FILL_PANE}
               id={draftIds.pane}
-              role="tabpanel"
-              aria-labelledby={draftIds.tab}
             >
               <MockupFrameView
                 files={draft}
@@ -846,13 +554,7 @@ export function ArtifactPane({
           {plugins.map((tab) => {
             const ids = panelTabIds(TAB_PREFIX, tab.value);
             return (
-              <PanelPane
-                key={tab.value}
-                value={tab.value}
-                id={ids.pane}
-                role="tabpanel"
-                aria-labelledby={ids.tab}
-              >
+              <PanelPane key={tab.value} value={tab.value} id={ids.pane}>
                 {tab.pane}
               </PanelPane>
             );

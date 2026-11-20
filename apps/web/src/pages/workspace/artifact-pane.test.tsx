@@ -85,8 +85,8 @@ describe("persistent artifact pane", () => {
     const html = render(ready, document);
     expect(html).toContain("Real output");
     expect(html).toContain("Updated content");
-    expect(html).toContain('role="tab"');
-    expect(html).toContain('aria-selected="true"');
+    // The project sidebar lists the files, so the pane draws no tabs of its own.
+    expect(html).not.toContain('role="tab"');
     expect(html).not.toContain("<select");
     // The pane opens a comparison itself, so the open one is drawn through the document's body.
     const comparing = renderToStaticMarkup(
@@ -127,7 +127,6 @@ describe("persistent artifact pane", () => {
         },
       },
     );
-    expect(html).toContain('role="tab"');
     expect(html.split(`>${title}<`).length - 1).toBe(1);
     expect(html).toContain("The forecast for the weekend.");
     expect(html).not.toContain(">Artifacts<");
@@ -190,7 +189,7 @@ describe("persistent artifact pane", () => {
       }),
     ).toContain("Retained content unavailable");
   });
-  test("renders approval_package deliverable with Approval tab", () => {
+  test("renders an approval_package deliverable", () => {
     if (document.status !== "ready") throw new Error("invalid fixture");
     const pkgDeliverable = filed(
       "approval_package",
@@ -246,7 +245,6 @@ describe("persistent artifact pane", () => {
         content: bundleContent,
       },
     });
-    expect(html).toContain(">Approval<");
     expect(html).not.toContain(">Approval package<");
     expect(html).not.toContain(">Executive Sign-off Package</h1>");
     expect(html).toContain("Add new reviewer");
