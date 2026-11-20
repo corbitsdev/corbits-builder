@@ -5,10 +5,8 @@ import {
   refreshCodexTokens,
 } from "@corbits/codex-provider";
 import {
-  createOAuthTokenRefresher,
   mountOAuthLogin,
   type OAuthLoginProviders,
-  type OAuthTokenRefresher,
 } from "@corbits/oauth-core/hub";
 import {
   exchangeXaiCode,
@@ -25,7 +23,6 @@ import {
   type RequireGrant,
   type TenantEnv,
 } from "@intx/hub-api";
-import { pushSourceUpdates, type SidecarRouter } from "@intx/hub-sessions";
 import { getLogger } from "@intx/log";
 import type { CredentialCipher } from "@intx/types";
 import { Hono } from "hono";
@@ -69,21 +66,20 @@ export function oauthModelProviders(
 }
 
 /**
- * Mounts oauth-core's login routes under the tenant router and starts its refresher. Logins are
- * tenant-owned, the only credential a catalog model provider may use; starting one writes an
- * organizational credential, so it takes the same grant as the stock credential create.
+ * Mounts oauth-core's login routes under the tenant router. Logins are tenant-owned, the only
+ * credential a catalog model provider may use; starting one writes an organizational credential,
+ * so it takes the same grant as the stock credential create. The hub's refresher renews them
+ * (credentials/refresher.ts).
  */
 export function mountModelLogins(
   app: Hono<AppEnv>,
   options: {
     db: DB["db"];
     cipher: CredentialCipher;
-    sidecarRouter: SidecarRouter;
+    providers: OAuthLoginProviders;
     requireGrant: RequireGrant;
-    fetchImpl?: FetchLike;
   },
-): OAuthTokenRefresher {
-  const providers = oauthModelProviders(options.fetchImpl);
+) {
   const tenantRoutes = new Hono<TenantEnv>();
   // Scoped to the login paths: this router is mounted at the tenant root beside other routers.
   for (const path of ["/oauth-logins", "/oauth-logins/*"])
@@ -95,7 +91,7 @@ export function mountModelLogins(
   mountOAuthLogin(tenantRoutes, {
     db: options.db,
     cipher: options.cipher,
-    providers,
+    providers: options.providers,
     requireGrant: options.requireGrant("credential:*", "create"),
     owner: "tenant",
     onError: (error, context) =>
@@ -105,25 +101,4 @@ export function mountModelLogins(
       }),
   });
   app.route("/api/tenants/:tenantId", tenantRoutes);
-  const refresher = createOAuthTokenRefresher({
-    db: options.db,
-    cipher: options.cipher,
-    providers,
-    // A running sidecar holds the token it launched with; the stock rotation push re-resolves
-    // the tenant's sources so it gets the refreshed one.
-    onRefreshed: ({ tenantId }) =>
-      pushSourceUpdates(
-        options.db,
-        options.sidecarRouter,
-        tenantId,
-        options.cipher,
-      ),
-    onError: (error, context) =>
-      log.warn("Model token refresh failed for {credentialId}: {error}", {
-        credentialId: context.credentialId ?? "unknown",
-        error: error instanceof Error ? error.message : String(error),
-      }),
-  });
-  refresher.start();
-  return refresher;
 }

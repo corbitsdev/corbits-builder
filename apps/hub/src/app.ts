@@ -53,7 +53,14 @@ import { createProjectRoutes } from "./projects/routes.ts";
 import { createAppRepositoryRoutes } from "./projects/app-repository.ts";
 import { createInstalledCoordinatorStartup } from "./projects/coordinator-startup.ts";
 import { createConversationRoutes } from "./mail/conversation-routes.ts";
-import { mountModelLogins } from "./inference/oauth-login.ts";
+import {
+  mountModelLogins,
+  oauthModelProviders,
+} from "./inference/oauth-login.ts";
+import {
+  createRenewedPush,
+  startTokenRefresher,
+} from "./credentials/refresher.ts";
 import { createWorkflowMailPersistence } from "./projects/report-mail.ts";
 import {
   createSpecialistEndNotices,
@@ -642,11 +649,24 @@ export async function createHubRuntime(env: HubEnvironment) {
           async (request) => app.fetch(request),
         ),
       );
-    const modelLogins = mountModelLogins(app, {
+    const modelProviders = oauthModelProviders();
+    mountModelLogins(app, {
+      db: handle.db,
+      cipher: credentialCipher,
+      providers: modelProviders,
+      requireGrant,
+    });
+    const pushRenewed = createRenewedPush({
       db: handle.db,
       cipher: credentialCipher,
       sidecarRouter,
-      requireGrant,
+      loadRunCredentials,
+    });
+    const tokenRefresher = startTokenRefresher({
+      db: handle.db,
+      cipher: credentialCipher,
+      models: modelProviders,
+      pushRenewed,
     });
     app.route(
       "/api/tenants/:tenantId/availability",
@@ -720,7 +740,7 @@ export async function createHubRuntime(env: HubEnvironment) {
         for (const scheduler of projectSchedulers) scheduler.start();
       },
       async close() {
-        modelLogins.stop();
+        tokenRefresher.stop();
         for (const scheduler of projectSchedulers) scheduler.stop();
         workflows.stop();
         liveApps.runner.close();
