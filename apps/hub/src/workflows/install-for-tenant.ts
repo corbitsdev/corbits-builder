@@ -149,7 +149,13 @@ function builtPackages(inference: Inference) {
   const key = JSON.stringify(inference);
   const cached = packages.get(key);
   if (cached) return cached;
+  const builtAt = performance.now();
   const building = buildAndRead(key, inference);
+  void building.finally(() =>
+    log.warn(
+      `[timing] workflow packages built ${Math.round(performance.now() - builtAt)}ms`,
+    ),
+  );
   packages.set(key, building);
   return building;
 }
@@ -435,6 +441,7 @@ export async function installForTenant(
   actor: Actor,
   projectId: string,
 ): Promise<InstalledWorkflows> {
+  const installAt = performance.now();
   const [row] = await ports.db
     .select({ config: tenant.config })
     .from(tenant)
@@ -575,5 +582,8 @@ export async function installForTenant(
       })
       .where(eq(tenant.id, actor.tenantId));
   });
+  log.warn(
+    `[timing] installForTenant ${Math.round(performance.now() - installAt)}ms`,
+  );
   return descriptor;
 }
