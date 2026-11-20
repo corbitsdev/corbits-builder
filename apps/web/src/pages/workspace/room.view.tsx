@@ -121,8 +121,16 @@ export type RoomComposer = {
   sendLabel: string | null;
   /** What is happening, in the pill above the box; null or absent while nothing is. */
   status?: StatusPillContent | null;
-  /** Comments on a document waiting to be made, as a token in the typing row; Send makes them, with or without words. */
+  /**
+   * Comment drafts waiting to be sent, as a token in the typing row. The token sends them all as
+   * one message and leaves the words as typed; Send in an empty box sends them too.
+   */
   comments?: number;
+  onSendComments?: () => void;
+  /** Why the comments cannot be sent now, naming what to deal with first; null while they can. */
+  commentsBlocked?: string | null;
+  /** The comments are on their way. */
+  commentsSending?: boolean;
   /** Stops the specialists at work; Stop stands in for Send while the box is empty. */
   onStop?: () => void;
 };
@@ -738,6 +746,9 @@ function RoomComposerView({
   sendLabel,
   status = null,
   comments = 0,
+  onSendComments,
+  commentsBlocked = null,
+  commentsSending = false,
   onStop,
   waiting,
   chat,
@@ -760,7 +771,14 @@ function RoomComposerView({
   // mid-send; the drop zone, the attach button and a paste all follow this.
   const attaching = accept !== null && !busy;
   const typed = text.trim() !== "" || files.length > 0;
+  const commentsReady =
+    comments > 0 &&
+    onSendComments !== undefined &&
+    commentsBlocked === null &&
+    !commentsSending;
   const send = () => {
+    // With nothing typed, Send is the comments' own send.
+    if (!typed && commentsReady) return onSendComments();
     if (files.length === 0 && answersShell?.(text) === true)
       return onTextChange("");
     // A screen in the box takes the words with what is picked in it, so the pick is not lost.
@@ -783,7 +801,7 @@ function RoomComposerView({
             onValueChange={onTextChange}
             onSubmit={send}
             // While a message is on its way only Send waits: the box and its words stay as they are.
-            canSubmit={!busy && (typed || sendLabel !== null || comments > 0)}
+            canSubmit={!busy && (typed || sendLabel !== null || commentsReady)}
             status={stopping ? "streaming" : "ready"}
             disabled={disabled || needsProvider}
           >
@@ -832,10 +850,25 @@ function RoomComposerView({
               </>
             )}
             {comments > 0 ? (
-              <span className={styles.commentsToken}>
+              // Sends the comments alone, whatever is typed; while they wait on a question or an
+              // approval it stays where it is and says, beneath the box's card, what comes first.
+              <button
+                type="button"
+                className={styles.commentsToken}
+                data-slot="comments-token"
+                aria-label={wording.promptBox.sendComments(comments)}
+                title={
+                  commentsBlocked ?? wording.promptBox.sendComments(comments)
+                }
+                aria-disabled={commentsReady ? undefined : true}
+                aria-busy={commentsSending || undefined}
+                onClick={() => {
+                  if (commentsReady) onSendComments();
+                }}
+              >
                 <MessageSquare size={12} aria-hidden="true" />
                 {wording.promptBox.comments(comments)}
-              </span>
+              </button>
             ) : null}
             <PromptInputTextarea
               ref={inputRef}
@@ -851,7 +884,7 @@ function RoomComposerView({
               placeholder={
                 needsProvider
                   ? wording.conversation.enableAiFirst
-                  : comments > 0
+                  : commentsReady && ports.placeholder === undefined
                     ? wording.promptBox.commentsPlaceholder
                     : (ports.placeholder ?? placeholder)
               }
@@ -904,7 +937,9 @@ function RoomComposerView({
   return (
     <Composer
       panel={
-        restarts !== null || waiting !== undefined ? (
+        restarts !== null ||
+        waiting !== undefined ||
+        (comments > 0 && commentsBlocked !== null) ? (
           <>
             <InBox ports={ports} as={waiting === undefined ? null : "card"}>
               {waiting}
@@ -914,6 +949,16 @@ function RoomComposerView({
               <p className={styles.restarts} role="status">
                 <TriangleAlert size={14} aria-hidden="true" />
                 {restarts}
+              </p>
+            )}
+            {comments === 0 || commentsBlocked === null ? null : (
+              <p
+                className={styles.restarts}
+                data-slot="comments-blocked"
+                role="status"
+              >
+                <MessageSquare size={14} aria-hidden="true" />
+                {commentsBlocked}
               </p>
             )}
           </>

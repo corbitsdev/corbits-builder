@@ -657,8 +657,16 @@ export const wording = {
     /** The token in the typing row while comments on a document wait to be made. */
     comments: (count: number) =>
       count === 1 ? "1 comment" : `${String(count)} comments`,
-    /** The placeholder beside that token: Send makes the comments, with or without words. */
+    /** The placeholder beside that token, while Send in an empty box sends the comments. */
     commentsPlaceholder: "Add a message…",
+    /** The token's name and what it does: sends every comment as one message, the words left as typed. */
+    sendComments: (count: number) =>
+      count === 1 ? "Send 1 comment" : `Send ${String(count)} comments`,
+    /** Why the comments wait: a message now would answer the question or decline the approval. */
+    commentsAfterQuestion:
+      "Answer the question first, then send your comments.",
+    commentsAfterApproval:
+      "Decide the approval first, then send your comments.",
     /** The handle on the top edge of the box, and the pill while it stands in for it. */
     handle: {
       label: "Show the chat",

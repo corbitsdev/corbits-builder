@@ -308,9 +308,74 @@ export const ChangingEarlierDocument: Story = {
   },
 };
 
-/** Comments wait to be made: they ride in the row as a token, and Send makes them, with or without words. */
+const commenting = {
+  ...composer,
+  comments: 3,
+  onSendComments: fn(),
+} satisfies ComposerDock;
+
+/** Comments wait in the row as a token; pressing it, or Send in the empty box, sends them as one message. */
 export const CommentsWaiting: Story = {
-  args: { dock: { ...composer, comments: 3 } },
+  args: { dock: commenting },
+  play: async ({ args, canvasElement }) => {
+    const token = within(canvasElement).getByRole("button", {
+      name: wording.promptBox.sendComments(3),
+    });
+    await userEvent.click(token);
+    await expect(args.dock.onSendComments).toHaveBeenCalledOnce();
+  },
+};
+
+/**
+ * Words typed beside the comments: Send sends the words, and the token sends the comments alone,
+ * leaving the words in the box.
+ */
+export const CommentsWithWords: Story = {
+  args: { dock: { ...commenting, text: typed } },
+  play: async ({ args, canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(
+      canvas.getByRole("button", {
+        name: wording.promptBox.sendComments(3),
+      }),
+    );
+    await expect(args.dock.onSendComments).toHaveBeenCalledOnce();
+    await expect(canvas.getByRole("textbox")).toHaveValue(typed);
+  },
+};
+
+/**
+ * A question is open, so a message now would answer it: the token stays, still reachable from the
+ * keyboard, but sends nothing, and a line under the card says what to do first.
+ */
+export const CommentsWaitOnQuestion: Story = {
+  args: {
+    ...asking,
+    dock: {
+      ...commenting,
+      placeholder: wording.questions.composerPlaceholder,
+      commentsBlocked: wording.promptBox.commentsAfterQuestion,
+    },
+  },
+  play: async ({ args, canvasElement }) => {
+    const canvas = within(canvasElement);
+    const token = canvas.getByRole("button", {
+      name: wording.promptBox.sendComments(3),
+    });
+    await expect(token).toHaveAttribute("aria-disabled", "true");
+    await expect(token).not.toHaveAttribute("disabled");
+    await expect(token).toHaveAttribute(
+      "title",
+      wording.promptBox.commentsAfterQuestion,
+    );
+    token.focus();
+    await expect(token).toHaveFocus();
+    await userEvent.click(token);
+    await expect(args.dock.onSendComments).not.toHaveBeenCalled();
+    await expect(
+      canvasElement.querySelector('[data-slot="comments-blocked"]'),
+    ).toHaveTextContent(wording.promptBox.commentsAfterQuestion);
+  },
 };
 
 /** Long words wrap in their own column beside the controls; the box grows, up to a point, then scrolls. */
@@ -365,6 +430,11 @@ export const DarkToolApproval: Story = {
 
 export const DarkCommentsWaiting: Story = {
   ...CommentsWaiting,
+  globals: { mode: "dark" },
+};
+
+export const DarkCommentsWaitOnQuestion: Story = {
+  ...CommentsWaitOnQuestion,
   globals: { mode: "dark" },
 };
 
