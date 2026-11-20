@@ -8,7 +8,6 @@ import { MenuGroup, MenuItem, MenuLabel } from "@corbits/react-ui/ui/menu";
 import { Check, ChevronDown, Palette, SunMoon } from "lucide-react";
 import {
   useCallback,
-  useContext,
   useEffect,
   useMemo,
   useRef,
@@ -23,7 +22,6 @@ import {
   FrameShown,
   fromFrame,
   INDEX_PAGE,
-  MAX_QUOTE_CHARS,
   MAX_SCREEN_CHARS,
   screenPage,
   type DesignFiles,
@@ -33,7 +31,6 @@ import { DevicePreview, type PreviewDevice } from "./device-preview.tsx";
 import { mockupLook, tweakCss, type LookTweaks } from "./mockup-look.ts";
 import type { TweakPanelProps } from "./mockup-tweaks.view.tsx";
 import type { PaneBarGroup } from "./pane-bar.tsx";
-import { QuoteOffer } from "./passage-note.tsx";
 import styles from "./design-preview.module.css";
 
 const spoken = (name: string) =>
@@ -160,30 +157,6 @@ export function MockupFrameView({
     window.addEventListener("message", keep);
     return () => window.removeEventListener("message", keep);
   }, []);
-  const offer = useContext(QuoteOffer);
-  useEffect(() => {
-    if (offer === null) return;
-    // Only the inline frame: an offer under the modal expanded view could not be clicked.
-    const quote = (event: MessageEvent) => {
-      const owner = frame.current;
-      if (owner === null || event.source !== owner.contentWindow) return;
-      const data = event.data as { designQuote?: unknown; at?: unknown } | null;
-      const text = data?.designQuote;
-      const at = data?.at;
-      if (typeof text !== "string" || text.length > MAX_QUOTE_CHARS) return;
-      if (
-        !Array.isArray(at) ||
-        at.length !== 2 ||
-        !at.every((n) => typeof n === "number")
-      )
-        return;
-      const box = owner.getBoundingClientRect();
-      const [x, y] = at as [number, number];
-      offer(text, new DOMRect(box.left + x, box.top + y, 0, 0));
-    };
-    window.addEventListener("message", quote);
-    return () => window.removeEventListener("message", quote);
-  }, [offer]);
   // Rebuilt only when the files change or a link opens another page, so an unchanged refresh
   // leaves the frame alone.
   const snapshot = JSON.stringify(files);

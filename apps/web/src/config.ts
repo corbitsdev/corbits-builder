@@ -281,8 +281,7 @@ export const wording = {
     label: "Tips",
     turnOff: "Turn off tips",
     items: [
-      "Select any text to quote it in your message",
-      "Click a passage to add it to your prompt",
+      "Select a passage on a page to comment on it",
       "Ask for changes in plain words",
       "Compare versions with the version menu",
     ],
@@ -1043,7 +1042,6 @@ export const wording = {
     /** A decided card's line when the decision stands for the rest of the run. */
     always: (line: string) => `${line} · from now on`,
   },
-  passage: { addToPrompt: "Add to prompt" },
   /** A comment left beside a passage, kept as a draft until the person sends it. */
   comments: {
     /** The comment field's label. */

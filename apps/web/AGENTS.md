@@ -92,9 +92,9 @@ is, not shown as a standalone widget:
   of their own.
 - **Row menu:** per-document commands that aren't everyday actions, such as
   print, go in the row's menu next to the existing items.
-- **Quote:** whatever the person points at, whether a passage, a cell range or
-  a slide element, can be quoted into their message through the existing quote
-  offer, naming the document, the version and the location.
+- **Comment:** a passage the person selects on a written page takes a comment
+  in the margin, kept as a draft until they send their comments; the message
+  names the document, the version and the quote.
 - **Versions and changes:** the version menu and comparison work for it, or
   say plainly why a version can't be compared.
 - **States:** loading, empty and error states are the same short status

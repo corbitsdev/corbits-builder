@@ -1,8 +1,7 @@
 import styles from "./print-document.module.css";
 
 // Controls and selection affordances stay on screen.
-const SCREEN_ONLY =
-  '[data-slot="pane-bar"], [data-slot="passage-offer"], button';
+const SCREEN_ONLY = '[data-slot="pane-bar"], button';
 
 /**
  * Prints the document a pane shows through the browser's dialog, whose "Save as PDF"
