@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { type } from "arktype";
-import { like } from "drizzle-orm";
+import { and, eq, like } from "drizzle-orm";
 import { credential as credentialTable } from "@intx/db/schema";
 import { startTestHub } from "./support/hub.ts";
 import { formatOpenAISseResponse } from "./support/recorded-model.ts";
@@ -59,26 +59,44 @@ test("a running coordinator uses a rotated provider key on its next model call",
         problemStatement: first,
       },
     });
-    const { tenantId, coordinatorRunId } = await client.project(
-      workspaceTenantId,
-      projectId,
+    const listing = await client.project(workspaceTenantId, projectId);
+    const coordinatorRunId = type("string > 0").assert(
+      listing.coordinatorRunId,
     );
-    const callFor = async (text: string) => {
-      for (let i = 0; i < 240; i++) {
-        const call = model.calls.find((c) => c.lastUser.includes(text));
-        if (call) return call;
+    const until = async <T>(
+      what: string,
+      seconds: number,
+      check: () => Promise<T | undefined>,
+    ) => {
+      const deadline = performance.now() + seconds * 1000;
+      while (performance.now() < deadline) {
+        const found = await check();
+        if (found !== undefined) return found;
         await Bun.sleep(500);
       }
-      throw new Error(`no model call carried ${text}`);
+      throw new Error(`Timed out after ${seconds}s waiting for ${what}`);
     };
+    const callFor = (text: string) =>
+      until(`a model call carrying ${text}`, 120, async () =>
+        model.calls.find((c) => c.lastUser.includes(text)),
+      );
     const before = await callFor(first);
+    expect(before.authorization).toStartWith("Bearer sk-fake-e2e-secret-");
+
     const [credential] = await hub.db
-      .select({ id: credentialTable.id, tenantId: credentialTable.tenantId })
+      .select({ id: credentialTable.id })
       .from(credentialTable)
-      .where(like(credentialTable.name, "custom-provider %"));
+      .where(
+        and(
+          eq(credentialTable.tenantId, workspaceTenantId),
+          like(credentialTable.name, "custom-provider %"),
+        ),
+      );
+    if (!credential)
+      throw new Error("the workspace has no provider credential");
     const rotated = `sk-fake-rotated-${crypto.randomUUID()}`;
     const response = await fetch(
-      `${hub.baseUrl}/api/tenants/${credential!.tenantId}/credentials/${credential!.id}`,
+      `${hub.baseUrl}/api/tenants/${workspaceTenantId}/credentials/${credential.id}`,
       {
         method: "PATCH",
         headers: {
@@ -90,16 +108,19 @@ test("a running coordinator uses a rotated provider key on its next model call",
       },
     );
     expect(response.status).toBe(200);
-    // The push is fire-and-forget; give it a moment to reach the sidecar.
-    await Bun.sleep(1000);
 
-    const second = "Second message after the rotation.";
-    await client.sendMessage(tenantId, coordinatorRunId!, {
-      content: second,
+    // The hub pushes the rotation without awaiting it, so keep messaging the coordinator until a
+    // model call carries the new key.
+    let sent = 0;
+    await until("a model call with the rotated key", 60, async () => {
+      sent += 1;
+      const text = `Message ${sent} after the rotation.`;
+      await client.sendMessage(listing.tenantId, coordinatorRunId, {
+        content: text,
+      });
+      const call = await callFor(text);
+      return call.authorization === `Bearer ${rotated}` ? call : undefined;
     });
-    const after = await callFor(second);
-    expect(before.authorization).not.toBe(`Bearer ${rotated}`);
-    expect(after.authorization).toBe(`Bearer ${rotated}`);
   } finally {
     await hub.close();
     await model.stop();
