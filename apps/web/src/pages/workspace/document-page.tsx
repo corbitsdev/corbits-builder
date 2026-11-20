@@ -43,9 +43,23 @@ export type PageWriting = "live" | "stopped";
 
 const ZOOMS = [0.5, 0.75, 1, 1.25, 1.5, 2] as const;
 export type PageZoom = (typeof ZOOMS)[number];
-// Where the reader's eye rests, as a share of the view's height: the section and page it is in
-// are the ones being read.
+// Where the reader's eye rests, as a share of the view's height: the page it is in is the one
+// being read.
 const READING_LINE = 0.4;
+// A heading a jump landed on reads as reached though it rests a pixel or two short of the line.
+const LANDING_SLACK = 4;
+// A jump has settled once the view has not moved for this long.
+const JUMP_SETTLE_MS = 150;
+// Keys that scroll the view.
+const SCROLL_KEYS = new Set([
+  "ArrowUp",
+  "ArrowDown",
+  "PageUp",
+  "PageDown",
+  "Home",
+  "End",
+  " ",
+]);
 // A margin item starts a little above its passage, so its first line sits level with it.
 const MARGIN_LEAD = 15;
 const MARGIN_GAP = 8;
@@ -119,6 +133,20 @@ function same<T>(
   );
 }
 
+/**
+ * The section being read: the last whose heading has reached the top of the view, where a jump to
+ * it lands. A section whose heading never can, near the end of a document, is reached at the end:
+ * scrolled to the foot, the last heading in view is the one being read. Null above the first.
+ */
+export function sectionRead(
+  headings: readonly { id: string; top: number }[],
+  line: number,
+  end: number | null,
+): string | null {
+  const reached = (top: number) => top <= (end ?? line);
+  return headings.findLast((heading) => reached(heading.top))?.id ?? null;
+}
+
 /** The document's sections: its headings at the top level it uses, with their anchors. */
 function readSections(body: HTMLElement): HTMLElement[] {
   const headings = [
@@ -177,6 +205,11 @@ export function DocumentPage({
     readonly { id: string; title: string }[]
   >([]);
   const [current, setCurrent] = useState<string | null>(null);
+  // The section chosen in the contents holds while the view travels to it and once it is there,
+  // until the person scrolls on: the sections passed on the way, or a short one landing below
+  // the next, are not what they asked for. Undefined while the view follows the scroll.
+  const chosen = useRef<string | null | undefined>(undefined);
+  const jumping = useRef<number | null>(null);
   const [page, setPage] = useState({ current: 1, total: 1 });
   const [places, setPlaces] = useState<readonly PassagePlace[]>([]);
   const [roomy, setRoomy] = useState(true);
@@ -197,12 +230,49 @@ export function DocumentPage({
     setPage((was) =>
       was.current === current && was.total === total ? was : { current, total },
     );
+    if (chosen.current !== undefined) {
+      setCurrent(chosen.current);
+      return;
+    }
+    // A jump puts a heading the scroll padding and its own scroll margin below the top.
+    const headings = headingsRef.current;
+    const top =
+      frame.top + (parseFloat(getComputedStyle(view).scrollPaddingTop) || 0);
+    // The sections share a heading level, so one heading's margin is all of theirs.
+    const margin =
+      headings[0] === undefined
+        ? 0
+        : parseFloat(getComputedStyle(headings[0]).scrollMarginTop) || 0;
+    // A document that fits in the view has no end to reach; it is read from its top.
+    const atEnd =
+      view.scrollHeight > view.clientHeight + 2 &&
+      view.scrollTop + view.clientHeight >= view.scrollHeight - 2;
     setCurrent(
-      headingsRef.current.findLast(
-        (heading) => heading.getBoundingClientRect().top <= line,
-      )?.id ?? null,
+      sectionRead(
+        headings.map((heading) => ({
+          id: heading.id,
+          top: heading.getBoundingClientRect().top - margin,
+        })),
+        top + LANDING_SLACK,
+        atEnd ? frame.bottom : null,
+      ),
     );
   }, []);
+
+  // The person's own wheel, touch or key ends a jump at once, even while the view still moves.
+  const scrollOn = () => {
+    chosen.current = undefined;
+    if (jumping.current !== null) window.clearTimeout(jumping.current);
+    jumping.current = null;
+  };
+
+  // The view travels on its own after a jump; it has settled once it stops moving.
+  const settleJump = () => {
+    if (jumping.current !== null) window.clearTimeout(jumping.current);
+    jumping.current = window.setTimeout(() => {
+      jumping.current = null;
+    }, JUMP_SETTLE_MS);
+  };
 
   const passageKey = passages
     .map((passage) => `${passage.id}:${passage.state ?? ""}:${passage.quote}`)
@@ -262,6 +332,13 @@ export function DocumentPage({
     measure();
   }, [measure]);
 
+  useEffect(
+    () => () => {
+      if (jumping.current !== null) window.clearTimeout(jumping.current);
+    },
+    [],
+  );
+
   // The body's words change as it is written or another version is read, and its lines move as
   // the page or the pane changes size; either moves the passages.
   useEffect(() => {
@@ -312,6 +389,9 @@ export function DocumentPage({
   // The reader's scroll padding keeps a section clear of the bar; its scroll behaviour is smooth
   // unless the person asks for less motion.
   const open = (id: string | null) => {
+    chosen.current = id;
+    setCurrent(id);
+    settleJump();
     if (id === null) scroller.current?.scrollTo({ top: 0 });
     else
       headingsRef.current
@@ -376,7 +456,17 @@ export function DocumentPage({
         } as CSSProperties
       }
       data-slot="document-page"
-      onScroll={follow}
+      onScroll={() => {
+        // Moving after a jump has settled is the person scrolling on.
+        if (jumping.current === null) chosen.current = undefined;
+        else settleJump();
+        follow();
+      }}
+      onWheel={scrollOn}
+      onTouchMove={scrollOn}
+      onKeyDown={(event) => {
+        if (SCROLL_KEYS.has(event.key)) scrollOn();
+      }}
     >
       <PaneBar
         label={wording.documentBar}
