@@ -139,6 +139,22 @@ export function projectValueWrites(
     const declaration = declared.get(name);
     if (!declaration)
       throw new Error(`${name} is not a declared project value`);
+    // null clears a value of any type, so it reads as unset again. A value in the filed design's
+    // styles is that design's token, which a design can change but must always have.
+    if (value === null) {
+      if (state.styles !== undefined && isStyled(declaration))
+        throw new ProjectError(400, "invalid_project_value", {
+          key: name,
+          issues: [
+            {
+              path: name,
+              message: "is held by the filed design and cannot be cleared",
+            },
+          ],
+        });
+      stored[name] = null;
+      continue;
+    }
     const checked = storedValue(name, value, declaration, state);
     if (
       state.styles === undefined ||
@@ -157,15 +173,21 @@ export function projectValueWrites(
   return { tokens, stored };
 }
 
-/** Each named value from its home, null when the project has none. */
+/**
+ * Each named value from its home, null when the project has none. A private value works like a
+ * password, such as the link that hands over a published app, so it reads null to a reader who may
+ * not manage the project.
+ */
 export function readProjectValues(
   names: readonly string[],
   state: ProjectState,
   declared: ReadonlyMap<string, ValueDeclaration>,
+  manages = true,
 ): Record<string, unknown> {
   return Object.fromEntries(
     names.map((name) => {
       const declaration = declared.get(name);
+      if (declaration?.private && !manages) return [name, null];
       if (
         state.styles === undefined ||
         declaration === undefined ||

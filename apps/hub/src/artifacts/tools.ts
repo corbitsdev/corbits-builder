@@ -1,6 +1,8 @@
 import {
   REPORT_VALUES_DESCRIPTION,
+  emptyReportValues,
   invalidReportValues,
+  privateReportValues,
 } from "../config/tools.ts";
 import { type } from "arktype";
 import {
@@ -24,7 +26,8 @@ import { inShort } from "@corbits-builder/schemas/in-short";
 import { describedSchema } from "@corbits-builder/plugin-host/coordinator";
 import type { Role } from "@corbits-builder/plugin";
 import { COORDINATOR } from "../workflows/coordinator-role.ts";
-import { savesValues } from "../plugins/catalog.ts";
+import { offersReportValues } from "@corbits-builder/plugin-host/catalog";
+import { CATALOG } from "../plugins/catalog.ts";
 import { stripApprovalPackageBinaries } from "./approval-package.ts";
 import { unpackDesign } from "./design-tools.ts";
 import { resolveWorkflowProjectScope } from "@corbits-builder/plugin/project-scope";
@@ -190,7 +193,7 @@ function artifactTools(
   { definitions: own, save }: ArtifactToolSet,
 ): AnnotatedToolFactory<ArtifactToolEnv> {
   // Only a role an action starts to save project values can save any; every other call is refused.
-  const definitions = savesValues(role.name)
+  const definitions = offersReportValues(CATALOG, role.name)
     ? [...own, reportValuesDefinition]
     : own;
   return defineTool<ArtifactToolEnv>({
@@ -241,6 +244,28 @@ function artifactTools(
                 return {
                   callId: call.id,
                   content: invalidReportValues(input.summary),
+                  isError: true,
+                };
+              // The run-values route cannot tell a model's call from a plugin tool's, so a private
+              // value is refused here, which only a model's call reaches.
+              const hidden = input.values
+                .map(({ name }) => name)
+                .filter((name) => CATALOG.values.get(name)?.private);
+              if (hidden.length > 0)
+                return {
+                  callId: call.id,
+                  content: privateReportValues(hidden),
+                  isError: true,
+                };
+              // The route clears a value saved as null. Only a plugin tool should do that, when
+              // what it recorded is gone; a model reports only what it learned.
+              const cleared = input.values
+                .filter(({ value }) => value === null)
+                .map(({ name }) => name);
+              if (cleared.length > 0)
+                return {
+                  callId: call.id,
+                  content: emptyReportValues(cleared),
                   isError: true,
                 };
               const values = Object.fromEntries(

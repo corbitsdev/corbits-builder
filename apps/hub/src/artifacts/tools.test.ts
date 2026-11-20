@@ -212,6 +212,24 @@ test("report_values takes each value's name as a field, so a dotted name arrives
   ]);
 });
 
+test("report_values never clears a value, and saves nothing of a call that tries", async () => {
+  const coder = CATALOG.role("coder");
+  if (!coder) throw new Error("coder_role_missing");
+  const reporting = harness(coder.name, createArtifactTools(coder));
+  const refused = await reporting.write(
+    {
+      values: [
+        { name: "stack.language", value: "Rust" },
+        { name: "stack.production", value: null },
+      ],
+    },
+    "report_values",
+  );
+  expect(refused.isError).toBe(true);
+  expect(refused.content).toContain("stack.production");
+  expect(reporting.written).toHaveLength(0);
+});
+
 test("report_values is given only to a role an action starts to save values, so a writer has none", () => {
   const offers = (name: string) => {
     const role = CATALOG.role(name);

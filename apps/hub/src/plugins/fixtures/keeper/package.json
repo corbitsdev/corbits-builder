@@ -1,0 +1,88 @@
+{
+  "name": "@corbits-builder/keeper",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "builder": {
+    "handle": "keeper",
+    "runs": "specialist",
+    "groups": [
+      "keeper"
+    ],
+    "when": "The person wants the app published to Keeper.",
+    "unless": "They want something else.",
+    "values": {
+      "keeper.keep": {
+        "about": "The link that hands the published app's account to the person.",
+        "type": "link",
+        "private": true
+      },
+      "keeper.address": {
+        "about": "Where the published app answers.",
+        "type": "link"
+      }
+    },
+    "credentials": {
+      "keeper-api": {
+        "about": "Keeper API key",
+        "origin": "http://127.0.0.1:4011",
+        "sends": "bearer",
+        "screen": "key-form",
+        "notNeededWhile": "keeper.keep"
+      }
+    },
+    "roles": [
+      {
+        "name": "keeper",
+        "label": "Publisher",
+        "model": "keeper",
+        "limits": "keeper",
+        "tools": [
+          "write_artifact"
+        ],
+        "status": {
+          "working": "Publishing",
+          "done": "Published"
+        },
+        "preferences": [
+          "technical"
+        ]
+      }
+    ],
+    "settings": {
+      "keeper": {
+        "label": "Publisher",
+        "hint": "Publishes the app.",
+        "tier": "medium"
+      }
+    },
+    "budgets": {
+      "keeper": {
+        "maxOutputTokens": 16384
+      }
+    },
+    "agents": {
+      "keeper": {
+        "prompt": "./prompt.md",
+        "tools": "./src/tools.ts"
+      }
+    },
+    "actions": {
+      "publish": {
+        "reads": [
+          "keeper.keep",
+          "keeper.address"
+        ],
+        "writes": [
+          "keeper.keep",
+          "keeper.address"
+        ],
+        "returns": [],
+        "start": {
+          "agent": "keeper"
+        }
+      },
+      "key-form": {}
+    }
+  }
+}

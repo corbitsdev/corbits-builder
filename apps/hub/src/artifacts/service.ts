@@ -1876,6 +1876,12 @@ export function createArtifactService(
       return savedApp(actor, projectId);
     },
 
+    // Whether the caller, who may read the project, may also manage it.
+    async managesProject(actor: Actor, projectId: string) {
+      const allowed = await requireProject(actor, projectId, "read");
+      return allowed(projectResource(projectId), "manage");
+    },
+
     async acceptance(
       actor: Actor,
       projectId: string,

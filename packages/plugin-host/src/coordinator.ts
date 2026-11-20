@@ -17,6 +17,7 @@ import {
   isSpecialist,
   isWorkflowAction,
   startsAgent,
+  offersReportValues,
   type Action,
   type Catalog,
   type CheckAction,
@@ -67,6 +68,8 @@ import {
   unknownRuns,
   unmetRequirement,
   wrongCall,
+  savedByToolsText,
+  modelWrites,
   writesText,
   type Readiness,
 } from "./text.ts";
@@ -999,7 +1002,16 @@ export async function execute(
     reads.length === 0
       ? ""
       : assignedValuesText(catalog.values, await project.values(reads));
-  if (writes.length > 0) values += writesText(catalog.values, writes);
+  if (writes.length > 0) {
+    const role = catalog.packages.get(action.workflow)?.role;
+    const reported =
+      role !== undefined && offersReportValues(catalog, role)
+        ? modelWrites(catalog.values, writes)
+        : [];
+    const byTools = writes.filter((name) => !reported.includes(name));
+    if (reported.length > 0) values += writesText(catalog.values, reported);
+    if (byTools.length > 0) values += savedByToolsText(byTools);
+  }
   const started = await project.start(action, call.checked, values, stepId);
   const result: Result = {
     started: true,
