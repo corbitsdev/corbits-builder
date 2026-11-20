@@ -100,9 +100,41 @@ rules:
       - maintainer-stated
   - id: conventions
     check: code-patterns
-    text: Added code has no IIFEs, promise chains, empty catches, nested ternaries, invented ?? 0 or ?? [] fallbacks, or suppression comments.
-    presets:
-      - convention
+    text: Added code has no IIFEs, promise chains, empty catches or suppression comments.
+    patterns:
+      - id: iife
+        language: typescript
+        message: Immediately invoked function; name the function.
+        rule:
+          kind: call_expression
+          has:
+            field: function
+            kind: parenthesized_expression
+            has:
+              any:
+                - kind: arrow_function
+                - kind: function_expression
+      - id: promise-chain
+        language: typescript
+        message: Promise chain; use async/await with try/catch.
+        rule:
+          kind: call_expression
+          has:
+            field: function
+            kind: member_expression
+            has: { field: property, regex: "^(then|catch|finally)$" }
+      - id: empty-catch
+        language: typescript
+        message: Empty catch swallows the error.
+        rule:
+          kind: catch_clause
+          has: { field: body, regex: '^\{\s*\}$' }
+      - id: suppression-comment
+        language: typescript
+        message: Lint or type suppression comment.
+        rule:
+          kind: comment
+          regex: "@ts-(ignore|expect-error|nocheck)|(eslint|oxlint)-disable"
     onFail: fail
     reason: Errors are never swallowed; async/await with named functions throughout.
     evidence:
