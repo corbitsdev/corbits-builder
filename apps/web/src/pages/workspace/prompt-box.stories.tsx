@@ -269,11 +269,11 @@ export const LongText: Story = {
 
 /** At phone width the question keeps the box's width and the words wrap under it. */
 export const Narrow: Story = {
-  args: { waiting: "question", width: 360 },
+  args: { ...asking, width: 360 },
 };
 
 export const Dark: Story = {
-  args: { waiting: "question" },
+  args: asking,
   globals: { mode: "dark" },
 };
 
