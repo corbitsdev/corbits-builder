@@ -228,8 +228,12 @@ version you have not opened yet. Hover over a tab to see whether it is
 
 While reading, you can:
 
-- Select text, or click a passage, and choose **Add to prompt** to quote it in
-  your message.
+- Select a passage on a written document's page to comment on it. The comment
+  waits beside the passage as a draft you can edit or delete. When you are
+  ready, press the comments count in the message box (or **Send** with the box
+  empty) to send every comment as one message, each under its quote. Comments
+  wait while a question or an approval is open, and stay in the tab if you
+  reload it.
 - Use the version menu to open an earlier version, or **Compare with previous**
   to see what changed. **Stop comparing** returns to the normal view.
 - Use **Tips** in the bar at the foot of the document for reminders. You can
