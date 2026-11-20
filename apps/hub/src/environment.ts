@@ -277,6 +277,10 @@ const hubVariables = {
   // Interchange parses the manifest; the hub only passes it through.
   "SIDECAR_ADAPTER_MANIFEST?": "string",
   SIDECAR_LOCAL_MAX_ACTIVE: positiveInteger.default("32"),
+  // Whether the hub may reach a person's server over SSH at a loopback or private address. The one
+  // setting covers both reading its host key and a sidecar running commands on it. Off unless set,
+  // because a rented server is never at such an address and Builder's own network is.
+  SIDECAR_SSH_ALLOW_PRIVATE_ADDRESSES: flag(false),
   "SIDECAR_IMAGE?": "string",
   SIDECAR_DOCKER_HOST: "string = 'unix:///var/run/docker.sock'",
   "SIDECAR_DOCKER_HUB_ID?": "string",

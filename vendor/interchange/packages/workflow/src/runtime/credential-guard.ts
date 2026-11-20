@@ -64,8 +64,22 @@ function guardMediatedCredential(
           /* the invoker owns disposal */
         },
       };
+    case "ssh":
+      return {
+        kind: "ssh",
+        address: mediated.address,
+        exec: (argv, options) =>
+          isOpen()
+            ? mediated.exec(argv, options)
+            : Promise.reject(new Error(refusal())),
+        dispose() {
+          /* the invoker owns disposal */
+        },
+      };
     default: {
-      const _exhaustive: never = mediated.kind;
+      // Indexed: with more than one kind the handle itself narrows to never
+      // here, and TypeScript refuses a dotted property read on never.
+      const _exhaustive: never = mediated["kind"];
       throw new Error(
         `cannot guard a mediated credential of kind ${String(_exhaustive)}`,
       );
