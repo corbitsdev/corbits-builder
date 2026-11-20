@@ -299,13 +299,16 @@
   display: contents;
 }
 
-.page:not(
+/* Over the project view only: the plugin sheet keeps its box below what it asks. Above whatever
+   the view lays over its own page, its bar's popovers and panels among them. */
+.page[data-slot="room-project"]:not(
     :has(> [data-slot="composer"] > [data-slot="chat-sheet"][data-state="full"])
   )
   > [data-slot="composer"] {
   position: absolute;
   inset-inline: 0;
   bottom: 0;
+  z-index: 4;
 }
 
 /* Pulled up, the chat covers the view's foot and, on a narrow canvas, its edge where the view's

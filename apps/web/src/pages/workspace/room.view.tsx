@@ -266,7 +266,8 @@ export function RoomView({
   // The box floats over the project view's foot, so the view keeps what it must reach clear of it
   // by the box's height, which grows as the person writes.
   const projectRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
+  // Set before paint, so the view's first frame already keeps clear of the box.
+  useLayoutEffect(() => {
     const page = projectRef.current;
     const box = page?.querySelector<HTMLElement>(
       ':scope > [data-slot="composer"]',
@@ -278,9 +279,16 @@ export function RoomView({
       page.style.removeProperty("--box-height");
       return;
     }
-    const observer = new ResizeObserver(() =>
-      page.style.setProperty("--box-height", `${String(box.offsetHeight)}px`),
-    );
+    // The box at rest: while the chat is pulled up over the view, the view keeps the foot it had.
+    const measure = () => {
+      if (
+        box.querySelector('[data-slot="chat-sheet"]:not([data-state="closed"])')
+      )
+        return;
+      page.style.setProperty("--box-height", `${String(box.offsetHeight)}px`);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
     observer.observe(box);
     return () => observer.disconnect();
   });
