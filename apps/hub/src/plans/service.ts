@@ -222,15 +222,15 @@ export function createPlanService(rawDB: DB["db"]) {
       await authorizeProject(rawDB, actor, projectId, "manage");
     },
 
-    // A person's click gives the go-ahead to the same work already planned that has not begun, else
-    // adds it: a ready-made plan's group, or one action. It never removes or replaces a step. The
+    // A person's click gives the go-ahead to the planned steps that already do its work, else adds
+    // that work: a ready-made plan's group, or one action. It never removes or replaces a step. The
     // coordinator is told to carry it out.
     async addPlanStep(
       actor: Actor,
       projectId: string,
       step: PlanStepWrite,
       told: {
-        waiting: string | undefined;
+        goAhead: readonly string[] | undefined;
         note: string;
         mailRun: (runId: string, content: string) => Promise<void>;
       },
@@ -257,16 +257,11 @@ export function createPlanService(rawDB: DB["db"]) {
           steps: [],
           updatedAt: at,
         };
-        const waiting = plan.steps
-          .flatMap((each): StoredPlanStep[] =>
-            "steps" in each ? [each, ...each.steps] : [each],
-          )
-          .find(({ id }) => id === told.waiting);
-        if (waiting === undefined)
+        if (told.goAhead === undefined)
           plan.steps.push("steps" in step ? group(step) : child(step));
         else
-          for (const each of "steps" in waiting ? waiting.steps : [waiting])
-            each.goAhead = mark;
+          for (const each of planActionSteps(plan))
+            if (told.goAhead.includes(each.id)) each.goAhead = mark;
         plan.updatedAt = at;
         await writePlan(tx, projectId, plan);
         return plan;

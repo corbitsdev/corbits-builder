@@ -1410,6 +1410,15 @@ export function readyPlanStep({
   return { title: description, plan: builder.handle, steps: children };
 }
 
+/**
+ * Whether a plan step is the group the ready-made plan handle was added as. Adding that plan again
+ * adds nothing: its group stays as it stands, and its steps run again under their own ids.
+ */
+export const isReadyPlanGroup = (
+  step: { id: string; plan?: string },
+  handle: string,
+) => step.plan === handle;
+
 // The plan with steps added at its end, or after the step after names or before the step before
 // names, at whichever level it is; a group holds no groups, which planIdProblems refuses before this.
 function added(
@@ -1499,9 +1508,7 @@ export async function managePlan(
     const { steps: saved } = await project.plan();
     if (
       readyPlan &&
-      saved.some(
-        (step) => "steps" in step && step.plan === readyPlan.builder.handle,
-      )
+      saved.some((step) => isReadyPlanGroup(step, readyPlan.builder.handle))
     )
       return { content: readyPlanFollowing(readyPlan.builder.handle) };
     const adding = readyPlan ? [readyPlanStep(readyPlan)] : steps;

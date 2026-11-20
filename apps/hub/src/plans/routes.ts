@@ -19,6 +19,7 @@ import {
   type Catalog,
 } from "@corbits-builder/plugin-host/catalog";
 import {
+  isReadyPlanGroup,
   planRefusal,
   readyPlanStep,
 } from "@corbits-builder/plugin-host/coordinator";
@@ -80,18 +81,21 @@ function added(
   return readyPlanStep(ready);
 }
 
-// The planned work a click would add that has not begun, which the click gives the go-ahead instead
-// of adding it again: the same action with the same input, or a group of the same ready-made plan.
-function notBegun(steps: PlanView["steps"], step: PlanStepWrite) {
-  if ("steps" in step)
-    return steps.find(
-      (each) =>
-        "steps" in each &&
-        step.plan !== undefined &&
-        each.plan === step.plan &&
-        each.steps.every((child) => NOT_BEGUN.has(child.state)),
-    )?.id;
-  return steps
+// The planned steps a click gives the go-ahead instead of adding its work again, none when its work
+// is not planned: the steps of the group its ready-made plan was added as, bar those running, since
+// that plan is on the plan at most once; or the same action with the same input not yet begun.
+function plannedSteps(steps: PlanView["steps"], step: PlanStepWrite) {
+  if ("steps" in step) {
+    const { plan } = step;
+    const group = steps.find(
+      (each) => plan !== undefined && isReadyPlanGroup(each, plan),
+    );
+    if (group === undefined || !("steps" in group)) return undefined;
+    return group.steps
+      .filter(({ state }) => state !== "running")
+      .map(({ id }) => id);
+  }
+  const planned = steps
     .flatMap((each) => ("steps" in each ? each.steps : [each]))
     .find(
       (each) =>
@@ -99,7 +103,8 @@ function notBegun(steps: PlanView["steps"], step: PlanStepWrite) {
         each.action === step.action &&
         NOT_BEGUN.has(each.state) &&
         isDeepStrictEqual(each.input, step.input),
-    )?.id;
+    );
+  return planned === undefined ? undefined : [planned.id];
 }
 
 /**
@@ -334,7 +339,7 @@ export function mountPlanRoutes(
           askFirst: false,
         };
         await service.addPlanStep(current, projectId, step, {
-          waiting: notBegun(planned.steps, step),
+          goAhead: plannedSteps(planned.steps, step),
           note: actionNote(
             `The person gave the go-ahead for "${action.description}".`,
             action.name,
@@ -372,7 +377,7 @@ export function mountPlanRoutes(
       const refused = planRefusal(catalog, [step]);
       if (refused) throw new ProjectError(400, "plan_step_refused", refused);
       await service.addPlanStep(current, projectId, step, {
-        waiting: notBegun(planned.steps, step),
+        goAhead: plannedSteps(planned.steps, step),
         note: actionNote(action.says, action.name, done.note, step.title),
         mailRun,
       });

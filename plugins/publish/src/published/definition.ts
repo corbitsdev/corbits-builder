@@ -33,8 +33,8 @@ export type Where = {
 export type Shown =
   | { is: "never" | "taken-down"; offer: Offer }
   | { is: "publishing" }
-  // changes: the saved app is newer than the one published.
-  | { is: "published" | "changes" | "taking-down"; where: Where }
+  // changes: the saved app is newer than the one published. working: work on the app is running.
+  | { is: "published" | "changes" | "working" | "taking-down"; where: Where }
   | {
       is: "failed";
       doing: "publish" | "take-down";
@@ -52,6 +52,7 @@ export const text = {
     publishing: "Publishing…",
     published: "Published",
     changes: "Published",
+    working: "Making changes…",
     "taking-down": "Taking it down…",
     "taken-down": "Taken down",
   },
@@ -119,7 +120,8 @@ export const whereOf = (project: ProjectRead): Where => {
 /**
  * Where publishing stands, from what the values record: a take-down the person agreed to, a publish
  * they agreed to that has not gone out, what is published or held and whether the saved app is newer,
- * or a take-down that cleared it. The plan adds that the work behind the first two failed.
+ * or a take-down that cleared it. The plan adds that the work behind the first two failed, and that
+ * work on the app is running, which holds back offering to publish it.
  */
 export function shownOf(project: ProjectRead): Shown | undefined {
   const released = project.value(RELEASE);
@@ -162,8 +164,20 @@ export function shownOf(project: ProjectRead): Shown | undefined {
     released !== undefined &&
     project.appVersion !== undefined &&
     released.version !== project.appVersion;
-  if (released || held)
-    return { is: behind ? "changes" : "published", where: whereOf(project) };
+  if ((released || held) && !behind)
+    return { is: "published", where: whereOf(project) };
+  const places = project.plans(PUBLISH_GROUP).map((place) => place.handle);
+  // Publishing now would send out a save from the middle of that work, before its checks finish.
+  if (
+    project.plan.some(
+      (step) =>
+        step.state === "running" &&
+        step.action !== REMOVE_ACTION &&
+        !places.some((place) => place === step.plan),
+    )
+  )
+    return { is: "working", where: whereOf(project) };
+  if (released || held) return { is: "changes", where: whereOf(project) };
   return {
     is: asked === undefined ? "never" : "taken-down",
     offer: offerOf(project),

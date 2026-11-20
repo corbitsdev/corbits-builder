@@ -175,6 +175,29 @@ export const Changes: Story = {
   },
 };
 
+/** The coder is still making a change: no Publish changes until it has finished. */
+export const Working: Story = {
+  args: {
+    values: PUBLISHED,
+    appVersion: "def456",
+    plan: [
+      {
+        plugin: "coder",
+        action: "change",
+        plan: undefined,
+        state: "running",
+        summary: undefined,
+      },
+    ],
+  },
+  play: async ({ canvas }) => {
+    await expect(await canvas.findByText(text.title.working)).toBeVisible();
+    await expect(
+      canvas.queryByRole("button", { name: text.publishChanges }),
+    ).toBeNull();
+  },
+};
+
 /** Published at a host without an account: Keep it, until when, and I kept it. */
 export const Keep: Story = {
   args: {

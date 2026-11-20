@@ -30,10 +30,11 @@ function hub(project: {
   checks?: ReturnType<typeof passed>[];
   stored?: Record<string, unknown>;
   plan?: unknown[];
+  runs?: unknown[];
 }) {
   const saved: Record<string, unknown>[] = [];
   const added: unknown[] = [];
-  const waiting: (string | undefined)[] = [];
+  const goAhead: (readonly string[] | undefined)[] = [];
   const app = new Hono<TenantEnv>();
   app.onError((error, c) => {
     if (error instanceof ProjectError)
@@ -56,7 +57,7 @@ function hub(project: {
     }),
     savedApp: async () => undefined,
     list: async () => ({ artifacts: project.artifacts, preferences: {} }),
-    stepRuns: async () => [],
+    stepRuns: async () => project.runs ?? [],
   } as unknown as ReturnType<typeof createArtifactService>;
   const plans = {
     authorizeAction: async () => {},
@@ -65,10 +66,10 @@ function hub(project: {
       _actor: unknown,
       _project: unknown,
       step: unknown,
-      told: { waiting: string | undefined },
+      told: { goAhead: readonly string[] | undefined },
     ) => {
       added.push(step);
-      waiting.push(told.waiting);
+      goAhead.push(told.goAhead);
     },
     tellCoordinator: async () => {},
   } as unknown as ReturnType<typeof createPlanService>;
@@ -99,7 +100,7 @@ function hub(project: {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ input }),
     });
-  return { saved, added, waiting, read, screens, act };
+  return { saved, added, goAhead, read, screens, act };
 }
 
 test("a screen is listed, with its state, only while its state returns one", async () => {
@@ -139,7 +140,7 @@ test("a stored step whose action is no longer installed is left out of the plan 
   expect(steps.map(({ id }) => id)).toEqual(["ready"]);
 });
 
-test("an action saves the values it writes and adds its work to the plan", async () => {
+test("an action saves the values it writes and adds its work to the plan once", async () => {
   const project = hub({ artifacts: [{ kind: "app", version: 1 }] });
   const response = await project.act("publish", "publish", {
     plan: "publish-to-server",
@@ -156,6 +157,45 @@ test("an action saves the values it writes and adds its work to the plan", async
     },
   ]);
   expect(project.added).toMatchObject([{ plan: "publish-to-server" }]);
+  expect(project.goAhead).toEqual([undefined]);
+  const step = (id: string, action: string) => ({
+    id,
+    title: action,
+    plugin: "server",
+    action,
+    input: {},
+    askFirst: false,
+  });
+  const again = hub({
+    artifacts: [{ kind: "app", version: 1 }],
+    plan: [
+      {
+        id: "published",
+        title: "Publish to your server",
+        plan: "publish-to-server",
+        steps: [
+          step("ready", "ready"),
+          step("publishing", "publish"),
+          step("live", "live"),
+        ],
+      },
+    ],
+    runs: [
+      {
+        runId: "run-1",
+        plugin: "server",
+        action: "publish",
+        step: "publishing",
+        status: "running",
+        startedAt: "2026-11-18T10:00:00.000Z",
+      },
+    ],
+  });
+  const second = await again.act("publish", "publish", {
+    plan: "publish-to-server",
+  });
+  expect(second.status).toBe(200);
+  expect(again.goAhead).toEqual([["ready", "live"]]);
 });
 
 test("taking down, keeping and saying it is gone save what each writes, and taking down adds the place's removal", async () => {
@@ -210,7 +250,7 @@ test("the hub refuses a publish the person has not given their go-ahead to, and 
   });
   expect((await agreed.act("server", "publish", publish)).status).toBe(200);
   expect(agreed.added).toMatchObject([{ plugin: "server", action: "publish" }]);
-  expect(agreed.waiting).toEqual([undefined]);
+  expect(agreed.goAhead).toEqual([undefined]);
   const step = (id: string, instruction: string) => ({
     id,
     title: "Publish the app",
@@ -228,5 +268,5 @@ test("the hub refuses a publish the person has not given their go-ahead to, and 
     ],
   });
   expect((await planned.act("server", "publish", publish)).status).toBe(200);
-  expect(planned.waiting).toEqual(["same"]);
+  expect(planned.goAhead).toEqual([["same"]]);
 });

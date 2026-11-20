@@ -300,7 +300,11 @@ export function Published({
       }
       actions={
         <ScreenActions>
-          {where.plan === undefined || data.is === "published" ? null : offered}
+          {where.plan === undefined ||
+          data.is === "published" ||
+          data.is === "working"
+            ? null
+            : offered}
           {held && (failed || keep?.passed === true)
             ? press(text.gone, "gone", {}, "link")
             : null}

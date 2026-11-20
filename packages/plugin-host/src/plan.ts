@@ -117,9 +117,10 @@ const settled = ({ state }: PlanStepView) =>
 
 /**
  * Where each step of a plan stands, worked out from the project's records each time, so the plan
- * never says a step is done when the records say otherwise. A step's run is the one started for it;
- * a step is done once that run finished with what the step returns true, so a step added while an
- * older result exists waits for its own run.
+ * never says a step is done when the records say otherwise. A step's run is the one started for it
+ * since the person's latest go-ahead to it; a step is done once that run finished with what the step
+ * returns true, so a step added, or given the go-ahead again, while an older result exists waits for
+ * its own run.
  */
 export function planState(
   catalog: Catalog,
@@ -153,7 +154,11 @@ export function planState(
     if (step.requires) view.requires = step.requires;
     if (step.declined) view.declined = step.declined;
     if (step.answered) view.answered = step.answered;
-    const run = records.runs.find((each) => each.step === step.id);
+    const run = records.runs.find(
+      (each) =>
+        each.step === step.id &&
+        (step.goAhead === undefined || each.startedAt >= step.goAhead.at),
+    );
     if (run) {
       view.runId = run.runId;
       view.startedAt = run.startedAt;
