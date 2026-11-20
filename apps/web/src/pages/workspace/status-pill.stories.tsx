@@ -5,8 +5,8 @@ import { StatusPill } from "./status-pill.tsx";
 
 const pill = wording.promptBox.pill;
 
-// The states that change only the pill. Working, and comments waiting to be made, change the box
-// too, so the prompt box's stories draw them.
+// The states that change only the pill. Sending and working change the box too, so the prompt
+// box's stories draw them beside it.
 const meta = {
   title: "Screens/Workspace/Status pill",
   component: StatusPill,
@@ -39,7 +39,6 @@ export const CommentsWorking: Story = {
   args: {
     state: "commentsWorking",
     label: "Working on 3 comments",
-    action: pill.watch,
   },
 };
 

@@ -664,7 +664,6 @@ export const wording = {
   promptBox: {
     /** What the pill offers, after the line saying what is happening. */
     pill: {
-      watch: "Watch",
       open: "Open",
       sendComments: "Send to make them",
       seeChanges: "See what changed",

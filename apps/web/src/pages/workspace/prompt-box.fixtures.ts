@@ -40,11 +40,7 @@ export const composer: ComposerDock = {
 export const working: ComposerDock = {
   ...composer,
   working: true,
-  status: {
-    state: "working",
-    label: "Writing Approaches",
-    action: wording.promptBox.pill.watch,
-  },
+  status: { state: "working", label: "Writing the Problem brief" },
 };
 
 /** The coordinator's open question, as the box carries it while it waits on the person. */

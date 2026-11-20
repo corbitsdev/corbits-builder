@@ -26,8 +26,8 @@ export type StatusPillContent = {
   state: StatusPillState;
   /** What is happening, in plain words: "Writing the Problem brief". */
   label: string;
-  /** What pressing it does, in a word or two: "Watch", "Open", "Try again". */
-  action: string;
+  /** What pressing it does, in a word or two: "Open", "Try again"; absent where pressing it only shows the chat. */
+  action?: string | undefined;
   /** Pressing it; absent while work runs, when pressing it shows the chat. */
   onAction?: () => void;
 };
@@ -63,7 +63,9 @@ export function StatusPill({
       <span className={styles.label} data-state={state} role="status">
         {label}
       </span>
-      <span className={styles.action}>{action}</span>
+      {action === undefined ? null : (
+        <span className={styles.action}>{action}</span>
+      )}
     </>
   );
   if (onPress === undefined) return <Pill as="div">{content}</Pill>;

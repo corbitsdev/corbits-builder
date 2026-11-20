@@ -6,6 +6,11 @@
   height: 16px;
 }
 
+/* The pill is the one loader, and it stays in ink: the brand orange is never a loader. */
+.lead [aria-hidden] {
+  background: var(--wb-foreground);
+}
+
 .label[data-state="failed"] {
   color: var(--wb-destructive);
 }
