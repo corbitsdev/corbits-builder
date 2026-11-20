@@ -12,7 +12,11 @@ import {
   type ToolApprovalDecision,
 } from "@corbits/react-ui";
 import { ActionsSlot } from "@corbits-builder/plugin-ui/screen-actions";
-import { approvalQuestion, approvalToolPart } from "./collaboration.ts";
+import {
+  approvalQuestion,
+  approvalToolPart,
+  runsShell,
+} from "./collaboration.ts";
 import type { ApprovalOutcome, DocumentApproval } from "./transcript.tsx";
 import styles from "./document-decision.module.css";
 
@@ -55,13 +59,12 @@ export function DocumentDecision({
   const slot = useContext(ActionsSlot);
   // Waiting in the prompt box, the ask heads the card with Not yet beside it, what would run sits
   // beneath, and Yes stands where Send is. The library's card keeps its buttons inside it, so the
-  // box draws the ask itself. The host cannot tell a command from another tool's first argument,
-  // so whatever names what would run is shown as a command.
+  // box draws the ask itself. Only a shell run's subject is a command line, so only it reads as
+  // one; any other tool's subject is what it would touch, said plainly under the tool's ask.
   if (place === "box" && approval.outcome === undefined) {
-    const ask =
-      approval.subject === undefined
-        ? approvalQuestion(approval.toolName)
-        : text.run;
+    const shell =
+      runsShell(approval.toolName) && approval.subject !== undefined;
+    const ask = shell ? text.run : approvalQuestion(approval.toolName);
     const yes = (
       <div className={styles.answers} inert={disabled}>
         <Button type="button" size="sm" onClick={onYes}>
@@ -84,10 +87,17 @@ export function DocumentDecision({
             {text.notYet}
           </Button>
         </header>
-        {approval.subject === undefined ? null : (
+        {approval.subject === undefined ? null : shell ? (
           <pre className={styles.command}>
-            <code>{approval.subject}</code>
+            <code>
+              <span className={styles.prompt} aria-hidden>
+                {text.shellPrompt}
+              </span>
+              {approval.subject}
+            </code>
           </pre>
+        ) : (
+          <p className={styles.subject}>{approval.subject}</p>
         )}
         {countdown}
         {error === undefined ? null : (

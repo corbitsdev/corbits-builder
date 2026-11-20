@@ -74,10 +74,17 @@ export function approvalQuestion(
   subject?: string,
 ): string {
   if (toolName === undefined) return wording.approval.unnamed;
-  const tool = toolName
-    .slice(toolName.lastIndexOf(".") + 1)
-    .replaceAll("_", " ");
+  const tool = bareToolName(toolName).replaceAll("_", " ");
   return wording.approval.tool(tool, subject);
+}
+
+/** Whether an ask is to run a shell command, the one tool whose subject is a command line. */
+export function runsShell(toolName: string | undefined): boolean {
+  return toolName !== undefined && bareToolName(toolName) === "run_shell";
+}
+
+function bareToolName(toolName: string): string {
+  return toolName.slice(toolName.lastIndexOf(".") + 1);
 }
 
 /** A document's title as it reads mid-sentence. */

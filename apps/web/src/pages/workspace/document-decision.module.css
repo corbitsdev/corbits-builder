@@ -115,9 +115,18 @@
   overflow-wrap: anywhere;
 }
 
-.command::before {
-  content: "$ " / "";
+/* The prompt marks a command line without being part of what is copied. */
+.prompt {
   color: var(--wb-muted-foreground);
+  user-select: none;
+}
+
+.subject {
+  margin: 0;
+  color: var(--wb-foreground);
+  font-size: var(--text-sm);
+  line-height: 20px;
+  overflow-wrap: anywhere;
 }
 
 .error {

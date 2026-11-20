@@ -56,6 +56,19 @@ const waits = {
       onNo={fn()}
     />
   ),
+  otherTool: () => (
+    <DocumentDecision
+      place="box"
+      approval={{
+        approvalId: "approval-2",
+        toolName: "write_file",
+        subject: "src/routes/order.tsx",
+      }}
+      onYes={fn()}
+      onAlways={fn()}
+      onNo={fn()}
+    />
+  ),
 } satisfies Record<string, () => ReactNode>;
 
 type Args = {
@@ -262,6 +275,14 @@ export const ToolApproval: Story = {
   args: {
     dock: { ...composer, placeholder: wording.approval.composerPlaceholder },
     waiting: "tool",
+  },
+};
+
+/** Any other tool asks by its name and says plainly what it would touch; only a shell run is a command line. */
+export const ToolApprovalOtherTool: Story = {
+  args: {
+    dock: { ...composer, placeholder: wording.approval.composerPlaceholder },
+    waiting: "otherTool",
   },
 };
 
