@@ -14,6 +14,7 @@ import {
   type MouseEvent,
   type PointerEvent,
   type ReactNode,
+  type RefObject,
 } from "react";
 import { ArrowDown, ArrowLeft, Maximize2 } from "lucide-react";
 import { wording } from "../../config.ts";
@@ -107,6 +108,11 @@ export type ChatSheetProps = {
   defaultState?: ChatSheetState | undefined;
   /** A pull held this far up, in pixels, as if the pointer were still down; a story draws a pull with it. */
   defaultPull?: number | undefined;
+  /**
+   * Where the cursor goes once the chat is put back, such as the box's own field so the person
+   * carries on typing; absent, it goes to the pill or handle that opens the chat again.
+   */
+  putBackTo?: RefObject<HTMLElement | null> | undefined;
 };
 
 const reducedMotion = () =>
@@ -128,6 +134,7 @@ export function ChatSheet({
   returnTo,
   defaultState = "closed",
   defaultPull,
+  putBackTo,
   box,
 }: ChatSheetProps & { box: ReactNode }) {
   const historyId = useId();
@@ -247,6 +254,8 @@ export function ChatSheet({
       return;
     }
     refocus.current = null;
+    const field = target === "grip" ? (putBackTo?.current ?? null) : null;
+    if (field !== null) return field.focus();
     const ref = target === "grip" ? gripRef : handleRef;
     ref.current?.querySelector<HTMLElement>("button")?.focus();
   }, [state, moving]);
