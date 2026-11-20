@@ -6,7 +6,13 @@
  */
 import type { ScreenViewProps } from "@corbits-builder/plugin-ui/screen";
 import { useQuestionOutcome } from "./question-outcome.tsx";
-import { useEffect, useRef, useState, type ComponentType } from "react";
+import {
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type ComponentType,
+} from "react";
 import { type, type ArkErrors, type Type } from "arktype";
 import {
   validateInput,
@@ -21,6 +27,7 @@ import {
 import { QuestionAnswer } from "@corbits-builder/schemas/conversation";
 import { Button } from "@corbits/react-ui";
 import {
+  ActionsSlot,
   ScreenDecision,
   ScreenRow,
   type DecisionControls,
@@ -250,6 +257,7 @@ export function screenHost<In, Out, Data, Prepared>(
     page,
   }) {
     const outcome = useQuestionOutcome(signalName);
+    const slot = useContext(ActionsSlot);
     const [project, setProject] = useState<ProjectValues>();
     const [unreadable, setUnreadable] = useState(false);
     const answering = useAnswer(
@@ -396,10 +404,15 @@ export function screenHost<In, Out, Data, Prepared>(
     return (
       <ScreenRow
         value={{
-          cancel: {
-            label: text.cancel,
-            onCancel: () => void answering.send({ reply: text.cancelReply }),
-          },
+          // In the prompt box the person's own words are the way out, so there is no Cancel.
+          cancel:
+            slot === null
+              ? {
+                  label: text.cancel,
+                  onCancel: () =>
+                    void answering.send({ reply: text.cancelReply }),
+                }
+              : null,
           fault:
             outcome !== undefined && "fault" in outcome ? (
               <Fault>{outcome.fault}</Fault>
@@ -410,21 +423,36 @@ export function screenHost<In, Out, Data, Prepared>(
               : { label: text.pageScreenClose, onBack: page.close },
         }}
       >
-        <ScreenDecision
+        {/* Buttons drawn elsewhere, such as in the prompt box, leave the screen's inert hold, so
+            they take it again there. */}
+        <ActionsSlot
           value={
-            decision === undefined
+            slot === null
               ? null
-              : decisionControls(decision, offer, {
-                  drafted: host.reply.drafted,
-                  accept: (chosen) => void submit(chosen),
-                })
+              : (buttons) =>
+                  slot(
+                    <div className={styles.screen} inert={busy}>
+                      {buttons}
+                    </div>,
+                  )
           }
         >
-          {/* While an answer is on its way the whole screen takes no input, whatever it draws. */}
-          <div className={styles.screen} inert={busy}>
-            {view}
-          </div>
-        </ScreenDecision>
+          <ScreenDecision
+            value={
+              decision === undefined
+                ? null
+                : decisionControls(decision, offer, {
+                    drafted: host.reply.drafted,
+                    accept: (chosen) => void submit(chosen),
+                  })
+            }
+          >
+            {/* While an answer is on its way the whole screen takes no input, whatever it draws. */}
+            <div className={styles.screen} inert={busy}>
+              {view}
+            </div>
+          </ScreenDecision>
+        </ActionsSlot>
       </ScreenRow>
     );
   };
