@@ -10,11 +10,19 @@ import { createRunTokenStore } from "@intx/db";
 import { grant } from "@intx/db/schema";
 import { APP_VERSION_HEADER } from "@corbits-builder/schemas/app-files";
 import { startInProcessHub } from "../support/in-process-hub.ts";
+import { toolReplay } from "../support/tool-replay.ts";
 
 let hub: Awaited<ReturnType<typeof startInProcessHub>>;
 
 beforeAll(async () => {
-  hub = await startInProcessHub();
+  hub = await startInProcessHub(
+    {},
+    {
+      toolReplay: toolReplay(
+        join(import.meta.dir, "../../fixtures/tools/app-build"),
+      ),
+    },
+  );
 }, 120_000);
 
 afterAll(() => hub?.close());
@@ -61,7 +69,12 @@ const production = (install: string, build: string) => ({
   },
 });
 
-const SOURCE = { "package.json": "{}", "src/page.txt": "page" };
+// Replay runs no build, so the saved app already holds what the build would leave.
+const SOURCE = {
+  "package.json": "{}",
+  "src/page.txt": "page",
+  "dist/index.html": "page\n",
+};
 
 const builtPaths = async (response: Response) => {
   const zip = await JSZip.loadAsync(await response.arrayBuffer());
@@ -155,6 +168,9 @@ async function starterFiles() {
       continue;
     files[relative(root, full)] = await readFile(full, "utf8");
   }
+  // Replay runs no build, so the saved app already holds the client the build would leave.
+  files["client/dist/index.html"] = "<!doctype html>\n";
+  files["client/dist/assets/index.js"] = "export {};\n";
   return files;
 }
 

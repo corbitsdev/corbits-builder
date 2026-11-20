@@ -1,0 +1,5 @@
+{
+  "command": "check-app .builder/designs",
+  "exitCode": 0,
+  "output": "check passed: served .builder/designs and opened / at 1280 and 390 px with no errors\n"
+}

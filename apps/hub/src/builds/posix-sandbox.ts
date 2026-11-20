@@ -439,7 +439,20 @@ export async function toolchainReadPaths(
   return reads;
 }
 
+// The return type is spelled out because the replay module, imported by a path known only at run
+// time, is untyped.
 export async function createPosixBuildExecutor(
+  ...args: Parameters<typeof createSandboxExecutor>
+): ReturnType<typeof createSandboxExecutor> {
+  const [workspace, , , options] = args;
+  if (options?.toolchains?.replay) {
+    const { createReplayExecutor } = await import(options.toolchains.replay);
+    return createReplayExecutor(workspace, options);
+  }
+  return createSandboxExecutor(...args);
+}
+
+async function createSandboxExecutor(
   workspace: string,
   limits: BuildExecutionPolicy,
   layout: BuildPackageLayout,

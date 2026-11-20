@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { join } from "node:path";
 import {
   call,
   execute,
@@ -15,6 +16,11 @@ import {
   type ScriptedProject,
   type Turn,
 } from "../support/scripted-project.ts";
+import { toolReplay } from "../support/tool-replay.ts";
+
+const TOOL_REPLAY = toolReplay(
+  join(import.meta.dir, "../../fixtures/pipeline/tools"),
+);
 
 const IDEA =
   "I want a weather app where the whole screen animates to match the live weather.";
@@ -118,6 +124,7 @@ test("a new web app the long way: requirements approved, a design chosen, a buil
   const project = await openProject({
     start: { idea: IDEA, title: "Animated Weather App" },
     runs: await weatherRuns(LONG_WAY),
+    toolReplay: TOOL_REPLAY,
   });
   try {
     await approveFirst(project, "product_requirements");
@@ -157,6 +164,7 @@ const executes = ["c_requirements", "c_mockup", "c_plan", "c_build"];
 test("just build it: a build before any document is refused, the person hands approvals over once, and the plan runs to a built app with no further approval asked", async () => {
   const project = await openProject({
     start: { idea: `${IDEA} Just build it.`, title: "Animated Weather App" },
+    toolReplay: TOOL_REPLAY,
     runs: await weatherRuns([
       turn(
         user("Just build it"),

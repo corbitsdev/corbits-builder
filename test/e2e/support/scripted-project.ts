@@ -225,6 +225,8 @@ const RunActions = type({ plugin: "string", action: "string" }).array();
 export async function openProject(options: {
   start: Start;
   runs: Readonly<Record<string, Run>>;
+  // What the hub's toolReplay is set to, from tool-replay.ts.
+  toolReplay?: string;
 }) {
   const fixtures = Object.entries(options.runs).map(
     ([runKey, { role, turns }]) => ({
@@ -254,7 +256,7 @@ export async function openProject(options: {
       fixtures,
     );
     model = await startRecordedModelServer(fixtureDir);
-    hub = await startTestHub(model);
+    hub = await startTestHub(model, options);
     return await driven(hub, model, options.start, fixtures, async () => {
       await hub?.close();
       await model?.stop();

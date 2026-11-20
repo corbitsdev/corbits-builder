@@ -4,7 +4,9 @@
   "options": {
     "denyWarnings": true
   },
+  "jsPlugins": ["./scripts/lint-rules.ts"],
   "rules": {
+    "corbits-builder/no-tool-replay": "error",
     "eslint/eqeqeq": "error",
     "eslint/prefer-const": "error",
     "eslint/no-var": "error",
@@ -73,6 +75,12 @@
       ],
       "rules": {
         "eslint/no-restricted-properties": "off"
+      }
+    },
+    {
+      "files": ["test/**"],
+      "rules": {
+        "corbits-builder/no-tool-replay": "off"
       }
     },
     // Not Builder's processes. The starter is the template a generated app grows from. The app
