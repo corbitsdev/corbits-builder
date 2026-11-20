@@ -92,6 +92,33 @@ describe("a written document's page", () => {
     );
   });
 
+  test("compares without repeating a heading both versions share", () => {
+    const compared = (before: string) =>
+      page({
+        changesOpen: true,
+        document: {
+          ...brief,
+          before: {
+            version: 1,
+            content: before,
+            filedAt: "2026-11-17T10:00:00.000Z",
+          },
+        },
+      });
+    const shared = compared(
+      "# Bakery orders brief\n\nSmall bakeries lose some orders.",
+    );
+    const text = (html: string) => html.slice(html.indexOf("</h1>"));
+    expect(text(shared)).not.toContain("Bakery orders brief");
+    expect(text(shared)).toContain("lose");
+    const renamed = compared(
+      "# Cake orders brief\n\nSmall bakeries lose some orders.",
+    );
+    expect(text(renamed)).toContain(
+      "<del>Cake</del><ins>Bakery</ins> orders brief",
+    );
+  });
+
   test("offers quoting only where a passage can be added to the message", () => {
     expect(page()).not.toContain('data-slot="passage-notes"');
     expect(page({ onAddToPrompt: () => {} })).toContain(

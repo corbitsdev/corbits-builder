@@ -59,6 +59,10 @@ export function useDocumentPage({
     document.versions.find((item) => item.version === viewing)?.title ??
     document.title;
   const lifted = splitLeadingHeading(text);
+  // The page's title already shows the heading both versions share; a heading that changed stays
+  // in the comparison so the change can be seen.
+  const liftedBefore = splitLeadingHeading(beforeText ?? "");
+  const sameHeading = liftedBefore.heading === lifted.heading;
   const comparing =
     changesOpen &&
     compareWith !== null &&
@@ -99,8 +103,8 @@ export function useDocumentPage({
     body: comparing
       ? {
           kind: "comparison",
-          before: beforeText,
-          after: afterText,
+          before: sameHeading ? liftedBefore.body : beforeText,
+          after: sameHeading ? lifted.body : afterText,
           beforeVersion: compareWith,
           afterVersion: viewing,
           onClose: versions.stopComparing,
