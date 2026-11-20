@@ -230,9 +230,8 @@
   padding-block: var(--space-2);
 }
 
-/* The hidden radio and the borderless own-words field show focus on their row; the library's
-   checkbox draws its own ring. */
-.choice:has(input:not([type="checkbox"]):focus-visible) {
+/* The hidden radio or checkbox and the borderless own-words field show focus on their row. */
+.choice:has(input:focus-visible) {
   outline: 2px solid var(--wb-action);
   outline-offset: 1px;
 }
@@ -240,11 +239,6 @@
 .question:disabled .choice {
   opacity: 0.6;
   cursor: default;
-}
-
-/* The library's checkbox sits on its label's first line; here the row centres it. */
-.choice > .check {
-  margin-top: 0;
 }
 
 /* The native radio stays for keyboards and screen readers; the box beside it shows its state. */
@@ -443,12 +437,13 @@
   white-space: nowrap;
 }
 
-[data-place="box"] .choices {
+/* Rail rows: in the prompt box, and for a pick-any question anywhere. */
+.choices[data-rail] {
   gap: 0;
 }
 
-[data-place="box"] .choice,
-[data-place="box"] .choice:has(.choiceDescription) {
+.choices[data-rail] .choice,
+.choices[data-rail] .choice:has(.choiceDescription) {
   align-items: flex-start;
   gap: var(--space-2);
   min-height: 0;
@@ -462,21 +457,21 @@
   color: var(--wb-foreground);
 }
 
-[data-place="box"] .choice:hover,
-[data-place="box"] .choice[data-checked] {
+.choices[data-rail] .choice:hover,
+.choices[data-rail] .choice[data-checked] {
   background: color-mix(in oklab, var(--wb-foreground) 2.5%, transparent);
 }
 
-[data-place="box"] .choice[data-checked] {
+.choices[data-rail] .choice[data-checked] {
   padding-left: 14px;
   border-left: 2px solid var(--wb-action);
 }
 
-[data-place="box"] .choice[data-checked] .choiceLabel {
+.choices[data-rail] .choice[data-checked] .choiceLabel {
   font-weight: 500;
 }
 
-[data-place="box"] .choice input[type="checkbox"] {
+.choices[data-rail] .choice input[type="checkbox"] {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -484,12 +479,12 @@
   pointer-events: none;
 }
 
-[data-place="box"] .choice:has(input:focus-visible) {
+.choices[data-rail] .choice:has(input:focus-visible) {
   outline: 2px solid var(--wb-action);
   outline-offset: -2px;
 }
 
-[data-place="box"] .choiceDescription {
+.choices[data-rail] .choiceDescription {
   font-size: 0.75rem;
   color: var(--wb-muted-foreground);
 }

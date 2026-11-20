@@ -20,7 +20,7 @@ import {
   Pencil,
   Plus,
 } from "lucide-react";
-import { Button, Checkbox, GateBlock } from "@corbits/react-ui";
+import { Button, GateBlock } from "@corbits/react-ui";
 import { Tooltip } from "@corbits/react-ui/ui/tooltip";
 import {
   SettledAnswers,
@@ -455,12 +455,17 @@ function Choices({
           ) : null}
         </p>
       )}
-      <div className={styles.choices} data-kind={multi ? "multi" : "single"}>
+      <div
+        className={styles.choices}
+        data-kind={multi ? "multi" : "single"}
+        // A pick-any row is a rail row wherever it is; in the prompt box every row is.
+        data-rail={boxed || multi ? "" : undefined}
+      >
         {question.options.map((option, index) => {
           const checked = chosen.includes(option.label);
-          // In the prompt box a pick-any row is the same rail row as a pick-one, its native checkbox
-          // kept for keys and screen readers.
-          if (multi && boxed)
+          // A pick-any row shows its pick by its rail alone, its native checkbox kept for keys and
+          // screen readers.
+          if (multi)
             return (
               <label
                 key={option.label}
@@ -474,25 +479,6 @@ function Choices({
                   onChange={() => onPick(index)}
                   // Safari leaves focus where it was on a click; the card's keys need it here.
                   onClick={(event) => event.currentTarget.focus()}
-                />
-                <OptionText {...option} boxed={boxed} />
-              </label>
-            );
-          if (multi)
-            return (
-              <label
-                key={option.label}
-                className={styles.choice}
-                data-checked={checked ? "" : undefined}
-                // Safari leaves focus where it was on a click; the card's keys need it here.
-                onClick={(event) =>
-                  event.currentTarget.querySelector("input")?.focus()
-                }
-              >
-                <Checkbox
-                  checked={checked}
-                  onCheckedChange={() => onPick(index)}
-                  className={styles.check}
                 />
                 <OptionText {...option} boxed={boxed} />
               </label>
