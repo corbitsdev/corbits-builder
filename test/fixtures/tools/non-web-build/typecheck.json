@@ -1,0 +1,4 @@
+{
+  "shell": "bun run typecheck",
+  "result": { "callId": "recorded", "content": "" }
+}

@@ -6,6 +6,12 @@ import { CheckRan } from "@corbits-builder/schemas/artifact";
 import { importRepository } from "../../../scripts/import-repo.ts";
 import { openProject, say, turn, user } from "../support/scripted-project.ts";
 
+// Read when the hub builds its agent packages and when it spawns a check's command host.
+process.env["BUILDER_TOOL_REPLAY"] = join(
+  import.meta.dir,
+  "../../fixtures/tools/existing-project",
+);
+
 const STACK = ["stack.starter", "stack.checks"];
 const WEB_CHECKS =
   "bun install --frozen-lockfile\nbun run typecheck\nbun run build";

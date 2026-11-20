@@ -1,0 +1,4 @@
+{
+  "shell": "echo page > dist/index.html",
+  "result": { "callId": "recorded", "content": "" }
+}

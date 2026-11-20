@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { join } from "node:path";
 import { CheckList } from "@corbits-builder/schemas/artifact";
 import {
   call,
@@ -12,6 +13,12 @@ import {
   turn,
   user,
 } from "../support/scripted-project.ts";
+
+// Read when the hub builds its agent packages and when it spawns a check's command host.
+process.env["BUILDER_TOOL_REPLAY"] = join(
+  import.meta.dir,
+  "../../fixtures/tools/non-web-build",
+);
 
 const INSTRUCTION =
   "Build the echo command-line tool from the build plan: it prints back the words it is given.";

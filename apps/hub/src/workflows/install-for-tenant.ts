@@ -140,8 +140,11 @@ async function buildKey(inference: Inference) {
   const files = ["bun.lock", "package.json", "tsconfig.json"];
   for await (const path of SOURCES.scan({ cwd: ROOT, dot: true }))
     if (!path.split(sep).includes("node_modules")) files.push(path);
+  // build-packages.ts inlines the replay folder into every package.
+  // oxlint-disable-next-line eslint/no-restricted-properties
+  const replay = process.env.BUILDER_TOOL_REPLAY;
   const hash = createHash("sha256").update(
-    `${Bun.version}\0${PACKAGE_VERSION}\0${JSON.stringify(inference)}\0`,
+    `${Bun.version}\0${PACKAGE_VERSION}\0${JSON.stringify(inference)}\0${replay}\0`,
   );
   for (const path of files.sort()) {
     const bytes = await Bun.file(join(ROOT, path)).bytes();
