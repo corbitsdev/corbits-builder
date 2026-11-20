@@ -1,7 +1,10 @@
 .room {
   /* The plugin space's column: what a reading measure in the middle of the window leaves it, within
      bounds a screen can be used in. */
-  --plugin-column: clamp(20rem, (100% - 46rem) / 2 - var(--space-2), 28rem);
+  --plugin-column: clamp(20rem, (100% - 48rem) / 2 - var(--space-2), 28rem);
+  /* The prompt box's width: the turns' text measure inside their 48rem column, so the box's edges
+     line up with the words above it, and a document's page runs a little wider either side. */
+  --box-measure: 46rem;
   /* How wide the sidebar and the plugin space's column stand on either side of the page. */
   --beside-start: 0px;
   --beside-end: 0px;
@@ -148,20 +151,17 @@
   flex: none;
 }
 
-/* The composer keeps a reading measure in a wide pane. */
-.conversation > [data-slot="composer"] {
+/* The prompt box, and what stands in its place, keep the box's measure in the middle of the canvas
+   however wide it is. */
+:is(.conversation, .page) > :is([data-slot="composer"], .archived) {
   box-sizing: border-box;
   width: 100%;
-  max-width: 46rem;
+  max-width: calc(var(--box-measure) + 2 * var(--space-4));
   margin-inline: auto;
 }
 
 /* The archived line sits where the composer would, on the same measure and padding. */
 .archived {
-  box-sizing: border-box;
-  width: 100%;
-  max-width: 46rem;
-  margin-inline: auto;
   padding: var(--space-2) var(--space-4) var(--space-4);
 }
 
@@ -275,13 +275,6 @@
   .page {
     transition: none;
   }
-}
-
-.page > [data-slot="composer"] {
-  box-sizing: border-box;
-  width: 100%;
-  max-width: 46rem;
-  margin-inline: auto;
 }
 
 /* The status pill floats above the prompt box, over the project view's foot where its floating
