@@ -24,6 +24,9 @@ export const ToolCredentialHandle = type(/^[a-z0-9][a-z0-9._-]*$/);
 export const ToolCredentialDeclaration = type({
   handle: ToolCredentialHandle,
   "scopes?": "string[]",
+  // The tool works without this credential: a launch whose binding resolved
+  // nothing still starts, and resolving the handle rejects.
+  "optional?": "true",
 });
 export type ToolCredentialDeclaration = typeof ToolCredentialDeclaration.infer;
 

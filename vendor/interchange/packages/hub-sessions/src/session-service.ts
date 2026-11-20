@@ -651,6 +651,16 @@ async function prepareSourceRefDeploy(
       creatorPrincipalId: null,
       invokerPrincipalId: null,
       credentialCipher: args.credentialCipher,
+      // A run initialized before keeps the optional bindings its anchor was
+      // given then; one initialized for the first time has no anchor row yet.
+      earlierDelivery: bindings.some((binding) => binding.optional === true)
+        ? ((
+            await args.db.query.workflowRun.findFirst({
+              where: eq(workflowRunTable.id, args.anchorRunId),
+              columns: { credentialRefs: true },
+            })
+          )?.credentialRefs ?? null)
+        : null,
     });
     if (!delivery.ok) {
       throw new Error(
