@@ -1,6 +1,8 @@
 import { QuestionOutcomes } from "./question-outcome.tsx";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { ActionsSlot } from "@corbits-builder/plugin-ui/screen-actions";
 import type { PromptQuestion } from "@corbits-builder/schemas/conversation";
 import { wording } from "../../config.ts";
 import {
@@ -75,8 +77,22 @@ const answers = {
   devices: ["Desktop browser"],
 };
 
+// Continue stands where the host draws it; here, inline after the card.
+const inline = (buttons: ReactNode) => buttons;
+
+const open = (signalName: string, asked = ask) =>
+  renderToStaticMarkup(
+    <ActionsSlot value={inline}>
+      <QuestionsCard
+        question={{ at: 0, signalName, asked, status: "open" }}
+        disabled={false}
+        onAnswer={send}
+      />
+    </ActionsSlot>,
+  );
+
 describe("questions card", () => {
-  test("a fresh card restores saved picks, typed words and the open question for its signal", () => {
+  test("a fresh card restores saved picks and the open question for its signal", () => {
     stored.set(
       "unsent:questions:call-1",
       JSON.stringify({
@@ -88,32 +104,20 @@ describe("questions card", () => {
         ],
       }),
     );
-    const render = (signalName: string) =>
-      renderToStaticMarkup(
-        <QuestionsCard
-          question={{
-            at: 0,
-            signalName,
-            asked: ask,
-            status: "open",
-          }}
-          disabled={false}
-          onAnswer={send}
-        />,
-      );
     for (let mount = 0; mount < 2; mount++) {
-      const html = render("call-1");
+      const html = open("call-1");
       expect(html).toMatch(/type="checkbox"[^>]*checked=""/);
-      expect(html).toContain('value="Export reports"');
-      expect(html).toContain('aria-disabled="false"');
-      expect(html).toContain(wording.questions.position(2, 3));
+      expect(html).toContain(text.position(2, 3));
+      expect(html).toContain(`aria-label="${text.back}"`);
+      expect(html).toContain(`>${text.next}<`);
     }
-    const other = render("call-2");
-    expect(other).not.toContain('value="Export reports"');
-    expect(other).toContain(wording.questions.position(1, 3));
+    const other = open("call-2");
+    expect(other).not.toContain('checked=""');
+    expect(other).toContain(text.position(1, 3));
+    expect(other).not.toContain(`>${text.next}<`);
   });
 
-  test("invalid saved JSON or answer shapes start with the recommended answer", () => {
+  test("invalid saved JSON or answer shapes start afresh with nothing picked", () => {
     for (const saved of [
       "{",
       JSON.stringify({
@@ -128,112 +132,58 @@ describe("questions card", () => {
       "null",
     ]) {
       stored.set("unsent:questions:call-1", saved);
-      const html = renderToStaticMarkup(
-        <QuestionsCard
-          question={{ at: 0, signalName: "call-1", asked: ask, status: "open" }}
-          disabled={false}
-          onAnswer={send}
-        />,
-      );
-      expect(html).toContain('checked=""');
-      expect(html).toContain('aria-disabled="false"');
+      const html = open("call-1");
+      expect(html).toContain(text.position(1, 3));
+      expect(html).not.toContain('checked=""');
     }
   });
 
-  test("the heading counts the questions", () => {
-    expect(text.title(1)).toBe("A question for you");
-    expect(text.title(2)).toBe("A couple of questions for you");
-    expect(text.title(5)).toBe("A few questions for you");
-  });
-
-  test("the first question opens as native radios, with the next one waiting below", () => {
-    const html = renderToStaticMarkup(
-      <QuestionsCard
-        question={{ at: 0, signalName: "call-1", asked: ask, status: "open" }}
-        disabled={false}
-        onAnswer={send}
-      />,
-    );
-    expect(html).toContain(text.position(1, 3));
-    expect(html).toContain("<legend");
-    expect(html).toContain('type="radio"');
-    expect(html).toContain('aria-current="step"');
-    expect(html).toContain(text.pickOne);
-    // The recommended answer is picked, so Continue is ready.
-    expect(html).toMatch(
-      /checked=""\/><span[^>]*aria-hidden="true"><svg[^]*?<\/span><span[^>]*>Small teams \(Recommended\)/,
-    );
-    expect(html).toContain('aria-disabled="false"');
-    expect(html).toContain("What must the first version do?");
-    expect(html).toContain(text.more(1));
-    expect(html).toContain(`>${text.next}<`);
-  });
-
-  test("in the prompt box nothing starts picked, the recommendation is a tag and the box takes own words", () => {
-    const html = renderToStaticMarkup(
-      <QuestionsCard
-        question={{ at: 0, signalName: "call-1", asked: ask, status: "open" }}
-        disabled={false}
-        onAnswer={send}
-        place="box"
-      />,
-    );
+  test("nothing starts picked, the recommendation is a tag and the box takes own words", () => {
+    const html = open("call-1");
     expect(html).toContain(">Who is it for?</h3>");
     expect(html).toContain(text.position(1, 3));
+    // The heading asks; the legend and the rule are there for screen readers.
+    expect(html).toContain("<legend");
+    expect(html).toContain(text.pickOne);
+    expect(html).toContain('type="radio"');
     // No Back on the first question, and nothing picked, so no Continue either.
     expect(html).not.toContain(`aria-label="${text.back}"`);
     expect(html).not.toContain('checked=""');
     expect(html).not.toContain(`>${text.next}<`);
     expect(html).toContain(`Small teams<span`);
     expect(html).toContain(`>${text.recommended}<`);
-    expect(html).not.toContain(`placeholder="${text.other}"`);
+    expect(html).not.toContain('type="text"');
   });
 
-  test("a single question shows no position and its button sends", () => {
-    const html = renderToStaticMarkup(
-      <QuestionsCard
-        question={{
-          at: 0,
-          signalName: "call-1",
-          asked: { questions: [ask.questions[1]!] },
-          status: "open",
-        }}
-        disabled={false}
-        onAnswer={send}
-      />,
+  test("a single question shows no position, and its Continue sends", () => {
+    const single = { questions: [ask.questions[1]!] };
+    expect(open("call-1", single)).not.toContain(text.position(1, 1));
+    stored.set(
+      "unsent:questions:call-1",
+      JSON.stringify({
+        step: 0,
+        answers: [{ chosen: ["Track tasks"], own: "" }],
+      }),
     );
-    expect(html).not.toContain(text.position(1, 1));
-    expect(html).toContain('type="checkbox"');
-    expect(html).toContain(`placeholder="${text.other}"`);
-    // Nothing is picked yet, so the button says why it waits.
-    expect(html).toContain('aria-disabled="true"');
-    expect(html).toContain(`>${text.send}<`);
+    const html = open("call-1", single);
+    expect(html).toMatch(/type="checkbox"[^>]*checked=""/);
+    expect(html).toContain('aria-keyshortcuts="Enter"');
+    expect(html).toContain(`>${text.next}<`);
   });
 
   test("a question with no options asks for typed words, not a pick", () => {
-    const html = renderToStaticMarkup(
-      <QuestionsCard
-        question={{
-          at: 0,
-          signalName: "call-1",
-          asked: {
-            questions: [
-              {
-                id: "name",
-                header: "Name",
-                question: "What should the app be called?",
-                options: [],
-                multiple: false,
-                custom: true,
-              },
-            ],
-          },
-          status: "open",
-        }}
-        disabled={false}
-        onAnswer={send}
-      />,
-    );
+    const html = open("call-1", {
+      questions: [
+        {
+          id: "name",
+          header: "Name",
+          question: "What should the app be called?",
+          options: [],
+          multiple: false,
+          custom: true,
+        },
+      ],
+    });
     expect(html).toContain(`placeholder="${text.typed}"`);
     expect(html).not.toContain(text.pickOne);
     expect(html).not.toContain("aria-describedby");

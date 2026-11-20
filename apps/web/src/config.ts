@@ -1157,23 +1157,14 @@ export const wording = {
     /** Where the open question sits among them, beside the heading. */
     position: (at: number, count: number) =>
       `${String(at)} of ${String(count)}`,
-    /** The list of questions, answered ones above the open one. */
-    thread: "Questions",
     pickOne: "Pick one",
     pickAny: "Pick any that apply",
     selected: (picked: number, count: number) =>
       `${String(picked)} of ${String(count)} selected`,
-    /** The row where the person types their own answer instead. */
-    other: "Something else…",
+    /** The field where the person types their own answer. */
     otherAnswer: "Your own answer",
     /** The field of a question with no options to pick from. */
     typed: "Type your answer…",
-    changeAnswer: (prompt: string, answer: string) =>
-      `Change your answer to "${prompt}": ${answer}`,
-    earlier: (count: number) =>
-      count === 1 ? "1 earlier answer" : `${String(count)} earlier answers`,
-    /** After the next question, how many more follow it. */
-    more: (count: number) => `+${String(count)} more`,
     back: "Back",
     next: "Continue",
     backKeys: "Previous question (←)",
@@ -1185,7 +1176,6 @@ export const wording = {
     addDetails: (picked: string) => `Add details for ${picked}…`,
     /** The tag on the option the coordinator recommends. */
     recommended: "Recommended",
-    send: "Send answers",
     sending: "Sending…",
     /** Closes an open question without choosing; the reply is what the settled card then shows. */
     cancel: "Cancel",
