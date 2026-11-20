@@ -5,12 +5,14 @@ import type { ScreenViewProps } from "@corbits-builder/plugin-ui/screen";
  * concept's design option, which Builder files as the design. Settles to one line in the
  * conversation once answered.
  */
-import type { ComponentType } from "react";
+import { useContext, type ComponentType } from "react";
 import { Button } from "@corbits/react-ui";
 
 import {
+  PromptAction,
   ScreenActions,
   usePromptPlaceholder,
+  usePromptSend,
 } from "@corbits-builder/plugin-ui/screen-actions";
 import { ScreenSettled } from "@corbits-builder/plugin-ui/screen-card";
 import { Comparison } from "@corbits-builder/plugin-ui/comparison";
@@ -100,16 +102,33 @@ function Choose({
   usePromptPlaceholder(
     picked === undefined ? undefined : text.addDetails(picked.label),
   );
+  // Words sent from the prompt box after a pick go with it, as a comment on the concept picked.
+  usePromptSend(
+    picked !== undefined && "option" in picked.approval
+      ? (words) => {
+          if (!("option" in picked.approval)) return false;
+          void choose(picked, picked.approval.option, words);
+          return true;
+        }
+      : undefined,
+  );
+  // With the prompt box beneath the page, the forward action stands where Send does.
+  const toBox = useContext(PromptAction);
 
-  const choose = (concept: Concept, option: string) =>
+  const choose = (concept: Concept, option: string, details?: string) =>
     submit({
       concept: concept.label,
       option,
       version: concept.version,
-      comments: comments.map((comment) => ({
-        concept: comment.concept,
-        text: comment.text.trim(),
-      })),
+      comments: [
+        ...comments.map((comment) => ({
+          concept: comment.concept,
+          text: comment.text.trim(),
+        })),
+        ...(details === undefined
+          ? []
+          : [{ concept: concept.label, text: details }]),
+      ],
     });
   const comment = (concept: string, words: string) => {
     const others = comments.filter((item) => item.concept !== concept);
@@ -120,6 +139,22 @@ function Choose({
           : [...others, { concept, text: words }],
     });
   };
+
+  const usable = picked !== undefined && "option" in picked.approval;
+  const forward = (
+    <Button
+      type="button"
+      size="sm"
+      disabled={!usable}
+      onClick={() => {
+        if (picked === undefined) return;
+        const { approval } = picked;
+        if ("option" in approval) void choose(picked, approval.option);
+      }}
+    >
+      {picked === undefined ? text.choose : text.use(picked.label)}
+    </Button>
+  );
 
   return (
     <section
@@ -176,20 +211,11 @@ function Choose({
               : undefined
           }
         >
-          <Button
-            type="button"
-            size="sm"
-            disabled={picked === undefined || "unavailable" in picked.approval}
-            onClick={() => {
-              if (picked === undefined) return;
-              const { approval } = picked;
-              if ("option" in approval) void choose(picked, approval.option);
-            }}
-          >
-            {picked === undefined ? text.choose : text.use(picked.label)}
-          </Button>
+          {toBox === null ? forward : null}
         </ScreenActions>
       </div>
+      {/* In the box it stands only once it can be used; until then the box's own Send waits. */}
+      {toBox?.(usable ? forward : null)}
     </section>
   );
 }
