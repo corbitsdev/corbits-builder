@@ -1061,6 +1061,8 @@ export const wording = {
         year: "numeric",
       }),
     writing: (version: number) => `Writing · Version ${String(version)}`,
+    /** The manual's running header: it follows the app, so it has no filing date. */
+    asBuilt: "As built",
     stopped: "Writing stopped here",
     page: (current: number, total: number) =>
       `Page ${String(current)} of ${String(total)}`,

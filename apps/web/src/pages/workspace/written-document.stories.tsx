@@ -1,3 +1,4 @@
+import type { UserManual } from "@corbits-builder/schemas/artifact";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { Download } from "lucide-react";
 import { fn } from "storybook/test";
@@ -16,6 +17,29 @@ const BRIEF = splitLeadingHeading(PROBLEM_BRIEF).body;
 /** The brief's first version, before its sections were written. */
 const BRIEF_V1 =
   "Small bakeries take cake orders by phone and lose some of them.\n";
+
+const ORDERS_PICTURE = `data:image/svg+xml,${encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" width="640" height="320"><rect width="640" height="320" fill="#faf7f2"/><rect x="24" y="24" width="592" height="48" rx="8" fill="#e98428"/><rect x="24" y="96" width="592" height="40" rx="8" fill="#fff" stroke="#ddd"/><rect x="24" y="152" width="592" height="40" rx="8" fill="#fff" stroke="#ddd"/><rect x="24" y="208" width="592" height="40" rx="8" fill="#fff" stroke="#ddd"/></svg>',
+)}`;
+
+/** The app's manual with a picture of the app as built. */
+export const SAMPLE_MANUAL: UserManual = {
+  markdown: [
+    "# Bakery orders",
+    "",
+    "## Taking an order",
+    "",
+    "Press **New order**, type what the customer wants and when they collect it, then press **Save**.",
+    "",
+    "![The order list on a Saturday](docs/pictures/orders.png)",
+    "",
+    "## Marking an order collected",
+    "",
+    "1. Find the order in the list.",
+    "2. Press **Collected**.",
+  ].join("\n"),
+  pictures: { "docs/pictures/orders.png": ORDERS_PICTURE },
+};
 
 const download: PaneBarGroup = [
   {
@@ -57,6 +81,8 @@ const notes = {
 const meta = {
   title: "Screens/Workspace/WrittenDocument",
   component: WrittenDocumentView,
+  // The pane's story reads the same manual.
+  excludeStories: ["SAMPLE_MANUAL"],
   parameters: { layout: "fullscreen" },
   args: {
     project: "Bakery orders",
@@ -192,6 +218,22 @@ export const Approaches: Story = {
       },
     },
     quote: { title: "Approaches", version: 2, onAdd: fn() },
+  },
+};
+
+/** The app's manual: no versions to pick and nothing to approve, its pictures where it places them. */
+export const UserManualPage: Story = {
+  args: {
+    title: wording.documentTab["user_manual"] ?? "",
+    meta: wording.documentViewer.asBuilt,
+    groups: [],
+    notes: undefined,
+    body: {
+      kind: "text",
+      source: splitLeadingHeading(SAMPLE_MANUAL.markdown).body,
+      images: new Map(Object.entries(SAMPLE_MANUAL.pictures)),
+    },
+    quote: undefined,
   },
 };
 
