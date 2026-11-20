@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { createRef, useState } from "react";
-import { fn } from "storybook/test";
+import { expect, fn, userEvent, within } from "storybook/test";
 import { wording } from "../../config.ts";
 import { AppView } from "../../App.view.tsx";
 import app from "../../App.stories.tsx";
@@ -10,6 +10,7 @@ import type { ArtifactPaneProps } from "./artifact-pane.tsx";
 import documentPane, {
   AppAndManual as appAndManual,
   Concepts as conceptTabs,
+  DesignDraft as designDraft,
   Loading as loadingDocument,
   ReadError as failedDocument,
 } from "./artifact-pane.stories.tsx";
@@ -447,7 +448,7 @@ export const AppBuilt: Story = {
   },
 };
 
-/** The designers' concepts are filed, a tab each. */
+/** The designers' concepts are filed, each a row under the design. */
 export const ChoosingADesign: Story = {
   args: {
     ...withDocuments,
@@ -455,12 +456,143 @@ export const ChoosingADesign: Story = {
   },
 };
 
-/** A plugin's tab says where its work stands beside the plan, and opens from there. */
+/** A plugin's tab says where its work stands in the room's top bar, and opens from there. */
 export const TabStatus: Story = {
   args: {
     ...withDocuments,
     tabStatus: [
       { tab: "Publish", label: "Published", mark: "done", onOpen: fn() },
     ],
+  },
+};
+
+/** The design's mockup is being drawn: its row and the mockup under it carry the writing dots. */
+export const DrawingTheDesign: Story = {
+  args: {
+    ...withDocuments,
+    ...paneOf(designDraft.args),
+  },
+};
+
+// The brief's row, as the sidebar names it.
+const briefName = wording.documentTab["problem_brief"] ?? "";
+
+const appArgs = paneOf(appAndManual.args);
+const appSidebar = (state: OutlineAppState) =>
+  sidebarOf(appArgs.documentPane, planning.plan, state);
+
+/** The app runs as the hub keeps it while the project is open; Live opens it. */
+export const AppRunning: Story = {
+  args: {
+    ...withDocuments,
+    ...appArgs,
+    sidebar: appSidebar("running"),
+  },
+};
+
+export const AppStopped: Story = {
+  args: {
+    ...withDocuments,
+    ...appArgs,
+    sidebar: appSidebar("stopped"),
+  },
+};
+
+export const AppFailed: Story = {
+  args: {
+    ...withDocuments,
+    ...appArgs,
+    sidebar: appSidebar("failed"),
+  },
+};
+
+/** The sidebar put away: its toggle keeps the room's corner, with the project's name. */
+export const SidebarClosed: Story = {
+  args: {
+    ...withDocuments,
+    sidebar: { ...withDocuments.sidebar, open: false },
+  },
+};
+
+/** Put away beside the open project view, whose header leaves the corner to the toggle. */
+export const SidebarClosedProjectOpen: Story = {
+  args: {
+    ...ProjectOpen.args,
+    sidebar: { ...withDocuments.sidebar, open: false },
+  },
+};
+
+/**
+ * A file row opens the project view over the conversation, and what the person had half typed
+ * stays in the box.
+ */
+export const OpenFileKeepsMessage: Story = {
+  args: {
+    ...withDocuments,
+    dock: { ...composer, text: "Also take orders by" },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const brief = canvas.getByRole("treeitem", { name: briefName });
+    // The row is clicked where a pointer clicks it, on its name.
+    await userEvent.click(within(brief).getByText(briefName));
+    await expect(brief).toHaveAttribute("aria-current", "page");
+    await expect(
+      canvasElement.querySelector('[data-slot="room-project"]'),
+    ).not.toHaveAttribute("hidden");
+    // The box moves into the project view, with what was typed.
+    await expect(canvas.getByRole("textbox")).toHaveValue(
+      "Also take orders by",
+    );
+  },
+};
+
+export const ProjectOpenDark: Story = {
+  ...ProjectOpen,
+  globals: { mode: "dark" },
+};
+
+/** Too narrow for the sidebar beside the page, it waits as a drawer behind its toggle. */
+export const Narrow: Story = {
+  args: withDocuments,
+  globals: { viewport: { value: "mobile1" } },
+};
+
+/** The drawer out over the room. */
+export const NarrowDrawer: Story = {
+  ...Narrow,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(
+      canvas.getByRole("button", { name: /Bakery orders/, expanded: false }),
+    );
+    await expect(
+      canvasElement.querySelector('[data-slot="project-sidebar"]'),
+    ).toHaveAttribute("data-open");
+  },
+};
+
+export const NarrowDrawerDark: Story = {
+  ...NarrowDrawer,
+  globals: { ...Narrow.globals, mode: "dark" },
+};
+
+/** Choosing a file in the drawer puts the drawer away and opens the file. */
+export const NarrowDrawerOpensFile: Story = {
+  ...Narrow,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(
+      canvas.getByRole("button", { name: /Bakery orders/, expanded: false }),
+    );
+    const brief = canvas.getByRole("treeitem", {
+      name: briefName,
+    });
+    // The row is clicked where a pointer clicks it, on its name.
+    await userEvent.click(within(brief).getByText(briefName));
+    await expect(
+      canvas.getByRole("button", { name: /Bakery orders/, expanded: false }),
+    ).toBeInTheDocument();
+    await expect(brief).toHaveAttribute("aria-current", "page");
   },
 };

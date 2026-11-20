@@ -185,12 +185,12 @@ export const HtmlDesign: Story = {
   },
 };
 
-/** The live designer's unfiled mockup has a tab of its own until a design is filed. */
+/** The live designer's unfiled mockup, shown on its own until a design is filed. */
 export const DesignDraft: Story = {
   args: { documents: [], selectedId: null, draft: sampleDraft },
 };
 
-/** Each design concept the person compares is a tab of its own. */
+/** Each design concept the person compares is shown on its own. */
 export const Concepts: Story = {
   args: {
     concepts: ["Paper", "Quiet"].map((label) => ({
@@ -209,7 +209,7 @@ export const AppAndManual: Story = {
   },
 };
 
-/** An approval package's tab is its rounds: who was asked to sign off and what each decided. */
+/** An approval package shows its rounds: who was asked to sign off and what each decided. */
 export const ApprovalPackage: Story = {
   args: {
     documents: [brief, approvalPackage],
