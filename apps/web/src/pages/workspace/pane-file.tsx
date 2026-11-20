@@ -105,6 +105,28 @@ export type PaneFile = {
   build: () => Promise<Built>;
 };
 
+/** A file the pane already holds, given away as it is shown. */
+export const shownFile = (
+  file: File,
+  download: string,
+  share: string,
+): PaneFile => ({
+  type: file.type,
+  download,
+  share,
+  key: file.name,
+  prepare: "shown",
+  build: () => Promise.resolve({ file }),
+});
+
+/** A written document as the Markdown file the bar downloads and shares. */
+export const documentFile = (file: File) =>
+  shownFile(
+    file,
+    wording.paneFile.downloadDocument,
+    wording.paneFile.shareDocument,
+  );
+
 // A file built on intent is reused only this long, so what a press gives away is never older.
 const INTENT_FRESH_MS = 30_000;
 

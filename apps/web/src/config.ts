@@ -1089,6 +1089,13 @@ export const wording = {
     comparing: (older: number, newer: number) =>
       `Comparing v${String(older)} → v${String(newer)}`,
     stopComparing: "Stop comparing",
+    /** An older version read from the menu, while the plan names the newest. */
+    showing: (shown: number, newest: number) =>
+      `Showing v${String(shown)}. The plan names v${String(newest)}.`,
+    reading: (version: number) => `Reading v${String(version)}…`,
+    readingForComparison: (version: number) =>
+      `Reading v${String(version)} for comparison…`,
+    historyUnavailable: (reason: string) => `History unavailable: ${reason}`,
   },
   preview: {
     actions: "Preview controls",
