@@ -36,12 +36,27 @@ export const list = type("string").pipe((value) =>
     .filter(Boolean),
 );
 
+/** A variable a schema reads, and whether it must be set. */
+export type Variable = Readonly<{ name: string; required: boolean }>;
+
 /**
  * Returns a reader for the environment `schema` describes. It validates the whole environment, the
  * process's own by default, and throws one error that lists every problem, each line naming the
- * variable and the rule but never the value.
+ * variable and the rule but never the value. Its `variables` list what the schema reads, so the
+ * example env files can be checked against it.
  */
-export const reader =
+export const reader = <const schema extends Type<object>>(schema: schema) => {
+  // Widened to its constraint, the schema's input is typed as an object, which has `props`.
+  const object: Type<object> = schema;
+  return Object.assign(read(schema), {
+    variables: object.in.props.map(({ key, kind }): Variable => ({
+      name: String(key),
+      required: kind === "required",
+    })),
+  });
+};
+
+const read =
   <const schema extends Type<object>>(schema: schema) =>
   (raw: Record<string, string | undefined> = process.env): schema["infer"] => {
     // Leave unset variables out rather than present as undefined.

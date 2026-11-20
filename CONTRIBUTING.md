@@ -108,6 +108,7 @@ covers the architecture, tests and other scripts.
    bun run test          # unit and integration tests
    bun run pins:verify   # pinned dependency versions
    bun run vendor:verify # vendored Interchange matches its manifest
+   bun run environment:verify # example env files match the schemas
    ```
 
    `bun run format` fixes formatting. Changes to model logins, workflows, tools,
