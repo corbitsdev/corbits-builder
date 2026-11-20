@@ -10,7 +10,13 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
-import { FolderOpen, MessageSquare, Plus, Sparkles } from "lucide-react";
+import {
+  FolderOpen,
+  MessageSquare,
+  Plus,
+  Sparkles,
+  TriangleAlert,
+} from "lucide-react";
 import {
   Attachment,
   type AttachmentItem,
@@ -95,10 +101,8 @@ export type RoomComposer = {
   };
   /** Why the last message did not reach the coordinator. */
   sendFault: string | null;
-  /** The specialist already building from a document this message changes; the send waits on a second yes. */
-  caution: string | null;
-  onSendAnyway: () => void;
-  onCancelCaution: () => void;
+  /** What sending these words would restart, as they name a document work builds from; null when nothing. */
+  restarts: string | null;
   /** The answers the coordinator's last message offers, each sent as it is. */
   suggestedReplies: readonly string[];
   onReply: (reply: string) => void;
@@ -526,9 +530,7 @@ function RoomComposerView({
   onEnableAi,
   attachments,
   sendFault,
-  caution,
-  onSendAnyway,
-  onCancelCaution,
+  restarts,
   suggestedReplies,
   onReply,
   sendLabel,
@@ -700,11 +702,20 @@ function RoomComposerView({
   return (
     <Composer
       panel={
-        waiting === undefined ? undefined : (
-          <InBox ports={ports} as="card">
-            {waiting}
-          </InBox>
-        )
+        restarts !== null || waiting !== undefined ? (
+          <>
+            <InBox ports={ports} as={waiting === undefined ? null : "card"}>
+              {waiting}
+            </InBox>
+            {/* Nearest the words it is about, after anything else that waits. */}
+            {restarts === null ? null : (
+              <p className={styles.restarts} role="status">
+                <TriangleAlert size={14} aria-hidden="true" />
+                {restarts}
+              </p>
+            )}
+          </>
+        ) : undefined
       }
       // Always the sheet, even with nothing to pull up, so the box is never remounted (and never
       // loses the cursor) when work starts and the pill appears.
@@ -719,24 +730,6 @@ function RoomComposerView({
             <Fault>{attachments.fault}</Fault>
           )}
           {sendFault === null ? null : <Fault>{sendFault}</Fault>}
-          {caution === null ? null : (
-            <div className={styles.caution} role="alert">
-              <p>{wording.earlierDocument.warning(caution)}</p>
-              <div className={styles.cautionActions}>
-                <UiButton type="button" size="sm" onClick={onSendAnyway}>
-                  {wording.earlierDocument.sendAnyway}
-                </UiButton>
-                <UiButton
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  onClick={onCancelCaution}
-                >
-                  {wording.action.cancel}
-                </UiButton>
-              </div>
-            </div>
-          )}
           {suggestedReplies.length > 0 && !needsProvider ? (
             <div
               className={styles.replies}

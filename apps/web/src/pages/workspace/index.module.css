@@ -157,8 +157,7 @@
   display: none;
 }
 
-/* A quiet line with its ways on: before a change to what a specialist builds from, or on an
-   archived project. */
+/* A quiet line on an archived project, with its way on beside it. */
 .caution {
   display: flex;
   flex-wrap: wrap;
@@ -174,9 +173,24 @@
   flex: 1 1 18rem;
 }
 
-.cautionActions {
+/* In the prompt box, one quiet line just above the words it is about: no band, no rule under it. */
+.restarts {
   display: flex;
-  gap: var(--space-1);
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 10px var(--space-4) 0 17px;
+  color: var(--wb-muted-foreground);
+  font-size: var(--text-sm);
+  line-height: 20px;
+}
+
+.restarts > svg {
+  flex: none;
+}
+
+[data-slot="composer-panel"]:has(> .restarts:last-child) {
+  border-bottom: 0;
 }
 
 /* Comments waiting to be made, carried with whatever is typed after them. */
