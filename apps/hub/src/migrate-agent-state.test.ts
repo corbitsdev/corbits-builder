@@ -233,42 +233,104 @@ test("the sidecar's copy, ahead of the hub's, is rewritten onto the hub's new hi
   ).toBe(true);
 });
 
-test("a sidecar copy that does not build on the hub's, or has none, is set aside", async () => {
+test("a sidecar copy that does not build on the hub's is set aside", async () => {
   const { dataDir, dir } = await runRepo();
-  const sidecarRuns = join(dataDir, "local-sidecars/sidecar/workflow-runs");
-  const sidecarDir = join(sidecarRuns, deriveWorkflowRunRepoId(address));
+  const sidecarDir = join(
+    dataDir,
+    "local-sidecars/sidecar/workflow-runs",
+    deriveWorkflowRunRepoId(address),
+  );
   await git.init({ fs, dir: sidecarDir, defaultBranch: "main" });
   await commit(dir, checkpoint([turn("user", "hub")]));
   await commit(sidecarDir, checkpoint([turn("user", "sidecar")]));
-  const otherRunId = "run_fedcba9876543210fedcba9876543210";
-  const otherAddress = `${otherRunId}@test-project.localhost`;
-  const otherSidecarDir = join(
-    sidecarRuns,
-    deriveWorkflowRunRepoId(otherAddress),
-  );
-  await git.init({ fs, dir: otherSidecarDir, defaultBranch: "main" });
-  await commit(otherSidecarDir, checkpoint([turn("user", "sidecar")]));
 
-  await rewriteRunHistories(
-    [
-      { runId, address },
-      { runId: otherRunId, address: otherAddress },
-    ],
-    dataDir,
-    async () => {},
-  );
+  await rewriteRunHistories([{ runId, address }], dataDir, async () => {});
 
   const hubTip = await git.resolveRef({ fs, dir, ref: WORKFLOW_RUN_REF });
   expect(await holdsOldDir(dir, hubTip)).toBe(false);
-  for (const moved of [sidecarDir, otherSidecarDir]) {
-    expect(fs.existsSync(moved)).toBe(false);
-    const aside = join(
-      dataDir,
-      "local-sidecars/sidecar/workflow-runs-pre-step-state",
-      basename(moved),
-    );
-    expect(fs.existsSync(join(aside, ".git"))).toBe(true);
-  }
+  expect(fs.existsSync(sidecarDir)).toBe(false);
+  const aside = join(
+    dataDir,
+    "local-sidecars/sidecar/workflow-runs-pre-step-state",
+    basename(sidecarDir),
+  );
+  expect(fs.existsSync(join(aside, ".git"))).toBe(true);
+});
+
+test("a sidecar copy with no hub copy is the only one and is moved", async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "migrate-agent-state-"));
+  const sidecarDir = await repoIn(
+    join(dataDir, "local-sidecars/sidecar"),
+    address,
+  );
+  const saved = await commit(sidecarDir, checkpoint([turn("user", "sidecar")]));
+  const { commit: last } = await git.readCommit({
+    fs,
+    dir: sidecarDir,
+    oid: saved,
+  });
+  const oldStep = await git.readTree({
+    fs,
+    dir: sidecarDir,
+    oid: last.tree,
+    filepath: "agent-state/coordinate",
+  });
+
+  await rewriteRunHistories([{ runId, address }], dataDir, async () => {});
+
+  const sidecarTip = await git.resolveRef({
+    fs,
+    dir: sidecarDir,
+    ref: WORKFLOW_RUN_REF,
+  });
+  expect(await holdsOldDir(sidecarDir, sidecarTip)).toBe(false);
+  const { commit: rewritten } = await git.readCommit({
+    fs,
+    dir: sidecarDir,
+    oid: sidecarTip,
+  });
+  const moved = await git.readTree({
+    fs,
+    dir: sidecarDir,
+    oid: rewritten.tree,
+    filepath: workflowRunStepStatePrefix(runId, "coordinate").slice(0, -1),
+  });
+  expect(moved.oid).toBe(oldStep.oid);
+  expect(
+    fs.existsSync(
+      join(
+        sidecarDir,
+        workflowRunStepStatePrefix(runId, "coordinate"),
+        "checkpoint.meta.json",
+      ),
+    ),
+  ).toBe(true);
+});
+
+test("a sidecar copy that cannot be read does not keep the hub's copy from moving", async () => {
+  const { dataDir, dir } = await runRepo();
+  await repoIn(join(dataDir, "local-sidecars/sidecar"), address);
+  await commit(dir, checkpoint([turn("user", "hub")]));
+
+  await rewriteRunHistories([{ runId, address }], dataDir, async () => {});
+
+  const hubTip = await git.resolveRef({ fs, dir, ref: WORKFLOW_RUN_REF });
+  expect(await holdsOldDir(dir, hubTip)).toBe(false);
+});
+
+test("sidecars that fail to stop are stopped again on the next start", async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "migrate-agent-state-"));
+  const failing = async () => {
+    throw new Error("stop failed");
+  };
+  await expect(rewriteRunHistories([], dataDir, failing)).rejects.toThrow(
+    "stop failed",
+  );
+  let stops = 0;
+  await rewriteRunHistories([], dataDir, async () => {
+    stops += 1;
+  });
+  expect(stops).toBe(1);
 });
 
 test("a sidecar copy whose first save never reached the hub still builds on the hub's copy and is moved", async () => {

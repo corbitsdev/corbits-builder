@@ -117,15 +117,11 @@ export async function rewriteRunHistories(
   const pending: PendingRun[] = [];
   for (const { runId, address } of deployments) {
     if (address === null) continue;
-    try {
-      const repoId = deriveWorkflowRunRepoId(address);
-      const hub = await pendingCopy(join(hubRuns, repoId));
-      const sidecar = await pendingCopy(join(sidecarRuns, repoId));
-      if (hub !== null || sidecar !== null)
-        pending.push({ runId, address, repoId, hub, sidecar });
-    } catch (error) {
-      notMoved(address, error);
-    }
+    const repoId = deriveWorkflowRunRepoId(address);
+    const hub = await pendingCopy(join(hubRuns, repoId), address);
+    const sidecar = await pendingCopy(join(sidecarRuns, repoId), address);
+    if (hub !== null || sidecar !== null)
+      pending.push({ runId, address, repoId, hub, sidecar });
   }
   if (pending.length === 0) return;
   const { repoStore } = createAgentRepoStore({ dataDir, signingKey });
@@ -172,18 +168,27 @@ function notMoved(address: string, error: unknown): void {
   );
 }
 
-async function pendingCopy(dir: string): Promise<PendingCopy | null> {
+/** A copy that cannot be read stays as it was without holding back the other. */
+async function pendingCopy(
+  dir: string,
+  address: string,
+): Promise<PendingCopy | null> {
   if (!fs.existsSync(join(dir, ".git"))) return null;
-  const marks = await git.listRefs({ fs, dir, filepath: MARKS });
-  if (marks.includes(basename(DONE_REF))) return null;
-  const oldTip = await git.resolveRef({ fs, dir, ref: WORKFLOW_RUN_REF });
-  const chain = await firstParentChain(dir, oldTip);
-  const start = await firstIndexHolding(dir, chain);
-  if (start === -1) {
-    await git.writeRef({ fs, dir, ref: DONE_REF, value: oldTip });
+  try {
+    const marks = await git.listRefs({ fs, dir, filepath: MARKS });
+    if (marks.includes(basename(DONE_REF))) return null;
+    const oldTip = await git.resolveRef({ fs, dir, ref: WORKFLOW_RUN_REF });
+    const chain = await firstParentChain(dir, oldTip);
+    const start = await firstIndexHolding(dir, chain);
+    if (start === -1) {
+      await git.writeRef({ fs, dir, ref: DONE_REF, value: oldTip });
+      return null;
+    }
+    return { dir, oldTip, chain, start };
+  } catch (error) {
+    notMoved(address, error);
     return null;
   }
-  return { dir, oldTip, chain, start };
 }
 
 /** Writes the rewritten commits beside the old ones; no ref moves. */
@@ -272,7 +277,8 @@ async function moveHubCopy(
  * first one holding the old folder, which the rewrite leaves as it was. Its
  * checked-out files move with it. A copy that does not build on the hub's is
  * set aside, out of the sidecar's sight, and the sidecar's deploy takes the
- * hub's copy instead.
+ * hub's copy instead. With no hub copy beside it, the sidecar's is the run's
+ * only copy and is moved on its own.
  */
 async function moveSidecarCopy(
   { runId, address }: PendingRun,
@@ -281,15 +287,16 @@ async function moveSidecarCopy(
   onSign: OnSign,
 ): Promise<void> {
   const { dir, oldTip, chain, start } = copy;
-  if (!fs.existsSync(join(hubDir, ".git"))) return setAside(dir, address);
   const { commits, moved } = await rewriteCommits(copy, runId, onSign);
-  const hubTip = await git.resolveRef({
-    fs,
-    dir: hubDir,
-    ref: WORKFLOW_RUN_REF,
-  });
-  if (!chain.slice(0, start).includes(hubTip) && !commits.includes(hubTip))
-    return setAside(dir, address);
+  if (fs.existsSync(join(hubDir, ".git"))) {
+    const hubTip = await git.resolveRef({
+      fs,
+      dir: hubDir,
+      ref: WORKFLOW_RUN_REF,
+    });
+    if (!chain.slice(0, start).includes(hubTip) && !commits.includes(hubTip))
+      return setAside(dir, address);
+  }
   for (const stepId of moved.keys()) {
     const from = join(dir, OLD_DIR, encodeURIComponent(stepId));
     if (!fs.existsSync(from)) continue;
