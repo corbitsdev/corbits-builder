@@ -12,21 +12,16 @@ export const port = type("string").pipe((value, ctx) => {
     : ctx.error("an integer between 1 and 65535");
 });
 
-/** `value` as a URL, when it parses with one of `protocols` and has no username or password. */
-export const parseURL = (value: string, protocols: readonly string[]) => {
-  const url = URL.parse(value);
-  return url &&
-    protocols.includes(url.protocol) &&
-    !url.username &&
-    !url.password
-    ? url
-    : undefined;
-};
-
 /** An HTTP(S) origin with no credentials, path, query or fragment, read as its origin. */
 export const origin = type("string").pipe((value, ctx) => {
-  const url = parseURL(value, ["http:", "https:"]);
-  return url && url.pathname === "/" && !url.search && !url.hash
+  const url = URL.parse(value);
+  return url &&
+    ["http:", "https:"].includes(url.protocol) &&
+    !url.username &&
+    !url.password &&
+    url.pathname === "/" &&
+    !url.search &&
+    !url.hash
     ? url.origin
     : ctx.error(
         "an HTTP(S) origin without credentials, path, query or fragment",

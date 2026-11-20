@@ -1,4 +1,4 @@
-import { origin, port, reader } from "@corbits-builder/schemas/environment";
+import { origin, port, reader } from "@corbits-builder/environment";
 import { type } from "arktype";
 
 // The interface's dev server environment, read by vite.config.ts.

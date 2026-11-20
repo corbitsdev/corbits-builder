@@ -34,6 +34,16 @@ module.exports = {
       to: { path: "^packages/plugin-host/" },
     },
     {
+      name: "environment-not-in-browser",
+      comment:
+        "The environment package reads process.env, so neither the interface's browser code nor a package it bundles imports it; apps/web/environment.ts and vite.config.ts run in Node and may.",
+      severity: "error",
+      from: {
+        path: "^(apps/web/src|packages/(client|plugin|plugin-ui|schemas))/",
+      },
+      to: { path: "^packages/environment/" },
+    },
+    {
       name: "hub-environment-read-by-entry-points",
       comment:
         "The hub's entry points read the environment once and pass it down; any other module takes the settings it needs as arguments, so it imports only the environment's types.",

@@ -27,8 +27,7 @@
     "./approaches": "./src/approaches.ts",
     "./approval-round": "./src/approval-round.ts",
     "./app-files": "./src/app-files.ts",
-    "./repository-import": "./src/repository-import.ts",
-    "./environment": "./src/environment.ts"
+    "./repository-import": "./src/repository-import.ts"
   },
   "dependencies": {
     "@intx/types": "workspace:*",

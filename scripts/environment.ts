@@ -1,4 +1,4 @@
-import { list, port, reader } from "@corbits-builder/schemas/environment";
+import { list, port, reader } from "@corbits-builder/environment";
 import { type } from "arktype";
 
 /** `bun run auth:emulate`: the local Google emulator, its seeded user and OAuth client. */

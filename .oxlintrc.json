@@ -17,7 +17,9 @@
     "import/no-cycle": "error",
     // Any `.env` read: process.env, Bun.env, import.meta.env (Bun's alias), through globalThis or
     // destructured. `key.env` names a variable in config/install-root.ts and install-root.ts, and a
-    // Hono handler's `c.env` is its server, not the environment.
+    // Hono handler's `c.env` is its server, not the environment. This one entry stands in for a
+    // custom lint plugin or ast-grep rule; an object named `key` or `c`, or an alias, gets past it,
+    // and that is accepted.
     "eslint/no-restricted-properties": [
       "error",
       {

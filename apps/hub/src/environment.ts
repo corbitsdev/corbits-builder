@@ -2,13 +2,7 @@ import { isAbsolute } from "node:path";
 import type { DBConfig } from "@intx/db";
 import { LifecycleDuration, lifecycleDurationMs } from "@intx/types";
 import { getLogLevels } from "@logtape/logtape";
-import {
-  list,
-  origin,
-  parseURL,
-  port,
-  reader,
-} from "@corbits-builder/schemas/environment";
+import { list, origin, port, reader } from "@corbits-builder/environment";
 import { type, type Traversal } from "arktype";
 import type { BootstrapOptions } from "./bootstrap.ts";
 import { defaultDockerLimits } from "./provisioning/docker.ts";
@@ -46,6 +40,17 @@ const positiveInteger = type("string").pipe((value, ctx) => {
 
 /** A 256-bit key as 64 hexadecimal characters. */
 const hexKey = type(/^[a-f\d]{64}$/i).describe("64 hexadecimal characters");
+
+/** `value` as a URL, when it parses with one of `protocols` and has no username or password. */
+const parseURL = (value: string, protocols: readonly string[]) => {
+  const url = URL.parse(value);
+  return url &&
+    protocols.includes(url.protocol) &&
+    !url.username &&
+    !url.password
+    ? url
+    : undefined;
+};
 
 const httpURL = type("string").pipe((value, ctx) =>
   parseURL(value, ["http:", "https:"])
