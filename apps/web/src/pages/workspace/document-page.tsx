@@ -27,11 +27,8 @@ import {
 import { PaneBar, type PaneBarGroup } from "./pane-bar.tsx";
 import styles from "./document-page.module.css";
 
-/**
- * Where a passage's comment stands, beyond waiting to be taken up: selected while it is written,
- * being made into a change, or changed in the version shown.
- */
-export type PassageState = "selected" | "making" | "changed";
+/** Where a passage's comment stands, beyond being saved: selected while it is written. */
+export type PassageState = "selected";
 
 /** A passage something is said about, by the words it quotes from the page. */
 export type MarginPassage = { id: string; quote: string; state?: PassageState };
@@ -78,8 +75,6 @@ const UNDERLINE_REACH = 8;
 const HIGHLIGHTS: Readonly<Record<PassageState | "commented", string>> = {
   commented: "document-passage",
   selected: "document-passage-selected",
-  making: "document-passage-making",
-  changed: "document-passage-changed",
 };
 
 type Painted = { highlight: string; range: Range };

@@ -255,27 +255,15 @@
 }
 
 /* Every passage something is said about is underlined in the attention orange; the one whose
-   comment is being written is tinted too. A passage being changed fades to a grey dashed line, and
-   a changed one is underlined in the done green. */
+   comment is being written is tinted too. */
 .sheet ::highlight(document-passage),
-.sheet ::highlight(document-passage-selected),
-.sheet ::highlight(document-passage-making),
-.sheet ::highlight(document-passage-changed) {
+.sheet ::highlight(document-passage-selected) {
   text-decoration: underline 2px var(--wb-primary);
   text-underline-offset: 5px;
 }
 
 .sheet ::highlight(document-passage-selected) {
   background-color: color-mix(in oklab, var(--wb-primary) 20%, transparent);
-}
-
-.sheet ::highlight(document-passage-making) {
-  color: var(--wb-muted-foreground);
-  text-decoration: underline dashed 1.5px var(--wb-muted-foreground);
-}
-
-.sheet ::highlight(document-passage-changed) {
-  text-decoration-color: var(--wb-okay);
 }
 
 /* Without room for the contents beside the page, they give way to it. */

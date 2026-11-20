@@ -89,23 +89,10 @@ const COMMENTED: readonly { id: string; quote: string; note: string }[] = [
 ];
 
 /** One passage in each state a comment can leave it in. */
-const STATES: readonly (MarginPassage & { note: string })[] = [
-  ...COMMENTED.map((item) =>
+const STATES: readonly (MarginPassage & { note: string })[] = COMMENTED.map(
+  (item) =>
     item.id === "allergy" ? { ...item, state: "selected" as const } : item,
-  ),
-  {
-    id: "ready",
-    quote: "Tell the customer when their cake is ready",
-    note: "Say how: a text, or an email?",
-    state: "making",
-  },
-  {
-    id: "saturday",
-    quote: "Every order is in one list",
-    note: "Name the list: the day's orders.",
-    state: "changed",
-  },
-];
+);
 
 /**
  * A stand-in for what the margin holds, level with its passage. The comment cards themselves are
@@ -188,10 +175,7 @@ type Story = StoryObj<typeof meta>;
 /** A filed document with two commented passages, their notes level with them in the margin. */
 export const Filed: Story = {};
 
-/**
- * A passage in each state its comment can be in: waiting, selected while it is written, being
- * made into a change, and changed.
- */
+/** A passage in each state its comment can be in: saved, and selected while it is written. */
 export const PassageStates: Story = { args: { passages: STATES } };
 
 export const ZoomedOut: Story = {
