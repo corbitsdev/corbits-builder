@@ -1,13 +1,3 @@
-/* The pane's own header holds only its close button, at the end, on the pane's surface. */
-.pane [data-slot="panel-header"] {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  padding: var(--space-2) var(--space-3);
-  border: 0;
-  background: transparent;
-}
-
 .content {
   flex: 1;
   min-height: 0;
@@ -19,7 +9,7 @@
 
 /* Each pane is its own scroller, so the padding belongs inside it: padding on the panel sat below
    the scroller as a band the page never reached. The foot leaves room for the last lines to scroll
-   clear of the floating bar, whose height the bar sets on its pane. */
+   clear of the prompt box floating over it, whose height the room sets. */
 .content[data-slot="panel-content"] {
   position: relative;
   padding: 0;
@@ -27,7 +17,7 @@
 
 .content > [data-slot="panel-pane"]:not(.fill) {
   padding: var(--space-3) var(--space-6)
-    calc(var(--space-6) + var(--pane-bar-height, 0px));
+    calc(var(--space-6) + var(--box-height, 0px));
 }
 
 .empty {

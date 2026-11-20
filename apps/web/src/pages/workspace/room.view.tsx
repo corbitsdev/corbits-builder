@@ -263,6 +263,27 @@ export function RoomView({
   useEffect(() => {
     if (!narrow) setDrawerOpen(false);
   }, [narrow]);
+  // The box floats over the project view's foot, so the view keeps what it must reach clear of it
+  // by the box's height, which grows as the person writes.
+  const projectRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const page = projectRef.current;
+    const box = page?.querySelector<HTMLElement>(
+      ':scope > [data-slot="composer"]',
+    );
+    if (page === null || page === undefined) return;
+    // Checked on every render, as the box comes and goes with what stands in its place; the
+    // height stays set between renders so the view's foot never jumps while it is read again.
+    if (box === null || box === undefined) {
+      page.style.removeProperty("--box-height");
+      return;
+    }
+    const observer = new ResizeObserver(() =>
+      page.style.setProperty("--box-height", `${String(box.offsetHeight)}px`),
+    );
+    observer.observe(box);
+    return () => observer.disconnect();
+  });
   const leaveDrawer =
     <Args extends unknown[]>(go: (...args: Args) => void) =>
     (...args: Args) => {
@@ -445,6 +466,7 @@ export function RoomView({
           {projectReady ? (
             // Kept while closed, so its panes, previews and drafts keep their place.
             <div
+              ref={projectRef}
               className={styles.page}
               data-slot="room-project"
               hidden={!projectOpen}

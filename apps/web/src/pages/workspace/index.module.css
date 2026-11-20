@@ -279,26 +279,11 @@
   }
 }
 
-/* The status pill floats above the prompt box, over the project view's foot where its floating
-   bar stands; while the pill shows, the bar stands clear above it. */
-.page:has(> [data-slot="composer"] [data-slot="pill"])
-  :is([data-slot="pane-bar"][data-floating], [data-slot="pane-bar-handle"]) {
-  bottom: calc(var(--space-3) + 2.5rem);
-}
-
-/* The chat's handle sits on the box's top edge in the same place, lower than the pill. */
-.page:has(
-    > [data-slot="composer"]
-      [data-slot="chat-sheet"][data-state="closed"]
-      [data-slot="pull-handle"]
-  )
-  :is([data-slot="pane-bar"][data-floating], [data-slot="pane-bar-handle"]) {
-  bottom: calc(var(--space-3) * 2);
-}
-
-/* A written page runs on under the prompt box, which floats at its foot over a fade into the page's
-   backdrop, so the last lines read clearly as they scroll beneath it. Anything else the project view
-   shows keeps the box below it, clear of its own foot. Full screen, the chat is the page instead. */
+/* The prompt box floats over the project view's foot, whatever it shows: a written page runs on
+   under it over a fade into the page's backdrop, so its last lines read clearly as they scroll
+   beneath it, and a design or the live app keeps its full height under it. Each keeps what it must
+   reach clear of the box by the box's height, which the room sets on the page. Full screen, the
+   chat is the page instead. */
 .footFade {
   display: none;
 }
@@ -314,17 +299,23 @@
   display: contents;
 }
 
-.page:has(
-    > [data-slot="artifact-pane"]
-      [data-slot="panel-pane"][data-state="active"]
-      [data-slot="document-page"]
-  ):not(
+.page:not(
     :has(> [data-slot="composer"] > [data-slot="chat-sheet"][data-state="full"])
   )
   > [data-slot="composer"] {
   position: absolute;
   inset-inline: 0;
   bottom: 0;
+}
+
+/* Pulled up, the chat covers the view's foot and, on a narrow canvas, its edge where the view's
+   floating bar stands, so the bar steps aside until the chat is put away. */
+.page:has(
+    > [data-slot="composer"]
+      > [data-slot="chat-sheet"]:is([data-state="open"], [data-state="moving"])
+  )
+  :is([data-slot="pane-bar"][data-floating], [data-slot="pane-bar-handle"]) {
+  visibility: hidden;
 }
 
 /* The pane is a side panel by make, which a narrow container lays over everything; over the room
