@@ -121,24 +121,86 @@ const PUBLISHED = {
   },
 };
 
+/** The release is recorded after the go-ahead: published, though the publisher's run carries on. */
+export const LiveWhileRunning: Story = {
+  args: {
+    values: {
+      "publish.go-ahead": GO_AHEAD,
+      "publish.plan": "publish-to-server",
+      "publish.release": {
+        target: "server",
+        url: RELEASE.url,
+        version: RELEASE.version,
+        at: "2026-11-18T10:01:00.000Z",
+      },
+    },
+    plan: [
+      {
+        plugin: "server",
+        action: "publish",
+        plan: "publish-to-server",
+        state: "running",
+        summary: "read_skill codes",
+      },
+    ],
+  },
+  play: async ({ canvas }) => {
+    await expect(await canvas.findByText(text.title.published)).toBeVisible();
+    await expect(canvas.queryByText("read_skill codes")).toBeNull();
+  },
+};
+
 /** Published: the address, when, what it costs, and Take it down. */
 export const Published: Story = {
   args: { values: PUBLISHED },
   play: async ({ canvas }) => {
-    await expect(await canvas.findByText(RELEASE.url)).toBeVisible();
+    await expect(await canvas.findByRole("link")).toHaveAttribute(
+      "href",
+      RELEASE.url,
+    );
+    await expect(canvas.queryByRole("button", { name: text.gone })).toBeNull();
     await expect(
       canvas.queryByRole("button", { name: text.publishChanges }),
     ).toBeNull();
   },
 };
 
-/** The saved app is newer than the published one: the card says so and offers Publish changes. */
+/** The saved app is newer than the published one: Publish changes. */
 export const Changes: Story = {
   args: { values: PUBLISHED, appVersion: "def456" },
   play: async ({ canvas }) => {
-    await expect(await canvas.findByText(text.changes)).toBeVisible();
     await expect(
-      canvas.getByRole("button", { name: text.publishChanges }),
+      await canvas.findByRole("button", { name: text.publishChanges }),
+    ).toBeEnabled();
+  },
+};
+
+/** Published at a host without an account: Keep it, until when, and I kept it. */
+export const Keep: Story = {
+  args: {
+    values: {
+      "publish.release": {
+        target: "host",
+        url: "https://quiet-river.example.com",
+        version: RELEASE.version,
+        at: RELEASE.at,
+        replaceable: false,
+      },
+      "publish.plan": "publish-to-host",
+      "publish.keep": {
+        link: "https://example.com/claim",
+        until: "2099-11-20T10:00:00.000Z",
+        place: "Example Host",
+      },
+    },
+    appVersion: "def456",
+  },
+  play: async ({ canvas }) => {
+    await expect(
+      await canvas.findByRole("link", { name: text.keep.open("Example Host") }),
+    ).toBeVisible();
+    await expect(
+      canvas.getByRole("button", { name: text.keep.kept }),
     ).toBeEnabled();
   },
 };

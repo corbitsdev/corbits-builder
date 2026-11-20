@@ -33,6 +33,7 @@ function hub(project: {
 }) {
   const saved: Record<string, unknown>[] = [];
   const added: unknown[] = [];
+  const waiting: (string | undefined)[] = [];
   const app = new Hono<TenantEnv>();
   app.onError((error, c) => {
     if (error instanceof ProjectError)
@@ -58,9 +59,16 @@ function hub(project: {
     stepRuns: async () => [],
   } as unknown as ReturnType<typeof createArtifactService>;
   const plans = {
+    authorizeAction: async () => {},
     projectPlan: async () => ({ steps: project.plan ?? [], updatedAt: null }),
-    addPlanStep: async (_actor: unknown, _project: unknown, step: unknown) => {
+    addPlanStep: async (
+      _actor: unknown,
+      _project: unknown,
+      step: unknown,
+      told: { waiting: string | undefined },
+    ) => {
       added.push(step);
+      waiting.push(told.waiting);
     },
     tellCoordinator: async () => {},
   } as unknown as ReturnType<typeof createPlanService>;
@@ -91,7 +99,7 @@ function hub(project: {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ input }),
     });
-  return { saved, added, read, screens, act };
+  return { saved, added, waiting, read, screens, act };
 }
 
 test("a screen is listed, with its state, only while its state returns one", async () => {
@@ -185,7 +193,7 @@ test("taking down, keeping and saying it is gone save what each writes, and taki
   expect(project.added).toMatchObject([{ plugin: "server", action: "remove" }]);
 });
 
-test("the hub refuses a publish the person has not given their go-ahead to", async () => {
+test("the hub refuses a publish the person has not given their go-ahead to, and gives it to the same publish not yet begun", async () => {
   const publish = {
     instruction: "Publish the saved app to the person's own server.",
   };
@@ -202,4 +210,23 @@ test("the hub refuses a publish the person has not given their go-ahead to", asy
   });
   expect((await agreed.act("server", "publish", publish)).status).toBe(200);
   expect(agreed.added).toMatchObject([{ plugin: "server", action: "publish" }]);
+  expect(agreed.waiting).toEqual([undefined]);
+  const step = (id: string, instruction: string) => ({
+    id,
+    title: "Publish the app",
+    plugin: "server",
+    action: "publish",
+    input: { instruction },
+    askFirst: true,
+  });
+  const planned = hub({
+    artifacts: [{ kind: "app", version: 1 }],
+    checks: [...ready, passed("publish", "agreed", ["agreed:publish"])],
+    plan: [
+      step("other", "Publish the saved app somewhere else."),
+      step("same", publish.instruction),
+    ],
+  });
+  expect((await planned.act("server", "publish", publish)).status).toBe(200);
+  expect(planned.waiting).toEqual(["same"]);
 });

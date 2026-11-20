@@ -6,7 +6,7 @@ import type { ScreenViewProps } from "@corbits-builder/plugin-ui/screen";
 import { ScreenActions } from "@corbits-builder/plugin-ui/screen-actions";
 import { ScreenCard } from "@corbits-builder/plugin-ui/screen-card";
 import { text as published } from "../published/definition.ts";
-import { Fault, Press, TakeDownSure } from "../published/view.tsx";
+import { Fault, Place, Press, TakeDownSure } from "../published/view.tsx";
 import { text, type Asked } from "./definition.ts";
 
 type Props = ScreenViewProps<
@@ -43,7 +43,7 @@ export function Ask({ prepared: { data }, act, submitting, fault }: Props) {
       }
     >
       <Fault fault={fault} />
-      <p>{data.about}</p>
+      <Place about={data.about} />
     </ScreenCard>
   );
 }

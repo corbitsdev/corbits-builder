@@ -7,7 +7,8 @@ import type { ScreenViewProps } from "@corbits-builder/plugin-ui/screen";
 import { ScreenActions } from "@corbits-builder/plugin-ui/screen-actions";
 import { ScreenCard } from "@corbits-builder/plugin-ui/screen-card";
 import { RadioGroup } from "@corbits-builder/plugin-ui/choice-segments";
-import { Button } from "@corbits/react-ui";
+import { Button, formatRelativeTime } from "@corbits/react-ui";
+import { Tooltip } from "@corbits/react-ui/ui/tooltip";
 import { text, type Shown, type Where } from "./definition.ts";
 import styles from "./view.module.css";
 
@@ -17,35 +18,58 @@ type Props = ScreenViewProps<
   Shown
 >;
 
-export function Lines({ where }: { where: Where }) {
-  const { release, holding, keep } = where;
+type Variant = "primary" | "outline" | "destructive" | "link";
+
+/** The address as people type it; the link keeps the scheme. */
+const shortUrl = (url: string) => url.replace(/^https?:\/\//, "");
+
+/** A place to publish to, by its name, then the rest of what its package says, quieter. */
+export function Place({ about }: { about: string }) {
+  const split = about.indexOf(": ");
+  if (split === -1) return <span className={styles.placeName}>{about}</span>;
+  const detail = about.slice(split + 2);
   return (
-    <div className={styles.lines} data-slot="publish-published">
-      {release === undefined ? null : (
-        <>
-          <a
-            className={styles.address}
-            href={release.url}
-            target="_blank"
-            rel="noreferrer"
-          >
-            {release.url}
-          </a>
-          <span>{text.publishedAt(release.at)}</span>
-          {release.replaceable ? null : <span>{text.newAddress}</span>}
-        </>
-      )}
-      {holding === undefined ? null : (
-        <span>{text.hosted(holding.place, holding.costs)}</span>
-      )}
-      {keep === undefined ? null : (
-        <span>
-          {keep.passed
-            ? text.keep.passed(keep.place)
-            : text.keep.lead(keep.place, keep.until)}
-        </span>
-      )}
-    </div>
+    <span className={styles.place}>
+      <span className={styles.placeName}>{about.slice(0, split)}</span>
+      {/* Descriptions read "Name: detail", so the detail starts lower case. */}
+      <span className={styles.quiet}>
+        {detail.charAt(0).toUpperCase() + detail.slice(1)}
+      </span>
+    </span>
+  );
+}
+
+/** What is published: the address first, then when, where and what it costs. */
+function Lines({ where, live }: { where: Where; live: boolean }) {
+  const { release, holding } = where;
+  if (release === undefined && holding === undefined) return null;
+  return (
+    <>
+      {release === undefined ? null : <Address url={release.url} live={live} />}
+      <span className={styles.meta} data-slot="publish-published">
+        {release === undefined ? null : (
+          <Tooltip label={new Date(release.at).toLocaleString()}>
+            <time dateTime={release.at} tabIndex={0}>
+              {text.publishedAt(formatRelativeTime(release.at))}
+            </time>
+          </Tooltip>
+        )}
+        {holding === undefined ? null : (
+          <span>{text.hosted(holding.place, holding.costs)}</span>
+        )}
+      </span>
+    </>
+  );
+}
+
+/** The address, as a link while people can open it. */
+function Address({ url, live }: { url: string; live: boolean }) {
+  return live ? (
+    <a className={styles.address} href={url} target="_blank" rel="noreferrer">
+      {shortUrl(url)}
+    </a>
+  ) : (
+    <span className={styles.address}>{shortUrl(url)}</span>
   );
 }
 
@@ -66,7 +90,7 @@ export function Press({
   label: string;
   action: string;
   input?: Record<string, unknown>;
-  variant?: "primary" | "outline";
+  variant?: Variant;
   act: Props["act"];
   submitting: boolean;
 }) {
@@ -83,7 +107,11 @@ export function Press({
   );
 }
 
-/** Take your app down?, with what the place says goes and what is kept, and Yes, take it down. */
+/**
+ * Take your app down?, with what the place says goes and what stops being charged. Take it down sits
+ * at the far end of the card's row and the confirmation starts from the near end, so the second
+ * click of a double click lands on neither of its buttons.
+ */
 export function TakeDownSure({
   where,
   act,
@@ -102,23 +130,29 @@ export function TakeDownSure({
       title={text.takeDown.sure}
       actions={
         <ScreenActions>
+          {keep}
           <Press
             label={text.takeDown.yes}
             action="take-down"
-            variant="primary"
+            variant="destructive"
             act={act}
             submitting={submitting}
           />
-          {keep}
         </ScreenActions>
       }
     >
-      <Fault fault={fault} />
-      <p>{where.removes ?? text.takeDown.removes}</p>
-      <Lines where={where} />
-      {where.holding?.costs === undefined ? null : (
-        <p>{text.takeDown.costs(where.holding.place, where.holding.costs)}</p>
-      )}
+      <div className={styles.stack}>
+        <Fault fault={fault} />
+        {where.release === undefined ? null : (
+          <Address url={where.release.url} live={false} />
+        )}
+        <span>{where.removes ?? text.takeDown.removes}</span>
+        {where.holding?.costs === undefined ? null : (
+          <span>
+            {text.takeDown.costs(where.holding.place, where.holding.costs)}
+          </span>
+        )}
+      </div>
     </ScreenCard>
   );
 }
@@ -135,7 +169,7 @@ export function Published({
     label: string,
     action: string,
     input: Record<string, unknown> = {},
-    variant: "primary" | "outline" = "outline",
+    variant: Variant = "outline",
   ) => (
     <Press
       label={label}
@@ -146,10 +180,28 @@ export function Published({
       submitting={submitting}
     />
   );
+  // A button held disabled in its place, so the row keeps its shape: the pressed action while it
+  // runs, or Publish until a place is picked.
+  const still = (label: string, variant: Variant, className?: string) => (
+    <Button
+      type="button"
+      size="sm"
+      variant={variant}
+      className={className}
+      disabled
+    >
+      {label}
+    </Button>
+  );
   if (data.is === "publishing")
     return (
-      <ScreenCard title={text.title.publishing}>
-        <p>{data.doing ?? text.publishing}</p>
+      <ScreenCard
+        title={text.title.publishing}
+        actions={
+          <ScreenActions>{still(text.publish, "primary")}</ScreenActions>
+        }
+      >
+        {null}
       </ScreenCard>
     );
   if ("offer" in data) {
@@ -161,41 +213,55 @@ export function Published({
         actions={
           <ScreenActions>
             {plan === undefined
-              ? null
+              ? still(text.publish, "primary")
               : press(text.publish, "publish", { plan }, "primary")}
           </ScreenActions>
         }
       >
-        <Fault fault={fault} />
-        {places.length > 1 ? (
-          <RadioGroup
-            label={text.places}
-            options={places.map((place) => ({
-              id: place.handle,
-              label: place.about,
-            }))}
-            choice={plan ?? null}
-            onChoose={setPicked}
-            disabled={submitting}
-            look={{
-              slot: "publish-places",
-              group: styles.lines,
-              option: styles.place,
-            }}
-          >
-            {(option) => option.label}
-          </RadioGroup>
-        ) : (
-          <p>{places[0]?.about}</p>
-        )}
+        <div className={styles.stack}>
+          <Fault fault={fault} />
+          {places.length > 1 ? (
+            <RadioGroup
+              label={text.places}
+              options={places.map((place) => ({
+                id: place.handle,
+                label: place.about,
+              }))}
+              choice={plan ?? null}
+              onChoose={setPicked}
+              disabled={submitting}
+              look={{
+                slot: "publish-places",
+                group: styles.places,
+                option: styles.option,
+              }}
+            >
+              {(option) => <Place about={option.label} />}
+            </RadioGroup>
+          ) : (
+            places.map((place) => (
+              <Place key={place.handle} about={place.about} />
+            ))
+          )}
+        </div>
       </ScreenCard>
     );
   }
   const { where } = data;
+  const held = where.release !== undefined || where.holding !== undefined;
   if (data.is === "taking-down")
     return (
-      <ScreenCard title={text.title["taking-down"]}>
-        <Lines where={where} />
+      <ScreenCard
+        title={text.title["taking-down"]}
+        actions={
+          <ScreenActions>
+            {still(text.takeDown.ask, "outline", styles.takeDown)}
+          </ScreenActions>
+        }
+      >
+        <div className={styles.stack}>
+          <Lines where={where} live={false} />
+        </div>
       </ScreenCard>
     );
   if (sure)
@@ -218,52 +284,60 @@ export function Published({
       />
     );
   const { keep } = where;
+  const failed = data.is === "failed";
+  const again = failed ? text.again : text.publishChanges;
+  const republish = press(again, "publish", { plan: where.plan }, "primary");
+  const offered =
+    where.release?.replaceable === false ? (
+      <Tooltip label={text.newAddress}>{republish}</Tooltip>
+    ) : (
+      republish
+    );
   return (
     <ScreenCard
-      title={text.title[data.is]}
+      title={
+        data.is === "failed" ? text.failed[data.doing] : text.title[data.is]
+      }
       actions={
         <ScreenActions>
-          {where.plan === undefined || data.is === "published"
-            ? null
-            : press(
-                data.is === "failed" ? text.again : text.publishChanges,
-                "publish",
-                { plan: where.plan },
-                "primary",
-              )}
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            disabled={submitting}
-            onClick={() => setSure(true)}
-          >
-            {text.takeDown.ask}
-          </Button>
-          {press(text.gone, "gone")}
+          {where.plan === undefined || data.is === "published" ? null : offered}
+          {held && (failed || keep?.passed === true)
+            ? press(text.gone, "gone", {}, "link")
+            : null}
+          {held ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className={styles.takeDown}
+              disabled={submitting}
+              onClick={() => setSure(true)}
+            >
+              {text.takeDown.ask}
+            </Button>
+          ) : null}
         </ScreenActions>
       }
     >
-      <Fault fault={fault} />
-      {data.is === "failed" ? (
-        <p role="alert">{data.why ?? text.failed[data.doing]}</p>
-      ) : null}
-      {data.is === "changes" ? <p>{text.changes}</p> : null}
-      <Lines where={where} />
-      {keep === undefined ? null : (
-        <span>
-          <Button
-            type="button"
-            size="sm"
-            onClick={() =>
-              window.open(keep.link, "_blank", "noopener,noreferrer")
-            }
-          >
-            {text.keep.open}
-          </Button>{" "}
-          {press(text.keep.kept, "kept")}
-        </span>
-      )}
+      <div className={styles.stack}>
+        <Fault fault={fault} />
+        {data.is === "failed" && data.why !== undefined ? (
+          <p role="alert">{data.why}</p>
+        ) : null}
+        <Lines where={where} live />
+        {keep?.passed === true ? (
+          <span className={styles.quiet}>{text.keep.passed(keep.place)}</span>
+        ) : null}
+        {keep?.passed === false ? (
+          <span className={styles.keep}>
+            <a href={keep.link} target="_blank" rel="noreferrer">
+              {text.keep.open(keep.place)}
+            </a>
+            <span className={styles.quiet}>{text.keep.until(keep.until)}</span>
+            {press(text.keep.kept, "kept", {}, "link")}
+          </span>
+        ) : null}
+      </div>
     </ScreenCard>
   );
 }

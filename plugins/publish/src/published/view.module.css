@@ -1,15 +1,72 @@
-.lines {
+/* One rhythm for everything in a card's body, so no line sits on the next. */
+.stack {
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
   gap: var(--space-2);
 }
 
 .address {
   overflow-wrap: anywhere;
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--foreground);
+}
+
+a.address {
+  color: var(--primary-emphasis);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, currentColor 35%, transparent);
+  text-underline-offset: 4px;
+}
+
+a.address:hover {
+  text-decoration-color: currentColor;
+}
+
+.quiet {
+  color: var(--muted-foreground);
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: var(--space-2);
+  color: var(--muted-foreground);
+}
+
+.meta > * + *::before {
+  content: "·";
+  margin-inline-end: var(--space-2);
+}
+
+.keep {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: var(--space-2);
+}
+
+.keep a {
+  color: var(--primary-emphasis);
+  text-underline-offset: 4px;
+}
+
+/* Take it down keeps the far end of the row in every state, away from where its confirmation's
+   buttons appear. */
+.takeDown {
+  margin-inline-start: auto;
+}
+
+.places {
+  display: flex;
+  flex-direction: column;
+  align-self: stretch;
+  gap: var(--space-2);
 }
 
 /* The whole row picks the place, as the DigitalOcean size picker does. */
-.place {
+.option {
   padding: var(--space-3);
   border: 1px solid var(--border);
   border-radius: var(--radius-control);
@@ -18,11 +75,30 @@
   text-align: start;
 }
 
-.place:hover:not(:disabled) {
+/* The card body's scroller leaves 3px for a focus ring; the global offset would clip it. */
+.option:focus-visible {
+  outline-offset: 1px;
+}
+
+.option:hover:not(:disabled) {
   background: var(--muted);
 }
 
-.place[aria-checked="true"] {
+.option[aria-checked="true"] {
   border-color: var(--foreground);
   background: var(--muted);
+}
+
+.place {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.placeName {
+  font-weight: 500;
+}
+
+.place .quiet {
+  font-size: 0.8125rem;
 }

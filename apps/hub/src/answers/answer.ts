@@ -123,8 +123,8 @@ export function createAnswer({
               ([name, value]) => !isDeepStrictEqual(held[name], value),
             ),
           ),
-          service,
-          values,
+          CATALOG.values,
+          { artifacts: service, values },
           nativeFetch,
         );
         step = "recording approvals";

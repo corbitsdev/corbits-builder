@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import { type } from "arktype";
 import type { Context, Hono } from "hono";
 import { describeRoute, resolver } from "hono-openapi";
@@ -37,13 +38,24 @@ import {
   type createArtifactService,
 } from "../artifacts/service.ts";
 import { body, security } from "../http/route-parts.ts";
-import { catalogOf } from "../plugins/catalog.ts";
-import { projectRead, shownScreens } from "../plugins/screens.ts";
-import { saveValues } from "../values/save.ts";
+import type { Actor } from "../lib/actor.ts";
+import { CATALOG, catalogOf, projectCatalog } from "../plugins/catalog.ts";
+import { projectRead, runTask, shownScreens } from "../plugins/screens.ts";
+import {
+  readProjectValues,
+  type ProjectState,
+} from "../values/project-values.ts";
 import type { createValueService } from "../values/service.ts";
 import type { createPlanService } from "./service.ts";
 
 const log = getLogger(["corbits-builder", "hub", "plans"]);
+
+// Where a planned step stands while its work has not begun.
+const NOT_BEGUN: ReadonlySet<string> = new Set([
+  "not_started",
+  "waiting",
+  "needs_you",
+]);
 
 const AskFirst = type({ "+": "reject", askFirst: "boolean" });
 const ActionRun = type({ "+": "reject", "input?": "Record<string, unknown>" });
@@ -66,6 +78,28 @@ function added(
   if (ready === undefined || !isReadyPlan(ready))
     throw new ProjectError(400, "plan_not_installed", { plan: adds.plan });
   return readyPlanStep(ready);
+}
+
+// The planned work a click would add that has not begun, which the click gives the go-ahead instead
+// of adding it again: the same action with the same input, or a group of the same ready-made plan.
+function notBegun(steps: PlanView["steps"], step: PlanStepWrite) {
+  if ("steps" in step)
+    return steps.find(
+      (each) =>
+        "steps" in each &&
+        step.plan !== undefined &&
+        each.plan === step.plan &&
+        each.steps.every((child) => NOT_BEGUN.has(child.state)),
+    )?.id;
+  return steps
+    .flatMap((each) => ("steps" in each ? each.steps : [each]))
+    .find(
+      (each) =>
+        each.plugin === step.plugin &&
+        each.action === step.action &&
+        NOT_BEGUN.has(each.state) &&
+        isDeepStrictEqual(each.input, step.input),
+    )?.id;
 }
 
 /**
@@ -111,8 +145,20 @@ export function mountPlanRoutes(
   nativeFetch?: (request: Request) => Promise<Response>,
   checks?: Checks,
 ) {
+  // The project's stored state, read once, and the catalog as the project sees it.
+  const projectView = async (current: Actor, projectId: string) => {
+    const state = await artifacts.projectState(current, projectId);
+    const catalog = await projectCatalog(async (names) =>
+      readProjectValues(names, state, CATALOG.values),
+    );
+    return { state, catalog };
+  };
   // The plan with where each step stands, and what that was worked out from.
-  const readPlan = async (c: Context<TenantEnv>, projectId: string) => {
+  const readPlan = async (
+    c: Context<TenantEnv>,
+    projectId: string,
+    catalog: Catalog,
+  ) => {
     const current = actorOf(c);
     const plan = await service.projectPlan(current, projectId);
     if (!checks) throw new ProjectError(503, "plan_state_unavailable");
@@ -124,7 +170,6 @@ export function mountPlanRoutes(
       c.get("principal")?.kind === "user"
         ? (await askedQuestions(c, nativeFetch, projectId)).questions
         : [];
-    const catalog = await catalogOf(artifacts.projectState, current, projectId);
     const stored = installedSteps(catalog, projectId, plan.steps);
     const facts = projectFacts({
       artifacts: listed.artifacts,
@@ -149,15 +194,26 @@ export function mountPlanRoutes(
           : [],
       ),
     });
+    return { plan, facts, steps };
+  };
+  // The project as a screen's state and a task read it.
+  const readProject = async (
+    current: Actor,
+    projectId: string,
+    view: { state: ProjectState; catalog: Catalog },
+    planned: {
+      facts: ReturnType<typeof projectFacts>;
+      steps: PlanView["steps"];
+    },
+  ) => {
     const app = await artifacts.savedApp(current, projectId);
-    const read = projectRead(
-      catalog,
-      await artifacts.projectState(current, projectId),
+    return projectRead(
+      view.catalog,
+      view.state,
       app === undefined ? undefined : savedAppVersion(app),
-      facts,
-      steps,
+      planned.facts,
+      planned.steps,
     );
-    return { plan, catalog, facts, steps, read };
   };
   app.get(
     "/:projectId/plan",
@@ -176,16 +232,20 @@ export function mountPlanRoutes(
       },
     }),
     async (c) => {
-      const { plan, catalog, steps, read } = await readPlan(
-        c,
-        c.req.param("projectId"),
-      );
+      const current = actorOf(c);
+      const projectId = c.req.param("projectId");
+      const view = await projectView(current, projectId);
+      const planned = await readPlan(c, projectId, view.catalog);
       return c.json({
-        steps,
-        updatedAt: plan.updatedAt,
+        steps: planned.steps,
+        updatedAt: planned.plan.updatedAt,
+        // A screen's state may hold what no model may read.
         screens:
           c.get("principal")?.kind === "user"
-            ? shownScreens(catalog, read)
+            ? shownScreens(
+                view.catalog,
+                await readProject(current, projectId, view, planned),
+              )
             : [],
       });
     },
@@ -226,7 +286,9 @@ export function mountPlanRoutes(
       const name = c.req.param("action");
       const input = asked.input ?? {};
       const origin = new URL(c.req.url).origin;
-      const { catalog, facts, read } = await readPlan(c, projectId);
+      await service.authorizeAction(current, projectId);
+      const view = await projectView(current, projectId);
+      const { catalog } = view;
       const named = (each: { plugin: string; action: string }) =>
         each.plugin === plugin && each.action === name;
       const action = catalog.tasks.find(named) ?? catalog.actions.find(named);
@@ -249,7 +311,8 @@ export function mountPlanRoutes(
             },
           ),
         );
-      const missing = unmet(action.builder.requires ?? [], facts);
+      const planned = await readPlan(c, projectId, catalog);
+      const missing = unmet(action.builder.requires ?? [], planned.facts);
       if (missing.length > 0)
         throw new ProjectError(409, "action_requirement_unmet", {
           text: actionUnmetText(requiresText(missing, catalog.factText)),
@@ -263,40 +326,35 @@ export function mountPlanRoutes(
         mailRunAsCaller(c, nativeFetch, current.tenantId, runId, content);
       const ran = { plugin, action: name };
       if (action.kind === "workflow") {
-        await service.addPlanStep(
-          current,
-          projectId,
-          {
-            title: action.description,
-            plugin,
-            action: name,
-            input,
-            askFirst: false,
-          },
-          {
-            note: actionNote(
-              `The person gave the go-ahead for "${action.description}".`,
-              action.name,
-              undefined,
-              action.description,
-            ),
-            mailRun,
-          },
-        );
+        const step = {
+          title: action.description,
+          plugin,
+          action: name,
+          input,
+          askFirst: false,
+        };
+        await service.addPlanStep(current, projectId, step, {
+          waiting: notBegun(planned.steps, step),
+          note: actionNote(
+            `The person gave the go-ahead for "${action.description}".`,
+            action.name,
+            undefined,
+            action.description,
+          ),
+          mailRun,
+        });
         return c.json(ran);
       }
-      const done = action.run(read, checked.input);
-      const unwritten = done.saves.find(({ name }) => !action.writes.has(name));
-      if (unwritten !== undefined)
-        throw new Error(
-          `${action.name} saves ${unwritten.name}, which it does not write`,
-        );
-      await saveValues(
+      const done = await runTask(
         c,
         projectId,
-        Object.fromEntries(done.saves.map(({ name, value }) => [name, value])),
-        artifacts,
-        values,
+        catalog,
+        {
+          task: action,
+          read: await readProject(current, projectId, view, planned),
+          input: checked.input,
+        },
+        { artifacts, values },
         nativeFetch,
       );
       // The checks that follow what was saved stand again before the coordinator reads the one note
@@ -314,6 +372,7 @@ export function mountPlanRoutes(
       const refused = planRefusal(catalog, [step]);
       if (refused) throw new ProjectError(400, "plan_step_refused", refused);
       await service.addPlanStep(current, projectId, step, {
+        waiting: notBegun(planned.steps, step),
         note: actionNote(action.says, action.name, done.note, step.title),
         mailRun,
       });

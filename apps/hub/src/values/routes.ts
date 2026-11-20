@@ -231,8 +231,8 @@ export function mountValueRoutes(
         c,
         projectId,
         input.values,
-        artifacts,
-        service,
+        CATALOG.values,
+        { artifacts, values: service },
         nativeFetch,
       );
       const state = await artifacts.projectState(current, projectId);
@@ -266,7 +266,7 @@ export function mountValueRoutes(
       if (keys === undefined)
         throw new ProjectError(400, "project_value_keys_required");
       const names = keys.split(",");
-      const unknown = undeclaredValue(names);
+      const unknown = undeclaredValue(names, CATALOG.values);
       if (unknown !== undefined)
         throw new ProjectError(400, "unknown_project_value", { key: unknown });
       const current = actorOf(c);

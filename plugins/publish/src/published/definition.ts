@@ -32,8 +32,7 @@ export type Where = {
 /** Where publishing the app stands, as the publish screen draws it. */
 export type Shown =
   | { is: "never" | "taken-down"; offer: Offer }
-  // doing is what the publish is at now, as its running step last said.
-  | { is: "publishing"; doing: string | undefined }
+  | { is: "publishing" }
   // changes: the saved app is newer than the one published.
   | { is: "published" | "changes" | "taking-down"; where: Where }
   | {
@@ -52,34 +51,27 @@ export const text = {
     never: "Not published yet",
     publishing: "Publishing…",
     published: "Published",
-    changes: "You have changes to publish",
-    failed: "Something went wrong",
+    changes: "Published",
     "taking-down": "Taking it down…",
     "taken-down": "Taken down",
   },
   failed: {
-    publish: "The last publish did not finish.",
-    "take-down": "Taking it down did not finish.",
+    publish: "Publish didn't finish",
+    "take-down": "Take-down didn't finish",
   },
-  publishing:
-    "This can take a few minutes. If Builder needs you, it asks in the conversation.",
-  changes: "People still see the version from before your latest changes.",
   places: "Where to publish",
   publish: "Publish",
   publishChanges: "Publish changes",
   again: "Try again",
-  publishedAt: (at: string) => `Published ${new Date(at).toLocaleString()}`,
-  newAddress: "Publishing again gives it a new address until you keep it.",
+  publishedAt: (ago: string) => `Published ${ago}`,
+  newAddress: "Gets a new address until you keep it.",
   hosted: (place: string, costs: string | undefined) =>
-    costs === undefined
-      ? `Hosted on ${place}.`
-      : `Hosted on ${place}, ${costs}.`,
+    costs === undefined ? place : `${place}, ${costs}`,
   keep: {
-    lead: (place: string, until: string) =>
-      `To keep it, make an account at ${place} before ${new Date(until).toLocaleString()}.`,
-    passed: (place: string) =>
-      `The time to keep it at ${place} has passed, so it may be gone.`,
-    open: "Keep it",
+    open: (place: string) => `Keep it at ${place}`,
+    until: (until: string) =>
+      `before ${new Date(until).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}`,
+    passed: (place: string) => `Not kept at ${place} in time.`,
     kept: "I kept it",
   },
   takeDown: {
@@ -88,10 +80,10 @@ export const text = {
     removes: "People can no longer open it.",
     costs: (place: string, costs: string) =>
       `${place} stops charging you ${costs}.`,
-    yes: "Yes, take it down",
+    yes: "Take it down",
     no: "Keep it up",
   },
-  gone: "It's already gone",
+  gone: "Mark as gone",
 };
 
 function offerOf(project: ProjectRead): Offer {
@@ -127,8 +119,7 @@ export const whereOf = (project: ProjectRead): Where => {
 /**
  * Where publishing stands, from what the values record: a take-down the person agreed to, a publish
  * they agreed to that has not gone out, what is published or held and whether the saved app is newer,
- * or a take-down that cleared it. The plan adds that the work behind the first two failed, and that a
- * publish's runs have not ended yet.
+ * or a take-down that cleared it. The plan adds that the work behind the first two failed.
  */
 export function shownOf(project: ProjectRead): Shown | undefined {
   const released = project.value(RELEASE);
@@ -151,23 +142,15 @@ export function shownOf(project: ProjectRead): Shown | undefined {
           where: whereOf(project),
         };
   }
-  // A publish is under way from the person's go-ahead until its release is recorded and its plan's
-  // runs have ended.
+  // The app is live once its release is recorded, even while the publisher's run carries on.
   const given = project.value(GO_AHEAD);
-  const running = project.plan.find(
-    (step) =>
-      given !== undefined &&
-      step.plan === given.plan &&
-      step.state === "running",
-  );
   if (
     given !== undefined &&
-    (goAheadLapsed(given, project.value(PLAN), released) === undefined ||
-      running !== undefined)
+    goAheadLapsed(given, project.value(PLAN), released) === undefined
   ) {
     const publish = failed((step) => step.plan === given.plan);
     return publish === undefined
-      ? { is: "publishing", doing: running?.summary }
+      ? { is: "publishing" }
       : {
           is: "failed",
           doing: "publish",

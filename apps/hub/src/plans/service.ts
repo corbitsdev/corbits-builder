@@ -217,13 +217,20 @@ export function createPlanService(rawDB: DB["db"]) {
       });
     },
 
-    // A person's click adds work to the plan with their go-ahead: a ready-made plan's group, or one
-    // action, in place of an earlier one of the same, and the coordinator is told to carry it out.
+    // Only someone who may change the project runs a plugin's action from its screen.
+    async authorizeAction(actor: Actor, projectId: string) {
+      await authorizeProject(rawDB, actor, projectId, "manage");
+    },
+
+    // A person's click gives the go-ahead to the same work already planned that has not begun, else
+    // adds it: a ready-made plan's group, or one action. It never removes or replaces a step. The
+    // coordinator is told to carry it out.
     async addPlanStep(
       actor: Actor,
       projectId: string,
       step: PlanStepWrite,
       told: {
+        waiting: string | undefined;
         note: string;
         mailRun: (runId: string, content: string) => Promise<void>;
       },
@@ -245,22 +252,22 @@ export function createPlanService(rawDB: DB["db"]) {
         if (each.plan) saved.plan = each.plan;
         return saved;
       };
-      const added = "steps" in step ? group(step) : child(step);
-      const same = (each: StoredPlanStep) =>
-        "steps" in step
-          ? "steps" in each && each.plan === step.plan
-          : !("steps" in each) &&
-            each.plugin === step.plugin &&
-            each.action === step.action;
       const plan = await rawDB.transaction(async (tx) => {
-        const stored = (await lockedPlan(tx, projectId)) ?? {
+        const plan = (await lockedPlan(tx, projectId)) ?? {
           steps: [],
           updatedAt: at,
         };
-        const plan = {
-          steps: [...stored.steps.filter((each) => !same(each)), added],
-          updatedAt: at,
-        };
+        const waiting = plan.steps
+          .flatMap((each): StoredPlanStep[] =>
+            "steps" in each ? [each, ...each.steps] : [each],
+          )
+          .find(({ id }) => id === told.waiting);
+        if (waiting === undefined)
+          plan.steps.push("steps" in step ? group(step) : child(step));
+        else
+          for (const each of "steps" in waiting ? waiting.steps : [waiting])
+            each.goAhead = mark;
+        plan.updatedAt = at;
         await writePlan(tx, projectId, plan);
         return plan;
       });
