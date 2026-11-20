@@ -132,15 +132,14 @@
   transition: scale var(--duration-micro) var(--ease-out);
 }
 
-.box [data-slot="composer-actions"] [data-slot="button"][class~="bg-primary"] {
+/* Every main action in the box moves the work forward, Enable AI included, so none is orange. */
+.box [data-slot="button"][class~="bg-primary"] {
   background: var(--wb-proceed);
   color: var(--wb-proceed-foreground);
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .box
-    [data-slot="composer-actions"]
-    [data-slot="button"][class~="bg-primary"]:hover {
+  .box [data-slot="button"][class~="bg-primary"]:hover {
     background: color-mix(
       in oklab,
       var(--wb-proceed) 85%,

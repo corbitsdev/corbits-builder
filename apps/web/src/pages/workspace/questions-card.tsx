@@ -458,6 +458,26 @@ function Choices({
       <div className={styles.choices} data-kind={multi ? "multi" : "single"}>
         {question.options.map((option, index) => {
           const checked = chosen.includes(option.label);
+          // In the prompt box a pick-any row is the same rail row as a pick-one, its native checkbox
+          // kept for keys and screen readers.
+          if (multi && boxed)
+            return (
+              <label
+                key={option.label}
+                className={styles.choice}
+                data-checked={checked ? "" : undefined}
+              >
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  aria-keyshortcuts={String(index + 1)}
+                  onChange={() => onPick(index)}
+                  // Safari leaves focus where it was on a click; the card's keys need it here.
+                  onClick={(event) => event.currentTarget.focus()}
+                />
+                <OptionText {...option} boxed={boxed} />
+              </label>
+            );
           if (multi)
             return (
               <label

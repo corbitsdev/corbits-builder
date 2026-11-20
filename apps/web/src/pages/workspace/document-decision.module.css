@@ -7,6 +7,16 @@
   background: var(--wb-background);
 }
 
+/* Yes moves the work on, so it is the proceed green, never the library's orange. */
+.decision [data-slot="tool-approval-card"] [class~="bg-primary"] {
+  background: var(--wb-proceed);
+  color: var(--wb-proceed-foreground);
+}
+
+.decision [data-slot="tool-approval-card"] [class~="bg-primary"]:hover {
+  background: color-mix(in oklab, var(--wb-proceed) 85%, var(--wb-foreground));
+}
+
 .decision [data-slot="tool-approval-card"] > header > svg {
   color: var(--wb-muted-foreground);
 }

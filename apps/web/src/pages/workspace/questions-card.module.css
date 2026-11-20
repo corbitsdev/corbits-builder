@@ -233,7 +233,7 @@
 /* The hidden radio and the borderless own-words field show focus on their row; the library's
    checkbox draws its own ring. */
 .choice:has(input:not([type="checkbox"]):focus-visible) {
-  outline: 2px solid var(--wb-ring);
+  outline: 2px solid var(--wb-action);
   outline-offset: 1px;
 }
 
@@ -476,7 +476,15 @@
   font-weight: 500;
 }
 
-[data-place="box"] .choice:has(input:not([type="checkbox"]):focus-visible) {
+[data-place="box"] .choice input[type="checkbox"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+[data-place="box"] .choice:has(input:focus-visible) {
   outline: 2px solid var(--wb-action);
   outline-offset: -2px;
 }
