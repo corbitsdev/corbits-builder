@@ -5,7 +5,7 @@
  * for HTML and JSON.
  */
 import { wording } from "../../config.ts";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { CsvTable, ShimmerText } from "@corbits/react-ui";
 import { DocumentView } from "@corbits-builder/plugin-ui/markdown";
 import { APPROVAL_PACKAGE_MEDIA_TYPE } from "./approval-package.ts";
@@ -14,15 +14,20 @@ import { DESIGN_MEDIA_TYPE, parseBundle } from "./design-bundle.ts";
 import { DesignPreviewView, type DesignPart } from "./design-preview.view.tsx";
 import { ComparisonView } from "./comparison-view.tsx";
 import { DevicePreview, type PreviewDevice } from "./device-preview.tsx";
-import { predecessorOf, type RetainedVersion } from "./document-versions.ts";
+import type { RetainedVersion } from "./document-versions.ts";
 import { PassageQuotes, type PassageQuote } from "./passage-note.tsx";
 import { versionGroup } from "./version-menu.tsx";
+import { useVersionReading } from "./version-reading.ts";
+import { useApproveGroup } from "./approve-group.ts";
+import { VersionNotes } from "./version-notes.tsx";
 import { PaneBar } from "./pane-bar.tsx";
 import {
   csvFile,
+  documentFile,
   fileStem,
   markdownFile,
   type PaneFile,
+  shownFile,
   useFileGroup,
   ZIP_TYPE,
   zipFile,
@@ -196,22 +201,6 @@ export function DeliverableBody({
   );
 }
 
-const shownFile = (file: File, download: string, share: string): PaneFile => ({
-  type: file.type,
-  download,
-  share,
-  key: file.name,
-  prepare: "shown",
-  build: () => Promise.resolve({ file }),
-});
-
-const documentFile = (file: File) =>
-  shownFile(
-    file,
-    wording.paneFile.downloadDocument,
-    wording.paneFile.shareDocument,
-  );
-
 function ReadyDocument({
   document,
   designPart,
@@ -243,107 +232,36 @@ function ReadyDocument({
   requestedVersion?: { version: number; seq: number } | undefined;
   onOpenSource?: ((kind: string, version: number) => void) | undefined;
 }) {
-  const [viewing, setViewing] = useState(document.version);
-  const [cache, setCache] = useState<Record<number, ReadVersion>>({});
-  const [baseline, setBaseline] = useState<number | null>(null);
-  const [pendingVersion, setPendingVersion] = useState<number | null>(null);
-  const [readError, setReadError] = useState<string | null>(null);
+  const {
+    viewing,
+    shown,
+    afterText,
+    beforeText,
+    compareWith,
+    predecessor,
+    pendingVersion,
+    readError,
+    fetchVersion,
+    selectVersion,
+    comparePrevious,
+    stopComparing,
+  } = useVersionReading({
+    document,
+    changesOpen,
+    onToggleChanges,
+    onReadVersion,
+    onViewVersion,
+    requestedVersion,
+  });
   const [device, setDevice] = useState<PreviewDevice>("desktop");
   const [shareOpen, setShareOpen] = useState(false);
-  const [approving, setApproving] = useState(false);
-  const readRef = useRef(onReadVersion);
-  readRef.current = onReadVersion;
-
-  const readFor = (version: number): ReadVersion | null => {
-    if (cache[version] !== undefined) return cache[version] ?? null;
-    if (version === document.version) return document;
-    if (document.before?.version === version) return document.before;
-    return null;
-  };
-  const textFor = (version: number): string | null =>
-    readFor(version)?.content ?? null;
-
-  const predecessor = predecessorOf(
-    document.versions,
-    viewing,
-    document.version,
-    document.before?.version ?? null,
-  );
-  const compareWith = changesOpen ? (baseline ?? predecessor) : null;
-  const afterText = textFor(viewing);
-  const beforeText = compareWith === null ? null : textFor(compareWith);
   const viewed = document.versions.find((item) => item.version === viewing);
   const mediaType = viewed?.mediaType ?? document.mediaType;
   const title = viewed?.title ?? document.title;
   const kind = mediaKind(mediaType, title);
-  const shown = readFor(viewing);
   const approaches = shown?.approaches;
   const chooseApproach =
     viewing === document.version ? approachChoice?.choose : undefined;
-
-  const remember = (version: number, read: ReadVersion) => {
-    setCache((current) => ({ ...current, [version]: read }));
-  };
-
-  const fetchVersion = async (version: number): Promise<string> => {
-    const known = textFor(version);
-    if (known !== null) return known;
-    const read = readRef.current;
-    if (read === undefined)
-      throw new Error("This version is listed, but the room cannot read it.");
-    const loaded = await read(version);
-    remember(version, loaded);
-    return loaded.content;
-  };
-
-  // Reads a version the room has not loaded, then acts on it; a failed read is the block's error line.
-  const withVersion = async (version: number, use: () => void) => {
-    setPendingVersion(version);
-    setReadError(null);
-    try {
-      await fetchVersion(version);
-      use();
-    } catch (cause) {
-      setReadError(cause instanceof Error ? cause.message : String(cause));
-    } finally {
-      setPendingVersion(null);
-    }
-  };
-
-  const selectVersion = (version: number) => {
-    if (version === viewing) return;
-    onViewVersion?.();
-    setReadError(null);
-    if (textFor(version) !== null) {
-      setViewing(version);
-      return;
-    }
-    void withVersion(version, () => setViewing(version));
-  };
-
-  const appliedRequestSeq = useRef<number | null>(null);
-  useEffect(() => {
-    if (
-      requestedVersion !== undefined &&
-      requestedVersion.seq !== appliedRequestSeq.current
-    ) {
-      appliedRequestSeq.current = requestedVersion.seq;
-      selectVersion(requestedVersion.version);
-    }
-  }, [requestedVersion]);
-
-  const comparePrevious = () => {
-    if (predecessor === null) return;
-    void withVersion(predecessor, () => {
-      setBaseline(predecessor);
-      if (!changesOpen) onToggleChanges();
-    });
-  };
-
-  const stopComparing = () => {
-    setBaseline(null);
-    if (changesOpen) onToggleChanges();
-  };
 
   const lifted =
     kind === "prose"
@@ -413,43 +331,9 @@ function ReadyDocument({
           },
         ]
       : [];
-  // The version on show once approved, else Approve while it is the newest; an older version read
-  // from the menu is neither, since only the newest can be approved.
-  const approveVersion = async (
-    approve: DocumentApprovalControl["approve"],
-  ) => {
-    setApproving(true);
-    try {
-      await approve(viewing);
-    } finally {
-      setApproving(false);
-    }
-  };
-  const approveGroup = () => {
-    if (approval === undefined) return [];
-    const words = wording.documentApproval;
-    if (approval.approvedVersion === viewing)
-      return [
-        {
-          id: "approved",
-          label: words.approvedLabel(viewing, approval.approvedAt),
-          text: words.approved(viewing),
-          note: true,
-        },
-      ];
-    if (viewing !== document.version) return [];
-    return [
-      {
-        id: "approve",
-        label: words.approveLabel(viewing),
-        text: words.approve(viewing),
-        disabled: approving,
-        onSelect: () => void approveVersion(approval.approve),
-      },
-    ];
-  };
+  const approveGroup = useApproveGroup(approval, viewing, document.version);
   const barGroups = [
-    approveGroup(),
+    approveGroup,
     approvalGroup,
     versionGroup({
       versions: document.versions,
@@ -538,30 +422,19 @@ function ReadyDocument({
   const add = onAddToPrompt === undefined ? {} : { onAdd: onAddToPrompt };
 
   const notes = (
-    <>
-      {viewing !== document.version ? (
-        <InlineNote role="status" pill={fill}>
-          Showing v{String(viewing)}. The plan names v{String(document.version)}
-          .
-        </InlineNote>
-      ) : null}
-      {pendingVersion !== null ? (
-        <InlineNote role="status" pill={fill}>
-          Reading v{String(pendingVersion)}…
-        </InlineNote>
-      ) : null}
-      {readError !== null ? <Fault>{readError}</Fault> : null}
-      {document.historyError !== undefined ? (
-        <InlineNote role="status" pill={fill}>
-          History unavailable: {document.historyError}
-        </InlineNote>
-      ) : null}
-      {changesOpen && compareWith !== null && beforeText === null ? (
-        <InlineNote role="status" pill={fill}>
-          Reading v{String(compareWith)} for comparison…
-        </InlineNote>
-      ) : null}
-    </>
+    <VersionNotes
+      viewing={viewing}
+      newest={document.version}
+      reading={pendingVersion}
+      readError={readError}
+      historyError={document.historyError}
+      readingForComparison={
+        changesOpen && compareWith !== null && beforeText === null
+          ? compareWith
+          : null
+      }
+      pill={fill}
+    />
   );
 
   const renderDocumentHeader = () => {
