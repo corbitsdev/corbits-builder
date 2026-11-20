@@ -19,8 +19,7 @@ import liveApp from "./live-app.stories.tsx";
 import { LiveAppView } from "./live-app.view.tsx";
 import { TweakPanelView } from "./mockup-tweaks.view.tsx";
 import { sampleDesign, sampleDraft } from "./sample-design.ts";
-import { WithPictures as manual } from "./user-manual.stories.tsx";
-import writtenDocument from "./written-document.stories.tsx";
+import writtenDocument, { SAMPLE_MANUAL } from "./written-document.stories.tsx";
 import { WrittenDocumentView } from "./written-document.view.tsx";
 
 const brief: PaneDocument = {
@@ -206,7 +205,7 @@ export const Concepts: Story = {
 /** Once a build plan is filed, the app it builds and its manual sit beside the plan. */
 export const AppAndManual: Story = {
   args: {
-    ...manual.args,
+    manual: SAMPLE_MANUAL,
     documents: [brief, plan],
     liveApp: <LiveAppView {...liveApp.args} />,
   },

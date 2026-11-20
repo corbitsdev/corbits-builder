@@ -27,7 +27,6 @@ import {
   conceptTab,
   type DesignConcept,
 } from "./design-concept.ts";
-import { UserManualView } from "./user-manual.view.tsx";
 import type { UserManual } from "@corbits-builder/schemas/artifact";
 import type { PreviewDevice } from "./device-preview.tsx";
 import type { PassageQuote } from "./passage-note.tsx";
@@ -39,6 +38,11 @@ import { printDocument } from "./print-document.ts";
 import { DRAFT_TAB, LIVE_TAB, MANUAL_TAB, MOCKUP_TAB } from "./tab-follow.ts";
 import type { ApproachChoice } from "./approach-choice.ts";
 import type { PluginTab } from "./plugin-screens.tsx";
+import { splitLeadingHeading } from "./reading-selection.ts";
+import {
+  WrittenDocumentView,
+  type WrittenDocumentViewProps,
+} from "./written-document.view.tsx";
 
 /** A filed document as the pane shows it. */
 export type PaneDocument = {
@@ -149,6 +153,24 @@ export function availableTab(
 const liveIds = panelTabIds(TAB_PREFIX, LIVE_TAB);
 // A pane whose page fills it edge to edge: the app, a mockup, a spreadsheet or the design draft.
 const FILL_PANE = styles.fill;
+
+/** The app's manual as a written page: no versions to pick, its pictures where it places them. */
+function manualPage(
+  project: string,
+  manual: UserManual,
+): WrittenDocumentViewProps {
+  return {
+    project,
+    title: wording.documentTab["user_manual"] ?? "",
+    meta: wording.documentViewer.asBuilt,
+    groups: [],
+    body: {
+      kind: "text",
+      source: splitLeadingHeading(manual.markdown).body,
+      images: new Map(Object.entries(manual.pictures)),
+    },
+  };
+}
 
 // Each document's panes: one per document, two for the design.
 function documentViews(
@@ -513,8 +535,12 @@ export function ArtifactPane({
             );
           })}
           {manual !== null ? (
-            <PanelPane value={MANUAL_TAB} id={manualIds.pane}>
-              <UserManualView manual={manual} />
+            <PanelPane
+              value={MANUAL_TAB}
+              className={FILL_PANE}
+              id={manualIds.pane}
+            >
+              <WrittenDocumentView {...manualPage(projectTitle, manual)} />
             </PanelPane>
           ) : null}
           {draftShown ? (
