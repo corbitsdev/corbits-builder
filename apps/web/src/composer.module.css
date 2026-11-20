@@ -53,6 +53,7 @@
   min-height: 0;
   max-height: 50vh;
   overflow: hidden auto;
+  border-bottom: 1px solid var(--wb-border);
   border-radius: calc(var(--radius-xl) - 1px) calc(var(--radius-xl) - 1px) 0 0;
 }
 
@@ -63,6 +64,11 @@
   border: 0;
   border-radius: 0;
   background: none;
+}
+
+/* The question's rail runs on into the typing row, so no rule parts them. */
+.panel:has([data-place="box"]) {
+  border-bottom: 0;
 }
 
 /* A card that hands its buttons to the typing row leaves its own row empty behind it. */
