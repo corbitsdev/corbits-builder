@@ -203,6 +203,14 @@ export const ShownScreen = type({
   "status?": ScreenStatus,
 });
 export type ShownScreen = typeof ShownScreen.infer;
+// What the person reads before agreeing to an action that removes what a plan made: what goes, and
+// whether what people entered in it is destroyed with it or kept.
+export const Removes = type({
+  "+": "reject",
+  what: "string > 0",
+  entered: "string > 0",
+});
+export type Removes = typeof Removes.infer;
 // An installed ready-made plan as a screen reads it, in its manifest's words.
 export const ReadyPlanOffer = type({
   "+": "reject",
@@ -214,6 +222,16 @@ export const ReadyPlanOffer = type({
   plugins: "string[]",
   // The fact that ends it, when it names one.
   "ends?": "string > 0",
+  // What the person reads before it first does its work for the project, when it says.
+  "firstRun?": "string > 0",
+  // The action that takes down what it published, when it declares one, with what that action's
+  // definition tells the person it removes.
+  "takeDown?": {
+    "+": "reject",
+    plugin: "string > 0",
+    action: "string > 0",
+    "removes?": Removes,
+  },
 });
 export type ReadyPlanOffer = typeof ReadyPlanOffer.infer;
 // What the hub prepared for the screen a question opened, as its view draws it.

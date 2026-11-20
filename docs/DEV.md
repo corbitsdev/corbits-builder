@@ -9,21 +9,22 @@ How a request becomes work is in
 
 ## Architecture in brief
 
-| Path                    | What it is                                                                                                                                                                                                                                                                                     |
-| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `vendor/interchange`    | The parts of [Interchange](https://github.com/faremeter/interchange) Builder runs, at the commit in `vendor/VENDORED_REVISION`, plus local patches recorded in `vendor/interchange.manifest.json`. It owns the agent loop, mail, spawning, approvals, credentials, sidecars and run lifecycle. |
-| `apps/hub`              | The server: a Postgres control plane, tenancy and sign-in, documents, the coordinator's tools, the plan, project values, checks and the glue that starts each run. It runs Interchange in-process.                                                                                             |
-| `packages/client`       | A typed client for the hub's API (`@corbits-builder/client`). It never touches the database or Interchange internals.                                                                                                                                                                          |
-| `apps/web`              | The UI: Vite and React over that client, with its own small router in `src/routes.ts`. It compiles every plugin's screen views in when it is built.                                                                                                                                            |
-| `workflows/coordinator` | The coordinator's agent, prompt and workflow; the hub supplies its tools.                                                                                                                                                                                                                      |
-| `plugins/*`             | One folder per plugin: a specialist with its actions, agents, skills and screens, a ready-made plan, or a skill pack.                                                                                                                                                                          |
-| `packages/plugin`       | The plugin contract (`@corbits-builder/plugin`): the `builder` block's types, `defineWorkflow`, `defineScreen`, `defineCheck`, `defineStarter` and the ready-made checks.                                                                                                                      |
-| `packages/plugin-host`  | Loads, searches, checks and starts plugins for the hub; the coordinator's tools' logic and how a plan step's state is worked out.                                                                                                                                                              |
-| `packages/plugin-ui`    | What a screen's view draws with: the view's props, the card, the actions row, the document block, the comparison, steps and markdown.                                                                                                                                                          |
-| `packages/app-checks`   | The check scripts a coding or design workspace runs, which the coder and the designer ship.                                                                                                                                                                                                    |
-| `packages/schemas`      | Types and schemas shared by the hub, the client and the plugins.                                                                                                                                                                                                                               |
-| `scripts/`              | Dev and verification scripts: pin and vendor checks, the commit check, the Google sign-in emulator, React UI API generation and the repository import (`bun run import:repo`, which writes a directory as a project file the import reads).                                                    |
-| `deploy/`               | The Dockerfile and Compose files ([SELF_HOST.md](https://github.com/corbitsdev/corbits-builder/blob/main/docs/SELF_HOST.md)).                                                                                                                                                                  |
+| Path                        | What it is                                                                                                                                                                                                                                                                                     |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `vendor/interchange`        | The parts of [Interchange](https://github.com/faremeter/interchange) Builder runs, at the commit in `vendor/VENDORED_REVISION`, plus local patches recorded in `vendor/interchange.manifest.json`. It owns the agent loop, mail, spawning, approvals, credentials, sidecars and run lifecycle. |
+| `apps/hub`                  | The server: a Postgres control plane, tenancy and sign-in, documents, the coordinator's tools, the plan, project values, checks and the glue that starts each run. It runs Interchange in-process.                                                                                             |
+| `packages/client`           | A typed client for the hub's API (`@corbits-builder/client`). It never touches the database or Interchange internals.                                                                                                                                                                          |
+| `apps/web`                  | The UI: Vite and React over that client, with its own small router in `src/routes.ts`. It compiles every plugin's screen views in when it is built.                                                                                                                                            |
+| `workflows/coordinator`     | The coordinator's agent, prompt and workflow; the hub supplies its tools.                                                                                                                                                                                                                      |
+| `plugins/*`                 | One folder per plugin: a specialist with its actions, agents, skills and screens, a ready-made plan, or a skill pack.                                                                                                                                                                          |
+| `packages/plugin`           | The plugin contract (`@corbits-builder/plugin`): the `builder` block's types, `defineWorkflow`, `defineScreen`, `defineCheck`, `defineStarter` and the ready-made checks.                                                                                                                      |
+| `packages/plugin-host`      | Loads, searches, checks and starts plugins for the hub; the coordinator's tools' logic and how a plan step's state is worked out.                                                                                                                                                              |
+| `packages/plugin-ui`        | What a screen's view draws with: the view's props, the card, the actions row, the document block, the comparison, steps and markdown.                                                                                                                                                          |
+| `packages/app-checks`       | The check scripts a coding or design workspace runs, which the coder and the designer ship.                                                                                                                                                                                                    |
+| `packages/publish-contract` | The publish contract every target keeps: the values a release, a holding and a take-down are recorded under, and the checks and plan steps every target shares.                                                                                                                                |
+| `packages/schemas`          | Types and schemas shared by the hub, the client and the plugins.                                                                                                                                                                                                                               |
+| `scripts/`                  | Dev and verification scripts: pin and vendor checks, the commit check, the Google sign-in emulator, React UI API generation and the repository import (`bun run import:repo`, which writes a directory as a project file the import reads).                                                    |
+| `deploy/`                   | The Dockerfile and Compose files ([SELF_HOST.md](https://github.com/corbitsdev/corbits-builder/blob/main/docs/SELF_HOST.md)).                                                                                                                                                                  |
 
 Each role runs on the model setting its plugin declares, and the person's
 profile maps that setting's tier to a model, so any connected provider can run
@@ -60,7 +61,7 @@ A plugin imports the plugin API (`@corbits-builder/plugin`, which holds
 `defineWorkflow`, `defineScreen`, `defineCheck` and `defineStarter`), the plugin
 UI kit (`@corbits-builder/plugin-ui`, which holds what its screens draw with),
 the shared schemas (`@corbits-builder/schemas`) and shared packages such as
-`@corbits-builder/app-checks`. It never imports the hub, the web app, the plugin
+`@corbits-builder/app-checks` and `@corbits-builder/publish-contract`. It never imports the hub, the web app, the plugin
 host or another plugin, and only the hub imports the plugin host. `bun run
 boundaries` checks this on every pull request. The reason is that a plugin can
 then be added, renamed or removed without touching anything else.
@@ -303,7 +304,9 @@ value: it re-runs whenever a value it read is saved or cleared, never for a
 change to the app or a document alone, and the re-run only asks whether the
 fact holds now. A pass is recorded and the coordinator is told; a failure
 leaves no record and no note, because the stale record already says the fact
-does not hold. A run
+does not hold. So a publish target's `live` check passes on its own once its
+tool records a release, and a release to another target, a take-down that
+clears it, or an edit to the app drops its fact without a failed step. A run
 that the person or the coordinator asks for records its failure as always, and
 so does a `"change"` check that fails after a change, since that failure is
 news. Only a check with a record re-runs: one never run has read nothing.
@@ -371,7 +374,9 @@ export default defineScreen({
 
 `prefers` sets a preference for the project from the answer, and the hub does
 it when the answer arrives. A screen may also declare `writes`, the project
-values its answer saves; `approves`, the documents it approves at the version
+values its answer saves, each a function of the answer that returns the value
+(any JSON for a `json` value, text for a `text` one, `null` to clear it, or
+`undefined` to leave it as it is); `approves`, the documents it approves at the version
 shown; `validate`, the fields of a well-typed input it still cannot show;
 `data`, the schema of a `data.json` it ships; `decision`, when its answer is
 to accept or send back; and `render: "main-page"` to open over the whole room.
@@ -570,6 +575,104 @@ build's output, only a fixed code when it fails. The build gives up after
 five minutes. No two plugins may declare a
 starter of the same name.
 
+### A target to publish to
+
+A target the app can be published to is a specialist in the `publish` group with
+a ready-made plan that ends on `published:<handle>`, as `plugins/server` with
+`plugins/server-publish` and `plugins/cloudflare` with
+`plugins/cloudflare-publish` are.
+
+Its agent's tools are `fixedTools` from `@corbits-builder/plugin/tools`. Each
+takes no input and answers `{ ok: true, ... }` or one of the plugin's fixed
+codes with a few typed fields, never the target's own output; anything a tool
+throws becomes `builder_unavailable`. A tool reaches the hub through `runHub`
+from `@corbits-builder/plugin/run-hub`, with the run's own credential, for the
+values its action reads, `record` for the values it writes (null clears one),
+the saved app's source, and its production build. The tool records
+`publish.release`, and `publish.keep` for an app the person must still keep.
+
+A run of an action that lists a credential in `provisions` has the hub make
+that server key, through these `runHub` calls to
+`/api/tenants/:tenantId/projects/:projectId/run-credentials/:name/{key,bind,revoke}`.
+Only a live run of such an action may make them.
+
+- `serverKey(name)` answers `{ publicKey, label, state, address? }`. The first
+  call makes the pair and a label (`builder-` and 12 random letters and digits)
+  to name the server by where it is rented; later calls answer the same.
+  `state` is `issued`, `bound` once the key signed in, or `lost` when the
+  credential was revoked since.
+- `heldServerKey(name)`, a GET of `key`, answers the same without making one,
+  or `undefined` while none was asked for (`server_key_not_issued`).
+- `bindServerKey(name, { host, hostKey })` takes the server's public IP address
+  and the SHA256 fingerprint of the host key it must present. A refusal of
+  `server_unreachable`, `server_refused_key` or `server_host_key_mismatch`
+  may clear once the server is up, so the tool tries again within its own
+  window (`waitingWithin`). The call itself waits up to 45 s, longer than the
+  hub's 20 s sign-in. With `SIDECAR_SSH_ALLOW_PRIVATE_ADDRESSES` on, a
+  private address and a `port` are taken, for a server on this machine.
+- `revokeServerKey(name)` forgets the key the plugin made and revokes the
+  credential it became.
+
+A key or credential of that name that a person or another plugin made is
+refused as `server_key_taken`.
+
+The target's `live` check is one line:
+
+```ts
+export default defineCheck({
+  describe: { summary, when, failed },
+  run: publishedCheck(TARGET, {
+    notPublished: "The app is not published on Cloudflare",
+    earlier: "Cloudflare holds an earlier version of the app",
+  }),
+});
+```
+
+`publishedCheck` compares the recorded release with the saved app's version and
+contacts nothing, so it says what was published, not that the target still
+serves it. Its manifest entry says `"rerun": "value"`, so recording a release
+ends the publish plan.
+
+Taking the app down needs three more pieces:
+
+- A `removable` check, `"rerun": "value"` and `"skip": "never"`, returning
+  `removable:<handle>`, whose run is `removableCheck` from
+  `@corbits-builder/publish-contract`, called with `TARGET` and the two
+  sentences it fails with, `notAsked` and `earlier`. The answer on the
+  `publish take-down` screen is `{ target, release?, holding? }`, with the
+  `at` and the `since` the person was shown, and the check passes only while
+  that answer names this target and the release and holding recorded for it now
+  are the ones shown. `"skip": "never"` keeps the person from skipping it, since a
+  skipped check's fact counts.
+- A `remove` workflow action that `requires: [["removable:<handle>"]]`, reads
+  and writes the values its tools do, and starts its own agent, such as
+  `server-remove`, with its own prompt and a tools module
+  (`src/remove-tools.ts`) that holds only the tools that take the app down and
+  look. Agents of one plugin may share its role, but only a plugin whose
+  starter uses `startAlone` gets one run at a time that way; on the
+  hand-connected server, the release script's lock answers `busy` instead, so
+  two runs never work on the server at once. Its definition gives every input
+  field a default, since a take-down starts on no input, and its
+  `says.removes` holds what the person reads before they agree: `what` goes,
+  and whether what people `entered` in the app is destroyed or kept. Its tool
+  clears `publish.release` only when the release is this target's, and
+  `publish.holding` only once the provider confirms what it held is gone.
+- `"takeDown": { "plugin": "<handle>", "action": "remove" }` in the plan, and
+  a paragraph in its guidance: open `publish take-down` with the plan's
+  handle, then run `<handle> removable`, then start `<handle> remove`.
+
+The person's go-ahead to publish is the publish plugin's, not the target's.
+`publish confirm` saves `publish.go-ahead` (`{ plan, at }`, dated by the hub),
+and `publish agreed`, the publish plugin's own check, makes `agreed:publish` hold from that answer until a release is recorded after it,
+the person chooses another plan, or they agree to a take-down, which clears it.
+An answer's saved values cannot read the saved app's version, so the release
+recorded after the go-ahead is what says the publish it allowed went out. The plan's guidance runs
+`publish agreed` before opening the confirm, and carries on under it through an
+attempt that fails, is blocked or needs another step first; no publish action
+requires it.
+
+The publish agent's own tools never take the app down.
+
 ### A ready-made plan
 
 A ready-made plan is a manifest and a guidance file. Its steps name other
@@ -611,8 +714,22 @@ A step's `requires` is advice, `optional` lets the person decline it, and
 `plugins/build-web-app`) is the one way a step waits for the person; see
 [the plan](https://github.com/corbitsdev/corbits-builder/blob/main/docs/ARCHITECTURE.md#the-plan).
 `ends` names the fact that ends the plan, after which the project stops
-following it. The catalog refuses a step that names an action no installed
-plugin with that handle has, a step whose `requires` names a fact only a
+following it. A plan that publishes may say `takeDown: { "plugin": ...,
+"action": ... }`, the workflow action that takes down what it published. That
+action takes no input of its own, and what the person is told it takes down
+comes from its `definition.ts` (`says.removes`). Such a plan's `description`
+is the one line `publish choose` lists it by (what the person gets, what it
+costs and who bills), and its `firstRun` is what `publish confirm` shows
+before the app first goes out by it: where it goes and the one thing to know
+first, such as an address that is not secure (https) yet. Neither is shown
+again for changes. A plan that publishes names `"steps": "./steps.ts"`, a module
+whose default export is `publishSteps(...)` from `@corbits-builder/publish-contract`,
+so each keeps the order every publish plan shares: the target's ready check,
+the go-ahead on `publish confirm`, any steps that make something, the publish,
+then `live`. The catalog refuses a step that names an
+action no installed plugin with that handle has, a `takeDown` that is not a
+workflow action of every installed plugin with that handle or that does not
+start on no input, a step whose `requires` names a fact only a
 screen's answer makes true, and a step the person may not decline that needs a
 fact only declinable steps in the same plan make. This plan shares its handle
 with `plugins/build-web-app`, which says `"default": true`; a project uses the

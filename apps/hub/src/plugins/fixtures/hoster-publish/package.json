@@ -1,0 +1,44 @@
+{
+  "name": "@corbits-builder/hoster-publish",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "builder": {
+    "handle": "publish-to-hoster",
+    "runs": "plan",
+    "groups": [
+      "hoster"
+    ],
+    "when": "The person wants the app on a machine rented at Hoster.",
+    "unless": "They want something else.",
+    "guidance": "./SKILL.md",
+    "steps": [
+      {
+        "plugin": "hoster",
+        "action": "create",
+        "title": "Rent a machine at Hoster",
+        "requires": [
+          "app_exists"
+        ],
+        "input": {
+          "instruction": "Rent the machine the person chose at Hoster and make its key."
+        }
+      },
+      {
+        "plugin": "hoster",
+        "action": "publish",
+        "title": "Put the app on the machine",
+        "requires": [
+          "app_exists"
+        ],
+        "input": {
+          "instruction": "Put the project's saved app on the machine rented at Hoster."
+        }
+      }
+    ],
+    "takeDown": {
+      "plugin": "hoster",
+      "action": "remove"
+    }
+  }
+}

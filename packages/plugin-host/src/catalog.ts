@@ -49,6 +49,7 @@ import {
   type ModelSetting,
   type OutputBudget,
   type Refused,
+  type Removes,
   type Screen,
   type ScreenStatus,
   type ProjectRead,
@@ -228,6 +229,8 @@ export type WorkflowAction = ActionBase & {
   validate: (input: unknown) => { ok: true; input: unknown } | Refused;
   // What its finished run's report adds about the screens that show the work, or null for none.
   presents: string | null;
+  // What it tells the person it removes, for an action a ready-made plan takes down with.
+  removes: Removes | undefined;
   // The skill packs its specialist's agent is given when this action starts it.
   packs: readonly SkillPack[];
   // The installed workflow it starts: the one its start block names, or its declared agent's.
@@ -1351,6 +1354,7 @@ function installAction(
     ].join("\n"),
     validate: (raw) => validateWorkflowInput(name, workflow, raw),
     presents: presentsOf(name, handle, actions, builder.presents),
+    removes: workflow.describe.says?.removes,
     packs: packs.filter(({ serves }) => serves.includes(name)),
     workflow: started,
     starter,
@@ -1465,7 +1469,9 @@ async function readyPlanPlugin(
 }
 
 // Every action a ready-made plan names is an action of each installed specialist with its handle, so
-// whichever of them a project uses has it. A screen is a step too: asking the person is work.
+// whichever of them a project uses has it. A screen is a step too: asking the person is work. A
+// plan's takeDown action must be work an agent does, not a screen or a check, and it starts with no
+// input, so nothing the coordinator writes can widen what the person agreed to remove.
 function checkCatalog(plugins: readonly Plugin[]) {
   const specialists = plugins.filter(isSpecialist);
   const offered = (handle: string, name: string) => {
@@ -1479,13 +1485,32 @@ function checkCatalog(plugins: readonly Plugin[]) {
       )
     );
   };
-  for (const { builder } of plugins)
-    if (builder.runs === "plan")
-      for (const step of builder.steps)
-        if (!offered(step.plugin, step.action))
-          throw new Error(
-            `${builder.handle} names ${step.plugin} ${step.action}, which is not an installed action of every plugin with that handle`,
-          );
+  for (const { builder } of plugins) {
+    if (builder.runs !== "plan") continue;
+    for (const step of builder.steps)
+      if (!offered(step.plugin, step.action))
+        throw new Error(
+          `${builder.handle} names ${step.plugin} ${step.action}, which is not an installed action of every plugin with that handle`,
+        );
+    const { takeDown } = builder;
+    if (takeDown === undefined) continue;
+    const removing = specialists
+      .filter(({ builder: each }) => each.handle === takeDown.plugin)
+      .map(({ actions }) =>
+        actions
+          .filter(isWorkflowAction)
+          .find(({ action }) => action === takeDown.action),
+      );
+    const named = `${builder.handle} takes down with ${takeDown.plugin} ${takeDown.action}`;
+    if (removing.length === 0 || removing.includes(undefined))
+      throw new Error(
+        `${named}, which is not an installed workflow action of every plugin with that handle`,
+      );
+    if (removing.some((action) => action?.validate({}).ok !== true))
+      throw new Error(
+        `${named}, which does not start on no input: give each of its fields a default`,
+      );
+  }
 }
 
 // A ready-made plan's step asks for the person's go-ahead only through its approval, so what it

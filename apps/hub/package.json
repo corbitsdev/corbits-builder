@@ -27,6 +27,7 @@
     "@corbits-builder/environment": "workspace:*",
     "@corbits-builder/plugin": "workspace:*",
     "@corbits-builder/plugin-host": "workspace:*",
+    "@corbits-builder/publish-contract": "workspace:*",
     "@corbits-builder/schemas": "workspace:*",
     "@corbits/agent-token": "0.2.2",
     "@corbits/artifacts": "0.3.0",

@@ -106,7 +106,19 @@
           "agent": "hoster-release"
         }
       },
+      "removable": {
+        "returns": [
+          "removable:hoster"
+        ],
+        "rerun": "value",
+        "skip": "never"
+      },
       "remove": {
+        "requires": [
+          [
+            "removable:hoster"
+          ]
+        ],
         "returns": [],
         "provisions": [
           "hoster-server"

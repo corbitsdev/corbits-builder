@@ -5,21 +5,40 @@ import {
   isCheckAction,
   isReadyPlan,
   isScreenAction,
+  isWorkflowAction,
   type Catalog,
 } from "./catalog.ts";
 import { gateOf, makersIn, type Run } from "./coordinator.ts";
 import { holds, resolveFacts, unmet } from "./facts.ts";
 import { missingTexts, unfinishedText } from "./text.ts";
 
-/** The ready-made plans a project's catalog installs, in their manifests' words. */
+/**
+ * The ready-made plans a project's catalog installs, in their manifests' words, each take-down with
+ * what its action tells the person it removes.
+ */
 export const readyPlanOffers = (catalog: Catalog): ReadyPlanOffer[] =>
-  catalog.plugins.filter(isReadyPlan).map(({ builder, description }) => ({
-    handle: builder.handle,
-    about: description === "" ? builder.when : description,
-    groups: builder.groups,
-    plugins: [...new Set(builder.steps.map(({ plugin }) => plugin))],
-    ...(builder.ends === undefined ? {} : { ends: builder.ends }),
-  }));
+  catalog.plugins.filter(isReadyPlan).map(({ builder, description }) => {
+    const { takeDown, ends, firstRun } = builder;
+    const removes =
+      takeDown &&
+      catalog.actions
+        .filter(isWorkflowAction)
+        .find(
+          ({ plugin, action }) =>
+            plugin === takeDown.plugin && action === takeDown.action,
+        )?.removes;
+    return {
+      handle: builder.handle,
+      about: description === "" ? builder.when : description,
+      groups: builder.groups,
+      plugins: [...new Set(builder.steps.map(({ plugin }) => plugin))],
+      ...(ends === undefined ? {} : { ends }),
+      ...(firstRun === undefined ? {} : { firstRun }),
+      ...(takeDown === undefined
+        ? {}
+        : { takeDown: removes ? { ...takeDown, removes } : takeDown }),
+    };
+  });
 
 type Mark = { by: string; at: string };
 
