@@ -2,6 +2,7 @@ import { isDeepStrictEqual } from "node:util";
 import { type } from "arktype";
 import {
   credentialProvider,
+  notNeededWhileOf,
   wrongFields,
   Approval,
   type Fact,
@@ -15,6 +16,7 @@ import {
   isScreenAction,
   isSpecialist,
   isWorkflowAction,
+  startsAgent,
   type Action,
   type Catalog,
   type CheckAction,
@@ -890,11 +892,35 @@ export async function executePause(
   }
   const { plugin, action, ready } = call;
   if (!isWorkflowAction(action) || ready.own.length > 0) return undefined;
-  const credentials = Object.entries(plugin.builder.credentials);
+  // Only the credentials the started run binds hold it back, which for an agent are the ones its
+  // tools use. A workflow that is not an agent may bind any of the plugin's credentials.
+  const started = startsAgent(action.builder.start)
+    ? catalog.packages.get(action.workflow)
+    : undefined;
+  const binds =
+    started !== undefined && "agent" in started
+      ? started.agent.credentials
+      : undefined;
+  const credentials = Object.entries(plugin.builder.credentials).filter(
+    ([name]) => binds === undefined || binds.includes(name),
+  );
+  // A credential with notNeededWhile holds nothing back while that value is set, as for a target
+  // that publishes without a key until the person keeps the app.
+  const instead = credentials.flatMap(([, declaration]) => {
+    const notNeededWhile = notNeededWhileOf(declaration);
+    return notNeededWhile === undefined ? [] : [notNeededWhile];
+  });
+  const set = instead.length === 0 ? {} : await project.values(instead);
   const saved = await Promise.all(
-    credentials.map(([name]) =>
-      project.hasCredential(credentialProvider(name)),
-    ),
+    credentials.map(([name, declaration]) => {
+      const notNeededWhile = notNeededWhileOf(declaration);
+      return (
+        (notNeededWhile !== undefined &&
+          set[notNeededWhile] !== undefined &&
+          set[notNeededWhile] !== null) ||
+        project.hasCredential(credentialProvider(name))
+      );
+    }),
   );
   const missing = credentials.find((_, index) => !saved[index]);
   if (missing) {

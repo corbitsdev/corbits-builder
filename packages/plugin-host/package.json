@@ -22,6 +22,7 @@
   "dependencies": {
     "@corbits-builder/plugin": "workspace:*",
     "@corbits-builder/schemas": "workspace:*",
+    "@intx/types": "workspace:*",
     "arktype": "catalog:"
   }
 }

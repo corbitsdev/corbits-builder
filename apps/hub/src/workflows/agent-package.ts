@@ -33,8 +33,13 @@ import { nativePackageName } from "./package-name.ts";
 import { roleInference } from "./role-inference.ts";
 import { savedResultTools } from "./saved-result-tools.ts";
 
-// The host owns reporting unexpected plugin failures and returning their refusals to the agent.
-function hostPluginTool(factory: AnnotatedToolFactory<ToolEnv>) {
+// The host reports unexpected plugin failures and returns their refusals to the agent. It also
+// marks the credentials the plugin can do without as optional, so a run starts without them and the
+// tool's resolve of a missing one rejects instead.
+function hostPluginTool(
+  factory: AnnotatedToolFactory<ToolEnv>,
+  optional: readonly string[],
+) {
   const wrapped = (env: ToolEnv) => {
     const bundle = factory(env);
     const run = bundle.run.bind(bundle);
@@ -47,7 +52,19 @@ function hostPluginTool(factory: AnnotatedToolFactory<ToolEnv>) {
     };
     return bundle;
   };
-  return Object.assign(wrapped, toolFactoryMeta(factory));
+  const meta = toolFactoryMeta(factory);
+  return Object.assign(wrapped, {
+    ...meta,
+    ...(meta.credentials !== undefined
+      ? {
+          credentials: meta.credentials.map((declaration) =>
+            optional.includes(declaration.handle)
+              ? { ...declaration, optional: true as const }
+              : declaration,
+          ),
+        }
+      : {}),
+  });
 }
 
 // The longest writer step in stored runs took 276 s; ten minutes leaves room for a slower model.
@@ -66,7 +83,7 @@ const {
   fileBeforeDone,
   presents,
   done,
-  credentials,
+  optional,
 } = AgentPackage.assert(JSON.parse(inlined));
 const { tools } = role;
 const compacting = compactingDirector(nativePackageName(name));
@@ -137,20 +154,19 @@ const credentialBindings: CredentialBinding[] = [];
 if (process.env.BUILDER_TOOLS !== undefined) {
   // oxlint-disable-next-line eslint/no-restricted-properties
   const brought: AgentTools = (await import(process.env.BUILDER_TOOLS)).default;
-  for (const factory of brought({ role: role.name }).map(hostPluginTool)) {
+  for (const factory of brought({ role: role.name }).map((each) =>
+    hostPluginTool(each, optional),
+  )) {
     factories.push(factory);
     if (factory.credentials === undefined) continue;
     for (const { handle } of factory.credentials) {
       if (handle === HUB_CREDENTIAL_HANDLE) continue;
-      if (!credentials.includes(handle))
-        throw new Error(
-          `plugin_tool_credential_undeclared: ${factory.id} ${handle}`,
-        );
       credentialBindings.push({
         package: factory.id,
         handle,
         provider: credentialProvider(handle),
         locator: "tenant",
+        ...(optional.includes(handle) ? { optional: true as const } : {}),
       });
     }
   }
