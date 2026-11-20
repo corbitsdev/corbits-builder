@@ -153,7 +153,7 @@
 
 /* The prompt box, and what stands in its place, keep the box's measure in the middle of the canvas
    however wide it is. */
-:is(.conversation, .page) > :is([data-slot="composer"], .archived) {
+:is(.conversation, .page) > :is([data-slot="composer"], .archived, .notice) {
   box-sizing: border-box;
   width: 100%;
   max-width: calc(var(--box-measure) + 2 * var(--space-4));
@@ -162,6 +162,11 @@
 
 /* The archived line sits where the composer would, on the same measure and padding. */
 .archived {
+  padding: var(--space-2) var(--space-4) var(--space-4);
+}
+
+/* Why there is no box yet, or none at all: the box's measure, clear of the window's foot. */
+.notice {
   padding: var(--space-2) var(--space-4) var(--space-4);
 }
 
