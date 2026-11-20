@@ -27,6 +27,7 @@ export function buildArtifactsMethods(
   | "exportProjectArchive"
   | "saveDesignTweaks"
   | "projectPlan"
+  | "runPluginAction"
   | "declinePlanStep"
   | "stopRun"
   | "restorePlanStep"
@@ -168,6 +169,13 @@ export function buildArtifactsMethods(
     },
     projectPlan(tenantId, projectId, signal) {
       return request(`${projectPath(tenantId, projectId)}/plan`, signal);
+    },
+    async runPluginAction(tenantId, projectId, run, signal) {
+      await request(
+        `${projectPath(tenantId, projectId)}/plugins/${encodeURIComponent(run.plugin)}/actions/${encodeURIComponent(run.action)}`,
+        signal,
+        { input: run.input },
+      );
     },
     declinePlanStep(tenantId, projectId, stepId, signal) {
       return request(

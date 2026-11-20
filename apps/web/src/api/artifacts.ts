@@ -370,3 +370,16 @@ export async function triageReviewerFeedback(
     input,
   );
 }
+
+export async function runPluginAction(
+  projectId: string,
+  plugin: string,
+  action: string,
+  input: Record<string, unknown>,
+) {
+  await productClient().runPluginAction(await workspaceTenantId(), projectId, {
+    plugin,
+    action,
+    input,
+  });
+}

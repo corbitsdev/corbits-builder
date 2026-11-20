@@ -4,17 +4,21 @@ import {
   CHECK_MS,
   WriterDocumentKind,
 } from "@corbits-builder/schemas/artifact";
+import { ScreenRender } from "@corbits-builder/schemas/project";
 import {
   CheckActionBuilder,
   guidanceText,
   inputText,
   isCheck,
   isScreen,
+  isTask,
   isWorkflow,
   ReadyPlanBuilder,
+  ReadyPlanManifest,
   ScreenActionBuilder,
   SkillsBuilder,
   SpecialistBuilder,
+  TaskActionBuilder,
   declaredRole,
   lookOf,
   validateInput,
@@ -38,6 +42,8 @@ import {
   type OutputBudget,
   type Refused,
   type Screen,
+  type ProjectRead,
+  type Task,
   type DesignBuilder,
   type Shown,
   type ValueDeclaration,
@@ -165,7 +171,7 @@ const Manifest = type({
   name: "string > 0",
   version: "string > 0",
   "description?": "string",
-  builder: SpecialistBuilder.or(ReadyPlanBuilder),
+  builder: SpecialistBuilder.or(ReadyPlanManifest),
 });
 // A skill pack's manifest, told apart from a plugin's by what it runs before either is checked.
 const RunsSkills = type({ builder: { runs: "'skills'" } });
@@ -213,6 +219,8 @@ type KeptCheck = { ok: true; record: unknown } | { ok: false; problem: string };
 export type ScreenAction = ActionBase & {
   kind: "screen";
   builder: ScreenActionBuilder;
+  render: ScreenRender;
+  state?: (project: ProjectRead) => unknown;
   // Why this input cannot be shown, or undefined when it can.
   refusal: (input: unknown, project: ProjectValues) => string | undefined;
   // The person's answer checked against the screen's output, with the project values it saves, the
@@ -243,9 +251,27 @@ export type CheckAction = ActionBase & {
 };
 export type Action = WorkflowAction | ScreenAction | CheckAction;
 
+// Neither the coordinator nor a plan starts a task, so it is kept apart from the actions they can.
+type TaskAction = {
+  kind: "task";
+  plugin: string;
+  action: string;
+  name: string;
+  builder: TaskActionBuilder;
+  definition: Task<unknown>;
+  validate: (input: unknown) => { ok: true; input: unknown } | Refused;
+};
+
+// Never opened as a question, so the coordinator never sees it.
+type ShownAction = ScreenAction & {
+  state: NonNullable<ScreenAction["state"]>;
+};
+
 export type SpecialistPlugin = PluginBase & {
   builder: SpecialistBuilder;
   actions: readonly Action[];
+  tasks: readonly TaskAction[];
+  shown: readonly ShownAction[];
 };
 export type ReadyPlanPlugin = PluginBase & { builder: ReadyPlanBuilder };
 // A skill pack as the host lays it into a specialist's workspace and lists it in the assignment.
@@ -336,6 +362,8 @@ export type Catalog = {
   plugins: readonly Plugin[];
   // The screens an execute call can show.
   screens: readonly ScreenAction[];
+  tasks: readonly TaskAction[];
+  shown: readonly ShownAction[];
   // Every action of every specialist: started, run or opened with execute.
   actions: readonly Action[];
   installed(handle: string): Plugin | undefined;
@@ -368,6 +396,9 @@ export type Catalog = {
   // The catalog as a project with these values sees it; only the selection values are read.
   select(values: Readonly<Record<string, unknown>>): Catalog;
 };
+
+const isShownAction = (action: Action): action is ShownAction =>
+  isScreenAction(action) && action.state !== undefined;
 
 export const isSpecialist = (plugin: Plugin): plugin is SpecialistPlugin =>
   plugin.builder.runs === "specialist";
@@ -441,7 +472,12 @@ export async function manifestFiles(found: Found) {
     };
   const { builder } = manifestOf(found);
   if (builder.runs !== "specialist")
-    return { modules: [], texts: [builder.guidance], folders: [], present: [] };
+    return {
+      modules: typeof builder.steps === "string" ? [builder.steps] : [],
+      texts: [builder.guidance],
+      folders: [],
+      present: [],
+    };
   const files = Object.keys(builder.actions).flatMap((action) => {
     const { definition, view, data } = actionFiles(action);
     return [definition, view, data];
@@ -502,7 +538,12 @@ type Declared =
       builder: WorkflowActionBuilder;
       definition: Workflow<unknown>;
     }
-  | { kind: "check"; builder: CheckActionBuilder; definition: Check<unknown> };
+  | { kind: "check"; builder: CheckActionBuilder; definition: Check<unknown> }
+  | {
+      kind: "task";
+      builder: TaskActionBuilder;
+      definition: Task<unknown>;
+    };
 
 // An action with a view is shown to the person; one with check proofs, or whose definition is a
 // check's, is a check; any other starts work.
@@ -542,6 +583,12 @@ async function declaredAction(
     throw new Error(
       `${name} ships ${files.data}, which only a screen, with a view, reads`,
     );
+  if (isTask(definition)) {
+    const builder = TaskActionBuilder(entry);
+    if (builder instanceof type.errors)
+      throw new Error(`${where} is a task: ${builder.summary}`);
+    return { kind: "task", builder, definition };
+  }
   if ("all" in entry || "any" in entry || isCheck(definition)) {
     const builder = CheckActionBuilder(entry);
     if (builder instanceof type.errors)
@@ -680,10 +727,9 @@ const undeclared = (
 const VALUE_NAME = /^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)+$/;
 
 // Each handle several plugins share, with its default, the one that says so; exactly one must.
-function sharedHandles<Each extends { builder: Plugin["builder"] }>(
-  all: readonly Each[],
-  packageOf: (each: Each) => string,
-) {
+function sharedHandles<
+  Each extends { builder: { handle: string; default?: true } },
+>(all: readonly Each[], packageOf: (each: Each) => string) {
   const byHandle = new Map<string, Each[]>();
   for (const each of all) {
     const { handle } = each.builder;
@@ -760,6 +806,18 @@ function declaredValues(manifests: readonly Manifested[]) {
   for (const { builder, actions } of manifests)
     for (const [action, declared] of actions) {
       if (declared.kind === "check") continue;
+      // A task runs on a person's click, so it saves only its own plugin's values.
+      if (declared.kind === "task") {
+        const foreign = declared.definition.writes.find(
+          (name) =>
+            owners.get(name) !== builder.handle || values.get(name)?.style,
+        );
+        if (foreign !== undefined)
+          throw new Error(
+            `${builder.handle} ${action} writes ${foreign}, which ${builder.handle} does not declare as a project value kept in the project's store`,
+          );
+        continue;
+      }
       const unknown = undeclared(values, declared.builder.reads ?? []);
       if (unknown !== undefined)
         throw new Error(
@@ -861,12 +919,18 @@ function installScreen(
         ? `${name} returns facts, but its screen approves nothing`
         : `${name}'s screen approves, but its manifest returns no facts`,
     );
-  return {
+  const render = ScreenRender(screen.render ?? "inline-chat");
+  if (render instanceof type.errors)
+    throw new Error(`${name}'s definition render ${render.summary}`);
+  if (screen.state !== undefined && typeof screen.state !== "function")
+    throw new Error(`${name}'s definition state must be a function`);
+  const installed: ScreenAction = {
     kind: "screen",
     plugin: handle,
     action,
     name,
     builder,
+    render,
     when: screen.describe.when,
     unless: screen.describe.unless,
     description: screen.describe.summary,
@@ -896,6 +960,27 @@ function installScreen(
       };
     },
     returns: (input) => resolveFacts(returns, input),
+  };
+  if (screen.state) installed.state = screen.state;
+  return installed;
+}
+
+function installTask(
+  handle: string,
+  action: string,
+  { builder, definition: task }: Extract<Declared, { kind: "task" }>,
+  { known }: Pick<Installing, "known">,
+): TaskAction {
+  const name = `${handle} ${action}`;
+  checkFacts(name, (builder.requires ?? []).flat(), known, () => false);
+  return {
+    kind: "task",
+    plugin: handle,
+    action,
+    name,
+    builder,
+    definition: task,
+    validate: (raw) => validateWorkflowInput(name, task, raw),
   };
 }
 
@@ -1021,6 +1106,8 @@ function installAction(
     return installScreen(handle, action, declared, installing);
   if (declared.kind === "check")
     return installCheck(handle, action, declared, installing);
+  if (declared.kind === "task")
+    throw new Error(`${handle} ${action} is a task, installed apart`);
   const { builder, definition: workflow } = declared;
   const { known, factText, packs, starters } = installing;
   const name = `${handle} ${action}`;
@@ -1109,8 +1196,15 @@ function specialistPlugin(
   const { handle } = builder;
   const { description } = about;
   const { packs } = installing;
-  const actions = [...declared].map(([name, each]) =>
-    installAction(builder, declared, name, each, installing),
+  const installed = [...declared].flatMap(([name, each]) =>
+    each.kind === "task"
+      ? []
+      : [installAction(builder, declared, name, each, installing)],
+  );
+  const shown = installed.filter(isShownAction);
+  const actions = installed.filter((action) => !isShownAction(action));
+  const tasks = [...declared].flatMap(([name, each]) =>
+    each.kind === "task" ? [installTask(handle, name, each, installing)] : [],
   );
   const own = packs
     .filter((pack) => pack.specialist === handle && pack.depth === 0)
@@ -1121,6 +1215,8 @@ function specialistPlugin(
     label: about.label,
     description,
     actions,
+    tasks,
+    shown,
     guidance: [
       ...lines(handle, builder, description),
       `Start one of its actions with execute({ plugin: "${handle}", action, input }), with the input that action describes; a screen opens the same way.`,
@@ -1136,11 +1232,22 @@ function specialistPlugin(
 
 async function readyPlanPlugin(
   found: Found,
-  builder: ReadyPlanBuilder,
+  declared: ReadyPlanManifest,
   about: Manifested["about"],
   known: ReadonlySet<Fact>,
 ): Promise<ReadyPlanPlugin> {
   const { description } = about;
+  if (typeof declared.steps === "string") {
+    const steps = ReadyPlanBuilder.get("steps")(
+      await found.module(declared.steps),
+    );
+    if (steps instanceof type.errors)
+      throw new Error(
+        `${declared.handle}'s steps ${declared.steps} must export its steps: ${steps.summary}`,
+      );
+    declared.steps = steps;
+  }
+  const builder = ReadyPlanBuilder.assert(declared);
   checkFacts(
     builder.handle,
     [
@@ -1723,6 +1830,8 @@ export async function loadCatalog(
     return {
       plugins: using,
       screens: actions.filter(isScreenAction),
+      tasks: using.filter(isSpecialist).flatMap(({ tasks }) => tasks),
+      shown: using.filter(isSpecialist).flatMap(({ shown }) => shown),
       actions,
       installed: (handle) =>
         using.find((plugin) => plugin.builder.handle === handle),

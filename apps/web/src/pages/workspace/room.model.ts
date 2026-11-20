@@ -52,6 +52,7 @@ import {
 } from "@corbits-builder/schemas/artifact";
 import { toast } from "sonner";
 import { sendMessage } from "../../api/conversation.ts";
+import { pluginSlots, type PluginSlots } from "./plugin-screens.tsx";
 import { subscribeWorkflowRun } from "../../api/run-stream.ts";
 import {
   runStepsQuery,
@@ -74,6 +75,7 @@ import {
   removeMaterial,
   readArtifact,
   readProjectValues,
+  runPluginAction,
 } from "../../api/artifacts.ts";
 import { documentsForPane } from "./document-read.ts";
 import {
@@ -574,6 +576,7 @@ export function useRoom({
   enableAi: EnableAiDialogProps;
   /** The app the build plan builds, once one is filed. */
   liveApp: { projectId: string; builder: InFlightRun | undefined } | null;
+  pluginScreens: PluginSlots;
   /** The coordinator's open question when its screen is placed over the whole room. */
   pageScreen: ScreenQuestionProps | null;
   questionOutcomes: ReadonlyMap<string, AnswerOutcome>;
@@ -1655,6 +1658,20 @@ export function useRoom({
         ? null
         : { project: runTenantId, workspace: workspaceRead.data },
   };
+  const pluginScreens = pluginSlots({
+    screens: archived ? [] : snapshot.plan.screens,
+    screenOf,
+    supplies,
+    act: async (plugin, action, input) => {
+      try {
+        await runPluginAction(projectId, plugin, action, input);
+      } catch (cause) {
+        return humanFault(cause, wording.questions.answerFault.refused);
+      }
+      reloadRef.current();
+      return undefined;
+    },
+  });
   const pageHost = {
     close: () => setClosedPage(pageQuestion?.signalName ?? null),
   };
@@ -1720,12 +1737,14 @@ export function useRoom({
     paneDeliverables.find((item) => item.kind === shownId) ?? null;
   const selectedState = selected === null ? undefined : documentState(selected);
 
-  // Until the first document is filed, drafted or there is an app, the project view has nothing to show.
+  // Until the first document is filed, drafted, there is an app or a plugin lists a tab, the project
+  // view has nothing to show.
   const nothingYet =
     paneDeliverables.length === 0 &&
     designDraft === null &&
     concepts.length === 0 &&
-    liveApp === null;
+    liveApp === null &&
+    pluginScreens.tabs.length === 0;
   const dock = (): RoomDock => {
     if (archived)
       return {
@@ -1812,9 +1831,12 @@ export function useRoom({
       title: projectTitle,
       layout: {
         projectReady: !nothingYet,
-        projectOpen,
+        // The view cannot be open once it has nothing to show, or the prompt box is placed in it unseen.
+        projectOpen: projectOpen && !nothingYet,
         onProjectOpenChange: setProjectOpen,
-        pageOpen,
+        pageOpen:
+          pageOpen ||
+          (pageQuestion === undefined && pluginScreens.page.length > 0),
       },
       conversation: {
         thread: {
@@ -1855,7 +1877,7 @@ export function useRoom({
         empty: emptyConversation(),
       },
       dock: dock(),
-      plan: snapshot.plan,
+      plan: snapshot.plan.steps,
       onDeclineStep: async (stepId, declined) => {
         try {
           await (declined ? declinePlanStep : restorePlanStep)(
@@ -1926,6 +1948,7 @@ export function useRoom({
               onDeliverMessage: (message: string) => deliver(message),
               onApprove: approveRead,
             }),
+        plugins: pluginScreens.tabs,
       },
       paneRef: documentPaneRef,
     },
@@ -1945,6 +1968,7 @@ export function useRoom({
         },
     enableAi: { open: enablingAi, onOpenChange: setEnablingAi },
     liveApp,
+    pluginScreens,
     questionOutcomes: outcomes,
     pageScreen:
       pageQuestion === undefined

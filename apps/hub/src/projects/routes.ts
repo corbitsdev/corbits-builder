@@ -747,7 +747,7 @@ export function createProjectRoutes(
     checks,
   });
   mountAnswerRoutes(app, answer);
-  mountPlanRoutes(app, plans, artifacts, nativeFetch, checks);
+  mountPlanRoutes(app, plans, artifacts, values, nativeFetch, checks);
   mountValueRoutes(app, values, artifacts, nativeFetch);
   if (checks) mountCheckRoutes(app, checks);
   mountProjectNextStepRoutes(app, createProjectNextStep(db, runs, liveApps));

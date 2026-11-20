@@ -60,6 +60,7 @@ import { printDocument } from "./print-document.ts";
 import { DRAFT_TAB, LIVE_TAB } from "./tab-follow.ts";
 import { useTabStrip } from "./tab-strip.ts";
 import type { ApproachChoice } from "./approach-choice.ts";
+import type { PluginTab } from "./plugin-screens.tsx";
 
 /** A filed document as its tab shows it. */
 export type PaneDocument = {
@@ -257,6 +258,7 @@ export type ArtifactPaneContent = {
   approachChoice?: ApproachChoice;
   /** Approves a document at the version read, by its tab; absent on an archived project. */
   onApprove?: ((id: string, version: number) => Promise<void>) | undefined;
+  plugins?: readonly PluginTab[] | undefined;
 };
 
 export type ArtifactPaneProps = ArtifactPaneContent &
@@ -300,9 +302,11 @@ export function ArtifactPane({
   onApprove,
   approvalRounds,
   tweakPanel,
+  plugins = [],
 }: ArtifactPaneProps) {
   // A tab that is not a filed document: the design draft or the live app.
   const [side, setSide] = useState<string | null>(null);
+  const [pluginTab, setPluginTab] = useState<string | null>(null);
   const [designPart, setDesignPart] = useState<DesignPart>("mockup");
   const [draftDevice, setDraftDevice] = useState<PreviewDevice>("desktop");
   const [conceptDevice, setConceptDevice] = useState<PreviewDevice>("desktop");
@@ -360,6 +364,7 @@ export function ArtifactPane({
   }, [conceptsStarted]);
   useEffect(() => {
     if (openTab === null) return;
+    setPluginTab(null);
     setSide(
       openTab.value === LIVE_TAB ||
         openTab.value === DRAFT_TAB ||
@@ -397,6 +402,8 @@ export function ArtifactPane({
     Record<string, { version: number; seq: number }>
   >({});
   const choose = (id: string) => {
+    if (plugins.some((tab) => tab.value === id)) return setPluginTab(id);
+    setPluginTab(null);
     remember(id);
     setMemory((current) =>
       current.id === null ? current : { ...current, id: null },
@@ -421,9 +428,12 @@ export function ArtifactPane({
     });
     choose(kind);
   };
+  const openId = plugins.some((tab) => tab.value === pluginTab)
+    ? pluginTab
+    : tabId;
   // The document on show: none while a tab that is not a filed document is open.
   const shown =
-    (tabId !== null && isSideOnly(tabId)) || conceptShown
+    (tabId !== null && isSideOnly(tabId)) || conceptShown || openId !== tabId
       ? undefined
       : documents.find((item) => item.id === selectedId);
   const strip = useTabStrip();
@@ -490,7 +500,8 @@ export function ArtifactPane({
     );
   };
   const outputs = documents.length > 0 || draftShown || concepts.length > 0;
-  const hasTabs = outputs || liveApp !== null || manual !== null;
+  const hasTabs =
+    outputs || liveApp !== null || manual !== null || plugins.length > 0;
   useEffect(() => {
     if (open && shown?.unread) onSeen(shown.id);
   }, [open, shown?.id, shown?.unread]);
@@ -519,7 +530,7 @@ export function ArtifactPane({
         >
           <PanelTabs
             label="Documents"
-            value={tabId}
+            value={openId}
             onValueChange={choose}
             idPrefix={TAB_PREFIX}
             ref={strip.ref}
@@ -633,6 +644,11 @@ export function ArtifactPane({
             ]
               .sort((left, right) => left.rank - right.rank)
               .flatMap((entry) => entry.tabs)}
+            {plugins.map((tab) => (
+              <PanelTab key={tab.value} value={tab.value} title={tab.label}>
+                {tab.label}
+              </PanelTab>
+            ))}
           </PanelTabs>
           {tabMenu === null ? null : (
             <Menu
@@ -679,7 +695,7 @@ export function ArtifactPane({
           </PanelActions>
         </PanelHeader>
       ) : null}
-      {!outputs && tabId === null ? (
+      {!outputs && openId === null ? (
         <div className={styles.content}>
           <div className={styles.empty}>
             <FileText size={28} aria-hidden="true" />
@@ -692,7 +708,7 @@ export function ArtifactPane({
         </div>
       ) : (
         <PanelContent
-          value={tabId ?? NO_TAB}
+          value={openId ?? NO_TAB}
           keepMounted
           className={styles.content}
         >
@@ -818,6 +834,20 @@ export function ArtifactPane({
               />
             </PanelPane>
           ) : null}
+          {plugins.map((tab) => {
+            const ids = panelTabIds(TAB_PREFIX, tab.value);
+            return (
+              <PanelPane
+                key={tab.value}
+                value={tab.value}
+                id={ids.pane}
+                role="tabpanel"
+                aria-labelledby={ids.tab}
+              >
+                {tab.pane}
+              </PanelPane>
+            );
+          })}
         </PanelContent>
       )}
     </Panel>

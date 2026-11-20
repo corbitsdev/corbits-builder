@@ -130,7 +130,6 @@
         "returns": [
           "design_chosen"
         ],
-        "place": "page",
         "host": [
           "design",
           "mockupFrame",
@@ -146,7 +145,6 @@
         "returns": [
           "design_chosen"
         ],
-        "place": "page",
         "host": [
           "designConcepts",
           "mockupFrame"

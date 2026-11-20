@@ -289,10 +289,10 @@ export default defineScreen({
 it when the answer arrives. A screen may also declare `writes`, the project
 values its answer saves; `approves`, the documents it approves at the version
 shown; `validate`, the fields of a well-typed input it still cannot show;
-`data`, the schema of a `data.json` it ships; and `decision`, when its answer is
-to accept or send back. Its manifest entry may say what it `requires`, the
-values it `reads`, the facts its answer `returns`, `"place": "page"` to open
-over the whole room, and what the interface itself supplies it under `host`.
+`data`, the schema of a `data.json` it ships; `decision`, when its answer is
+to accept or send back; and `render: "main-page"` to open over the whole room.
+Its manifest entry may say what it `requires`, the values it `reads`, the facts
+its answer `returns`, and what the interface itself supplies it under `host`.
 
 The view is a React component that gets everything as props, typed by
 `ScreenViewProps` from `@corbits-builder/plugin-ui/screen`, and never touches

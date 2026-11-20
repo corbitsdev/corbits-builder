@@ -217,6 +217,54 @@ export function createPlanService(rawDB: DB["db"]) {
       });
     },
 
+    async authorizeAction(actor: Actor, projectId: string) {
+      await authorizeProject(rawDB, actor, projectId, "manage");
+    },
+
+    // A click gives the go-ahead to the planned steps that already do its work, else adds a step
+    // for it; it never removes or replaces a step.
+    async addPlanStep(
+      actor: Actor,
+      projectId: string,
+      step: PlanChildWrite,
+      told: {
+        goAhead: readonly string[] | undefined;
+        note: string;
+        mailRun: (runId: string, content: string) => Promise<void>;
+      },
+    ) {
+      await authorizeProject(rawDB, actor, projectId, "manage");
+      const at = new Date().toISOString();
+      const mark = { by: actor.principalId, at };
+      const plan = await rawDB.transaction(async (tx) => {
+        const plan = (await lockedPlan(tx, projectId)) ?? {
+          steps: [],
+          updatedAt: at,
+        };
+        if (told.goAhead === undefined) {
+          const added = savedPlanStep(step, () => undefined);
+          added.goAhead = mark;
+          plan.steps.push(added);
+        } else
+          for (const each of planActionSteps(plan))
+            if (told.goAhead.includes(each.id)) each.goAhead = mark;
+        plan.updatedAt = at;
+        await writePlan(tx, projectId, plan);
+        return plan;
+      });
+      await this.tellCoordinator(projectId, told.note, told.mailRun);
+      return plan;
+    },
+
+    async tellCoordinator(
+      projectId: string,
+      note: string,
+      mailRun: (runId: string, content: string) => Promise<void>,
+    ) {
+      const coordinator = await activeCoordinator(rawDB, projectId);
+      if (coordinator) await mailRun(coordinator.runId, note);
+    },
+
     // The person gives the go-ahead on a step they asked to be consulted on, or turns "ask me
     // first" on or off for a step, and the coordinator is told. Only a person may.
     async askPlanStep(

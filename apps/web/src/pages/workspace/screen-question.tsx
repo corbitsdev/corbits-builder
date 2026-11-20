@@ -412,6 +412,75 @@ export function screenHost<In, Out, Data, Prepared>(
   };
 }
 
+export type ListedHostProps = {
+  state: unknown;
+  act: (
+    plugin: string,
+    action: string,
+    input: Record<string, unknown>,
+  ) => Promise<string | undefined>;
+  host: HostSupplies;
+};
+
+type Click =
+  | { is: "idle" }
+  | { is: "acting" }
+  | { is: "failed"; reason: string };
+
+export function listedHost(
+  name: string,
+  plugin: string,
+  View: ComponentType<
+    ScreenViewProps<unknown, unknown, unknown, ViewResources>
+  >,
+): ComponentType<ListedHostProps> {
+  return function ListedHost({ state, act, host }) {
+    const [click, setClick] = useState<Click>({ is: "idle" });
+    const [draft, setDraft] = useState({});
+    const { tenants } = host;
+    if (tenants === null) return <InlineNote>{text.screenLoading}</InlineNote>;
+    const run = async (action: string, input: Record<string, unknown> = {}) => {
+      setClick({ is: "acting" });
+      const reason = await act(plugin, action, input);
+      setClick(
+        reason === undefined ? { is: "idle" } : { is: "failed", reason },
+      );
+    };
+    return (
+      <View
+        prepared={{
+          input: {},
+          data: state,
+          project: {},
+          facts: projectFacts,
+          resources: {
+            design: host.design,
+            mockupFrame: host.mockupFrame,
+            earlierAnswer: undefined,
+            documents: { list: host.documents.list },
+            designConcepts: host.designConcepts,
+            tenants,
+          },
+        }}
+        draft={draft}
+        setDraft={(change) =>
+          setDraft((current) =>
+            typeof change === "function" ? change(current) : change,
+          )
+        }
+        submit={async () => {
+          throw new Error(`${name} answers no question.`);
+        }}
+        submitting={click.is === "acting"}
+        answer={undefined}
+        place="card"
+        fault={click.is === "failed" ? click.reason : undefined}
+        act={run}
+      />
+    );
+  };
+}
+
 export type ScreenQuestionProps = {
   signalName: string;
   host: ComponentType<ScreenHostProps> | undefined;

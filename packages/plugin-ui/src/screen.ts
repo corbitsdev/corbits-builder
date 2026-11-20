@@ -23,6 +23,9 @@ export type ScreenViewProps<Input, Output, Prepared, Resources = unknown> = {
         sendBack?: Output;
       }) => void)
     | undefined;
+  act?:
+    | ((action: string, input?: Record<string, unknown>) => Promise<void>)
+    | undefined;
   /** Writer's document approval opens a filed document by kind. */
   openDocument?: ((kind: string) => void) | undefined;
 };

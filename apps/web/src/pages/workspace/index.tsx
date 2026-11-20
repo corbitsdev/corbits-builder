@@ -29,14 +29,28 @@ export function StageWorkspace(props: StageWorkspaceProps) {
 
 function ReadyRoom(props: ReadyRoomProps) {
   const { projectId } = props;
-  const { view, nextStep, enableAi, liveApp, pageScreen, questionOutcomes } =
-    useRoom(props);
+  const {
+    view,
+    nextStep,
+    enableAi,
+    liveApp,
+    pluginScreens,
+    pageScreen,
+    questionOutcomes,
+  } = useRoom(props);
   return (
     <QuestionOutcomes value={questionOutcomes}>
       <RoomView
         {...view}
         nextStep={nextStep === null ? null : <NextStepLine {...nextStep} />}
-        page={pageScreen === null ? null : <ScreenQuestion {...pageScreen} />}
+        page={
+          pageScreen === null ? (
+            pluginScreens.page
+          ) : (
+            <ScreenQuestion {...pageScreen} />
+          )
+        }
+        chat={pluginScreens.chat}
         paneParts={{
           liveApp: liveApp === null ? null : <LiveApp {...liveApp} />,
           conceptMockup: (concept, frame) => (

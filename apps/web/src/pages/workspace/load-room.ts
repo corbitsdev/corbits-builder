@@ -42,8 +42,7 @@ export type RoomSnapshot = {
     questions: ConversationQuestion[];
   };
   artifacts: ProjectArtifact[];
-  /** The project's plan steps, none while it has no plan. */
-  plan: PlanView["steps"];
+  plan: PlanView;
   /** The specialist runs at work, which name the design concept a designer works on. */
   inFlight: InFlightRun[];
   /** Specialist runs Interchange settled as failed, with the error their terminal event carries. */
@@ -265,7 +264,7 @@ export async function loadProjectRoom(
         questions: conversation === null ? [] : conversation.questions,
       },
       artifacts,
-      plan: plan.steps,
+      plan,
       inFlight,
       failed,
       documents: {},
