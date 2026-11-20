@@ -489,7 +489,7 @@ export const wording = {
       starting: "Starting…",
       running: "Running",
       stopped: "Stopped",
-      failed: "Could not start",
+      failed: "Failed",
     },
     openApp: "Open app",
     /** Read after a file's name where its mark says more than the name does. */

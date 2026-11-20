@@ -406,6 +406,14 @@
   flex: none;
 }
 
+/* Where the words run long, the state gives way before Open app does. */
+.live > .note {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .live[data-current] .liveName {
   color: var(--wb-foreground);
   font-weight: 500;
