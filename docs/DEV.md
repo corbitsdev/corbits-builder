@@ -696,6 +696,23 @@ call `unpublish` and `status`, each with its own target handle and with
 for itself with `takeDownAgreed` from `@corbits-builder/publish-contract` and
 answers `not_agreed` without it, as `unpublish` does.
 
+To add a target that rents the machine for the person, instead of publishing
+to one they connected, copy `plugins/digitalocean` with
+`plugins/digitalocean-publish`. Its account key declares `signIn`. Its server
+key is `provisioned`, listed in `provisions` by its `create` and `remove`
+actions. Its `create` tool records `publish.holding` before it asks the
+provider for a server, and binds the hub's key with `serverKey` and
+`bindServerKey`; its take-down and status tools only read the key, with
+`heldServerKey`. Its `remove` action deletes the server, so its `says.removes`
+says that what people entered goes with it. Its three agents, one each to
+make, publish to and delete the server, share one role and start through the
+plugin's starter (`src/start.ts`), which uses `startAlone`, so one run at a
+time works on the server. The provisioning steps in `src/provision.ts` reach
+the provider only through the seam in `src/vendor.ts`, which the plugin's tests
+fake; a second renting target would need that seam moved to a shared package.
+Its tests run against a fake that answers as DigitalOcean's API was recorded to
+answer, never the real one.
+
 ### A ready-made plan
 
 A ready-made plan is a manifest and a guidance file. Its steps name other
