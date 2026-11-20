@@ -75,12 +75,15 @@
 }
 
 /* A sheet of paper, A4 and a page tall at the least, raised on the backdrop as the workspace's main
-   pane is. */
+   pane is. The page's height is a minimum, not an aspect ratio: a sheet narrowed by its max-width
+   would hold an aspect ratio's height and let a long text run off its foot. */
 .sheet {
   box-sizing: border-box;
   width: var(--sheet-width);
   max-width: calc(100cqi - 2 * var(--space-4));
-  aspect-ratio: 1 / 1.4142;
+  min-height: calc(
+    min(var(--sheet-width), 100cqi - 2 * var(--space-4)) * 1.4142
+  );
   padding: 40px 64px 120px;
   border-radius: 2px;
   background: var(--wb-pane);
@@ -259,7 +262,7 @@
   .sheet {
     width: auto;
     max-width: none;
-    aspect-ratio: auto;
+    min-height: 0;
     padding: 0;
     box-shadow: none;
     zoom: 1;
