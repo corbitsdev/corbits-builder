@@ -38,8 +38,10 @@
   width: var(--width);
   height: 100%;
   /* Below the project's name, which floats over the panel's top. */
-  padding-block-start: 54px;
+  padding-block-start: 60px;
   background: var(--card);
+  /* A hairline on its edge, so the canvas beside it never runs into it, whatever ground that shows. */
+  box-shadow: inset -1px 0 0 var(--wb-border);
   transition: visibility 0s;
 }
 
@@ -80,8 +82,8 @@
   /* Sized by its words, not by the closed sidebar, which has no width to give it. */
   width: max-content;
   max-width: calc(var(--width) - 24px);
-  height: 2.25rem;
-  padding: 6px var(--space-1) 6px 6px;
+  height: 2.5rem;
+  padding: 6px var(--space-2) 6px 6px;
   border: 0;
   border-radius: var(--radius-lg);
   background: var(--card);
@@ -90,15 +92,12 @@
   text-align: start;
   white-space: nowrap;
   cursor: pointer;
-  translate: var(--space-2) 10px;
-  transition:
-    translate var(--speed) var(--ease-out),
-    background-color var(--speed) var(--ease-out);
+  /* Open or closed, it stays in the canvas's corner where the design puts it. */
+  transition: background-color var(--speed) var(--ease-out);
 }
 
 .sidebar[data-open] .toggle {
   background: transparent;
-  translate: 0;
 }
 
 .toggle:hover,

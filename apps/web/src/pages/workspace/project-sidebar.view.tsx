@@ -208,7 +208,7 @@ export function ProjectSidebarView({
         }}
       >
         <span className={styles.mark}>
-          <Mark size={24} />
+          <Mark size={28} />
         </span>
         <span className={styles.project}>{project}</span>
         <Icon aria-hidden="true" />
