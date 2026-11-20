@@ -413,9 +413,7 @@ export function screenHost<In, Out, Data, Prepared>(
 }
 
 export type ListedHostProps = {
-  /** What the hub worked out the screen draws now. */
   state: unknown;
-  /** Runs one of the screen's own plugin's actions through the hub, to why it failed when it did. */
   act: (
     plugin: string,
     action: string,
@@ -429,7 +427,6 @@ type Click =
   | { is: "acting" }
   | { is: "failed"; reason: string };
 
-/** A screen the hub shows by itself, drawn from the state it worked out; it answers no question. */
 export function listedHost(
   name: string,
   plugin: string,

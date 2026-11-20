@@ -180,7 +180,6 @@ const PlanViewGroup = type({
   "needs?": "string[]",
   steps: PlanViewChild.array(),
 });
-// Where a plugin's screen draws: over the room, in the conversation, or as a tab beside the plan.
 export const ScreenRender = type("'main-page' | 'inline-chat' | 'plugin-bar'");
 export type ScreenRender = typeof ScreenRender.infer;
 export const ShownScreen = type({

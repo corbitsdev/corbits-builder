@@ -258,7 +258,6 @@ export type ArtifactPaneContent = {
   approachChoice?: ApproachChoice;
   /** Approves a document at the version read, by its tab; absent on an archived project. */
   onApprove?: ((id: string, version: number) => Promise<void>) | undefined;
-  /** The plugins' screens the hub lists for the plugin bar, a tab each after the rest. */
   plugins?: readonly PluginTab[] | undefined;
 };
 
@@ -307,7 +306,6 @@ export function ArtifactPane({
 }: ArtifactPaneProps) {
   // A tab that is not a filed document: the design draft or the live app.
   const [side, setSide] = useState<string | null>(null);
-  // The plugin tab the person picked, open over whichever tab the pane would show.
   const [pluginTab, setPluginTab] = useState<string | null>(null);
   const [designPart, setDesignPart] = useState<DesignPart>("mockup");
   const [draftDevice, setDraftDevice] = useState<PreviewDevice>("desktop");

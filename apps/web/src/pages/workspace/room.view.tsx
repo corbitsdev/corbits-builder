@@ -53,7 +53,6 @@ export type RoomSlots = {
   paneParts: ArtifactPaneSlots;
   /** The coordinator's open question drawn over the whole room; null while there is none. */
   page: ReactNode;
-  /** The screens the hub lists for the conversation, after its last turn. */
   chat: ReactNode;
 };
 

@@ -275,7 +275,6 @@ export const CheckActionBuilder = type({
 );
 export type CheckActionBuilder = typeof CheckActionBuilder.infer;
 
-// Plugin code the hub runs when the person clicks, with no agent, as defineTask makes one.
 export const TaskActionBuilder = type({ "+": "reject", "requires?": Requires });
 export type TaskActionBuilder = typeof TaskActionBuilder.infer;
 
@@ -637,8 +636,6 @@ export type TaskDone = {
   note: string;
 };
 
-// Plugin code a person's click runs in the hub, with no model; says and the note it returns are
-// what the coordinator is told.
 export type Task<In> = {
   says: string;
   input: Type<In>;
@@ -651,7 +648,6 @@ export type Task<In> = {
 export const defineTask = <In>(task: Task<In>) => task;
 
 export type Screen<In, Out, Data, Prepared> = {
-  // Where it draws: in the conversation unless stated.
   render?: ScreenRender;
   // Run in the hub for a screen shown without a question; undefined while it should not show.
   state?: (project: ProjectRead) => Prepared | undefined;

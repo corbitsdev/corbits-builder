@@ -371,7 +371,6 @@ export async function triageReviewerFeedback(
   );
 }
 
-/** Runs one of a plugin's actions from its screen; the hub refuses what it requires and does not hold. */
 export async function runPluginAction(
   projectId: string,
   plugin: string,

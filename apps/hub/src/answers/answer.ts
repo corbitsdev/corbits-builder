@@ -121,8 +121,8 @@ export function createAnswer({
               ([name, value]) => held[name] !== value,
             ),
           ),
-          service,
-          values,
+          CATALOG.values,
+          { artifacts: service, values },
           nativeFetch,
         );
         step = "recording approvals";

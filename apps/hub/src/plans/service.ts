@@ -217,33 +217,41 @@ export function createPlanService(rawDB: DB["db"]) {
       });
     },
 
-    // A second click replaces the step an earlier click added rather than queueing the same work twice.
+    // Only someone who may change the project runs a plugin's action from its screen.
+    async authorizeAction(actor: Actor, projectId: string) {
+      await authorizeProject(rawDB, actor, projectId, "manage");
+    },
+
+    // A click gives the go-ahead to the step for the same work that has not begun, else adds one;
+    // it never removes or replaces a step.
     async addPlanStep(
       actor: Actor,
       projectId: string,
       step: PlanChildWrite,
       told: {
+        waiting: string | undefined;
         note: string;
         mailRun: (runId: string, content: string) => Promise<void>;
       },
     ) {
       await authorizeProject(rawDB, actor, projectId, "manage");
       const at = new Date().toISOString();
-      const added = savedPlanStep(step, () => undefined);
-      added.goAhead = { by: actor.principalId, at };
-      const same = (each: StoredPlanStep) =>
-        !("steps" in each) &&
-        each.plugin === step.plugin &&
-        each.action === step.action;
+      const goAhead = { by: actor.principalId, at };
       const plan = await rawDB.transaction(async (tx) => {
-        const stored = (await lockedPlan(tx, projectId)) ?? {
+        const plan = (await lockedPlan(tx, projectId)) ?? {
           steps: [],
           updatedAt: at,
         };
-        const plan = {
-          steps: [...stored.steps.filter((each) => !same(each)), added],
-          updatedAt: at,
-        };
+        const waiting = planActionSteps(plan).find(
+          ({ id }) => id === told.waiting,
+        );
+        if (waiting) waiting.goAhead = goAhead;
+        else {
+          const added = savedPlanStep(step, () => undefined);
+          added.goAhead = goAhead;
+          plan.steps.push(added);
+        }
+        plan.updatedAt = at;
         await writePlan(tx, projectId, plan);
         return plan;
       });

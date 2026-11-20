@@ -42,7 +42,6 @@ export type RoomSnapshot = {
     questions: ConversationQuestion[];
   };
   artifacts: ProjectArtifact[];
-  /** The project's plan, no steps while it has none, and the screens that stand now. */
   plan: PlanView;
   /** The specialist runs at work, which name the design concept a designer works on. */
   inFlight: InFlightRun[];

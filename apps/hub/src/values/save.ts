@@ -1,15 +1,27 @@
 import type { Context } from "hono";
 import type { TenantEnv } from "@intx/hub-api";
+import type { Catalog } from "@corbits-builder/plugin-host/catalog";
 import type { createArtifactService } from "../artifacts/service.ts";
 import { mailRunAsCaller } from "../mail/caller-mail.ts";
-import { CATALOG, isSelection, selectionRefusal } from "../plugins/catalog.ts";
+import { isSelection, selectionRefusal } from "../plugins/catalog.ts";
 import { actorOf } from "../projects/authorization.ts";
 import { ProjectError } from "../projects/errors.ts";
 import { projectValueWrites } from "./project-values.ts";
 import type { createValueService } from "./service.ts";
 
-export const undeclaredValue = (names: readonly string[]) =>
-  names.find((name) => !CATALOG.values.has(name));
+export const undeclaredValue = (
+  names: readonly string[],
+  declared: Catalog["values"],
+) => names.find((name) => !declared.has(name));
+
+// Where saved values go: the design's styles, through the artifacts, and the project's own store.
+export type ValueStores = {
+  artifacts: Pick<
+    ReturnType<typeof createArtifactService>,
+    "projectState" | "saveStyleTokens"
+  >;
+  values: Pick<ReturnType<typeof createValueService>, "saveStoredValues">;
+};
 
 // The one way project values are saved, from the values route or a screen's answer: each name
 // one the catalog declares, a value whose home is the design's styles written as a design token
@@ -18,18 +30,12 @@ export async function saveValues(
   c: Context<TenantEnv>,
   projectId: string,
   values: Readonly<Record<string, unknown>>,
-  service: Pick<
-    ReturnType<typeof createArtifactService>,
-    "projectState" | "saveStyleTokens"
-  >,
-  valuesService: Pick<
-    ReturnType<typeof createValueService>,
-    "saveStoredValues"
-  >,
+  declared: Catalog["values"],
+  stores: ValueStores,
   nativeFetch?: (request: Request) => Promise<Response>,
 ) {
   const current = actorOf(c);
-  const unknown = undeclaredValue(Object.keys(values));
+  const unknown = undeclaredValue(Object.keys(values), declared);
   if (unknown !== undefined)
     throw new ProjectError(400, "unknown_project_value", { key: unknown });
   for (const [name, value] of Object.entries(values)) {
@@ -47,12 +53,12 @@ export async function saveValues(
   }
   const { tokens, stored } = projectValueWrites(
     values,
-    await service.projectState(current, projectId),
-    CATALOG.values,
+    await stores.artifacts.projectState(current, projectId),
+    declared,
   );
   // The tokens first, so a design that cannot take them refuses before anything is stored.
   if (Object.keys(tokens).length > 0)
-    await service.saveStyleTokens(
+    await stores.artifacts.saveStyleTokens(
       current,
       projectId,
       tokens,
@@ -60,5 +66,5 @@ export async function saveValues(
         mailRunAsCaller(c, nativeFetch, current.tenantId, runId, content),
     );
   if (Object.keys(stored).length > 0)
-    await valuesService.saveStoredValues(current, projectId, stored);
+    await stores.values.saveStoredValues(current, projectId, stored);
 }

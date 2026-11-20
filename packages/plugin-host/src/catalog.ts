@@ -805,7 +805,19 @@ function declaredValues(manifests: readonly Manifested[]) {
     }
   for (const { builder, actions } of manifests)
     for (const [action, declared] of actions) {
-      if (declared.kind === "check" || declared.kind === "task") continue;
+      if (declared.kind === "check") continue;
+      // A task runs on a person's click, so it saves only its own plugin's values.
+      if (declared.kind === "task") {
+        const foreign = declared.definition.writes.find(
+          (name) =>
+            owners.get(name) !== builder.handle || values.get(name)?.style,
+        );
+        if (foreign !== undefined)
+          throw new Error(
+            `${builder.handle} ${action} writes ${foreign}, which ${builder.handle} does not declare as a project value kept in the project's store`,
+          );
+        continue;
+      }
       const unknown = undeclared(values, declared.builder.reads ?? []);
       if (unknown !== undefined)
         throw new Error(
@@ -957,15 +969,10 @@ function installTask(
   handle: string,
   action: string,
   { builder, definition: task }: Extract<Declared, { kind: "task" }>,
-  { known, values }: Pick<Installing, "known" | "values">,
+  { known }: Pick<Installing, "known">,
 ): TaskAction {
   const name = `${handle} ${action}`;
   checkFacts(name, (builder.requires ?? []).flat(), known, () => false);
-  const unknown = undeclared(values, task.writes);
-  if (unknown !== undefined)
-    throw new Error(
-      `${name} writes ${unknown}, which no plugin declares as a project value`,
-    );
   return {
     kind: "task",
     plugin: handle,

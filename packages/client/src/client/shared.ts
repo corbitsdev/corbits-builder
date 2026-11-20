@@ -446,7 +446,6 @@ export type ProductApiClient = Readonly<{
     projectId: string,
     signal?: AbortSignal,
   ): Promise<PlanView>;
-  /** Runs one of a plugin's actions as the person, from its screen. */
   runPluginAction(
     tenantId: string,
     projectId: string,

@@ -576,7 +576,6 @@ export function useRoom({
   enableAi: EnableAiDialogProps;
   /** The app the build plan builds, once one is filed. */
   liveApp: { projectId: string; builder: InFlightRun | undefined } | null;
-  /** The screens the hub lists now, by the room's slot they draw in. */
   pluginScreens: PluginSlots;
   /** The coordinator's open question when its screen is placed over the whole room. */
   pageScreen: ScreenQuestionProps | null;
@@ -1659,7 +1658,6 @@ export function useRoom({
         ? null
         : { project: runTenantId, workspace: workspaceRead.data },
   };
-  // A click runs the plugin's action, then the room reads again.
   const pluginScreens = pluginSlots({
     screens: archived ? [] : snapshot.plan.screens,
     screenOf,
@@ -1833,7 +1831,6 @@ export function useRoom({
         projectReady: !nothingYet,
         projectOpen,
         onProjectOpenChange: setProjectOpen,
-        // A listed screen over the room shows while no question takes the page.
         pageOpen:
           pageOpen ||
           (pageQuestion === undefined && pluginScreens.page.length > 0),

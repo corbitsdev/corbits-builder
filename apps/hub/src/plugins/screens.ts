@@ -1,3 +1,6 @@
+import type { Context } from "hono";
+import type { TenantEnv } from "@intx/hub-api";
+import { getLogger } from "@intx/log";
 import type { Fact, ProjectRead, StepStatus } from "@corbits-builder/plugin";
 import type { Catalog } from "@corbits-builder/plugin-host/catalog";
 import type { PlanView, ShownScreen } from "@corbits-builder/schemas/project";
@@ -5,6 +8,9 @@ import {
   readProjectValues,
   type ProjectState,
 } from "../values/project-values.ts";
+import { saveValues, type ValueStores } from "../values/save.ts";
+
+const log = getLogger(["corbits-builder", "hub", "screens"]);
 
 const statusOf = (
   step: {
@@ -46,8 +52,42 @@ export const shownScreens = (
   project: ProjectRead,
 ): ShownScreen[] =>
   catalog.shown.flatMap(({ plugin, action, render, state }) => {
-    const drawn = state(project);
+    let drawn: unknown;
+    // One plugin's failing screen must not cost the person the plan and every other screen.
+    try {
+      drawn = state(project);
+    } catch (error) {
+      log.error("A screen's state failed", { plugin, action, error });
+      return [];
+    }
     return drawn === undefined
       ? []
       : [{ plugin, action, render, state: drawn }];
   });
+
+/** Runs a person's task on the project and saves the values it returns, each one it writes; returns its note. */
+export async function runTask(
+  c: Context<TenantEnv>,
+  projectId: string,
+  catalog: Catalog,
+  ran: { task: Catalog["tasks"][number]; read: ProjectRead; input: unknown },
+  stores: ValueStores,
+  nativeFetch?: (request: Request) => Promise<Response>,
+) {
+  const { name, definition } = ran.task;
+  const done = definition.run(ran.read, ran.input);
+  const unwritten = done.saves.find(
+    (save) => !definition.writes.includes(save.name),
+  );
+  if (unwritten !== undefined)
+    throw new Error(`${name} saves ${unwritten.name}, which it does not write`);
+  await saveValues(
+    c,
+    projectId,
+    Object.fromEntries(done.saves.map((save) => [save.name, save.value])),
+    catalog.values,
+    stores,
+    nativeFetch,
+  );
+  return done.note;
+}
