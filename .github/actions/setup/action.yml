@@ -1,5 +1,5 @@
 name: Setup
-description: Bun at the pinned version and the workspace's packages, restored from Bun's install cache.
+description: Bun at the pinned version and the workspace's packages, restored from a cache of the installed folders.
 runs:
   using: composite
   steps:
@@ -8,8 +8,10 @@ runs:
         bun-version: 1.4.4
     - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
-        path: ~/.bun/install/cache
-        key: bun-${{ runner.os }}-1.4.4-${{ hashFiles('bun.lock') }}
-        restore-keys: bun-${{ runner.os }}-1.4.4-
+        path: |
+          node_modules
+          */*/node_modules
+          vendor/interchange/*/*/node_modules
+        key: modules-${{ runner.os }}-1.4.4-${{ hashFiles('bun.lock', 'patches/**', '**/package.json') }}
     - run: bun install --frozen-lockfile
       shell: bash
