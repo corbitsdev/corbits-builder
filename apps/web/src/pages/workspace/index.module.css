@@ -289,6 +289,13 @@
   margin-inline: auto;
 }
 
+/* The status pill floats above the prompt box, over the project view's foot where its floating
+   bar stands; while the pill shows, the bar stands clear above it. */
+.page:has(> [data-slot="composer"] [data-slot="pill"])
+  :is([data-slot="pane-bar"][data-floating], [data-slot="pane-bar-handle"]) {
+  bottom: calc(var(--space-3) + 2.5rem);
+}
+
 /* The pane is a side panel by make, which a narrow container lays over everything; over the room
    it takes the page above the prompt box at every width. */
 .page > [data-slot="artifact-pane"] {
