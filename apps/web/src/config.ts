@@ -460,14 +460,35 @@ export const wording = {
     closeSidebar: "Close the project sidebar",
     shortcut: { mac: "⌘\\", other: "Ctrl+\\" },
     sidebar: "Project",
-    notStarted: "Not started",
-    /** Read after a document's name where its mark says more than the name does. */
-    documentState: {
+    groups: {
+      thisProject: "This project",
+      projects: "Projects",
+      workspace: "Workspace",
+    },
+    plan: "Plan",
+    noPlan: "No steps yet",
+    /** Read after a step's name, since its mark alone does not say it. */
+    stepState: {
+      to_do: "to do",
+      running: "running",
+      needs_you: "needs you",
+      done: "done",
+      failed: "failed",
+      declined: "declined",
+    },
+    files: "Files",
+    noFiles: "None yet",
+    /** Read after a file's name where its mark says more than the name does. */
+    fileState: {
       needs_you: "needs you",
       writing: "being written",
+      drawing: "being drawn",
       failed: "could not be written",
     },
     projectSettings: "Project settings",
+    allProjects: "All projects",
+    workspaceSettings: "Workspace settings",
+    account: "Account",
   },
   whatsNew: {
     title: "What's new",

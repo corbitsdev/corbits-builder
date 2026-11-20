@@ -1,7 +1,9 @@
 /**
- * An open project's sidebar: the project's name, which opens and closes it, then the project's steps
- * (Plan, Design, Build) as a tree, each listing the documents it has made. Settings and the ways out of the project sit small at the bottom, the workspace menu
- * last. Closed, only the project's name stays. Where the room is narrow it is a drawer over the page.
+ * An open project's sidebar: the project's name, which opens and closes it, then three groups. This
+ * project holds the plan's steps and the project's files, as one tree, then its settings and
+ * secrets; Projects leads out to the other projects; Workspace to the workspace's settings and the
+ * person's account. Closed, only the project's name stays. Where the room is narrow it is a drawer
+ * over the page.
  */
 import {
   useEffect,
@@ -14,13 +16,10 @@ import {
   type ReactNode,
 } from "react";
 import {
+  Check,
   ChevronRight,
-  LayoutGrid,
-  Lock,
   PanelLeftClose,
   PanelLeftOpen,
-  Plus,
-  Settings,
 } from "lucide-react";
 import {
   SidebarItem,
@@ -42,23 +41,47 @@ const shortcut = mac
   ? { key: "Meta+Backslash", words: words.shortcut.mac }
   : { key: "Control+Backslash", words: words.shortcut.other };
 
-/** Where a document stands, as its row marks it: one mark at most, none when it is ready. */
-export type SidebarDocumentState = "ready" | "needs_you" | "writing" | "failed";
+/** Where a step of the plan stands, as its row marks it. */
+export type SidebarStepState =
+  | "to_do"
+  | "running"
+  | "needs_you"
+  | "done"
+  | "failed"
+  | "declined";
 
-export type SidebarDocument = {
-  id: string;
-  /** The document's name, as its tab names it. */
-  name: string;
-  state: SidebarDocumentState;
-};
-
-/** One step of the project and the documents it has made so far; none while it has not started. */
 export type SidebarStep = {
   id: string;
   name: string;
-  documents: readonly SidebarDocument[];
-  /** Its documents are listed; folded, only the step shows. */
-  open: boolean;
+  state: SidebarStepState;
+};
+
+/** A part of the plan; its name is a heading only when the plan has more than one. */
+export type SidebarPlanGroup = {
+  id: string;
+  name: string;
+  steps: readonly SidebarStep[];
+};
+
+/** Where a file stands, as its row marks it: one mark at most, none when it is ready. */
+export type SidebarFileState =
+  | "ready"
+  | "needs_you"
+  | "writing"
+  | "drawing"
+  | "failed";
+
+export type SidebarFileRow = {
+  id: string;
+  name: string;
+  state: SidebarFileState;
+  /** A version the person has not looked at yet; a ready row shows the new-version dot. */
+  newVersion: boolean;
+};
+
+export type SidebarFile = SidebarFileRow & {
+  /** The rows under it, such as the design's mockup, its draft and its concepts. */
+  parts: readonly SidebarFileRow[];
 };
 
 export type ProjectSidebarViewProps = {
@@ -67,34 +90,35 @@ export type ProjectSidebarViewProps = {
   open: boolean;
   /** The room is narrow, so the open sidebar lies over the page. */
   drawer: boolean;
-  steps: readonly SidebarStep[];
-  /** The document on the page; its row is marked. */
-  selectedDocument: string | null;
-  /** The workspace menu, last in the sidebar. */
-  workspaceMenu: ReactNode;
+  plan: readonly SidebarPlanGroup[];
+  files: readonly SidebarFile[];
+  /** The file or part on the page; its row is marked. */
+  selectedFile: string | null;
   onToggleSidebar: () => void;
-  onToggleStep: (stepId: string) => void;
-  onOpenDocument: (documentId: string) => void;
+  onOpenFile: (fileId: string) => void;
   onProjectSettings: () => void;
   onSecrets: () => void;
   onAllProjects: () => void;
   onNewProject: () => void;
+  onWorkspaceSettings: () => void;
+  onAccount: () => void;
 };
 
 export function ProjectSidebarView({
   project,
   open,
   drawer,
-  steps,
-  selectedDocument,
-  workspaceMenu,
+  plan,
+  files,
+  selectedFile,
   onToggleSidebar,
-  onToggleStep,
-  onOpenDocument,
+  onOpenFile,
   onProjectSettings,
   onSecrets,
   onAllProjects,
   onNewProject,
+  onWorkspaceSettings,
+  onAccount,
 }: ProjectSidebarViewProps) {
   const bodyId = `project-sidebar-${useId()}`;
   // The last open or close came from the keyboard, so it happens without moving.
@@ -144,38 +168,33 @@ export function ProjectSidebarView({
       <div className={styles.room}>
         <div id={bodyId} className={styles.panel} inert={!open}>
           <div className={styles.body}>
-            <StepTree
-              label={project}
-              steps={steps}
-              selectedDocument={selectedDocument}
-              onToggleStep={onToggleStep}
-              onOpenDocument={onOpenDocument}
-            />
-            <ul className={styles.utilities}>
-              <SidebarItem asChild icon={<Settings />}>
-                <button type="button" onClick={onProjectSettings}>
-                  {words.projectSettings}
-                </button>
-              </SidebarItem>
-              <SidebarItem asChild icon={<Lock />}>
-                <button type="button" onClick={onSecrets}>
-                  {wording.settings.tab.secrets}
-                </button>
-              </SidebarItem>
-            </ul>
-            <ul className={styles.utilities}>
-              <SidebarItem asChild icon={<LayoutGrid />}>
-                <button type="button" onClick={onAllProjects}>
-                  {wording.shell.projects}
-                </button>
-              </SidebarItem>
-              <SidebarItem asChild icon={<Plus />}>
-                <button type="button" onClick={onNewProject}>
-                  {wording.shell.newProject}
-                </button>
-              </SidebarItem>
-            </ul>
-            <div className={styles.workspace}>{workspaceMenu}</div>
+            <Group label={words.groups.thisProject}>
+              <ProjectTree
+                label={project}
+                plan={plan}
+                files={files}
+                selectedFile={selectedFile}
+                onOpenFile={onOpenFile}
+              />
+              <ul className={styles.links}>
+                <Link onClick={onProjectSettings}>{words.projectSettings}</Link>
+                <Link onClick={onSecrets}>{wording.settings.tab.secrets}</Link>
+              </ul>
+            </Group>
+            <Group label={words.groups.projects}>
+              <ul className={styles.links}>
+                <Link onClick={onAllProjects}>{words.allProjects}</Link>
+                <Link onClick={onNewProject}>{wording.shell.newProject}</Link>
+              </ul>
+            </Group>
+            <Group label={words.groups.workspace}>
+              <ul className={styles.links}>
+                <Link onClick={onWorkspaceSettings}>
+                  {words.workspaceSettings}
+                </Link>
+                <Link onClick={onAccount}>{words.account}</Link>
+              </ul>
+            </Group>
           </div>
         </div>
       </div>
@@ -183,93 +202,143 @@ export function ProjectSidebarView({
   );
 }
 
-/** A row of the tree in the order it shows: a step, or a document under an open step. */
-type TreeRow =
-  | { key: string; kind: "step"; step: SidebarStep }
-  | { key: string; kind: "document"; document: SidebarDocument };
+/** One of the sidebar's three groups, named by a small heading. */
+function Group({ label, children }: { label: string; children: ReactNode }) {
+  const headingId = `project-sidebar-group-${useId()}`;
+  return (
+    <section className={styles.group} aria-labelledby={headingId}>
+      <h2 id={headingId} className={styles.groupLabel}>
+        {label}
+      </h2>
+      {children}
+    </section>
+  );
+}
+
+function Link({
+  onClick,
+  children,
+}: {
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <SidebarItem asChild>
+      <button type="button" onClick={onClick}>
+        {children}
+      </button>
+    </SidebarItem>
+  );
+}
+
+const PLAN = "plan" as const;
+const FILES = "files" as const;
+type Branch = typeof PLAN | typeof FILES;
+
+const stepKey = (stepId: string) => `step:${stepId}`;
+const fileKey = (fileId: string) => `file:${fileId}`;
+
+/** A row of the tree, whether or not a fold hides it. */
+type TreeRow = {
+  key: string;
+  /** The row it sits under; null for Plan and Files. */
+  parent: string | null;
+  /** What a typed letter matches. */
+  name: string;
+  /** The branch it is, or sits in, which folds it away. */
+  branch: Branch;
+  /** What Enter or Space does on it. */
+  activate: (() => void) | null;
+};
 
 /** What every row of the tree takes to hold the tree's one tab stop. */
 type TreeItemProps = Required<
   Pick<ComponentProps<"li">, "ref" | "tabIndex" | "onFocus">
 >;
 
-const stepKey = (step: SidebarStep) => `step:${step.id}`;
-const documentKey = (documentId: string) => `document:${documentId}`;
-
-function visibleRows(steps: readonly SidebarStep[]): TreeRow[] {
-  return steps.flatMap((step): TreeRow[] => [
-    { key: stepKey(step), kind: "step", step },
-    ...(step.open
-      ? step.documents.map((document) => ({
-          key: documentKey(document.id),
-          kind: "document" as const,
-          document,
-        }))
-      : []),
-  ]);
-}
-
-const rowName = (row: TreeRow) =>
-  row.kind === "step" ? row.step.name : row.document.name;
-
 /**
- * The steps and their documents as one tree with a single tab stop, after the WAI-ARIA tree view
- * pattern: the arrows move between and fold rows, Home and End jump, a letter finds the next row
- * starting with it, and Enter or Space opens a document or folds a step.
+ * Plan and Files as one tree with a single tab stop, after the WAI-ARIA tree view pattern: the
+ * arrows move between rows and fold Plan and Files, Home and End jump, a letter finds the next row
+ * starting with it, and Enter or Space opens a file or folds a branch. Folding only changes the
+ * look, so it is held here.
  */
-function StepTree({
+function ProjectTree({
   label,
-  steps,
-  selectedDocument,
-  onToggleStep,
-  onOpenDocument,
+  plan,
+  files,
+  selectedFile,
+  onOpenFile,
 }: {
   label: string;
-  steps: readonly SidebarStep[];
-  selectedDocument: string | null;
-  onToggleStep: (stepId: string) => void;
-  onOpenDocument: (documentId: string) => void;
+  plan: readonly SidebarPlanGroup[];
+  files: readonly SidebarFile[];
+  selectedFile: string | null;
+  onOpenFile: (fileId: string) => void;
 }) {
-  const rows = visibleRows(steps);
+  const [folded, setFolded] = useState<ReadonlySet<Branch>>(new Set());
+  const toggle = (branch: Branch) => {
+    const next = new Set(folded);
+    if (!next.delete(branch)) next.add(branch);
+    setFolded(next);
+  };
+  const steps = plan.flatMap((group) => group.steps);
+  const folds = { [PLAN]: steps.length > 0, [FILES]: files.length > 0 };
+  const branchRow = (branch: Branch, name: string): TreeRow => ({
+    key: branch,
+    parent: null,
+    name,
+    branch,
+    activate: folds[branch] ? () => toggle(branch) : null,
+  });
+  const allRows: TreeRow[] = [
+    branchRow(PLAN, words.plan),
+    ...steps.map((step): TreeRow => ({
+      key: stepKey(step.id),
+      parent: PLAN,
+      name: step.name,
+      branch: PLAN,
+      activate: null,
+    })),
+    branchRow(FILES, words.files),
+    ...files.flatMap((file) =>
+      [file, ...file.parts].map((row): TreeRow => ({
+        key: fileKey(row.id),
+        parent: row === file ? FILES : fileKey(file.id),
+        name: row.name,
+        branch: FILES,
+        activate: () => onOpenFile(row.id),
+      })),
+    ),
+  ];
+  const rows = allRows.filter(
+    (row) => row.parent === null || !folded.has(row.branch),
+  );
   const items = useRef(new Map<string, HTMLElement>());
   const [focused, setFocused] = useState<string | null>(null);
   // A fold from the keyboard happens at once; one from the pointer slides.
   const [byKey, setByKey] = useState(false);
-  // Each document's step, folded or not, so a row folded away can hand its place to its step.
-  const parents = new Map(
-    steps.flatMap((step) =>
-      step.documents.map((document): [string, string] => [
-        documentKey(document.id),
-        stepKey(step),
-      ]),
-    ),
-  );
-  const placeOf = (key: string | null) =>
-    key === null
-      ? undefined
-      : rows.some((row) => row.key === key)
-        ? key
-        : parents.get(key);
-  // Tab enters at the row last focused, else the open document, else the first row.
+  // A row folded away hands its place to its branch.
+  const placeOf = (key: string | null) => {
+    const row = allRows.find((each) => each.key === key);
+    if (row === undefined) return undefined;
+    return rows.includes(row) ? row.key : row.branch;
+  };
+  // Tab enters at the row last focused, else the open file, else the first row.
   const tabStop =
     placeOf(focused) ??
-    placeOf(selectedDocument === null ? null : documentKey(selectedDocument)) ??
+    placeOf(selectedFile === null ? null : fileKey(selectedFile)) ??
     rows[0]?.key ??
     null;
   const focus = (key: string) => {
     setFocused(key);
     items.current.get(key)?.focus();
   };
-  const activate = (row: TreeRow) => {
-    if (row.kind === "document") onOpenDocument(row.document.id);
-    else if (row.step.documents.length > 0) onToggleStep(row.step.id);
-  };
   const onKeyDown = (event: KeyboardEvent<HTMLUListElement>) => {
     const index = rows.findIndex((row) => row.key === tabStop);
     const row = rows[index];
     if (row === undefined || event.altKey || event.metaKey || event.ctrlKey)
       return;
-    const opens = row.kind === "step" && row.step.documents.length > 0;
+    const branch = row.parent === null && folds[row.branch] ? row.branch : null;
     const move = (to: TreeRow | undefined) => {
       if (to !== undefined) focus(to.key);
     };
@@ -287,25 +356,24 @@ function StepTree({
         move(rows.at(-1));
         break;
       case "ArrowRight":
-        if (opens && !row.step.open) onToggleStep(row.step.id);
-        else if (opens) move(rows[index + 1]);
+        if (branch !== null && folded.has(branch)) toggle(branch);
+        else if (branch !== null) move(rows[index + 1]);
+        else if (rows[index + 1]?.parent === row.key) move(rows[index + 1]);
         break;
       case "ArrowLeft":
-        if (row.kind === "document") {
-          const parent = parents.get(row.key);
-          if (parent !== undefined) focus(parent);
-        } else if (opens && row.step.open) onToggleStep(row.step.id);
+        if (branch !== null && !folded.has(branch)) toggle(branch);
+        else if (row.parent !== null) focus(row.parent);
         break;
       case "Enter":
       case " ":
-        activate(row);
+        row.activate?.();
         break;
       default: {
         if (event.key.length !== 1 || event.key === " ") return;
         const letter = event.key.toLowerCase();
         const after = [...rows.slice(index + 1), ...rows.slice(0, index + 1)];
         const found = after.find((each) =>
-          rowName(each).toLowerCase().startsWith(letter),
+          each.name.toLowerCase().startsWith(letter),
         );
         if (found === undefined) return;
         focus(found.key);
@@ -324,6 +392,8 @@ function StepTree({
       if (event.target === event.currentTarget) setFocused(key);
     },
   });
+  const many = plan.length > 1;
+  const headings = useId();
   return (
     <ul
       role="tree"
@@ -333,109 +403,220 @@ function StepTree({
       onKeyDown={onKeyDown}
       onPointerDown={() => setByKey(false)}
     >
-      {steps.map((step) => {
-        if (step.documents.length === 0)
+      <BranchItem
+        name={words.plan}
+        empty={words.noPlan}
+        open={folds[PLAN] ? !folded.has(PLAN) : null}
+        onToggle={() => toggle(PLAN)}
+        {...itemProps(PLAN)}
+      >
+        {plan.map((group, index) => {
+          const headingId = `${headings}-${String(index)}`;
           return (
-            <li
-              key={step.id}
-              role="treeitem"
-              aria-level={1}
-              aria-disabled="true"
-              aria-label={`${step.name}, ${words.notStarted}`}
-              className={styles.item}
-              {...itemProps(stepKey(step))}
+            <ul
+              key={group.id}
+              role="group"
+              className={styles.rows}
+              aria-labelledby={many ? headingId : undefined}
             >
-              <span className={styles.row} data-row="step" data-empty="">
-                <span className={styles.name}>{step.name}</span>
-                <span className={styles.note}>{words.notStarted}</span>
-              </span>
-            </li>
+              {many ? (
+                <li role="none" id={headingId} className={styles.heading}>
+                  {group.name}
+                </li>
+              ) : null}
+              {group.steps.map((step) => (
+                <StepItem
+                  key={step.id}
+                  step={step}
+                  {...itemProps(stepKey(step.id))}
+                />
+              ))}
+            </ul>
           );
-        return (
-          <li
-            key={step.id}
-            role="treeitem"
-            aria-level={1}
-            aria-expanded={step.open}
-            aria-label={step.name}
-            className={styles.item}
-            data-open={step.open ? "" : undefined}
-            {...itemProps(stepKey(step))}
-          >
-            <span
-              className={styles.row}
-              data-row="step"
-              onClick={() => onToggleStep(step.id)}
+        })}
+      </BranchItem>
+      <BranchItem
+        name={words.files}
+        empty={words.noFiles}
+        open={folds[FILES] ? !folded.has(FILES) : null}
+        onToggle={() => toggle(FILES)}
+        {...itemProps(FILES)}
+      >
+        <ul role="group" className={styles.rows}>
+          {files.map((file) => (
+            <FileItem
+              key={file.id}
+              row={file}
+              level={2}
+              selected={file.id === selectedFile}
+              onOpen={() => onOpenFile(file.id)}
+              {...itemProps(fileKey(file.id))}
             >
-              <ChevronRight className={styles.chevron} aria-hidden="true" />
-              <span className={styles.name}>{step.name}</span>
-            </span>
-            <div className={styles.fold}>
-              <ul role="group" className={styles.documents}>
-                {step.documents.map((document) => (
-                  <DocumentItem
-                    key={document.id}
-                    document={document}
-                    selected={document.id === selectedDocument}
-                    onOpen={() => onOpenDocument(document.id)}
-                    {...itemProps(documentKey(document.id))}
-                  />
-                ))}
-              </ul>
-            </div>
-          </li>
-        );
-      })}
+              {file.parts.length === 0 ? null : (
+                <ul role="group" className={styles.parts}>
+                  {file.parts.map((part) => (
+                    <FileItem
+                      key={part.id}
+                      row={part}
+                      level={3}
+                      selected={part.id === selectedFile}
+                      onOpen={() => onOpenFile(part.id)}
+                      {...itemProps(fileKey(part.id))}
+                    />
+                  ))}
+                </ul>
+              )}
+            </FileItem>
+          ))}
+        </ul>
+      </BranchItem>
     </ul>
   );
 }
 
-// The row's name already says the state, so its mark carries no words of its own.
-const documentTone: Record<
-  Exclude<SidebarDocumentState, "ready" | "writing">,
-  StatusDotTone
-> = { needs_you: "emphasis", failed: "danger" };
-
-function DocumentItem({
-  document,
-  selected,
-  onOpen,
+/**
+ * Plan or Files: a row that folds what it lists, or, while it lists nothing, says so and does
+ * nothing. `open` is null while there is nothing to fold.
+ */
+function BranchItem({
+  name,
+  empty,
+  open,
+  onToggle,
+  children,
   ...item
 }: {
-  document: SidebarDocument;
-  selected: boolean;
-  onOpen: () => void;
+  name: string;
+  empty: string;
+  open: boolean | null;
+  onToggle: () => void;
+  children: ReactNode;
 } & TreeItemProps) {
-  const { state } = document;
+  if (open === null)
+    return (
+      <li
+        role="treeitem"
+        aria-level={1}
+        aria-label={`${name}, ${empty}`}
+        className={styles.item}
+        {...item}
+      >
+        <span className={styles.row} data-row="branch" data-empty="">
+          <span className={styles.name}>{name}</span>
+          <span className={styles.note}>{empty}</span>
+        </span>
+      </li>
+    );
+  return (
+    <li
+      role="treeitem"
+      aria-level={1}
+      aria-expanded={open}
+      aria-label={name}
+      className={styles.item}
+      data-open={open ? "" : undefined}
+      {...item}
+    >
+      <span className={styles.row} data-row="branch" onClick={onToggle}>
+        <span className={styles.name}>{name}</span>
+        <ChevronRight className={styles.chevron} aria-hidden="true" />
+      </span>
+      <div className={styles.fold}>
+        <div className={styles.folded}>{children}</div>
+      </div>
+    </li>
+  );
+}
+
+// The row's name already says the state, so its mark carries no words of its own.
+const stepTone: Partial<Record<SidebarStepState, StatusDotTone>> = {
+  needs_you: "emphasis",
+  failed: "danger",
+};
+
+function StepItem({ step, ...item }: { step: SidebarStep } & TreeItemProps) {
+  const { state } = step;
+  const tone = stepTone[state];
   return (
     <li
       role="treeitem"
       aria-level={2}
-      aria-current={selected ? "page" : undefined}
-      aria-label={
-        state === "ready"
-          ? document.name
-          : `${document.name}, ${words.documentState[state]}`
-      }
+      aria-label={`${step.name}, ${words.stepState[state]}`}
       className={styles.item}
-      title={document.name}
+      title={step.name}
+      {...item}
+    >
+      <span className={styles.row} data-row="step" data-state={state}>
+        <span className={styles.name}>{step.name}</span>
+        {state === "running" ? (
+          <span className={styles.writing} aria-hidden="true">
+            <TypingIndicator label={words.stepState.running} />
+          </span>
+        ) : state === "done" ? (
+          <Check className={styles.done} aria-hidden="true" />
+        ) : tone === undefined ? null : (
+          <StatusDot label="" size="xs" tone={tone} />
+        )}
+      </span>
+    </li>
+  );
+}
+
+const fileTone: Partial<Record<SidebarFileState, StatusDotTone>> = {
+  needs_you: "emphasis",
+  failed: "danger",
+};
+
+function FileItem({
+  row,
+  level,
+  selected,
+  onOpen,
+  children,
+  ...item
+}: {
+  row: SidebarFileRow;
+  level: 2 | 3;
+  selected: boolean;
+  onOpen: () => void;
+  children?: ReactNode;
+} & TreeItemProps) {
+  const { state } = row;
+  // The new-version dot shows only on a ready row; any other mark says more.
+  const fresh = state === "ready" && row.newVersion && !selected;
+  const said =
+    state !== "ready"
+      ? words.fileState[state]
+      : fresh
+        ? wording.documentUnread
+        : null;
+  const tone = fresh ? "emphasis" : fileTone[state];
+  return (
+    <li
+      role="treeitem"
+      aria-level={level}
+      aria-current={selected ? "page" : undefined}
+      aria-label={said === null ? row.name : `${row.name}, ${said}`}
+      className={styles.item}
+      title={row.name}
       {...item}
     >
       <span
         className={styles.row}
-        data-row="document"
+        data-row="file"
         data-state={state}
         onClick={onOpen}
       >
-        <span className={styles.name}>{document.name}</span>
-        {state === "ready" ? null : state === "writing" ? (
+        <span className={styles.name}>{row.name}</span>
+        {state === "writing" || state === "drawing" ? (
           <span className={styles.writing} aria-hidden="true">
-            <TypingIndicator label={words.documentState.writing} />
+            <TypingIndicator label={words.fileState[state]} />
           </span>
-        ) : (
-          <StatusDot label="" size="xs" tone={documentTone[state]} />
+        ) : tone === undefined ? null : (
+          <StatusDot label="" size="xs" tone={tone} />
         )}
       </span>
+      {children}
     </li>
   );
 }

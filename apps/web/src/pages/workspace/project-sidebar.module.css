@@ -139,12 +139,28 @@
   display: flex;
   flex: 1;
   flex-direction: column;
+  gap: var(--space-4);
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
   gap: 2px;
 }
 
+.groupLabel {
+  margin: 0;
+  padding: var(--space-1) var(--space-2);
+  color: var(--wb-muted-foreground);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  line-height: var(--text-xs--line-height);
+}
+
 .tree,
-.documents,
-.utilities {
+.rows,
+.parts,
+.links {
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -153,7 +169,7 @@
   list-style: none;
 }
 
-/* The tree item holds focus; its row draws the ring, so a step's ring stops above its documents. */
+/* The tree item holds focus; its row draws the ring, so a branch's ring stops above its rows. */
 .item:focus-visible {
   outline: none;
 }
@@ -169,7 +185,9 @@
   align-items: center;
   gap: var(--space-2);
   height: 1.75rem;
+  padding: 0 var(--space-2);
   border-radius: var(--radius-md);
+  color: var(--wb-muted-foreground);
   font-size: var(--wb-text-control);
   line-height: var(--wb-text-control--line-height);
   cursor: pointer;
@@ -179,20 +197,30 @@
   background: var(--wb-muted);
 }
 
-.row[data-row="step"] {
-  gap: 6px;
-  padding: 0 var(--space-2);
+/* Plan and Files stand level with the links under them: the same height, size and colour. */
+.row[data-row="branch"] {
+  gap: var(--space-1);
+  height: 2.25rem;
+  font-size: var(--text-sm);
+  line-height: var(--text-sm--line-height);
 }
 
-/* Not started: named in line with the other steps' names, with nothing to fold or press. */
+.row[data-row="branch"]:hover {
+  color: var(--wb-foreground);
+}
+
+/* Nothing to list yet: named in line with the others, with nothing to fold or press. */
 .row[data-empty] {
-  padding-inline-start: 28px;
-  color: var(--wb-muted-foreground);
   cursor: default;
 }
 
 .row[data-empty]:hover {
   background: transparent;
+  color: var(--wb-muted-foreground);
+}
+
+.row[data-empty] .name {
+  flex: none;
 }
 
 .chevron {
@@ -214,19 +242,20 @@
   white-space: nowrap;
 }
 
-.row[data-row="step"] .name {
-  font-weight: 600;
+/* A branch's name is only as wide as its words, so its chevron sits beside them. */
+.row[data-row="branch"] .name {
+  flex: 0 1 auto;
 }
 
 .note {
   flex: none;
-  color: var(--wb-muted-foreground);
+  margin-inline-start: auto;
   font-size: var(--text-xs);
   line-height: var(--text-xs--line-height);
   white-space: nowrap;
 }
 
-/* Folded, a step's documents stay mounted but hidden, so they can slide shut and nothing in them
+/* Folded, a branch's rows stay mounted but hidden, so they can slide shut and nothing in them
    takes focus or is read out. */
 .fold {
   display: grid;
@@ -247,61 +276,63 @@
   transition: none;
 }
 
-.documents {
+.folded {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   min-height: 0;
   overflow: hidden;
 }
 
-.documents > :first-child {
-  margin-block-start: 2px;
-}
-
-.documents > :last-child {
+.folded > :last-child {
   margin-block-end: var(--space-2);
 }
 
-/* Indented so a document's name starts under its step's name. */
-.documents > .item {
-  padding-inline-start: 20px;
-}
-
-.row[data-row="document"] {
-  padding: 0 var(--space-2);
+/* A part of the plan, named only when the plan has more than one. */
+.heading {
+  padding: var(--space-2) var(--space-2) 2px 20px;
   color: var(--wb-muted-foreground);
+  font-size: var(--text-xs);
+  line-height: var(--text-xs--line-height);
 }
 
-/* A document that wants a look reads as plainly as the open one. */
-.row[data-row="document"]:is(
-    :hover,
-    [data-state="needs_you"],
-    [data-state="failed"]
-  ) {
+/* Indented so a row's name starts under its branch's name, and a part's under its file's. */
+.rows > .item {
+  padding-inline-start: 12px;
+}
+
+.parts {
+  margin-block-start: 2px;
+}
+
+.parts > .item {
+  padding-inline-start: 12px;
+}
+
+/* A row that wants a look, or one being hovered, reads as plainly as the open one. */
+.row:is(:hover, [data-state="needs_you"], [data-state="failed"]) {
   color: var(--wb-foreground);
 }
 
-/* The open document is marked by its words alone. */
+/* A step that will not happen. */
+.row[data-state="declined"] .name {
+  text-decoration: line-through;
+}
+
+.done {
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+
+/* The open file is marked by its words alone. */
 .item[aria-current="page"] > .row {
   color: var(--wb-foreground);
   font-weight: 500;
 }
 
-/* Builder is writing it: the library's typing dots, the same ones the chat and comments show. */
+/* Builder is writing or drawing it: the library's typing dots, the same ones the chat shows. */
 .writing {
   display: flex;
   flex: none;
-}
-
-.utilities {
-  margin-block-start: auto;
-  padding-block-start: var(--space-4);
-}
-
-.utilities + .utilities {
-  margin-block-start: var(--space-3);
-  padding-block-start: 0;
-}
-
-.workspace {
-  display: flex;
-  padding: var(--space-2) var(--space-2) 0;
 }
