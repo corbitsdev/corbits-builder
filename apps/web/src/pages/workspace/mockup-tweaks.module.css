@@ -1,7 +1,7 @@
-/* A small panel over the mockup, above the floating bar. */
+/* A small panel over the mockup's foot, just above the prompt box floating there. */
 .panel {
   position: absolute;
-  bottom: calc(var(--space-3) + 3rem);
+  bottom: calc(var(--space-3) + var(--box-height, 0px));
   left: 50%;
   z-index: 3;
   display: flex;

@@ -14,12 +14,12 @@
   background: var(--wb-background);
 }
 
-/* Over a page that fills the pane, the bar stands up its right edge, in the middle, clear of the
-   prompt box floating at the foot. */
+/* Over a page that fills the pane, the bar stands up its right edge, in the middle of what the
+   prompt box floating at the foot leaves above it. */
 .bar[data-floating],
 .handle {
   position: absolute;
-  top: 50%;
+  top: calc((100% - var(--box-height, 0px)) / 2);
   right: var(--space-3);
   margin: 0;
   transform: translateY(-50%);
@@ -28,7 +28,7 @@
 .bar[data-floating] {
   flex-direction: column;
   max-width: none;
-  max-height: calc(100% - 2 * var(--space-3));
+  max-height: calc(100% - var(--box-height, 0px) - 2 * var(--space-3));
 }
 
 .bar[data-floating] > .rule {
@@ -128,7 +128,8 @@
    take presses. */
 .anchor {
   position: absolute;
-  inset: var(--space-3);
+  inset: var(--space-3) var(--space-3)
+    calc(var(--space-3) + var(--box-height, 0px));
   z-index: 3;
   display: flex;
   flex-direction: row;
