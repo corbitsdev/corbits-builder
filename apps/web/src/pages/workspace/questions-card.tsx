@@ -809,7 +809,9 @@ function OpenCard({
   );
 
   // In the prompt box the open question heads the card, with Back and where it stands beside it;
-  // Continue stands where Send does only once something is picked, else the box's own Send.
+  // Continue stands where Send does only once something is picked, else the box's own Send. It
+  // reads Continue on the last question too: the box is one step of a flow, and its tooltip says
+  // that this step sends.
   if (boxed)
     return (
       <section
@@ -859,7 +861,7 @@ function OpenCard({
                   aria-keyshortcuts={last ? "Enter" : "Enter ArrowRight"}
                   onClick={() => next(answer)}
                 >
-                  {nextLabel(last, sending)}
+                  {sending ? text.sending : text.next}
                 </Button>
               </Tooltip>
             </div>

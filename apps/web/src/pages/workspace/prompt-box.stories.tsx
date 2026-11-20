@@ -195,6 +195,15 @@ export const QuestionPicked: Story = {
 };
 
 /**
+ * The last question, pick-any, with a pick: rail rows marked by their blue rail with no checkboxes,
+ * and Continue where Send stands, as on every other question.
+ */
+export const QuestionPickAny: Story = {
+  args: asking,
+  beforeEach: questionAt(2, ["Phone"]),
+};
+
+/**
  * Details typed after a pick: Send, blue, carries them with the pick and moves on, so neither the
  * pick nor the answers before it are lost.
  */
