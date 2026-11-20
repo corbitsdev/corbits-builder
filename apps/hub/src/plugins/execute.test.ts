@@ -82,7 +82,12 @@ function project(
     if (path.endsWith("/checks")) return Response.json({ checks: [] });
     if (path.endsWith("/plan")) {
       if (body) state.plan = body.steps.map(stored);
-      return Response.json({ steps: state.plan, updatedAt: null, screens: [] });
+      return Response.json({
+        steps: state.plan,
+        updatedAt: null,
+        screens: [],
+        asked: [],
+      });
     }
     if (path.endsWith("/run-concepts")) {
       recorded.push(body);

@@ -30,8 +30,16 @@ import type { createArtifactService } from "../artifacts/service.ts";
 import { body, security } from "../http/route-parts.ts";
 import { CATALOG, catalogOf, projectCatalog } from "../plugins/catalog.ts";
 import type { Actor } from "../lib/actor.ts";
-import { readProjectValues } from "../values/project-values.ts";
-import { projectRead, runTask, shownScreens } from "../plugins/screens.ts";
+import {
+  readProjectValues,
+  type ProjectState,
+} from "../values/project-values.ts";
+import {
+  askedScreens,
+  projectRead,
+  runTask,
+  shownScreens,
+} from "../plugins/screens.ts";
 import type { createValueService } from "../values/service.ts";
 import type { createPlanService } from "./service.ts";
 
@@ -61,7 +69,7 @@ export function mountPlanRoutes(
     const current = actorOf(c);
     const plan = await service.projectPlan(current, projectId);
     if (!checks) throw new ProjectError(503, "plan_state_unavailable");
-    const records = await checks.latest(current, projectId);
+    const { records, appVersion } = await checks.latest(current, projectId);
     const listed = await artifacts.list(current, projectId);
     // Only a person reads the conversation; the coordinator, which asks the questions, cannot be
     // reading the plan while one waits on an answer.
@@ -74,6 +82,11 @@ export function mountPlanRoutes(
       preferences: listed.preferences,
       checks: records,
     });
+    const asking = asked.flatMap((question) =>
+      question.status === "open" && showsScreen(question)
+        ? [question.asked]
+        : [],
+    );
     const steps = planState(catalog, plan.steps, {
       facts,
       personFacts: personFacts(listed.artifacts),
@@ -86,13 +99,32 @@ export function mountPlanRoutes(
           "steps" in step ? step.steps.map(({ id }) => id) : [step.id],
         ),
       ),
-      questions: asked.flatMap((question) =>
-        question.status === "open" && showsScreen(question)
-          ? [question.asked]
-          : [],
-      ),
+      questions: asking,
     });
-    return { plan, facts, steps };
+    return { plan, asked, read: { facts, steps, appVersion, asking } };
+  };
+  // What a screen's state or a task reads of the project, as of now.
+  const readProject = async (
+    current: Actor,
+    projectId: string,
+    catalog: Catalog,
+    state: ProjectState,
+    read: Awaited<ReturnType<typeof readPlan>>["read"],
+  ) => {
+    const [manages, coordinator, runs] = await Promise.all([
+      artifacts.managesProject(current, projectId),
+      artifacts.coordinatorTurn(current, projectId),
+      artifacts.runs(current, projectId),
+    ]);
+    return projectRead(catalog, {
+      state,
+      ...read,
+      asking: read.asking.map(({ plugin, action }) => ({ plugin, action })),
+      now: Date.now(),
+      manages,
+      coordinator,
+      runs,
+    });
   };
   app.get(
     "/:projectId/plan",
@@ -100,7 +132,7 @@ export function mountPlanRoutes(
       tags: ["Artifacts"],
       operationId: "readProjectPlan",
       description:
-        "The project's saved plan: the plugin actions to run, in order, each with its children; no steps when none was saved. Each step says where it stands, worked out from the project's facts, its checks' latest records, the coordinator's runs and the questions the person has not answered: done, failed, running, needs_you, waiting (with what it needs), not_started, skipped or cancelled.",
+        "The project's saved plan: the plugin actions to run, in order, each with its children; no steps when none was saved. Each step says where it stands, worked out from the project's facts, its checks' latest records, the coordinator's runs and the questions the person has not answered: done, failed, running, needs_you, waiting (with what it needs), not_started, skipped or cancelled. A person's read also lists the screens plugins show on their own, each with its state, where it stands and when the clock alone next changes it. It also gives what the hub prepared for the screens of the coordinator's questions.",
       security,
       responses: {
         200: {
@@ -111,17 +143,23 @@ export function mountPlanRoutes(
       },
     }),
     async (c) => {
+      const current = actorOf(c);
       const projectId = c.req.param("projectId");
-      const { state, catalog } = await projectView(actorOf(c), projectId);
-      const { plan, facts, steps } = await readPlan(c, projectId, catalog);
+      const { state, catalog } = await projectView(current, projectId);
+      const { plan, asked, read } = await readPlan(c, projectId, catalog);
+      // A screen's state, or what a question's screen draws, may hold what no model may read, so
+      // only a person's read works them out. Only a person reads the questions, too.
+      const person = c.get("principal")?.kind === "user";
+      const project =
+        person && (catalog.shown.length > 0 || asked.length > 0)
+          ? await readProject(current, projectId, catalog, state, read)
+          : undefined;
       return c.json({
-        steps,
+        steps: read.steps,
         updatedAt: plan.updatedAt,
-        // A screen's state may hold what no model may read.
-        screens:
-          c.get("principal")?.kind === "user"
-            ? shownScreens(catalog, projectRead(catalog, state, facts, steps))
-            : [],
+        screens: project === undefined ? [] : shownScreens(catalog, project),
+        asked:
+          project === undefined ? [] : askedScreens(catalog, project, asked),
       });
     },
   );
@@ -144,7 +182,7 @@ export function mountPlanRoutes(
         404: { description: "No task, check or workflow by that name" },
         409: {
           description:
-            "What the action requires does not hold; text says what is missing",
+            "What the action requires does not hold, or a task would tell a coordinator that is not running; text says why",
         },
       },
     }),
@@ -190,7 +228,8 @@ export function mountPlanRoutes(
         throw new ProjectError(400, "action_input_refused", {
           text: checked.text,
         });
-      const { facts, steps } = await readPlan(c, projectId, catalog);
+      const { read } = await readPlan(c, projectId, catalog);
+      const { facts, steps } = read;
       const missing = unmet(
         (action.builder.requires ?? []).map((alternative) =>
           resolveFacts(alternative, checked.input),
@@ -244,14 +283,15 @@ export function mountPlanRoutes(
         catalog,
         {
           task: action,
-          read: projectRead(catalog, state, facts, steps),
+          read: await readProject(current, projectId, catalog, state, read),
           input: checked.input,
-          tell: (note) =>
-            service.tellCoordinator(
-              projectId,
-              taskNote(action.definition.says, action.name, note),
-              mailRun,
-            ),
+          teller: async () => {
+            const tell = await service.coordinatorTeller(projectId, mailRun);
+            return tell === undefined
+              ? undefined
+              : (note) =>
+                  tell(taskNote(action.definition.says, action.name, note));
+          },
         },
         { artifacts, values },
         nativeFetch,

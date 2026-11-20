@@ -1,8 +1,13 @@
-import { QueryClient, type DehydrateOptions } from "@tanstack/react-query";
+import {
+  QueryClient,
+  type DehydratedState,
+  type DehydrateOptions,
+} from "@tanstack/react-query";
 import { createAsyncStoragePersister } from "@tanstack/query-async-storage-persister";
 import {
   persistQueryClientRestore,
   persistQueryClientSubscribe,
+  type AsyncStorage,
   type PersistQueryClientOptions,
 } from "@tanstack/react-query-persist-client";
 import { del, get, set } from "idb-keyval";
@@ -31,23 +36,41 @@ export const queryClient = new QueryClient({
 
 /**
  * What the browser keeps between visits. A query that still has data is kept after a failed
- * refetch. One marked `meta: { persist: false }` only matters while this page waits on it.
+ * refetch. One marked `meta: { persist: false }` only matters while this page waits on it. One
+ * whose `meta.persist` is a function keeps only what that function returns of its data.
  */
 export const savedReads: DehydrateOptions = {
   shouldDehydrateQuery: (query) =>
     query.state.data !== undefined && query.meta?.["persist"] !== false,
 };
 
+// The saved reads as the browser keeps them, each cut to what its `meta.persist` keeps.
+const keptState = (state: DehydratedState): DehydratedState => ({
+  ...state,
+  queries: state.queries.map((query) => {
+    const keep = query.meta?.["persist"];
+    return typeof keep === "function"
+      ? { ...query, state: { ...query.state, data: keep(query.state.data) } }
+      : query;
+  }),
+});
+
+/** Saves the cache in storage as the browser keeps it. */
+export const cachePersister = (storage: AsyncStorage) =>
+  createAsyncStoragePersister({
+    key: "builder-query-cache",
+    storage,
+    serialize: (client) =>
+      JSON.stringify({ ...client, clientState: keptState(client.clientState) }),
+  });
+
 const persistOptions: PersistQueryClientOptions = {
   queryClient,
-  persister: createAsyncStoragePersister({
-    key: "builder-query-cache",
-    storage: { getItem: get, setItem: set, removeItem: del },
-  }),
+  persister: cachePersister({ getItem: get, setItem: set, removeItem: del }),
   maxAge: CACHE_LIFETIME_MS,
   // Saved data is read back without checking its shape, so a change to what a cached read
   // holds needs a new value here, or pages render the old shape and break.
-  buster: "room-question-status-screens-hub-preferences-listed",
+  buster: "room-question-status-screens-hub-preferences-listed-ready-plans",
   dehydrateOptions: savedReads,
 };
 

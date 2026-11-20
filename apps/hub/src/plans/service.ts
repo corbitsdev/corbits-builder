@@ -261,8 +261,20 @@ export function createPlanService(rawDB: DB["db"]) {
       note: string,
       mailRun: (runId: string, content: string) => Promise<void>,
     ) {
+      await (
+        await this.coordinatorTeller(projectId, mailRun)
+      )?.(note);
+    },
+
+    // How to mail the project's coordinator a note, or undefined while none is running.
+    async coordinatorTeller(
+      projectId: string,
+      mailRun: (runId: string, content: string) => Promise<void>,
+    ) {
       const coordinator = await activeCoordinator(rawDB, projectId);
-      if (coordinator) await mailRun(coordinator.runId, note);
+      return coordinator
+        ? (note: string) => mailRun(coordinator.runId, note)
+        : undefined;
     },
 
     // The person gives the go-ahead on a step they asked to be consulted on, or turns "ask me

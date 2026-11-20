@@ -77,6 +77,11 @@ export type HostSupplies = {
   reply: ReplyBox;
   /** The project's and its workspace's tenants, where a credential is saved; null until both are read. */
   tenants: Tenants | null;
+  /**
+   * What the hub prepared for the screen of the question by this signal, for a screen that
+   * prepares from the project; undefined until the hub has read it.
+   */
+  asked: (signalName: string) => unknown;
 };
 
 export type Tenants = { project: string; workspace: string };
@@ -306,8 +311,21 @@ export function screenHost<In, Out, Data, Prepared>(
     const checked = validateInput(handle, screen, input, data, shown);
     const answered =
       output === undefined ? undefined : validateOutput(handle, screen, output);
-    if (!checked.ok || checked.prepared === undefined || answered?.ok === false)
+    if (!checked.ok || answered?.ok === false)
       return <InlineNote>{text.screenUnavailable}</InlineNote>;
+    // A screen that prepares from the project draws once the hub's read of the plan brings it.
+    const prepared =
+      screen.fromProject === undefined
+        ? checked.prepared
+        : (host.asked(signalName) as Prepared | undefined);
+    if (prepared === undefined)
+      return (
+        <InlineNote>
+          {screen.fromProject === undefined
+            ? text.screenUnavailable
+            : text.screenLoading}
+        </InlineNote>
+      );
 
     const answerWith = (chosen: Type<Out>["infer"]) => {
       const result = validateOutput(handle, screen, chosen);
@@ -326,7 +344,7 @@ export function screenHost<In, Out, Data, Prepared>(
       <View
         prepared={{
           input: checked.input,
-          data: checked.prepared,
+          data: prepared,
           project: shown,
           facts: projectFacts,
           resources: {

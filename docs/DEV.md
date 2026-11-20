@@ -378,6 +378,25 @@ to accept or send back; and `render: "main-page"` to open over the whole room.
 Its manifest entry may say what it `requires`, the values it `reads`, the facts
 its answer `returns`, and what the interface itself supplies it under `host`.
 
+A screen may instead show on its own, with no question: its definition's
+`state` runs in the hub each time a person reads the plan and returns what the
+view draws, or `undefined` while it should not show. `render` says where:
+`"plugin-bar"` as a tab of the project view, `"main-page"` over the room, or
+`"inline-chat"` after the conversation. `state` reads the project as
+`ProjectRead`: its values (a private one only for someone who may manage the
+project), facts, plan steps and the ready-made plans on the plan, the hub's
+time, the saved app's version, whether the coordinator is mid-turn, the
+coordinator's runs, the screens of open questions, and the ready-made plans a
+group lists. `changesAt` says when the clock alone next changes the state, and
+the room reads it again then. The browser never saves the state. The view runs
+its plugin's actions through `act`; a task (`defineTask`) runs in the hub on
+that press, saves the values it `writes`, and may tell the coordinator a note.
+
+A screen that asks a question may be prepared in the hub the same way: its
+definition's `fromProject(input, project)` reads the project as `state` does,
+each time a person reads the plan, and returns what the view draws for that
+question. The browser never saves it, and the screen is prepared nowhere else.
+
 The view is a React component that gets everything as props, typed by
 `ScreenViewProps` from `@corbits-builder/plugin-ui/screen`, and never touches
 the run or the network. `plugins/project/src/hand-over/view.tsx` draws with the
