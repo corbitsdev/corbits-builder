@@ -84,6 +84,7 @@
     "@corbits-builder/coordinator": "workspace:*",
     "@corbits-builder/hub": "workspace:*",
     "@corbits-builder/schemas": "workspace:*",
+    "@corbits-builder/web": "workspace:*",
     "@corbits/slidedeck": "workspace:*",
     "@emulators/core": "0.12.3",
     "@emulators/google": "0.12.3",

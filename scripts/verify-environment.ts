@@ -4,7 +4,7 @@ import {
   migrationSchema,
   setupSchema,
 } from "@corbits-builder/hub/environment";
-import { webSchema } from "../apps/web/environment.ts";
+import { webSchema } from "@corbits-builder/web/environment";
 
 // Each example env file documents every variable its process's schemas read, as a set line when
 // the variable is required and otherwise as a commented one. The only other variables it may
