@@ -150,6 +150,9 @@ describe("project room", () => {
           projectTitle="Weather"
           onChanged={() => {}}
           onOpenSettings={() => {}}
+          onAllProjects={() => {}}
+          onNewProject={() => {}}
+          onProjectError={() => {}}
         />
       </QueryClientProvider>,
     );
