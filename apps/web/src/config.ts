@@ -930,11 +930,20 @@ export const wording = {
     notStopped: "The run could not be stopped.",
     refusedUnknown: "the request failed",
   },
-  /** Before a message changes a document a specialist is building from. */
+  /**
+   * Above the typing row while the words name a document work already builds from. It names the
+   * work, never who does it, and Send still sends at once.
+   */
   earlierDocument: {
-    warning:
-      "Work has already started from this. Changing it now may cost more and restart some of that work.",
-    sendAnyway: "Send anyway",
+    restarts: (work: string) => `Sending this restarts ${work}.`,
+    /** The work, by the kind of thing it files. */
+    work: {
+      design: "the design",
+      app: "the build",
+      approval_package: "the presentation",
+    } as Record<string, string>,
+    /** Work that files something not named above. */
+    someWork: "work that has started",
   },
   /** Files the person attaches to a message, filed as materials the coordinator reads. */
   attach: {

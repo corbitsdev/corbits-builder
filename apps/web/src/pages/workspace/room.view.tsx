@@ -106,10 +106,8 @@ export type RoomComposer = {
   };
   /** Why the last message did not reach the coordinator. */
   sendFault: string | null;
-  /** Work already builds from a document this message changes, so the send waits on a second yes. */
-  caution: boolean;
-  onSendAnyway: () => void;
-  onCancelCaution: () => void;
+  /** What sending these words would restart, as they name a document work builds from; null when nothing. */
+  restarts: string | null;
   /** The answers the coordinator's last message offers, each sent as it is. */
   suggestedReplies: readonly string[];
   onReply: (reply: string) => void;
@@ -522,9 +520,7 @@ function RoomComposerView({
   onEnableAi,
   attachments,
   sendFault,
-  caution,
-  onSendAnyway,
-  onCancelCaution,
+  restarts,
   suggestedReplies,
   onReply,
   sendLabel,
@@ -555,15 +551,14 @@ function RoomComposerView({
   };
   const stopping = working && onStop !== undefined && !typed;
   // What waits on the person hands its buttons to the typing row, where they stand in for Send
-  // until the person types, so the box has one main action at a time. The warning about an
-  // earlier document holds its own two even as they type: it is about the words.
+  // until the person types, so the box has one main action at a time.
   const [actionsAt, setActionsAt] = useState<HTMLDivElement | null>(null);
   const toRow = useCallback(
     (buttons: ReactNode) =>
       actionsAt === null ? null : createPortal(buttons, actionsAt),
     [actionsAt],
   );
-  const waitingActions = waiting !== undefined && !caution;
+  const waitingActions = waiting !== undefined;
   // A card in the box can say what the words should be, such as details for the option picked.
   const [cardPlaceholder, setCardPlaceholder] = useState<string>();
   const box = (
@@ -664,20 +659,6 @@ function RoomComposerView({
                   {wording.action.enableAi}
                   <Sparkles size={14} aria-hidden="true" />
                 </UiButton>
-              ) : caution ? (
-                <div data-slot="composer-actions">
-                  <UiButton
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    onClick={onCancelCaution}
-                  >
-                    {wording.action.cancel}
-                  </UiButton>
-                  <UiButton type="button" size="sm" onClick={onSendAnyway}>
-                    {wording.earlierDocument.sendAnyway}
-                  </UiButton>
-                </div>
               ) : (
                 <>
                   {/* The row's one action: the waiting card's, while it offers one and nothing is
@@ -715,7 +696,7 @@ function RoomComposerView({
   return (
     <Composer
       panel={
-        caution || waiting !== undefined ? (
+        restarts !== null || waiting !== undefined ? (
           <>
             <ActionsSlot value={waitingActions ? toRow : null}>
               <PromptPlaceholder
@@ -724,14 +705,13 @@ function RoomComposerView({
                 {waiting}
               </PromptPlaceholder>
             </ActionsSlot>
-            {/* Nearest the words it is about, after anything else that waits; its two ways on
-                stand where Send is. */}
-            {caution ? (
-              <p className={styles.caution} role="alert">
-                <TriangleAlert size={16} aria-hidden="true" />
-                {wording.earlierDocument.warning}
+            {/* Nearest the words it is about, after anything else that waits. */}
+            {restarts === null ? null : (
+              <p className={styles.restarts} role="status">
+                <TriangleAlert size={14} aria-hidden="true" />
+                {restarts}
               </p>
-            ) : null}
+            )}
           </>
         ) : undefined
       }

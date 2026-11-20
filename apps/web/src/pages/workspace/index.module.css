@@ -157,8 +157,7 @@
   display: none;
 }
 
-/* A quiet line: before a change to what work already builds from, its ways on where Send is; on an
-   archived project, with its way on beside it. */
+/* A quiet line on an archived project, with its way on beside it. */
 .caution {
   display: flex;
   flex-wrap: wrap;
@@ -174,27 +173,24 @@
   flex: 1 1 18rem;
 }
 
-/* In the prompt box, a tinted line across the box's top, so it reads before the words it is about. */
-[data-slot="composer-panel"] > .caution {
-  flex-wrap: nowrap;
-  align-items: flex-start;
-  gap: 10px;
+/* In the prompt box, one quiet line just above the words it is about: no band, no rule under it. */
+.restarts {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   margin: 0;
-  padding: var(--space-3) var(--space-4) var(--space-3) 14px;
-  background: var(--primary-tint);
-  color: var(--primary-tint-foreground);
+  padding: 10px var(--space-4) 0 17px;
+  color: var(--wb-muted-foreground);
   font-size: var(--text-sm);
   line-height: 20px;
 }
 
-/* The tint ends where the words begin, so it is the divider. */
-[data-slot="composer-panel"]:has(> .caution:last-child) {
-  border-bottom: 0;
+.restarts > svg {
+  flex: none;
 }
 
-[data-slot="composer-panel"] > .caution > svg {
-  flex: none;
-  margin-top: 2px;
+[data-slot="composer-panel"]:has(> .restarts:last-child) {
+  border-bottom: 0;
 }
 
 /* Comments waiting to be made, carried with whatever is typed after them. */

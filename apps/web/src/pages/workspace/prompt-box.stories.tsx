@@ -241,13 +241,18 @@ export const ToolApprovalTyping: Story = {
   },
 };
 
-/** Sending would change a document work already started from; the person says so twice. */
+/**
+ * The words change a document work already started from: one grey line above them says what
+ * sending restarts, and Send, blue, still sends at once.
+ */
 export const ChangingEarlierDocument: Story = {
   args: {
     dock: {
       ...composer,
       text: "Change the audience to freelancers",
-      caution: true,
+      restarts: wording.earlierDocument.restarts(
+        wording.earlierDocument.work["design"] ?? "",
+      ),
     },
   },
 };

@@ -77,9 +77,7 @@ const composer: RoomComposer & { kind: "composer" } = {
     onRemove: fn(),
   },
   sendFault: null,
-  caution: false,
-  onSendAnyway: fn(),
-  onCancelCaution: fn(),
+  restarts: null,
   suggestedReplies: [],
   onReply: fn(),
   sendLabel: null,
@@ -232,14 +230,16 @@ export const SendFailed: Story = {
   },
 };
 
-/** The message changes a document work already builds from, so it waits on a second yes. */
+/** The message changes a document work already builds from: one line says what sending restarts. */
 export const EarlierDocumentCaution: Story = {
   args: {
     ...withDocuments,
     dock: {
       ...composer,
       text: "Change the problem brief: we also take orders by email.",
-      caution: true,
+      restarts: wording.earlierDocument.restarts(
+        wording.earlierDocument.work["design"] ?? "",
+      ),
     },
   },
 };

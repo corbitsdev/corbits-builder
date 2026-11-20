@@ -3,6 +3,7 @@
  * from, as its role declares. A message is about a document when it names
  * it: its title, which a quoted passage carries, or its short name.
  */
+import { wording } from "../../config.ts";
 import { escapeRegExp, shortDocumentName } from "./collaboration.ts";
 import { roleOf } from "./roles.ts";
 
@@ -27,4 +28,11 @@ export function earlierDocumentRole(
     if (named) return role;
   }
   return undefined;
+}
+
+/** The work a message would restart, named by what its role files, never by who does it. */
+export function restartedWork(role: string): string {
+  const files = roleOf(role)?.files;
+  const text = wording.earlierDocument;
+  return (files === undefined ? undefined : text.work[files]) ?? text.someWork;
 }
