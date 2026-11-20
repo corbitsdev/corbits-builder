@@ -19,7 +19,8 @@ import { Button } from "@corbits/react-ui";
 import styles from "./screen-actions.module.css";
 
 export type ScreenRow = {
-  cancel: { label: string; onCancel: () => void };
+  /** Withdraws the question; null where the host offers its own way out, such as typing in the prompt box. */
+  cancel: { label: string; onCancel: () => void } | null;
   /** On the page, back to the conversation with the question still open and its draft kept. */
   back: { label: string; onBack: () => void } | null;
   /** Why the last answer was not sent, one sentence above the buttons that send it again. */
@@ -45,6 +46,15 @@ export type DecisionControls = {
 
 /** What the host puts around a screen that declares a decision. */
 export const ScreenDecision = createContext<DecisionControls | null>(null);
+
+/**
+ * Where the host draws a screen's buttons instead of under it, such as in the prompt box where
+ * Send stands, so the box keeps one main action. Null draws them in place. React keeps them in the
+ * screen's tree wherever they land, so the screen's keys and focus still reach them.
+ */
+export const ActionsSlot = createContext<
+  ((buttons: ReactNode) => ReactNode) | null
+>(null);
 
 export const decisionText = {
   anyway: (accept: string) => `${accept} anyway`,
@@ -82,6 +92,9 @@ export function ScreenActions({
 }) {
   const row = useContext(ScreenRow);
   const decision = useContext(ScreenDecision);
+  const slot = useContext(ActionsSlot);
+  const place = (buttons: ReactNode) =>
+    slot === null ? buttons : slot(buttons);
   const [asking, setAsking] = useState<Asking>("closed");
   const pending = decision !== null && isPending(decision);
   const press = (what: "accept" | "confirm" | "keep") => {
@@ -110,76 +123,80 @@ export function ScreenActions({
     return (
       <div className={styles.actions} data-slot="screen-actions">
         {row?.fault}
-        <div
-          key="confirm"
-          className={styles.buttons}
-          role="group"
-          aria-label={question}
-          data-slot="screen-confirm"
-          onKeyDown={(event) => {
-            if (event.key === "Escape") press("keep");
-          }}
-        >
-          <span className={styles.ask}>{question}</span>
-          <Button
-            type="button"
-            size="sm"
-            disabled={decision.onAccept === null}
-            onClick={() => press("confirm")}
+        {place(
+          <div
+            key="confirm"
+            className={styles.buttons}
+            role="group"
+            aria-label={question}
+            data-slot="screen-confirm"
+            onKeyDown={(event) => {
+              if (event.key === "Escape") press("keep");
+            }}
           >
-            {decision.accept}
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            ref={keep}
-            onClick={() => press("keep")}
-          >
-            {decisionText.keep}
-          </Button>
-        </div>
+            <span className={styles.ask}>{question}</span>
+            <Button
+              type="button"
+              size="sm"
+              disabled={decision.onAccept === null}
+              onClick={() => press("confirm")}
+            >
+              {decision.accept}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              ref={keep}
+              onClick={() => press("keep")}
+            >
+              {decisionText.keep}
+            </Button>
+          </div>,
+        )}
       </div>
     );
   }
   return (
     <div className={styles.actions} data-slot="screen-actions">
       {row?.fault}
-      <div key="row" className={styles.buttons}>
-        {children}
-        {decision === null ? null : (
-          <Button
-            type="button"
-            size="sm"
-            variant={pending ? "outline" : "primary"}
-            disabled={decision.onAccept === null}
-            ref={accept}
-            onClick={() => press("accept")}
-          >
-            {pending ? decisionText.anyway(decision.accept) : decision.accept}
-          </Button>
-        )}
-        {row?.back ? (
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={row.back.onBack}
-          >
-            {row.back.label}
-          </Button>
-        ) : null}
-        {row === null ? null : (
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            onClick={row.cancel.onCancel}
-          >
-            {row.cancel.label}
-          </Button>
-        )}
-      </div>
+      {place(
+        <div key="row" className={styles.buttons} data-slot="screen-buttons">
+          {children}
+          {decision === null ? null : (
+            <Button
+              type="button"
+              size="sm"
+              variant={pending ? "outline" : "primary"}
+              disabled={decision.onAccept === null}
+              ref={accept}
+              onClick={() => press("accept")}
+            >
+              {pending ? decisionText.anyway(decision.accept) : decision.accept}
+            </Button>
+          )}
+          {row?.back ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={row.back.onBack}
+            >
+              {row.back.label}
+            </Button>
+          ) : null}
+          {row?.cancel ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={row.cancel.onCancel}
+            >
+              {row.cancel.label}
+            </Button>
+          ) : null}
+        </div>,
+      )}
       {shownNote === undefined || shownNote === null ? null : (
         <div className={styles.note}>{shownNote}</div>
       )}
