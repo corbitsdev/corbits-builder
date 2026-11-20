@@ -38,6 +38,7 @@
     "@intx/authz": "workspace:*",
     "@intx/crypto": "0.5.0",
     "@intx/db": "workspace:*",
+    "@intx/harness": "workspace:*",
     "@intx/hub-api": "workspace:*",
     "@intx/hub-common": "workspace:*",
     "@intx/hub-sessions": "workspace:*",

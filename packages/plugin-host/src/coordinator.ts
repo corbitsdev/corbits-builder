@@ -59,6 +59,7 @@ import {
   planLine,
   optionalLeft,
   PLAN_STEP_REMINDER,
+  notProvisioned,
   stepAwaitsGoAhead,
   stepDeclined,
   specialistListing,
@@ -871,7 +872,9 @@ const inputMaking = (screen: ScreenAction, facts: readonly Fact[]) =>
 /**
  * What the person answers before an execute call goes on, or undefined when it runs as it is. A
  * screen opens, and the person's answer is the call's result; refusal text when it cannot be shown
- * for this input. A workflow action held only by its plan step's wait on the person's approval
+ * for this input. A workflow action missing a key the person saves opens that key's form. One
+ * missing a key its plugin's runs make is refused, because no form can give it. A workflow
+ * action held only by its plan step's wait on the person's approval
  * opens the one screen that gives that approval, and starts once they answer it. When several
  * screens could give it, or its input cannot be told, execute refuses as it would.
  */
@@ -925,15 +928,33 @@ export async function executePause(
       );
     }),
   );
-  const missing = credentials.find((_, index) => !saved[index]);
-  if (missing) {
+  // A credential the plugin's runs make never opens a form. The action that provisions it starts
+  // without it, and any other action waits until one of those has made it. A form for the person's
+  // key comes first, because an action that makes a credential may still need that key to do it.
+  const missing = credentials.filter(
+    ([name], index) =>
+      !saved[index] && !(action.builder.provisions ?? []).includes(name),
+  );
+  const held =
+    missing.find(([, declaration]) => "screen" in declaration) ?? missing[0];
+  if (held) {
+    const [name, declaration] = held;
+    if (!("screen" in declaration))
+      return notProvisioned(
+        action.name,
+        declaration.about,
+        plugin.actions
+          .filter(isWorkflowAction)
+          .filter(({ builder }) => builder.provisions?.includes(name))
+          .map((maker) => maker.name),
+      );
     const form = catalog.screens.find(
       (screen) =>
-        screen.plugin === action.plugin && screen.action === missing[1].screen,
+        screen.plugin === action.plugin && screen.action === declaration.screen,
     );
     if (!form)
       throw new Error(
-        `${action.plugin}'s credential ${missing[0]} names no screen ${missing[1].screen}`,
+        `${action.plugin}'s credential ${name} names no screen ${declaration.screen}`,
       );
     return (
       (await screenRefusal(catalog, project, form, {})) ?? {

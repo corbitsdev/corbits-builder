@@ -11,6 +11,8 @@ import { createPlanService } from "../plans/service.ts";
 import { mountValueRoutes } from "../values/routes.ts";
 import { createValueService } from "../values/service.ts";
 import { mountCheckRoutes, type Checks } from "../plugins/checks.ts";
+import { mountRunCredentialRoutes } from "../credentials/routes.ts";
+import type { ServerKeys } from "../credentials/server-keys.ts";
 import { createSettingsService } from "../settings/service.ts";
 import { Hono, type Context, type MiddlewareHandler } from "hono";
 import { describeRoute, resolver } from "hono-openapi";
@@ -198,6 +200,7 @@ export function createProjectRoutes(
     reason: string,
   ) => Promise<unknown>,
   checks?: Checks,
+  serverKeys?: ServerKeys,
 ) {
   const app = new Hono<TenantEnv>();
   const service = createProjectService(db);
@@ -227,14 +230,14 @@ export function createProjectRoutes(
   });
   // Every document version, app version, approval and value the project saves comes through one of
   // these routes, so each write that succeeds re-runs the checks it made stale. The checks' own
-  // routes only record runs and skips, which change nothing a check reads.
+  // routes only record runs and skips, and a run's server key is a credential, which no check reads.
   app.use("/:projectId/*", async (c, next) => {
     await next();
     if (
       checks === undefined ||
       c.req.method === "GET" ||
       !c.res.ok ||
-      /\/check(s|-runs)(\/|$)/.test(c.req.path)
+      /\/(?:check(s|-runs)(\/|$)|run-credentials\/)/.test(c.req.path)
     )
       return;
     void checks.changed(
@@ -749,6 +752,7 @@ export function createProjectRoutes(
   mountAnswerRoutes(app, answer);
   mountPlanRoutes(app, plans, artifacts, values, nativeFetch, checks);
   mountValueRoutes(app, values, artifacts, nativeFetch);
+  if (serverKeys) mountRunCredentialRoutes(app, serverKeys, artifacts);
   if (checks) mountCheckRoutes(app, checks);
   mountProjectNextStepRoutes(app, createProjectNextStep(db, runs, liveApps));
   mountDesignThemeRoutes(app, db);

@@ -24,9 +24,9 @@ const origin = "http://127.0.0.1:1";
 /**
  * The real hub in process, never served or started, so the runs a test seeds stay as seeded, with
  * a signed-up person who calls it. None of the runs has a workspace on the local sidecar's disk
- * unless a test puts one there.
+ * unless a test puts one there. `settings` adds to or overrides the hub's environment.
  */
-export async function startInProcessHub() {
+export async function startInProcessHub(settings: Record<string, string> = {}) {
   const database = await createTestDatabase();
   const directory = await mkdtemp(join(tmpdir(), "sb-in-process-"));
   const dataDir = join(directory, "hub");
@@ -41,6 +41,7 @@ export async function startInProcessHub() {
     CREDENTIAL_ENCRYPTION_KEY: randomBytes(32).toString("hex"),
     PRINCIPAL_KEY_ENCRYPTION_KEY: randomBytes(32).toString("hex"),
     HUB_DATA_DIR: dataDir,
+    ...settings,
   };
   const handle = createDB(database.connection);
   let runtime: Awaited<ReturnType<typeof createHubRuntime>> | undefined;
@@ -71,7 +72,7 @@ export async function startInProcessHub() {
   // The response, or the error naming its status and body; the person's session unless the
   // credentials say otherwise.
   async function call(
-    method: "GET" | "POST" | "PUT",
+    method: "GET" | "POST" | "PUT" | "DELETE",
     path: string,
     body?: object,
     credentials: Record<string, string> = { cookie },
@@ -126,7 +127,8 @@ export async function startInProcessHub() {
     // workspace.
     async seedRun(
       person: { tenantId: string; principalId: string },
-      role: "coordinator" | "designer" | "coder" | "writer",
+      // The coordinator, or the role an installed plugin's specialist plays.
+      role: string,
       running = false,
     ) {
       const id = randomUUID();

@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
-import { fn, screen, userEvent, within } from "storybook/test";
+import { expect, fn, screen, userEvent, within } from "storybook/test";
 import { wording } from "../../config.ts";
 import {
   SecretsSectionView,
@@ -22,6 +22,9 @@ function Host(args: SecretsSectionViewProps) {
   );
 }
 
+// A key the person typed or connected, and whether it can be replaced with another.
+const key = (replaceable: boolean) => ({ replaceable, kind: "key" }) as const;
+
 const groups: readonly SecretGroup[] = [
   {
     id: "workspace",
@@ -31,11 +34,13 @@ const groups: readonly SecretGroup[] = [
         id: "secret-exa",
         label: "Exa API key",
         usedBy: { plugins: ["Exa search"], host: "api.exa.ai" },
+        ...key(true),
       },
       {
         id: "secret-firecrawl",
         label: "Firecrawl API key",
         usedBy: { plugins: ["Firecrawl scrape"], host: "api.firecrawl.dev" },
+        ...key(true),
       },
     ],
   },
@@ -47,11 +52,32 @@ const groups: readonly SecretGroup[] = [
         id: "secret-context7",
         label: "Context7 API key",
         usedBy: { plugins: ["Context7 docs"], host: "context7.com" },
+        ...key(true),
       },
       {
         id: "secret-serpapi",
         label: "serpapi",
         usedBy: null,
+        ...key(false),
+      },
+      {
+        id: "secret-server",
+        label: "Your server",
+        usedBy: { plugins: ["Publish"], host: "203.0.113.5" },
+        ...key(false),
+      },
+    ],
+  },
+  {
+    id: "project-shop",
+    project: "Shop",
+    secrets: [
+      {
+        id: "secret-hoster-server",
+        label: "The key to the rented machine",
+        usedBy: { plugins: ["Renter"], host: "203.0.113.7" },
+        replaceable: false,
+        kind: "provisioned",
       },
     ],
   },
@@ -124,5 +150,25 @@ export const ReplaceSaving: Story = {
 export const ReplaceRefused: Story = {
   args: {
     replacing: { id: "secret-exa", refused: "Refused this key." },
+  },
+};
+
+/** Revoking a key Builder made for a rented server says Builder can no longer publish there. */
+export const RevokeRentedServerKey: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(
+      canvas.getByRole("button", {
+        name: wording.secrets.options("The key to the rented machine"),
+      }),
+    );
+    await userEvent.click(
+      await screen.findByRole("menuitem", { name: wording.secrets.revoke }),
+    );
+    await expect(
+      await screen.findByRole("menuitem", {
+        name: wording.secrets.confirmRevokeServer,
+      }),
+    ).toBeVisible();
   },
 };

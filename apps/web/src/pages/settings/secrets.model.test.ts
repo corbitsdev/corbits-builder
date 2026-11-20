@@ -17,15 +17,24 @@ test("names each plugin key by the plugins that declare it, and leaves out other
         tenant: "workspace",
         project: null,
         credentials: [
-          { id: "c1", name: "plugin.exa", status: "active" },
-          { id: "c2", name: "byok-openai", status: "active" },
-          { id: "c4", name: "plugin.exa", status: "revoked" },
+          { id: "c1", name: "plugin.exa", status: "active", providerId: "x" },
+          { id: "c2", name: "byok-openai", status: "active", providerId: "o" },
+          { id: "c4", name: "plugin.exa", status: "revoked", providerId: "x" },
         ],
+        servers: {},
       },
       {
         tenant: "project",
         project: "Habit tracker",
-        credentials: [{ id: "c3", name: "plugin.serpapi", status: "active" }],
+        credentials: [
+          {
+            id: "c3",
+            name: "plugin.serpapi",
+            status: "active",
+            providerId: "s",
+          },
+        ],
+        servers: {},
       },
     ],
     [exa],
@@ -39,13 +48,23 @@ test("names each plugin key by the plugins that declare it, and leaves out other
           id: "c1",
           label: "Exa API key",
           usedBy: { plugins: ["Exa search", "Researcher"], host: "api.exa.ai" },
+          replaceable: true,
+          kind: "key",
         },
       ],
     },
     {
       id: "project",
       project: "Habit tracker",
-      secrets: [{ id: "c3", label: "serpapi", usedBy: null }],
+      secrets: [
+        {
+          id: "c3",
+          label: "serpapi",
+          usedBy: null,
+          replaceable: false,
+          kind: "key",
+        },
+      ],
     },
   ]);
 });

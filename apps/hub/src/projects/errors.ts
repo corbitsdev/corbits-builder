@@ -10,7 +10,7 @@ export class ProjectError extends Error {
   readonly details: Record<string, unknown>;
   readonly issues?: readonly ProjectErrorIssue[];
   constructor(
-    readonly status: 400 | 403 | 404 | 409 | 413 | 422 | 503,
+    readonly status: 400 | 403 | 404 | 409 | 413 | 422 | 502 | 503,
     readonly code: string,
     rawDetails:
       | { issues?: Issues | ArkErrors | string; [detail: string]: unknown }

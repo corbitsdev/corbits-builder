@@ -326,6 +326,17 @@ export const unknownRuns = (
 export const stepDeclined = (name: string, title: string) =>
   `${name} was not started: the person declined this step ("${title}"); they can undo that on the plan. Do not start it another way; carry on with the rest of the plan.`;
 
+/**
+ * Why execute did not start an action that needs a credential its plugin makes, when no action
+ * that makes it has made it yet. No form can give it, so the person is not asked.
+ */
+export const notProvisioned = (
+  name: string,
+  about: string,
+  makers: readonly string[],
+) =>
+  `${name} was not started: it needs ${about}, which ${makers.join(" or ")} makes, and that has not finished yet. Start ${makers.length === 1 ? "it" : "one of them"} first, or wait for the run that makes it to end, then call execute again.`;
+
 /** Why execute did not start a step the person asked to be consulted on before it starts. */
 export const stepAwaitsGoAhead = (name: string, title: string) =>
   `${name} was not started: the person asked to be consulted before this step ("${title}"); they give the go on the plan. Do not start it another way; carry on with the rest of the plan.`;

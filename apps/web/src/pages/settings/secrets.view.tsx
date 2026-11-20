@@ -23,7 +23,13 @@ export type SavedSecret = {
   label: string;
   /** The installed plugins that declare it, by title, and the host it may be sent to; null when
    * none does. */
-  usedBy: { plugins: readonly string[]; host: string } | null;
+  usedBy: { plugins: readonly string[]; host: string | null } | null;
+  /** Whether a new key can be typed in its place: only a plugin's declaration says how an API key
+   * is sent, and a server key is connected again rather than retyped. */
+  replaceable: boolean;
+  /** How it was had: a key typed or connected by the person, or a key Builder made for a server a
+   * plugin rented, which Builder can no longer reach once it is revoked. */
+  kind: "key" | "provisioned";
 };
 
 /** The secrets saved in one place: the workspace, or one project. */
@@ -103,9 +109,8 @@ export function SecretsSectionView({
                   label={copy.options(secret.label)}
                   editLabel={copy.replace}
                   dangerLabel={copy.revoke}
-                  confirmLabel={copy.confirmRevoke}
-                  // Only a plugin's declaration says how a key is sent, so one no plugin uses is only revoked.
-                  editable={secret.usedBy !== null}
+                  confirmLabel={confirmLabel(secret)}
+                  editable={secret.replaceable}
                   busy={pending !== null}
                   autoFocus={returnTo === secret.id}
                   onEdit={() => {
@@ -124,8 +129,20 @@ export function SecretsSectionView({
 }
 
 function hint(secret: SavedSecret) {
-  if (secret.usedBy === null) return copy.unused;
-  return `${copy.usedBy(secret.usedBy.plugins)} · ${secret.usedBy.host}`;
+  const where =
+    secret.usedBy === null
+      ? [copy.unused]
+      : [
+          copy.usedBy(secret.usedBy.plugins),
+          ...(secret.usedBy.host === null ? [] : [secret.usedBy.host]),
+        ];
+  return where.join(" · ");
+}
+
+// The label of the confirming second press, which says what else is lost with the key.
+function confirmLabel(secret: SavedSecret) {
+  if (secret.kind === "provisioned") return copy.confirmRevokeServer;
+  return copy.confirmRevoke;
 }
 
 /** The row while its key is being replaced; what is typed stays in this form's state. It waits

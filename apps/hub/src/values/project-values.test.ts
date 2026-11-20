@@ -31,7 +31,7 @@ function harness(
   });
   const service = {
     projectState: async () => ({ styles, stored: {} }),
-    valuesRun: async () => ({ plugin: "coder", action: "build" }),
+    actionRun: async () => ({ plugin: "coder", action: "build" }),
     // Stands in for the filed design's next version.
     saveStyleTokens: async (
       _actor: unknown,
