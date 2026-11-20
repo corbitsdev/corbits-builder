@@ -51,17 +51,38 @@ export const question: PromptQuestion = {
   asked: {
     questions: [
       {
-        id: "audience",
-        header: "Audience",
-        question: "Who is it for?",
+        id: "orders",
+        header: "Orders",
+        question: "What will people order?",
         options: [
           {
-            label: "Bakery owners (Recommended)",
-            description: "They take the orders and plan the day's baking.",
+            label: "Cakes for collection (Recommended)",
+            description: "Ordered a day or more ahead.",
           },
           {
-            label: "Counter staff",
-            description: "They serve customers at the counter.",
+            label: "Bread for delivery",
+            description: "Delivered each morning.",
+          },
+        ],
+        multiple: false,
+        custom: true,
+      },
+      {
+        id: "audience",
+        header: "Audience",
+        question: "Who is this app for?",
+        options: [
+          {
+            label: "Small teams (Recommended)",
+            description: "A few people sharing the orders",
+          },
+          {
+            label: "Freelancers",
+            description: "One person working on their own",
+          },
+          {
+            label: "Agencies",
+            description: "Running orders for several shops",
           },
         ],
         multiple: false,

@@ -357,8 +357,74 @@
   white-space: pre-wrap;
 }
 
-/* In the prompt box: the heading asks the open question, so its legend and rule are read out
-   only; each answer is a plain row with a radio, marked once chosen by its dark edge and dot. */
+/* In the prompt box: the open question heads the card with Back and where it stands beside it,
+   and each answer is a row on a rail, marked once picked by the rail turning the action blue. */
+.inBox {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-4) var(--space-2);
+}
+
+.boxHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 24px;
+}
+
+.boxQuestion {
+  flex: 1 1 0;
+  min-width: 0;
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 400;
+  line-height: 1rem;
+  color: var(--wb-foreground);
+}
+
+.step {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: 0.75rem;
+  color: var(--wb-muted-foreground);
+}
+
+.step p {
+  margin: 0;
+}
+
+.stepBack {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--wb-foreground);
+  cursor: pointer;
+}
+
+.stepBack:hover {
+  background: color-mix(in oklab, var(--wb-foreground) 6%, transparent);
+}
+
+.stepBack:focus-visible {
+  outline: 2px solid var(--wb-action);
+  outline-offset: 1px;
+}
+
+.stepBack svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* The heading asks the question, so the legend and the rule are read out only. */
 [data-place="box"] :is(.prompt, .rule) {
   position: absolute;
   width: 1px;
@@ -369,39 +435,60 @@
 }
 
 [data-place="box"] .choices {
-  gap: 6px;
+  gap: 0;
 }
 
-[data-place="box"] .choice {
-  min-height: 2.5rem;
-  border-color: var(--wb-border);
-  border-radius: 8px;
-  background: var(--wb-background);
+[data-place="box"] .choice,
+[data-place="box"] .choice:has(.choiceDescription) {
+  align-items: flex-start;
+  gap: var(--space-2);
+  min-height: 0;
+  padding: var(--space-2) 40px var(--space-2) 15px;
+  border: 0;
+  border-left: 1px solid var(--wb-border);
+  border-radius: 0;
+  background: none;
+  font-size: 0.75rem;
+  line-height: 1rem;
+  color: var(--wb-foreground);
 }
 
-[data-place="box"] .choice:hover {
-  border-color: var(--wb-border-strong);
+[data-place="box"] .choice:hover,
+[data-place="box"] .choice[data-checked] {
+  background: color-mix(in oklab, var(--wb-foreground) 2.5%, transparent);
 }
 
 [data-place="box"] .choice[data-checked] {
-  border-color: var(--wb-foreground);
-  background: var(--wb-background);
+  padding-left: 14px;
+  border-left: 2px solid var(--wb-action);
 }
 
-[data-place="box"] .box {
-  width: 1rem;
-  height: 1rem;
-  border-color: var(--wb-border-strong);
+[data-place="box"] .choice[data-checked] .choiceLabel {
+  font-weight: 500;
+}
+
+[data-place="box"] .choice:has(input:not([type="checkbox"]):focus-visible) {
+  outline: 2px solid var(--wb-action);
+  outline-offset: -2px;
+}
+
+[data-place="box"] .choiceDescription {
+  font-size: 0.75rem;
+  color: var(--wb-muted-foreground);
+}
+
+.choiceLabel {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.recommended {
+  padding: 2px var(--space-2);
   border-radius: 999px;
-  background: none;
-  font-size: 0;
-}
-
-[data-place="box"] .box svg {
-  display: none;
-}
-
-[data-place="box"] .choice[data-checked] .box {
-  border: 5px solid var(--wb-foreground);
-  background: var(--wb-background);
+  background: var(--wb-muted);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1rem;
+  color: var(--wb-muted-foreground);
 }

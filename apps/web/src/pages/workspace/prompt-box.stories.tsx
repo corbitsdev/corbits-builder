@@ -96,10 +96,14 @@ function Box({ dock, waiting, width = 560 }: Args) {
   );
 }
 
+const progressKey = `unsent:questions:${question.signalName}`;
+
 const meta = {
   title: "Screens/Workspace/Prompt box",
   component: Box,
   args: { dock: composer },
+  // The question card keeps its progress for the tab, so each story starts it afresh.
+  beforeEach: () => sessionStorage.removeItem(progressKey),
 } satisfies Meta<typeof Box>;
 
 export default meta;
@@ -147,12 +151,56 @@ export const TypingWhileWorking: Story = {
   },
 };
 
-/** The coordinator's question, as the question card the conversation shows, framed by the box. */
-export const Question: Story = {
+// A story opens the question partway by seeding the progress the card keeps.
+const questionAt =
+  (step: number, chosen: readonly string[] = []) =>
+  () => {
+    sessionStorage.setItem(
+      progressKey,
+      JSON.stringify({
+        step,
+        answers: question.asked.questions.map((_, index) => ({
+          chosen: index === step ? chosen : [],
+          own: "",
+        })),
+      }),
+    );
+    return () => sessionStorage.removeItem(progressKey);
+  };
+
+const asking = {
+  dock: { ...composer, placeholder: wording.questions.composerPlaceholder },
+  waiting: "question",
+} satisfies Args;
+
+/**
+ * The coordinator's question at rest: its options on a rail, the recommendation a tag, nothing
+ * picked. Send waits, and the person's own words in the box answer instead.
+ */
+export const Question: Story = { args: asking };
+
+/** Partway through, still nothing picked: Back stands beside where the question is among them. */
+export const QuestionLater: Story = {
+  args: asking,
+  beforeEach: questionAt(1),
+};
+
+/**
+ * An option picked: the rail turns the action blue, Continue stands where Send was, and the box
+ * asks for details to go with it.
+ */
+export const QuestionPicked: Story = {
+  args: asking,
+  beforeEach: questionAt(1, ["Freelancers"]),
+};
+
+/** The person types their own answer instead: Send comes back, blue. */
+export const QuestionOwnAnswer: Story = {
   args: {
-    dock: { ...composer, placeholder: wording.questions.composerPlaceholder },
-    waiting: "question",
+    ...asking,
+    dock: { ...asking.dock, text: "Mostly home bakers selling at markets" },
   },
+  beforeEach: questionAt(1),
 };
 
 /** The writer's screen for approving documents, with its own actions. */

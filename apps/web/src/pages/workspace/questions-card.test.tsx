@@ -168,6 +168,26 @@ describe("questions card", () => {
     expect(html).toContain(`>${text.next}<`);
   });
 
+  test("in the prompt box nothing starts picked, the recommendation is a tag and the box takes own words", () => {
+    const html = renderToStaticMarkup(
+      <QuestionsCard
+        question={{ at: 0, signalName: "call-1", asked: ask, status: "open" }}
+        disabled={false}
+        onAnswer={send}
+        place="box"
+      />,
+    );
+    expect(html).toContain(">Who is it for?</h3>");
+    expect(html).toContain(text.position(1, 3));
+    // No Back on the first question, and nothing picked, so no Continue either.
+    expect(html).not.toContain(`aria-label="${text.back}"`);
+    expect(html).not.toContain('checked=""');
+    expect(html).not.toContain(`>${text.next}<`);
+    expect(html).toContain(`Small teams<span`);
+    expect(html).toContain(`>${text.recommended}<`);
+    expect(html).not.toContain(`placeholder="${text.other}"`);
+  });
+
   test("a single question shows no position and its button sends", () => {
     const html = renderToStaticMarkup(
       <QuestionsCard
