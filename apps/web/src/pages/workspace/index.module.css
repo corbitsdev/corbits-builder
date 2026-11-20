@@ -74,8 +74,8 @@
   isolation: isolate;
 }
 
-/* The room's top bar: the next-step line on the left, the project control on the right,
-   on the page's own background above one full-width hairline. With neither, there is no bar. */
+/* The room's top bar: the project control at its end, on the page's own background above one
+   full-width hairline. Without it, there is no bar. */
 .top {
   display: flex;
   flex-shrink: 0;
@@ -89,11 +89,6 @@
 
 .top:empty {
   display: none;
-}
-
-.top > :not(.controls) {
-  flex: 1;
-  min-width: 0;
 }
 
 .controls {
