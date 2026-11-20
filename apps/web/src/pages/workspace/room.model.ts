@@ -68,10 +68,6 @@ import {
   acceptedMaterials,
   approveDocument,
   attachMaterials,
-  declinePlanStep,
-  goAheadPlanStep,
-  restorePlanStep,
-  setPlanStepAskFirst,
   removeMaterial,
   readArtifact,
   readProjectValues,
@@ -105,6 +101,7 @@ import {
   DRAFT_TAB,
   followDeliverableId,
   LIVE_TAB,
+  MOCKUP_TAB,
   shownDeliverableId,
   type DocumentChoice,
 } from "./tab-follow.ts";
@@ -146,7 +143,7 @@ import {
 import { designDraftFiled, useDesignDraft } from "./design-preview.model.ts";
 import { useUserManual } from "./user-manual.model.ts";
 import { workUnitStanding } from "./work-unit-step.model.ts";
-import { conceptOfTab, conceptTab } from "./design-concept.ts";
+import { conceptTab } from "./design-concept.ts";
 import { designConcepts, DESIGN_OPTION } from "./design-concepts.model.ts";
 import { useLiveAppPresence } from "./live-app.model.ts";
 import { usePreference } from "../../queries/preferences.ts";
@@ -167,6 +164,12 @@ import {
 } from "../model-setup.model.ts";
 import { useModelCatalog } from "../settings/model-catalog.ts";
 import type { RoomContent, RoomDock } from "./room.view.tsx";
+import { useProjectSidebar } from "./project-sidebar.model.ts";
+import type { SettingsTab } from "../settings/settings.view.tsx";
+import type {
+  MenuProject,
+  ProjectInfoDialogProps,
+} from "../project-menu.model.ts";
 import { parseBundle } from "./design-bundle.ts";
 import { MockupFrame } from "./mockup-frame.tsx";
 import type {
@@ -400,7 +403,12 @@ export type StageWorkspaceProps = {
   /** Whether the project list shows it archived, so an archive or restore made elsewhere is read again. */
   listedArchived?: boolean;
   onChanged: () => void;
-  onOpenSettings: () => void;
+  /** The project as its options menu reads it; absent until the project list has it. */
+  menuProject?: MenuProject;
+  onProjectError: (cause: unknown) => void;
+  onOpenSettings: (tab?: SettingsTab) => void;
+  onAllProjects: () => void;
+  onNewProject: () => void;
   /** The opening sentence the project was started with. It is not a stored
    *  artifact but the first conversation message, sent here once the
    *  coordinator binds. */
@@ -564,7 +572,11 @@ export function useRoom({
   projectId,
   projectTitle,
   onChanged,
+  menuProject,
+  onProjectError,
   onOpenSettings,
+  onAllProjects,
+  onNewProject,
   openingMessage,
   status,
   runTenantId,
@@ -573,6 +585,8 @@ export function useRoom({
   refetchProject,
 }: ReadyRoomProps): {
   view: RoomContent;
+  /** Project settings, opened from the sidebar, while open. */
+  projectSettings: ProjectInfoDialogProps | null;
   /** The line above the conversation; null on an archived project, which has none. */
   nextStep: NextStepLineProps | null;
   enableAi: EnableAiDialogProps;
@@ -648,6 +662,9 @@ export function useRoom({
     null,
   );
   const [paneTab, setPaneTab] = useState<{ value: string } | null>(null);
+  const [printTab, setPrintTab] = useState<{ value: string } | null>(null);
+  // The tab the project view shows, which the sidebar marks while the view is open.
+  const [shownTab, setShownTab] = useState<string | null>(null);
   const documentPaneRef = useRef<HTMLElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   // Each committed reply's thinking and tool work, as this session watched it.
@@ -1154,10 +1171,9 @@ export function useRoom({
     setPaneTab({ value: tab });
     setProjectOpen(true);
   };
-  const openDocument = (id: string) => {
-    openProject(id);
-    if (conceptOfTab(id) === undefined) chooseDocument(id);
-  };
+  // The conversation opens the design as it is drawn, its mockup, as the pane always has.
+  const openDocument = (id: string) =>
+    openProject(id === "design" ? MOCKUP_TAB : id);
   // "settled" is a 409: someone already decided the ask, or its run moved on; the page reads
   // where it stands.
   const saveDecision = async (decision: {
@@ -1824,6 +1840,30 @@ export function useRoom({
         stagedItems === null ? null : wording.questions.sendBack(stagedItems),
     };
   };
+  const paneDocuments = paneDeliverables.map((item) =>
+    paneDocument(item, seen),
+  );
+  const { sidebar, projectSettings } = useProjectSidebar({
+    projectId,
+    title: projectTitle,
+    project: menuProject,
+    onProjectChanged: onChanged,
+    onProjectError,
+    onOpenSettings,
+    onAllProjects,
+    onNewProject,
+    plan: snapshot.plan.steps,
+    documents: paneDocuments,
+    draft: designDraft !== null,
+    concepts,
+    manual: userManual !== null,
+    appShown: liveApp !== null,
+    shown: projectOpen && !nothingYet ? shownTab : null,
+    onOpen: openProject,
+    onPrint: (tab) => setPrintTab({ value: tab }),
+    onRemove: removeAttachment,
+    reload: () => reloadRef.current(),
+  });
   const emptyConversation = () => {
     if (archived) return "archived";
     return shownTurns.length === 0 && !thinking ? "new" : null;
@@ -1880,34 +1920,7 @@ export function useRoom({
         empty: emptyConversation(),
       },
       dock: dock(),
-      plan: snapshot.plan.steps,
-      onDeclineStep: async (stepId, declined) => {
-        try {
-          await (declined ? declinePlanStep : restorePlanStep)(
-            projectId,
-            stepId,
-          );
-          reloadRef.current();
-        } catch (cause) {
-          toast.error(humanFault(cause, wording.conversation.plan.notChanged));
-        }
-      },
-      onGoAheadStep: async (stepId) => {
-        try {
-          await goAheadPlanStep(projectId, stepId);
-          reloadRef.current();
-        } catch (cause) {
-          toast.error(humanFault(cause, wording.conversation.plan.notChanged));
-        }
-      },
-      onAskFirstStep: async (stepId, askFirst) => {
-        try {
-          await setPlanStepAskFirst(projectId, stepId, askFirst);
-          reloadRef.current();
-        } catch (cause) {
-          toast.error(humanFault(cause, wording.conversation.plan.notChanged));
-        }
-      },
+      sidebar,
       documentPane: {
         projectId,
         projectTitle,
@@ -1915,7 +1928,9 @@ export function useRoom({
         manual: userManual,
         concepts,
         openTab: paneTab,
-        documents: paneDeliverables.map((item) => paneDocument(item, seen)),
+        printTab,
+        onShownChange: setShownTab,
+        documents: paneDocuments,
         selectedId: selected === null ? null : selected.kind,
         state: selected ? (selectedState ?? { status: "loading" }) : undefined,
         ...(selectedState?.status === "error" && selectedState.retryable
@@ -1960,6 +1975,7 @@ export function useRoom({
       ),
       paneRef: documentPaneRef,
     },
+    projectSettings,
     nextStep: archived
       ? null
       : {

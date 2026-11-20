@@ -35,7 +35,6 @@ import {
   PromptInputToolbar,
 } from "@corbits/react-ui";
 import type { ScreenStatus } from "@corbits-builder/plugin";
-import type { PlanView } from "@corbits-builder/schemas/project";
 import { wording } from "../../config.ts";
 import { Banner, BannerAction, Fault } from "../../components.jsx";
 import { Composer } from "../../composer.tsx";
@@ -49,7 +48,10 @@ import {
 import { InBox, useBoxPorts, type BoxPorts } from "./box-ports.tsx";
 import { pastedFiles } from "./pasted-files.ts";
 import { ChatSheet, type ChatSheetProps } from "./chat-sheet.tsx";
-import { PlanPanel, planProgress, usePlanCollapsed } from "./plan-panel.tsx";
+import {
+  ProjectSidebarView,
+  type ProjectSidebarViewProps,
+} from "./project-sidebar.view.tsx";
 import type { StatusPillContent } from "./status-pill.tsx";
 import { StageView } from "./stage-view.tsx";
 import { RoomThread, type RoomThreadContent } from "./transcript.tsx";
@@ -160,14 +162,8 @@ export type RoomContent = {
     empty: "archived" | "new" | null;
   };
   dock: RoomDock;
-  /** The project's plan, top-level steps first; empty while it has none, and then nothing shows it. */
-  plan: PlanView["steps"];
-  /** The person declines an optional plan step, or brings back one they declined. */
-  onDeclineStep: (stepId: string, declined: boolean) => Promise<void>;
-  /** The person gives the go-ahead on a step they asked to be consulted on. */
-  onGoAheadStep: (stepId: string) => Promise<void>;
-  /** The person turns "ask me first" on or off for a step that has not started. */
-  onAskFirstStep: (stepId: string, askFirst: boolean) => Promise<void>;
+  /** The project's sidebar: its plan, its files, its app and the ways out of the room. */
+  sidebar: Omit<ProjectSidebarViewProps, "drawer">;
   documentPane: ArtifactPaneContent;
   /** Where each plugin tab that says so stands, beside the plan, each opening its tab. */
   tabStatus: readonly TabStatus[];
@@ -177,7 +173,7 @@ export type RoomContent = {
 
 export type TabStatus = ScreenStatus & { tab: string; onOpen: () => void };
 
-/** Below this width of the room, the plan is a drawer over the conversation. */
+/** Below this width of the room, the sidebar is a drawer over the page. */
 const NARROW_ROOM_PX = 900;
 
 export type RoomViewProps = RoomContent & RoomSlots;
@@ -187,10 +183,7 @@ export function RoomView({
   layout,
   conversation,
   dock,
-  plan,
-  onDeclineStep,
-  onGoAheadStep,
-  onAskFirstStep,
+  sidebar,
   documentPane,
   tabStatus,
   paneRef,
@@ -204,12 +197,11 @@ export function RoomView({
   const conversationRef = useRef<HTMLElement>(null);
   const shell = useShellReply(conversationRef);
   const closeProject = () => onProjectOpenChange(false);
-  // The plan sits beside the conversation; in a room too narrow for that it is a drawer, shut
-  // until the person opens it.
+  // The sidebar sits beside the page; in a room too narrow for that it is a drawer, shut until the
+  // person opens it, and shut again once they pick something in it.
   const roomRef = useRef<HTMLDivElement>(null);
   const [narrow, setNarrow] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [planFolded, setPlanFolded] = usePlanCollapsed();
   useEffect(() => {
     const room = roomRef.current;
     if (room === null) return;
@@ -219,10 +211,15 @@ export function RoomView({
     observer.observe(room);
     return () => observer.disconnect();
   }, []);
-  const planShown = plan.length > 0 && (narrow ? drawerOpen : !planFolded);
-  const setPlanShown = (shown: boolean) =>
-    narrow ? setDrawerOpen(shown) : setPlanFolded(!shown);
-  const progress = planProgress(plan);
+  useEffect(() => {
+    if (!narrow) setDrawerOpen(false);
+  }, [narrow]);
+  const leaveDrawer =
+    <Args extends unknown[]>(go: (...args: Args) => void) =>
+    (...args: Args) => {
+      setDrawerOpen(false);
+      go(...args);
+    };
   // Focus goes into the project view as it opens and back to what opened it as it closes.
   useEffect(() => {
     if (!projectOpen) return;
@@ -268,73 +265,45 @@ export function RoomView({
   return (
     <StageView aria-label={`Conversation for ${title}`}>
       <div ref={roomRef} className={styles.room}>
-        <section
-          ref={conversationRef}
-          className={styles.conversationPane}
-          aria-label="Project conversation"
-        >
-          <div className={styles.conversation}>
-            <div className={styles.top}>
-              {nextStep}
-              {projectReady || progress !== null ? (
-                <div className={styles.controls}>
-                  {progress === null ? null : (
-                    <UiButton
-                      type="button"
-                      size="sm"
-                      variant={planShown ? "secondary" : "ghost"}
-                      className={styles.control}
-                      aria-pressed={planShown}
-                      aria-label={wording.conversation.plan.progressLabel(
-                        progress.done,
-                        progress.total,
-                        progress.alert,
-                      )}
-                      title={
-                        planShown
-                          ? wording.conversation.plan.hide
-                          : wording.conversation.plan.show
-                      }
-                      onClick={() => setPlanShown(!planShown)}
-                    >
-                      <span>{wording.conversation.plan.title}</span>
-                      <span className={styles.meter} aria-hidden="true">
-                        {progress.marks.map(({ id, mark }) => (
-                          <span key={id} data-mark={mark} />
-                        ))}
-                      </span>
-                      <span className={styles.count}>
-                        {wording.conversation.plan.progress(
-                          progress.done,
-                          progress.total,
+        <ProjectSidebarView
+          {...sidebar}
+          open={narrow ? drawerOpen : sidebar.open}
+          drawer={narrow}
+          onToggleSidebar={
+            narrow ? () => setDrawerOpen(!drawerOpen) : sidebar.onToggleSidebar
+          }
+          onOpenFile={leaveDrawer(sidebar.onOpenFile)}
+          onOpenApp={leaveDrawer(sidebar.onOpenApp)}
+        />
+        {/* The page beside the sidebar: the conversation, and what covers it. */}
+        <div className={styles.main} data-slot="room-main">
+          <section
+            ref={conversationRef}
+            className={styles.conversationPane}
+            aria-label="Project conversation"
+          >
+            <div className={styles.conversation}>
+              <div className={styles.top}>
+                {nextStep}
+                {projectReady ? (
+                  <div className={styles.controls}>
+                    {tabStatus.map(({ tab, label, mark, onOpen }) => (
+                      <UiButton
+                        key={tab}
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className={styles.control}
+                        aria-label={wording.conversation.tabStatus(tab, label)}
+                        title={wording.conversation.openTab(tab)}
+                        onClick={onOpen}
+                      >
+                        <span>{label}</span>
+                        {mark === undefined ? null : (
+                          <span className={styles.alert} data-mark={mark} />
                         )}
-                      </span>
-                      {progress.alert === null ? null : (
-                        <span
-                          className={styles.alert}
-                          data-mark={progress.alert}
-                        />
-                      )}
-                    </UiButton>
-                  )}
-                  {tabStatus.map(({ tab, label, mark, onOpen }) => (
-                    <UiButton
-                      key={tab}
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      className={styles.control}
-                      aria-label={wording.conversation.tabStatus(tab, label)}
-                      title={wording.conversation.openTab(tab)}
-                      onClick={onOpen}
-                    >
-                      <span>{label}</span>
-                      {mark === undefined ? null : (
-                        <span className={styles.alert} data-mark={mark} />
-                      )}
-                    </UiButton>
-                  ))}
-                  {projectReady ? (
+                      </UiButton>
+                    ))}
                     <UiButton
                       type="button"
                       size="sm"
@@ -349,55 +318,49 @@ export function RoomView({
                         {wording.conversation.openProject}
                       </span>
                     </UiButton>
-                  ) : null}
-                </div>
-              ) : null}
+                  </div>
+                ) : null}
+              </div>
+              <RoomThread {...conversation.thread}>
+                <EmptyConversation empty={conversation.empty} />
+              </RoomThread>
+              {chatScreens}
+              {dockInConversation ? conversationDock : null}
             </div>
-            <RoomThread {...conversation.thread}>
-              <EmptyConversation empty={conversation.empty} />
-            </RoomThread>
-            {chatScreens}
-            {dockInConversation ? conversationDock : null}
-          </div>
-        </section>
-        {planShown ? (
-          <PlanPanel
-            steps={plan}
-            drawer={narrow}
-            onHide={() => setPlanShown(false)}
-            onDecline={onDeclineStep}
-            onGoAhead={onGoAheadStep}
-            onAskFirst={onAskFirstStep}
-          />
-        ) : null}
-        {projectReady ? (
-          // Kept while closed, so its tabs, previews and drafts keep their place.
-          <div
-            className={styles.page}
-            data-slot="room-project"
-            hidden={!projectOpen}
-          >
-            <ArtifactPane
-              {...documentPane}
-              {...paneParts}
-              paneRef={paneRef}
-              open={projectOpen}
-              onClose={closeProject}
-            />
-            {dockInProject ? roomDock : null}
-          </div>
-        ) : null}
-        {page === null ? null : (
-          // Kept while closed, so the screen's draft and the page it shows wait for the person.
-          <div className={styles.page} data-slot="room-page" hidden={!pageOpen}>
-            <div className={styles.pageScreen}>
-              <InBox ports={ports} as={pageOpen ? "page" : null}>
-                {page}
-              </InBox>
+          </section>
+          {projectReady ? (
+            // Kept while closed, so its tabs, previews and drafts keep their place.
+            <div
+              className={styles.page}
+              data-slot="room-project"
+              hidden={!projectOpen}
+            >
+              <ArtifactPane
+                {...documentPane}
+                {...paneParts}
+                paneRef={paneRef}
+                open={projectOpen}
+                onClose={closeProject}
+              />
+              {dockInProject ? roomDock : null}
             </div>
-            {pageOpen ? roomDock : null}
-          </div>
-        )}
+          ) : null}
+          {page === null ? null : (
+            // Kept while closed, so the screen's draft and the page it shows wait for the person.
+            <div
+              className={styles.page}
+              data-slot="room-page"
+              hidden={!pageOpen}
+            >
+              <div className={styles.pageScreen}>
+                <InBox ports={ports} as={pageOpen ? "page" : null}>
+                  {page}
+                </InBox>
+              </div>
+              {pageOpen ? roomDock : null}
+            </div>
+          )}
+        </div>
       </div>
       {shell.reply}
     </StageView>

@@ -6,6 +6,24 @@
   min-height: 0;
   min-width: 0;
   overflow: hidden;
+  /* The project sidebar's ground, which the page stands on. */
+  background: var(--card);
+}
+
+/* The page beside the sidebar, which the project view and a screen cover. Its own stacking
+   context, so what covers it stays under the sidebar's drawer. */
+.main {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  margin: var(--space-2);
+  overflow: hidden;
+  border-radius: var(--radius-panel);
+  background: var(--wb-background);
+  box-shadow: var(--wb-pane-shadow);
 }
 
 .conversationPane {
@@ -17,11 +35,11 @@
   min-height: 0;
   overflow: hidden;
   background: var(--wb-background);
-  /* What layers inside the conversation, such as its map, stays under the plan drawer. */
+  /* What layers inside the conversation, such as its map, stays inside it. */
   isolation: isolate;
 }
 
-/* The room's top bar: the next-step line on the left, the plan and project controls on the right,
+/* The room's top bar: the next-step line on the left, the project control on the right,
    on the page's own background above one full-width hairline. With neither, there is no bar. */
 .top {
   display: flex;
@@ -51,65 +69,34 @@
   margin-inline-start: auto;
 }
 
-/* Quiet like the project view's bar: muted until hovered or pressed. */
+/* Quiet like the project view's bar: muted until hovered. */
 .control {
   color: var(--wb-muted-foreground);
 }
 
-.control:hover,
-.control[aria-pressed="true"] {
+.control:hover {
   color: var(--wb-foreground);
 }
 
-/* The plan's progress: a segment per step, done in green, the rest neutral, and a step that
-   failed or waits on the person in its own colour. */
-.meter {
-  display: inline-flex;
-  gap: 2px;
-  width: max-content;
-  max-width: 4rem;
-}
-
-.meter > span,
-.alert {
-  background: var(--wb-border);
-}
-
-.meter > span {
-  flex: 0 1 0.625rem;
-  min-width: 2px;
-  height: 4px;
-  border-radius: 999px;
-}
-
-.meter > span[data-mark="running"] {
-  background: var(--wb-muted-foreground);
-}
-
-.meter > span[data-mark="done"],
-.alert[data-mark="done"] {
-  background: var(--wb-okay);
-}
-
-.meter > [data-mark="failed"],
-.alert[data-mark="failed"] {
-  background: var(--wb-destructive);
-}
-
-.meter > [data-mark="needs_you"],
-.alert[data-mark="needs_you"] {
-  background: var(--wb-primary);
-}
-
-.count {
-  font-size: 0.75rem;
-  font-variant-numeric: tabular-nums;
-}
-
+/* A plugin tab's mark beside where it stands: neutral, or the plan's colour for done, failed or
+   waiting on the person. */
 .alert {
   width: 6px;
   height: 6px;
   border-radius: 999px;
+  background: var(--wb-border);
+}
+
+.alert[data-mark="done"] {
+  background: var(--wb-okay);
+}
+
+.alert[data-mark="failed"] {
+  background: var(--wb-destructive);
+}
+
+.alert[data-mark="needs_you"] {
+  background: var(--wb-primary);
 }
 
 /* On a phone the project control keeps only its icon; its name stays its accessible name. */
