@@ -608,33 +608,51 @@ export function RoomDockView({
     );
   if (dock.kind === "modelNeeded")
     return (
-      <Banner tone="error" role="alert" title={dock.message}>
-        <BannerAction>
-          <UiButton type="button" size="sm" onClick={dock.onOpenSettings}>
-            {wording.action.openSettings}
-          </UiButton>
-          <UiButton
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={dock.onRetry}
-          >
-            {wording.action.retry}
-          </UiButton>
-        </BannerAction>
-      </Banner>
+      <div className={styles.notice}>
+        <Banner tone="error" role="alert" title={dock.message}>
+          <BannerAction>
+            <UiButton
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={dock.onOpenSettings}
+            >
+              {wording.action.openSettings}
+            </UiButton>
+            <UiButton
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={dock.onRetry}
+            >
+              {wording.action.retry}
+            </UiButton>
+          </BannerAction>
+        </Banner>
+      </div>
     );
   if (dock.kind === "starting")
-    return <Banner title={wording.conversation.startingCoordinator} />;
+    return (
+      <div className={styles.notice}>
+        <Banner title={wording.conversation.startingCoordinator} />
+      </div>
+    );
   if (dock.kind === "startFailed")
     return (
-      <Banner tone="error" role="alert" title={dock.message}>
-        <BannerAction>
-          <UiButton type="button" size="sm" onClick={dock.onRetry}>
-            {wording.action.retry}
-          </UiButton>
-        </BannerAction>
-      </Banner>
+      <div className={styles.notice}>
+        <Banner tone="error" role="alert" title={dock.message}>
+          <BannerAction>
+            <UiButton
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={dock.onRetry}
+            >
+              {wording.action.retry}
+            </UiButton>
+          </BannerAction>
+        </Banner>
+      </div>
     );
   return (
     <RoomComposerView
