@@ -276,12 +276,14 @@ export function RoomView({
   const headingRef = useRef<HTMLHeadingElement>(null);
   const inputRef = dock.kind === "composer" ? dock.inputRef : null;
   const openSpace = () => {
-    if (narrow) setSheetOpen(true);
+    if (narrow && !sheetOpen) setSheetOpen(true);
     else headingRef.current?.focus();
   };
+  // The box moves with the sheet, so the cursor goes back to it once it has moved.
+  const refocusBox = useRef(false);
   const closeSheet = () => {
     setSheetOpen(false);
-    inputRef?.current?.focus();
+    refocusBox.current = true;
   };
   // The sheet takes focus to its heading as it opens.
   useEffect(() => {
@@ -302,8 +304,13 @@ export function RoomView({
       active === document.body ||
       (active instanceof HTMLElement &&
         active.closest('[data-slot="plugin-space"]') !== null);
-    if (lost) inputRef?.current?.focus();
+    if (lost) refocusBox.current = true;
   }, [spaceKey]);
+  useEffect(() => {
+    if (!refocusBox.current) return;
+    refocusBox.current = false;
+    inputRef?.current?.focus();
+  });
   // Focus goes into the project view as it opens and back to what opened it as it closes.
   useEffect(() => {
     if (!projectOpen) return;
