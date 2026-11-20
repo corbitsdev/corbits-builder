@@ -5,6 +5,8 @@ import {
   createPrincipalStore,
   type DB,
   type DBExecutor,
+  pgErrorCode,
+  PG_UNIQUE_VIOLATION,
   type PrincipalKeyStore,
 } from "@intx/db";
 import {
@@ -301,31 +303,46 @@ export function createInvitationService(db: DB["db"], keys: PrincipalKeyStore) {
         if (preset.digest !== row.roleSha256)
           throw new ProjectError(409, "invitation_role_changed");
         await assertInvitationDelegation(grants, preset.rows);
-        const [member] = await tx
-          .select()
-          .from(principal)
-          .where(
-            and(
-              eq(principal.tenantId, row.tenantId),
-              eq(principal.kind, "user"),
-              eq(principal.refId, person.id),
-            ),
-          )
-          .for("update");
-        const existing =
-          member ??
-          (await principals.create(
-            {
-              id: crypto.randomUUID(),
-              tenantId: row.tenantId,
-              kind: "user",
-              refId: person.id,
-              status: "active",
-              createdAt: now,
-              updatedAt: now,
-            },
-            tx,
-          ));
+        const member = async () => {
+          const [found] = await tx
+            .select()
+            .from(principal)
+            .where(
+              and(
+                eq(principal.tenantId, row.tenantId),
+                eq(principal.kind, "user"),
+                eq(principal.refId, person.id),
+              ),
+            )
+            .for("update");
+          return found;
+        };
+        const enroll = async () => {
+          // A concurrent acceptance into the same tenant may insert first; the
+          // savepoint keeps this transaction usable to read that member back.
+          try {
+            return await tx.transaction((savepoint) =>
+              principals.create(
+                {
+                  id: crypto.randomUUID(),
+                  tenantId: row.tenantId,
+                  kind: "user",
+                  refId: person.id,
+                  status: "active",
+                  createdAt: now,
+                  updatedAt: now,
+                },
+                savepoint,
+              ),
+            );
+          } catch (error) {
+            if (pgErrorCode(error) !== PG_UNIQUE_VIOLATION) throw error;
+            const found = await member();
+            if (found === undefined) throw error;
+            return found;
+          }
+        };
+        const existing = (await member()) ?? (await enroll());
         if (existing.status !== "active")
           throw new ProjectError(409, "invitation_membership_conflict");
         // Native membership creation and row locks may wait past the deadline.
