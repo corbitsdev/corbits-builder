@@ -115,6 +115,8 @@ import { createRunTracing } from "./telemetry/run-tracing.ts";
 import { createAgentActivity } from "./artifacts/activity.ts";
 import { createArtifactService } from "./artifacts/service.ts";
 import { createChecks } from "./plugins/checks.ts";
+import { createCommandRunner } from "./plugins/command-runner.ts";
+import { createAppBuilds } from "./artifacts/app-build.ts";
 import { requestErrorMetadata } from "./request-error.ts";
 import { createLiveAppProxy } from "./live-app/proxy.ts";
 import { createLiveAppRunner } from "./live-app/runner.ts";
@@ -522,20 +524,30 @@ export async function createHubRuntime(env: HubEnvironment) {
       createResolveTenant({ db: handle.db }),
       createDeclineNote({ coordinatorAsk: coordinatorAskReader(handle.db) }),
     );
+    const sandboxToolchains = {
+      paths: env.SANDBOX_TOOLCHAIN_PATHS,
+      dataDir: resolve(env.HUB_DATA_DIR),
+    };
+    const savedApps = createArtifactService(
+      handle.db,
+      createWorkflowRunReader(agentRepoStore.repoStore),
+      agentRepoStore.repoStore,
+    );
+    const commands = createCommandRunner();
     // The hub's one runner of plugins' checks; a result is noted to the coordinator through the
     // hub's own mail route.
     const checks = createChecks({
       db: handle.db,
-      toolchains: {
-        paths: env.SANDBOX_TOOLCHAIN_PATHS,
-        dataDir: resolve(env.HUB_DATA_DIR),
-      },
-      artifacts: createArtifactService(
-        handle.db,
-        createWorkflowRunReader(agentRepoStore.repoStore),
-        agentRepoStore.repoStore,
-      ),
+      toolchains: sandboxToolchains,
+      artifacts: savedApps,
+      commands,
       fetch: async (request) => app.fetch(request),
+    });
+    const appBuilds = createAppBuilds({
+      db: handle.db,
+      artifacts: savedApps,
+      commands,
+      toolchains: sandboxToolchains,
     });
     // A coder's push to a project's app repository is how its main gets a new commit: once
     // Interchange's receive-pack has moved the ref, the checks the push made stale re-run.
@@ -634,6 +646,7 @@ export async function createHubRuntime(env: HubEnvironment) {
         liveApps,
         workflows.services.workflowLifecycleService.requestCancellation,
         checks,
+        appBuilds,
         serverKeys,
       ),
     );

@@ -310,7 +310,7 @@ export function createAgentTokenBridge(
     }
     const nativeBearer = bearer.startsWith(NATIVE_RUN_TOKEN_PREFIX);
     const artifactRoute =
-      /^\/api\/tenants\/[^/]+\/projects\/[^/]+\/(?:artifacts(?:\/[^/]+)?|artifact-approvals|design-themes\/run|design-draft\/previous|app-repository(?:\/revoke)?|run-values|run-block(?:\/end)?|run-credentials\/[^/]+\/(?:key|bind|revoke))$/.test(
+      /^\/api\/tenants\/[^/]+\/projects\/[^/]+\/(?:artifacts(?:\/[^/]+)?|artifact-approvals|design-themes\/run|design-draft\/previous|app-repository(?:\/revoke)?|app\/(?:archive|build-archive)|run-values|run-block(?:\/end)?|run-credentials\/[^/]+\/(?:key|bind|revoke))$/.test(
         c.req.path,
       );
     const runtimeScope = c.req.path === "/api/workflow-project-scope";
@@ -433,12 +433,12 @@ export function createAgentTokenBridge(
       return denied();
     }
     const base = "/api/tenants/" + encodeURIComponent(identity.tenantId);
-    // Spawned specialists hold no project binding; their native grants decide
-    // which artifacts they may read and write. run-values
-    // reads and saves only what the run's own plugin action reads and writes, which the hub checks for
-    // the run, and run-block records and ends only the calling run. run-credentials reads, makes,
-    // proves and revokes only a key the run's own action provisions. A specialist runs only the checks of its
-    // own plugin.
+    // Spawned specialists have no project binding. Their native grants decide which artifacts they
+    // may read and write, and whether they may download the saved app or a build of it, which is a
+    // GET that changes nothing in the project. run-values reads and saves only what the run's own
+    // plugin action reads and writes, which the hub checks for the run. run-block records and ends
+    // only the calling run. run-credentials reads, makes, proves and revokes only a key the run's
+    // own action provisions. A specialist runs only its own plugin's checks.
     const checkProject = c.req.path.match(
       /^\/api\/tenants\/[^/]+\/projects\/([^/]+)\/check-runs$/,
     )?.[1];

@@ -5,6 +5,47 @@ import { AppBundle } from "./artifact.ts";
 // packed as an app document. The hub packs a coder's workspace with them, the UI and the import
 // script pack a person's own repository with them, so the three agree on what leaves out.
 
+// The response header that names the version of an app download, in the form a check reads the
+// saved app's version: the commit, or v<N> for a filed version. It arrives with the files, so
+// whoever publishes them knows their version without asking again.
+export const APP_VERSION_HEADER = "x-builder-app-version";
+
+// The path from the app's root of a folder or file that a build of the app may return. The caller
+// chooses it, so it may not leave the app, start at the machine's root, or contain a segment the
+// hub would read differently from the caller.
+export const AppBuildPath = type("0 < string <= 256").narrow(
+  (path, ctx) =>
+    (![...path].some((char) => char === "\\" || char.charCodeAt(0) < 0x20) &&
+      path
+        .split("/")
+        .every(
+          (segment) => segment !== "" && segment !== "." && segment !== "..",
+        )) ||
+    ctx.mustBe(
+      "a path inside the app without a leading or trailing slash, empty, . or .. segments, backslashes or control characters",
+    ),
+);
+// A build of the saved app returns one to eight folders or files, not the whole app.
+export const AppBuildPaths = AppBuildPath.array()
+  .atLeastLength(1)
+  .atMostLength(8);
+
+// The codes the hub refuses a build of the saved app with when the cause is the app or its project,
+// not the hub. Each comes in a 4xx response, and the caller reads only the code.
+export const AppBuildRefusal = type.enumerated(
+  "app_not_filed",
+  "stack_production_missing",
+  "invalid_stack_production",
+  "app_command_running",
+  "install_failed",
+  "build_failed",
+  "build_timed_out",
+  "build_path_missing",
+  "build_path_is_link",
+  "build_output_too_large",
+);
+export type AppBuildRefusal = typeof AppBuildRefusal.infer;
+
 // A warmed designer or coder workspace holds the filed documents it works from here.
 export const INPUTS_DIRECTORY = ".inputs";
 

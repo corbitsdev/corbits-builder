@@ -9,7 +9,11 @@ import type {
   PopulateAssetParams,
 } from "@intx/hub-sessions";
 import { type } from "arktype";
-import { declaredRun, starterValues } from "@corbits-builder/plugin";
+import {
+  declaredProduction,
+  declaredRun,
+  starterValues,
+} from "@corbits-builder/plugin";
 import { CATALOG, WORKFLOW_PACKAGES } from "../plugins/catalog.ts";
 import {
   appRepositoryMain,
@@ -123,6 +127,34 @@ test("a project serves a web app by its stack.run, whatever it started from", ()
   expect(
     declaredRun({ "stack.run": { command: "make serve" } }),
   ).toBeInstanceOf(type.errors);
+});
+
+test("how a project runs in production names no path outside the app and no second command", () => {
+  const production = {
+    install: "bun install",
+    build: "bun run build",
+    start: "bun run start",
+    port: "PORT",
+    data: ["server/data", "uploads"],
+  };
+  expect(declaredProduction({ "stack.production": production })).toEqual(
+    production,
+  );
+  for (const wrong of [
+    { ...production, data: ["/var/lib/app"] },
+    { ...production, data: ["../shared"] },
+    { ...production, data: ["server/../../etc"] },
+    { ...production, data: ["./uploads"] },
+    { ...production, data: ["server//data"] },
+    { ...production, data: ["up loads"] },
+    { ...production, start: "bun run start\nrm -rf data" },
+    { ...production, build: "bun run build\r" },
+    { ...production, port: "port" },
+    { ...production, restart: "always" },
+  ])
+    expect(declaredProduction({ "stack.production": wrong })).toBeInstanceOf(
+      type.errors,
+    );
 });
 
 test("a coder run installs any package without asking only when its person turned that on", () => {

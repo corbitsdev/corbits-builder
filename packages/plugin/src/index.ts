@@ -1,7 +1,10 @@
 import { scope, type, type ArkErrors, type Type } from "arktype";
 import { ToolCredentialHandle } from "@intx/types/package-json";
 import { WriterDocumentKind } from "@corbits-builder/schemas/artifact";
-import { AppRun } from "@corbits-builder/schemas/installed-workflows";
+import {
+  AppRun,
+  PortVariable,
+} from "@corbits-builder/schemas/installed-workflows";
 import { Tier } from "@corbits-builder/schemas/models";
 import type {
   PlanStepStateName,
@@ -63,16 +66,44 @@ export const ValueDeclaration = type({
 });
 export type ValueDeclaration = typeof ValueDeclaration.infer;
 
-// Code a first build can start from: what it is, the plugin's folder of files written as the
-// project's first code, how its program starts so a person can open it, the command that prepares a
-// fresh workspace and what an agent can do when that fails, and the commands that prove the code.
-// A project with code but no recorded starter, built before projects recorded one, started from
-// the one starter that says legacyDefault.
+// A folder's path from the app's root. A path that climbs out with .., starts at / or has a .
+// segment would name a folder the release does not own, or one that two readers resolve to
+// different places.
+const AppFolder = type(/^[A-Za-z0-9_.-]+(\/[A-Za-z0-9_.-]+)*$/).narrow(
+  (path, ctx) =>
+    path.split("/").every((part) => part !== "." && part !== "..") ||
+    ctx.mustBe("a folder relative to the app's root, without . or .."),
+);
+
+// A release runs the command as one line of a shell script, where a line break starts a second.
+const AppCommand = type("string > 0").narrow(
+  (command, ctx) => !/[\n\r\0]/.test(command) || ctx.mustBe("one line"),
+);
+
+// How the project's program runs in production, as opposed to while it is worked on. port names the
+// environment variable it listens on. data lists the folders with what people entered, which must
+// survive from one release to the next.
+const AppProduction = type({
+  "+": "reject",
+  install: AppCommand,
+  build: AppCommand,
+  start: AppCommand,
+  port: PortVariable,
+  data: AppFolder.array(),
+});
+
+// Code a first build can start from. folder is the plugin's folder of files written as the
+// project's first code. run says how its program starts so a person can open it, and production how
+// it runs in production. setup prepares a fresh workspace, setupFailed says what an agent can do
+// when setup fails, and checks are the commands that prove the code. A project with code but no
+// recorded starter was built before projects recorded one, and started from the starter that says
+// legacyDefault.
 export const AppStarter = type({
   "+": "reject",
   about: "string > 0",
   folder: "string > 0",
   "run?": AppRun,
+  "production?": AppProduction,
   setup: "string > 0",
   setupFailed: "string > 0",
   checks: type("string > 0").array().atLeastLength(1),
@@ -80,9 +111,14 @@ export const AppStarter = type({
 });
 export type AppStarter = typeof AppStarter.infer;
 
-// The project values that record the starter a project's code began from, its checks and how its
-// program starts, each null for code that began from none.
-export const STACK_VALUES = ["stack.starter", "stack.checks", "stack.run"];
+// The project values that record the starter a project's code began from, its checks, how its
+// program starts and how it runs in production, each null for code that began from none.
+export const STACK_VALUES = [
+  "stack.starter",
+  "stack.checks",
+  "stack.run",
+  "stack.production",
+];
 
 /** The project values a project's code records for the starter it began from, or for none. */
 export function starterValues(
@@ -95,6 +131,7 @@ export function starterValues(
     "stack.starter": name,
     "stack.checks": starter.checks.join("\n"),
     "stack.run": starter.run ?? null,
+    "stack.production": starter.production ?? null,
   };
 }
 
@@ -108,6 +145,18 @@ export function declaredRun(
   const run = values?.["stack.run"];
   if (run === undefined || run === null) return undefined;
   return AppRun(run);
+}
+
+/**
+ * How the project's program runs in production, from the project's stack.production: undefined
+ * when it has none, so nothing says how to publish it, else the block or why it is not one.
+ */
+export function declaredProduction(
+  values: Readonly<Record<string, unknown>> | undefined,
+) {
+  const production = values?.["stack.production"];
+  if (production === undefined || production === null) return undefined;
+  return AppProduction(production);
 }
 
 // A look a design can start from: its id, what a person calls it, the theme of the plugin's themes

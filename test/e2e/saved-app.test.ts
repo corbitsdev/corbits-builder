@@ -15,6 +15,7 @@ import type {
   ArtifactList,
   LiveApp,
 } from "@corbits-builder/schemas/artifact";
+import { APP_VERSION_HEADER } from "@corbits-builder/schemas/app-files";
 import { ensureAppAsset } from "@corbits-builder/hub/projects/app-repository";
 import { loadHubSigningKey } from "@corbits-builder/hub/signing-key";
 import { startInProcessHub } from "./support/in-process-hub.ts";
@@ -148,6 +149,26 @@ test("a filed version stays the saved app while the app repository holds no app 
     checklist: "# Checked\n",
     live: "filed",
   });
+});
+
+test("a download names the version it holds as a check reads the saved app", async () => {
+  const version = async (path: string) =>
+    (await hub.call("GET", `${path}/app/archive`)).headers.get(
+      APP_VERSION_HEADER,
+    );
+  const filed = await seedProject();
+  await filed.file("# Checked\n");
+  await filed.file("# Saved\n", "snapshot");
+  expect(await version(filed.path)).toBe("v1");
+
+  const pushed = await seedProject();
+  await pushed.push("# First\n");
+  const first = await version(pushed.path);
+  await pushed.push("# Second\n");
+  const second = await version(pushed.path);
+  expect(first).toMatch(/^[0-9a-f]{40}$/);
+  expect(second).toMatch(/^[0-9a-f]{40}$/);
+  expect(second).not.toBe(first);
 });
 
 test("an export after a Save carries the version it filed in build/", async () => {

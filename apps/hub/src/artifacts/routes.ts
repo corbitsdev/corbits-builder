@@ -4,6 +4,10 @@ import { bodyLimit } from "hono/body-limit";
 import { contentDispositionHeader } from "@corbits/artifacts";
 import { PER_MESSAGE_TOTAL_LIMIT_BYTES } from "@intx/types";
 import { describeRoute, resolver } from "hono-openapi";
+import {
+  APP_VERSION_HEADER,
+  AppBuildRefusal,
+} from "@corbits-builder/schemas/app-files";
 import type { TenantEnv } from "@intx/hub-api";
 import {
   AcceptanceChecklist,
@@ -58,8 +62,12 @@ import {
   ProjectFollowing,
 } from "../plugins/catalog.ts";
 import type { createArtifactService } from "./service.ts";
+import { APP_BUILD_TIMEOUT_MS, type AppBuilds } from "./app-build.ts";
 import { projectValueWrites } from "../values/project-values.ts";
 import type { Answer } from "../answers/answer.ts";
+
+// The body of a build's refusal: one of its codes, with the details the code names.
+const AppBuildRefusalBody = type({ code: AppBuildRefusal, "+": "ignore" });
 
 // Each installed ready-made plan, by its handle, with the fact that ends it.
 const READY_PLANS = new Map(
@@ -92,10 +100,12 @@ export function mountArtifactRoutes(
     answer,
     nativeFetch,
     checks,
+    appBuilds,
   }: {
     answer: Answer;
     nativeFetch?: ((request: Request) => Promise<Response>) | undefined;
     checks?: Checks | undefined;
+    appBuilds?: AppBuilds | undefined;
   },
 ) {
   app.get(
@@ -1054,6 +1064,13 @@ export function mountArtifactRoutes(
       responses: {
         200: {
           description: "The app's source archive",
+          headers: {
+            [APP_VERSION_HEADER]: {
+              description:
+                "The version the archive holds, as a check reads the saved app's: its commit, or v<N> for a filed version",
+              schema: { type: "string" },
+            },
+          },
           content: {
             "application/zip": { schema: { type: "string", format: "binary" } },
           },
@@ -1066,7 +1083,7 @@ export function mountArtifactRoutes(
       },
     }),
     async (c) => {
-      const { filename, archive } = await service.appArchive(
+      const { filename, version, archive } = await service.appArchive(
         actorOf(c),
         c.req.param("projectId"),
         appVersionQuery(c),
@@ -1074,6 +1091,7 @@ export function mountArtifactRoutes(
       return new Response(archive, {
         headers: {
           "content-type": "application/zip",
+          [APP_VERSION_HEADER]: version,
           "content-disposition": contentDispositionHeader(
             "attachment",
             filename,
@@ -1082,6 +1100,103 @@ export function mountArtifactRoutes(
       });
     },
   );
+  if (appBuilds)
+    app.get(
+      "/:projectId/app/build-archive",
+      describeRoute({
+        tags: ["Artifacts"],
+        operationId: "downloadAppBuild",
+        description:
+          "Builds the saved app, the one `downloadApp` serves without a version, with the project's own `stack.production` install and then build commands, in the sandbox the checks use and on the network its builds reach, and answers with a zip of only the paths asked for as they are after the build, by their paths from the app's root. The caller names no command. A person must manage the project; a run started for one of its actions needs only to read it. Links are never followed: a requested path that is or passes through a link is refused, and a link inside a requested folder is left out. Nothing the build prints is returned; a failure is one of the codes below, each a 4xx answer's `code` the caller may act on, or `app_build_unavailable`. One command runs against a project's app at a time, a build may take up to five minutes, and a caller that goes away stops it.",
+        security,
+        parameters: [
+          {
+            name: "path",
+            in: "query",
+            required: true,
+            description:
+              "A folder or file inside the app to return, such as client/dist; repeat for up to 8. Relative, without empty, . or .. segments, a leading or trailing slash, a backslash or a control character.",
+            schema: { type: "array", items: { type: "string" }, maxItems: 8 },
+            style: "form",
+            explode: true,
+          },
+        ],
+        responses: {
+          200: {
+            description:
+              "The requested paths after the build, at most 10,000 files and 100 MiB before compression",
+            headers: {
+              [APP_VERSION_HEADER]: {
+                description:
+                  "The version that was built, as the saved app's archive names it: its commit, or v<N> for a filed version",
+                schema: { type: "string" },
+              },
+            },
+            content: {
+              "application/zip": {
+                schema: { type: "string", format: "binary" },
+              },
+            },
+          },
+          400: { description: "`invalid_build_paths`: a path is not allowed" },
+          403: {
+            description:
+              "`forbidden`: the person may not manage the project, or the run may not read it",
+          },
+          404: {
+            description: "`app_not_filed`: no app is saved yet",
+            content: {
+              "application/json": { schema: resolver(AppBuildRefusalBody) },
+            },
+          },
+          409: {
+            description:
+              "`stack_production_missing` or `invalid_stack_production`: the project does not say how it is built for production; `app_command_running`: another build or check command is running against this project's app",
+            content: {
+              "application/json": { schema: resolver(AppBuildRefusalBody) },
+            },
+          },
+          422: {
+            description:
+              "`install_failed` or `build_failed`: that command exited non-zero; `build_timed_out`; `build_path_missing` or `build_path_is_link` with the `path`; `build_output_too_large` with `maxFiles` and `maxBytes`",
+            content: {
+              "application/json": { schema: resolver(AppBuildRefusalBody) },
+            },
+          },
+          503: {
+            description: "`app_build_unavailable`: the sandbox could not run",
+          },
+        },
+      }),
+      async (c) => {
+        // A build outlasts the server's idle timeout; a request served in process has no server.
+        const server: unknown = c.env;
+        if (
+          typeof server === "object" &&
+          server !== null &&
+          "timeout" in server &&
+          typeof server.timeout === "function"
+        )
+          server.timeout(c.req.raw, APP_BUILD_TIMEOUT_MS / 1000 + 60);
+        // A caller that goes away stops the build, which frees the project's command slot.
+        const { version, archive } = await appBuilds.build(
+          actorOf(c),
+          c.req.param("projectId"),
+          c.req.queries("path") ?? [],
+          c.req.raw.signal,
+        );
+        return new Response(archive, {
+          headers: {
+            "content-type": "application/zip",
+            [APP_VERSION_HEADER]: version,
+            "content-disposition": contentDispositionHeader(
+              "attachment",
+              `build-${version.slice(0, 7)}.zip`,
+            ),
+          },
+        });
+      },
+    );
   app.get(
     "/:projectId/artifacts/:artifactId",
     describeRoute({

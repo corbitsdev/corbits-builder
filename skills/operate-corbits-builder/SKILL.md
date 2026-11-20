@@ -65,6 +65,10 @@ Approvals belong to the person and are made from their own session.
    in the conversation, the plan and the live app status.
 8. **Retrieve the app.** `GET P/app/archive?version=<n>` downloads the app's
    source as a zip (the latest when `version` is absent).
+   `GET P/app/build-archive?path=client/dist` builds the saved app with its
+   `stack.production` install and build and returns a zip of only the paths
+   named (up to 8); a failure is a code such as `build_failed`, never the
+   build's output.
    `GET P/export/archive?sections=planning,design,build` exports the project:
    every document, the design and the app.
 

@@ -8,10 +8,13 @@ export const demoAccount = z
 export type DemoAccount = typeof demoAccount;
 
 // Creates the demo account in the app's own account store on first run and leaves it as it is after.
+// Its password is in the repository, so the app started for real (`bun run start`, which sets
+// NODE_ENV=production) never gets one.
 export async function seedDemoAccount(accounts: {
   has: (email: string) => boolean | Promise<boolean>;
   create: (account: DemoAccount) => unknown;
 }) {
+  if (process.env["NODE_ENV"] === "production") return;
   if (!(await accounts.has(demoAccount.email)))
     await accounts.create(demoAccount);
 }
