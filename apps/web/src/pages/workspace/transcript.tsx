@@ -19,7 +19,6 @@ import {
   ConversationContent,
   ConversationDivider,
   ConversationItem,
-  ConversationMap,
   ConversationNotice,
   ConversationScrollButton,
   Message,
@@ -37,7 +36,6 @@ import {
   ToolInput,
   ToolOutput,
   type ActivityStep,
-  type ConversationMapTurn,
   type ConversationPart,
   type PartText,
   type PartTool,
@@ -71,13 +69,6 @@ import {
   type WorkUnitStanding,
 } from "./work-unit-step.view.tsx";
 import type { CallResult } from "./live-run.ts";
-import {
-  approvalEntry,
-  askedLabel,
-  distinctEntries,
-  questionEntry,
-  workEntry,
-} from "./conversation-map.ts";
 import { ClosedQuestions, QuestionsCard } from "./questions-card.tsx";
 import {
   ScreenQuestion,
@@ -89,8 +80,10 @@ import {
   HUB_NOTE_LEAD,
   QUESTION_TOOL_NAME,
   showsScreen,
+  type AskedQuestion,
   type ConversationQuestion,
 } from "@corbits-builder/schemas/conversation";
+import { screenWords } from "./roles.ts";
 
 type TurnBody = {
   text: string;
@@ -179,7 +172,7 @@ function readableTool(
   };
 }
 
-/** The item a specialist's row is, so the conversation map jumps to that row itself. */
+/** The item a specialist's row is, its own among the coordinator's steps. */
 const workItemId = (unit: WorkUnit) => `work:${unit.key}`;
 
 /** A run or filed thing with no hand-off in this session's view, placed at its start or filing. */
@@ -523,8 +516,16 @@ function CopyAction({ text }: { text: string }) {
 }
 
 const COPIED_MS = 2_000;
-// A tick's name is the person's words; a long message is named by its opening.
-const MAP_LABEL_CHARS = 160;
+
+/** The name of what was asked: a screen by what it is for, else the first question's own header. */
+function askedLabel(asked: AskedQuestion): string {
+  if (!("plugin" in asked))
+    return asked.questions[0]?.header ?? wording.questions.title(1);
+  return (
+    screenWords(asked.plugin, asked.action ?? "")?.label(asked.input) ??
+    wording.questions.title(1)
+  );
+}
 
 const wordsOf = (parts: readonly ConversationPart[]) =>
   parts
@@ -565,7 +566,7 @@ function SpecialistEnded({ text }: { text: string }) {
 /**
  * Some person turns are the hub writing as the person: an import's opening and
  * a hub note. They read as a divider or a notice, never as a
- * message, so the map must not count them as turns the person took.
+ * message.
  */
 type PersonTurnKind = "divider" | "notice" | "message";
 
@@ -675,7 +676,7 @@ export function RoomThread({
       <ActivityContent renderStep={renderStep} />
     </Activity>
   );
-  // A step that started specialists is each of them, each its own item for the map to jump to;
+  // A step that started specialists is each of them, each its own item;
   // any other is the call itself.
   const renderWork = (step: ActivityStep): ReactNode => {
     const units =
@@ -873,73 +874,6 @@ export function RoomThread({
     );
     wordsLast = headedLast && last.cards.length === 0;
   }
-  // The person's messages, and what the agents produced at the item that shows it.
-  const agentEntries = (
-    section: Extract<Section, { kind: "coordinator" }>,
-    position: number,
-  ): ConversationMapTurn[] => {
-    const handed = section.turns
-      .flatMap(({ turn }) => readableParts(visibleTurnParts(turn), results))
-      .flatMap((part) =>
-        part.kind === "tool-trace"
-          ? (specialists.get(part.toolCallId) ?? [])
-          : [],
-      );
-    return [
-      ...handed.flatMap((unit) =>
-        workEntry(workItemId(unit), unit, standing(unit)),
-      ),
-      ...foldUpdates(liveLast(section.cards, live)).flatMap((card, at) => {
-        if (card.kind === "units")
-          return card.units.flatMap((unit) =>
-            workEntry(workItemId(unit), unit, standing(unit)),
-          );
-        if (card.kind === "questions")
-          return questionEntry(
-            `questions:${card.question.signalName}`,
-            card.question,
-          );
-        if (card.kind === "approval")
-          return approvalEntry(
-            `document-decision:${card.approval.at === undefined ? `${String(position)}:${String(at)}` : String(card.approval.at)}`,
-            card.approval,
-          );
-        return [];
-      }),
-    ];
-  };
-  const mapEntries = sections.flatMap(
-    (section, position): ConversationMapTurn[] => {
-      if (section.kind === "coordinator")
-        return agentEntries(section, position);
-      if (
-        personTurnKind(section.turn.text) !== "message" ||
-        section.turn.text.trim() === ""
-      )
-        return [];
-      const next = sections[position + 1];
-      const reply =
-        next?.kind === "coordinator"
-          ? next.turns
-              .map(({ turn }) => wordsOf(visibleTurnParts(turn)))
-              .join(" ")
-              .trim()
-          : "";
-      const label =
-        section.turn.text.length > MAP_LABEL_CHARS
-          ? `${section.turn.text.slice(0, MAP_LABEL_CHARS).trimEnd()}…`
-          : section.turn.text;
-      return [
-        {
-          id: turnItemId(section.turn, section.index),
-          label,
-          name: wording.conversation.mapGoTo(label),
-          ...(reply === "" ? {} : { preview: reply }),
-        },
-      ];
-    },
-  );
-  const mapTurns = distinctEntries(mapEntries);
   return (
     // The view follows the reply to its end once the person sends, and stays put when they scroll
     // away, so a long answer is read without chasing it.
@@ -947,7 +881,6 @@ export function RoomThread({
       scrollPolicy="stick"
       sentId={sentId}
       className={styles.thread}
-      data-mapped={mapTurns.length > 1 ? "" : undefined}
     >
       <ConversationContent
         aria-label={wording.conversation.label}
@@ -1030,7 +963,6 @@ export function RoomThread({
         ) : null}
         {children}
       </ConversationContent>
-      <ConversationMap aria-label={wording.conversation.map} turns={mapTurns} />
       <ConversationScrollButton />
     </Conversation>
   );

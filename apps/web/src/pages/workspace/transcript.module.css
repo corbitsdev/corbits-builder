@@ -8,22 +8,6 @@
   min-width: 0;
 }
 
-/* The conversation map's rail sits over the column's left edge; the turns start clear of it. */
-.thread[data-mapped]
-  > [data-slot="conversation-content"]
-  > [data-slot="conversation-column"] {
-  padding-inline-start: 2.5rem;
-}
-
-/* What the agents produced reads as an indented entry under the person's message that led to it:
-   its tick starts further in, and keeps the rail's own states and colours. */
-.thread
-  [data-slot="conversation-map-tick"]:not([data-turn-id^="person:"])
-  > span {
-  margin-inline-start: 0.5rem;
-  width: 1rem;
-}
-
 /* The log scrolls inside the room. flex-shrink 0 made its height follow the
    settle spacer, and the spacer then grew from that new height. */
 .log {
@@ -53,8 +37,8 @@
 
 /* A turn arriving. The newest row rises into place. The reserve under a
    settled turn is not a turn; animating it moves the measurement the
-   reserve is computed from. A specialist's row is an item too, for the map to jump to, but rises
-   only with the turn that holds it. */
+   reserve is computed from. A specialist's row is an item too, but rises only with the turn
+   that holds it. */
 .log
   > [data-slot="conversation-column"]
   > [data-slot="conversation-item"]:last-child {

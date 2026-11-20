@@ -70,7 +70,7 @@
   min-height: 0;
   overflow: hidden;
   background: var(--wb-background);
-  /* What layers inside the conversation, such as its map, stays inside it. */
+  /* What layers inside the conversation stays inside it. */
   isolation: isolate;
 }
 
