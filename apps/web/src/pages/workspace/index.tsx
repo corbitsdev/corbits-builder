@@ -18,6 +18,7 @@ import {
 } from "./room.model.ts";
 import { RoomFault, RoomSkeleton } from "./room-skeleton.tsx";
 import { RoomView } from "./room.view.tsx";
+import { RoomThread } from "./transcript.tsx";
 import { WrittenDocument } from "./written-document.tsx";
 
 /** The room shows its loading or fault state until its first read is in hand. */
@@ -42,6 +43,13 @@ function ReadyRoom(props: ReadyRoomProps) {
     <QuestionOutcomes value={questionOutcomes}>
       <RoomView
         {...view}
+        // Over the project view the chat pulls up around the prompt box, so the person reads and
+        // replies without leaving the page; with nothing said yet there is nothing to pull up.
+        chat={
+          view.conversation.empty === null ? (
+            <RoomThread {...view.conversation.thread} />
+          ) : undefined
+        }
         pluginSpace={
           spaceScreen === null ? null : <SpaceScreen {...spaceScreen} />
         }
