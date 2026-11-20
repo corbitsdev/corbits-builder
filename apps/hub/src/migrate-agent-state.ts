@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
-import { mkdir, readFile, rename, rm } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { mkdir, rename, rm, writeFile } from "node:fs/promises";
+import { basename, dirname, join } from "node:path";
 import { and, eq, isNotNull } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import git, { type TreeEntry } from "isomorphic-git";
@@ -20,6 +20,7 @@ import type { MigrationEnvironment } from "./environment.ts";
 import { connectDocker, removeHubSidecars } from "./provisioning/docker.ts";
 import { localSidecarDataRoot } from "./sidecar/data-root.ts";
 import { localSidecarDataDir } from "./sidecar/local-provisioner.ts";
+import { readLocalSidecarPid } from "./sidecar/manifest-store.ts";
 import { stopStaleLocalSidecar } from "./sidecar/spawn.ts";
 import { loadHubSigningKey } from "./signing-key.ts";
 
@@ -32,8 +33,12 @@ import { loadHubSigningKey } from "./signing-key.ts";
 // provisioning/docker.ts once every install has started on this revision.
 const OLD_DIR = "agent-state";
 // Outside refs/heads and refs/tags, so Interchange never lists or ships them.
-const OLD_HISTORY_REF = "refs/pre-step-state/main";
-const CHECK_REF = "refs/pre-step-state/check";
+// `main` keeps the old history and is written before a copy is tried;
+// `done` marks a copy with nothing left to move, so no later start reads it.
+const MARKS = "refs/pre-step-state";
+const OLD_HISTORY_REF = `${MARKS}/main`;
+const CHECK_REF = `${MARKS}/check`;
+const DONE_REF = `${MARKS}/done`;
 const HUB = { kind: "hub" } as const;
 
 export async function moveAgentStateToStepState(
@@ -51,14 +56,8 @@ export async function moveAgentStateToStepState(
       ),
     );
   await rewriteRunHistories(deployments, dataDir, async (hubPublicKey) => {
-    // The pid file the local provisioner keeps, so the next hub can stop a
-    // sidecar that outlived the last one.
-    const pidFile = join(localSidecarDataRoot(dataDir), "sidecar.pid");
-    if (fs.existsSync(pidFile)) {
-      const pid = Number((await readFile(pidFile, "utf8")).trim());
-      if (Number.isSafeInteger(pid) && pid > 0)
-        await stopStaleLocalSidecar(pid, 25_000);
-    }
+    const pid = await readLocalSidecarPid(localSidecarDataRoot(dataDir));
+    if (pid !== null) await stopStaleLocalSidecar(pid, 25_000);
     if (!env.SIDECAR_IMAGE) return;
     const removed = await removeHubSidecars(
       connectDocker(env.SIDECAR_DOCKER_HOST),
@@ -92,10 +91,12 @@ type PendingRun = {
  * runs it, which may be ahead by saves the hub has not received. Both are
  * rewritten the same way, so the sidecar starts on a history that still
  * builds on the hub's and an agent stopped mid-turn resumes as on any restart.
- * `stopSidecars` runs first, because a sidecar left running would keep saving
- * on top of what this rewrites. A Docker sidecar's copy is inside its
- * container, out of reach: `stopSidecars` removes the container and the hub
- * restores its agents from the hub's copy.
+ * `stopSidecars` runs before any copy is read, because a sidecar left running
+ * would keep saving on top of what this reads and rewrites. A Docker sidecar's
+ * copy is inside its container, out of reach: `stopSidecars` removes the
+ * container and the hub restores its agents from the hub's copy. It runs only
+ * on an install's first start on this revision: every sidecar started since
+ * runs this revision's Interchange, which never saves the old folder.
  */
 export async function rewriteRunHistories(
   deployments: readonly { runId: string; address: string | null }[],
@@ -107,6 +108,12 @@ export async function rewriteRunHistories(
     localSidecarDataDir(localSidecarDataRoot(dataDir)),
     "workflow-runs",
   );
+  const signingKey = await loadHubSigningKey(dataDir);
+  const sidecarsStopped = join(dataDir, "pre-step-state-sidecars-stopped");
+  if (!fs.existsSync(sidecarsStopped)) {
+    await stopSidecars(signingKey.publicKey);
+    await writeFile(sidecarsStopped, "");
+  }
   const pending: PendingRun[] = [];
   for (const { runId, address } of deployments) {
     if (address === null) continue;
@@ -121,8 +128,6 @@ export async function rewriteRunHistories(
     }
   }
   if (pending.length === 0) return;
-  const signingKey = await loadHubSigningKey(dataDir);
-  await stopSidecars(signingKey.publicKey);
   const { repoStore } = createAgentRepoStore({ dataDir, signingKey });
   // A commit's signature covers its tree id, which the move changes, so each
   // rewritten commit is signed again with the hub's key, as the store signs.
@@ -137,6 +142,16 @@ export async function rewriteRunHistories(
     // One history that cannot be moved must not keep Builder from starting:
     // it stays as it was, and every later start tries it again.
     try {
+      for (const copy of [run.hub, run.sidecar]) {
+        if (copy === null) continue;
+        await git.writeRef({
+          fs,
+          dir: copy.dir,
+          ref: OLD_HISTORY_REF,
+          value: copy.oldTip,
+          force: true,
+        });
+      }
       if (run.hub !== null) await moveHubCopy(run, run.hub, repoStore, onSign);
       if (run.sidecar !== null)
         await moveSidecarCopy(
@@ -159,10 +174,15 @@ function notMoved(address: string, error: unknown): void {
 
 async function pendingCopy(dir: string): Promise<PendingCopy | null> {
   if (!fs.existsSync(join(dir, ".git"))) return null;
+  const marks = await git.listRefs({ fs, dir, filepath: MARKS });
+  if (marks.includes(basename(DONE_REF))) return null;
   const oldTip = await git.resolveRef({ fs, dir, ref: WORKFLOW_RUN_REF });
   const chain = await firstParentChain(dir, oldTip);
   const start = await firstIndexHolding(dir, chain);
-  if (start === -1) return null;
+  if (start === -1) {
+    await git.writeRef({ fs, dir, ref: DONE_REF, value: oldTip });
+    return null;
+  }
   return { dir, oldTip, chain, start };
 }
 
@@ -203,16 +223,9 @@ async function moveHubCopy(
   const { dir, oldTip } = copy;
   const { commits, moved } = await rewriteCommits(copy, runId, onSign);
   const newTip = commits.at(-1) ?? oldTip;
-  // The old history stays reachable under its own ref, and the new one is
-  // read back under another before the run's branch moves to it, so a
-  // failed check leaves the branch where it was and the next start retries.
-  await git.writeRef({
-    fs,
-    dir,
-    ref: OLD_HISTORY_REF,
-    value: oldTip,
-    force: true,
-  });
+  // The new history is read back under its own ref before the run's branch
+  // moves to it, so a failed check leaves the branch where it was and the
+  // next start retries.
   await git.writeRef({ fs, dir, ref: CHECK_REF, value: newTip, force: true });
   const reads = await repoStore.openCommittedReads(
     HUB,
@@ -240,6 +253,7 @@ async function moveHubCopy(
     value: newTip,
     force: true,
   });
+  await git.writeRef({ fs, dir, ref: DONE_REF, value: newTip });
   await git.deleteRef({ fs, dir, ref: CHECK_REF });
   console.log(
     JSON.stringify({
@@ -254,7 +268,11 @@ async function moveHubCopy(
 /**
  * The sidecar's copy holds the hub's commits and any saves after them, so its
  * rewrite must pass through the hub's new tip: the sidecar's next save then
- * builds on what the hub holds. Its checked-out files move with it.
+ * builds on what the hub holds. The hub's tip may also be a commit before the
+ * first one holding the old folder, which the rewrite leaves as it was. Its
+ * checked-out files move with it. A copy that does not build on the hub's is
+ * set aside, out of the sidecar's sight, and the sidecar's deploy takes the
+ * hub's copy instead.
  */
 async function moveSidecarCopy(
   { runId, address }: PendingRun,
@@ -262,17 +280,16 @@ async function moveSidecarCopy(
   hubDir: string,
   onSign: OnSign,
 ): Promise<void> {
-  const { dir, oldTip } = copy;
+  const { dir, oldTip, chain, start } = copy;
+  if (!fs.existsSync(join(hubDir, ".git"))) return setAside(dir, address);
   const { commits, moved } = await rewriteCommits(copy, runId, onSign);
   const hubTip = await git.resolveRef({
     fs,
     dir: hubDir,
     ref: WORKFLOW_RUN_REF,
   });
-  if (!commits.includes(hubTip))
-    throw new Error(
-      `${address}: the sidecar's copy does not build on the hub's`,
-    );
+  if (!chain.slice(0, start).includes(hubTip) && !commits.includes(hubTip))
+    return setAside(dir, address);
   for (const stepId of moved.keys()) {
     const from = join(dir, OLD_DIR, encodeURIComponent(stepId));
     if (!fs.existsSync(from)) continue;
@@ -281,26 +298,33 @@ async function moveSidecarCopy(
     await rename(from, to);
   }
   await rm(join(dir, OLD_DIR), { recursive: true, force: true });
-  await git.writeRef({
-    fs,
-    dir,
-    ref: OLD_HISTORY_REF,
-    value: oldTip,
-    force: true,
-  });
+  const newTip = commits.at(-1) ?? oldTip;
   await git.writeRef({
     fs,
     dir,
     ref: WORKFLOW_RUN_REF,
-    value: commits.at(-1) ?? oldTip,
+    value: newTip,
     force: true,
   });
+  await git.writeRef({ fs, dir, ref: DONE_REF, value: newTip });
   console.log(
     JSON.stringify({
       sidecarCopyMoved: address,
       commitsRewritten: commits.length,
     }),
   );
+}
+
+// Beside workflow-runs/, which the sidecar scans for deployments to restore.
+async function setAside(dir: string, address: string): Promise<void> {
+  const aside = join(
+    dirname(dirname(dir)),
+    "workflow-runs-pre-step-state",
+    basename(dir),
+  );
+  await mkdir(dirname(aside), { recursive: true });
+  await rename(dir, aside);
+  console.log(JSON.stringify({ sidecarCopySetAside: address, aside }));
 }
 
 async function firstParentChain(dir: string, tip: string): Promise<string[]> {

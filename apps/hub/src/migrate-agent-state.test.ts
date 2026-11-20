@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import * as fs from "node:fs";
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import git from "isomorphic-git";
 import {
   buildStepStateCheckpoint,
@@ -119,7 +119,7 @@ test("every save is rewritten to the step-state layout, signed, with the old his
   expect(stops).toBe(1);
 });
 
-test("a history that does not read back stays as it was and the others still move", async () => {
+test("sidecars stop once, before any history is read, and a history that does not read back stays as it was while the others move", async () => {
   const { dataDir, dir } = await runRepo();
   const oldTip = await commit(dir, {
     "agent-state/coordinate/checkpoint.meta.json": "not a checkpoint",
@@ -128,12 +128,29 @@ test("a history that does not read back stays as it was and the others still mov
   const otherAddress = `${otherRunId}@test-project.localhost`;
   const otherDir = await repoIn(dataDir, otherAddress);
   await commit(otherDir, checkpoint([turn("user", "first")]));
+  const plainRunId = "run_00000000000000000000000000000000";
+  const plainAddress = `${plainRunId}@test-project.localhost`;
+  const plainDir = await repoIn(dataDir, plainAddress);
+  await commit(plainDir, { "runs/marker.json": "{}" });
   const deployments = [
     { runId, address },
     { runId: otherRunId, address: otherAddress },
+    { runId: plainRunId, address: plainAddress },
   ];
 
-  await rewriteRunHistories(deployments, dataDir, async () => {});
+  let stops = 0;
+  let marksAtStop: string[] = [];
+  const stopSidecars = async () => {
+    stops += 1;
+    marksAtStop = await git.listRefs({
+      fs,
+      dir: plainDir,
+      filepath: "refs/pre-step-state",
+    });
+  };
+  await rewriteRunHistories(deployments, dataDir, stopSidecars);
+  expect(stops).toBe(1);
+  expect(marksAtStop).toEqual([]);
   expect(await git.resolveRef({ fs, dir, ref: WORKFLOW_RUN_REF })).toBe(oldTip);
   const otherTip = await git.resolveRef({
     fs,
@@ -142,8 +159,33 @@ test("a history that does not read back stays as it was and the others still mov
   });
   expect(await holdsOldDir(otherDir, otherTip)).toBe(false);
 
-  await rewriteRunHistories(deployments, dataDir, async () => {});
+  await rewriteRunHistories(deployments, dataDir, stopSidecars);
   expect(await git.resolveRef({ fs, dir, ref: WORKFLOW_RUN_REF })).toBe(oldTip);
+  expect(stops).toBe(1);
+});
+
+test("a history once moved, or found with nothing to move, is not read again", async () => {
+  const { dataDir, dir } = await runRepo();
+  await commit(dir, checkpoint([turn("user", "first")]));
+  const otherRunId = "run_fedcba9876543210fedcba9876543210";
+  const otherAddress = `${otherRunId}@test-project.localhost`;
+  const otherDir = await repoIn(dataDir, otherAddress);
+  await commit(otherDir, { "runs/marker.json": "{}" });
+  const deployments = [
+    { runId, address },
+    { runId: otherRunId, address: otherAddress },
+  ];
+  await rewriteRunHistories(deployments, dataDir, async () => {});
+
+  const unread = [
+    await commit(dir, checkpoint([turn("user", "again")])),
+    await commit(otherDir, checkpoint([turn("user", "again")])),
+  ];
+  await rewriteRunHistories(deployments, dataDir, async () => {});
+  expect([
+    await git.resolveRef({ fs, dir, ref: WORKFLOW_RUN_REF }),
+    await git.resolveRef({ fs, dir: otherDir, ref: WORKFLOW_RUN_REF }),
+  ]).toEqual(unread);
 });
 
 test("the sidecar's copy, ahead of the hub's, is rewritten onto the hub's new history with its files", async () => {
@@ -180,6 +222,99 @@ test("the sidecar's copy, ahead of the hub's, is rewritten onto the hub's new hi
     }),
   ).toBe(true);
   expect(fs.existsSync(join(sidecarDir, "agent-state"))).toBe(false);
+  expect(
+    fs.existsSync(
+      join(
+        sidecarDir,
+        workflowRunStepStatePrefix(runId, "coordinate"),
+        "checkpoint.meta.json",
+      ),
+    ),
+  ).toBe(true);
+});
+
+test("a sidecar copy that does not build on the hub's, or has none, is set aside", async () => {
+  const { dataDir, dir } = await runRepo();
+  const sidecarRuns = join(dataDir, "local-sidecars/sidecar/workflow-runs");
+  const sidecarDir = join(sidecarRuns, deriveWorkflowRunRepoId(address));
+  await git.init({ fs, dir: sidecarDir, defaultBranch: "main" });
+  await commit(dir, checkpoint([turn("user", "hub")]));
+  await commit(sidecarDir, checkpoint([turn("user", "sidecar")]));
+  const otherRunId = "run_fedcba9876543210fedcba9876543210";
+  const otherAddress = `${otherRunId}@test-project.localhost`;
+  const otherSidecarDir = join(
+    sidecarRuns,
+    deriveWorkflowRunRepoId(otherAddress),
+  );
+  await git.init({ fs, dir: otherSidecarDir, defaultBranch: "main" });
+  await commit(otherSidecarDir, checkpoint([turn("user", "sidecar")]));
+
+  await rewriteRunHistories(
+    [
+      { runId, address },
+      { runId: otherRunId, address: otherAddress },
+    ],
+    dataDir,
+    async () => {},
+  );
+
+  const hubTip = await git.resolveRef({ fs, dir, ref: WORKFLOW_RUN_REF });
+  expect(await holdsOldDir(dir, hubTip)).toBe(false);
+  for (const moved of [sidecarDir, otherSidecarDir]) {
+    expect(fs.existsSync(moved)).toBe(false);
+    const aside = join(
+      dataDir,
+      "local-sidecars/sidecar/workflow-runs-pre-step-state",
+      basename(moved),
+    );
+    expect(fs.existsSync(join(aside, ".git"))).toBe(true);
+  }
+});
+
+test("a sidecar copy whose first save never reached the hub still builds on the hub's copy and is moved", async () => {
+  const { dataDir, dir } = await runRepo();
+  const sidecarDir = join(
+    dataDir,
+    "local-sidecars/sidecar/workflow-runs",
+    deriveWorkflowRunRepoId(address),
+  );
+  await git.init({ fs, dir: sidecarDir, defaultBranch: "main" });
+  const plain = { "runs/marker.json": "{}" };
+  const hubTip = await commit(dir, plain);
+  expect(await commit(sidecarDir, plain)).toBe(hubTip);
+  const saved = await commit(sidecarDir, checkpoint([turn("user", "first")]));
+  const { commit: last } = await git.readCommit({
+    fs,
+    dir: sidecarDir,
+    oid: saved,
+  });
+  const oldStep = await git.readTree({
+    fs,
+    dir: sidecarDir,
+    oid: last.tree,
+    filepath: "agent-state/coordinate",
+  });
+
+  await rewriteRunHistories([{ runId, address }], dataDir, async () => {});
+
+  const sidecarTip = await git.resolveRef({
+    fs,
+    dir: sidecarDir,
+    ref: WORKFLOW_RUN_REF,
+  });
+  const { commit: rewritten } = await git.readCommit({
+    fs,
+    dir: sidecarDir,
+    oid: sidecarTip,
+  });
+  expect(rewritten.parent).toEqual([hubTip]);
+  const moved = await git.readTree({
+    fs,
+    dir: sidecarDir,
+    oid: rewritten.tree,
+    filepath: workflowRunStepStatePrefix(runId, "coordinate").slice(0, -1),
+  });
+  expect(moved.oid).toBe(oldStep.oid);
   expect(
     fs.existsSync(
       join(

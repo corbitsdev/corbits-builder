@@ -67,6 +67,16 @@ async function writeAtomically(target: string, text: string): Promise<void> {
   }
 }
 
+/** The pid of the sidecar process last started on this data root, or null when none is recorded. */
+export async function readLocalSidecarPid(
+  dataRoot: string,
+): Promise<number | null> {
+  const pid = Number(
+    (await readOptional(path.join(dataRoot, "sidecar.pid")))?.trim(),
+  );
+  return Number.isSafeInteger(pid) && pid > 0 ? pid : null;
+}
+
 export function createLocalSidecarManifestStore({
   dataRoot,
   cipher,
@@ -138,11 +148,6 @@ export function createLocalSidecarManifestStore({
     await writeAtomically(holdsFile, JSON.stringify(holds));
   }
 
-  async function readPid(): Promise<number | null> {
-    const pid = Number((await readOptional(pidFile))?.trim());
-    return Number.isSafeInteger(pid) && pid > 0 ? pid : null;
-  }
-
   async function writePid(pid: number): Promise<void> {
     await writeAtomically(pidFile, String(pid));
   }
@@ -157,7 +162,7 @@ export function createLocalSidecarManifestStore({
     remove,
     readHolds,
     writeHolds,
-    readPid,
+    readPid: () => readLocalSidecarPid(dataRoot),
     writePid,
     removePid,
   };
