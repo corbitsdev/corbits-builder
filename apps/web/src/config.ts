@@ -668,6 +668,18 @@ export const wording = {
       open: "Open",
       seeChanges: "See what changed",
     },
+    /** The handle on the top edge of the box, and the pill while it stands in for it. */
+    handle: {
+      label: "Show the chat",
+      hint: "Drag up or press to show the chat",
+    },
+    chat: {
+      title: "Chat",
+      fullScreen: "Full screen",
+      putBack: "Put the chat back",
+      /** In full screen, the way back to the page the person left, named. */
+      backTo: (page: string) => `Back to ${page}`,
+    },
   },
   speaker: {
     coder: "Coder",
