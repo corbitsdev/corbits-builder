@@ -1066,6 +1066,26 @@ export const wording = {
     contentsLabel: "Sections of this document",
     /** A section someone has commented on. */
     commented: "Has comments",
+    /** The running header's right side, opposite the project: when the document was filed. */
+    filedOn: (filedAt: string) =>
+      new Date(filedAt).toLocaleDateString("en-GB", {
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      }),
+    writing: (version: number) => `Writing · Version ${String(version)}`,
+    stopped: "Writing stopped here",
+    page: (current: number, total: number) =>
+      `Page ${String(current)} of ${String(total)}`,
+    zoom: (percent: number) => `${String(percent)}%`,
+    /** The zoom readout, which sets the page back to its own size. */
+    zoomReset: (percent: number) =>
+      percent === 100 ? "Zoom 100%" : `Zoom ${String(percent)}%, back to 100%`,
+    zoomIn: "Zoom in",
+    zoomOut: "Zoom out",
+    /** Opens what is said about a passage when the margin is too narrow to show it beside. */
+    passageNote: (quote: string) =>
+      `Comment on “${quote.length > 40 ? `${quote.slice(0, 40).trimEnd()}…` : quote}”`,
   },
   printDocument: "Save as PDF or print",
   removeAttachment: {
