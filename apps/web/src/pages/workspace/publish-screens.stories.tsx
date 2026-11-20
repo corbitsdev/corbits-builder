@@ -1,6 +1,8 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect } from "storybook/test";
 import publish from "@plugins/publish/package.json";
+import serverPublish from "@plugins/server-publish/package.json";
+import serverRemove from "@plugins/server/src/remove/definition.ts";
 import chooseDefinition from "@plugins/publish/src/choose/definition.ts";
 import ChooseView from "@plugins/publish/src/choose/view.tsx";
 import confirmDefinition from "@plugins/publish/src/confirm/definition.ts";
@@ -28,24 +30,18 @@ const takeDownScreen = storyScreen(
   { screen: takeDownDefinition, view: TakeDownView, data: undefined },
 );
 
-// The ready-made publish plans the stories' project installs.
+// The ready-made publish plans the stories' project installs: the server plan as the hub offers it,
+// from its manifest and its take-down's own words, and a host that stands for any other target.
 const PLANS: readonly ReadyPlanOffer[] = [
   {
-    handle: "publish-to-server",
-    about:
-      "Your own server: one you already rent. Your hosting provider bills you.",
-    firstRun:
-      "It goes on your own server, at its IP address. That address isn't secure (https) yet, so don't use the app for passwords or payments.",
+    handle: serverPublish.builder.handle,
+    about: serverPublish.description,
+    firstRun: serverPublish.builder.firstRun,
     groups: ["publish"],
     plugins: ["publish", "server"],
     takeDown: {
-      plugin: "server",
-      action: "remove",
-      removes: {
-        what: "Your app stops answering at its address. The server stays yours, and your hosting provider bills you for it until you cancel it there.",
-        entered:
-          "What people entered in the app stays on your server, and comes back if you publish again.",
-      },
+      ...serverPublish.builder.takeDown,
+      removes: serverRemove.describe.says!.removes!,
     },
   },
   {

@@ -1,0 +1,156 @@
+{
+  "name": "@corbits-builder/server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Publishes the project's app to a server the person rents, with Debian or Ubuntu on it, so people can open it at the server's address.",
+  "license": "SEE LICENSE IN ../../LICENSE.md",
+  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
+  "type": "module",
+  "dependencies": {
+    "@corbits-builder/plugin": "workspace:*",
+    "@corbits-builder/plugin-ui": "workspace:*",
+    "@corbits-builder/publish-contract": "workspace:*",
+    "@corbits-builder/schemas": "workspace:*",
+    "@corbits-builder/ssh-publish": "workspace:*",
+    "@corbits/react-ui": "0.5.1",
+    "@intx/agent": "workspace:*",
+    "arktype": "catalog:",
+    "react": "19.3.0"
+  },
+  "devDependencies": {
+    "@types/react": "19.3.0"
+  },
+  "builder": {
+    "handle": "server",
+    "runs": "specialist",
+    "groups": [
+      "publish"
+    ],
+    "when": "The person wants their app published to, checked on or taken off a server of their own that they rent, so people can open it at the server's address.",
+    "unless": "The project has no saved app yet, or the person wants it published somewhere other than a server of their own.",
+    "credentials": {
+      "server": {
+        "about": "The key Builder signs in to your server with",
+        "sends": "ssh",
+        "screen": "connect"
+      }
+    },
+    "roles": [
+      {
+        "name": "server",
+        "label": "Server publisher",
+        "model": "publisher",
+        "limits": "publisher",
+        "tools": [],
+        "status": {
+          "working": "Publishing to your server",
+          "done": "Published to your server"
+        }
+      }
+    ],
+    "settings": {
+      "publisher": {
+        "label": "Publisher",
+        "hint": "Publishes the app where the person chose and explains what went wrong.",
+        "tier": "low"
+      }
+    },
+    "budgets": {
+      "publisher": {
+        "maxOutputTokens": 8192
+      }
+    },
+    "agents": {
+      "server": {
+        "prompt": "./prompt.md",
+        "skills": "./skills",
+        "tools": "./src/tools.ts"
+      },
+      "server-remove": {
+        "prompt": "./remove.md",
+        "skills": "./skills",
+        "tools": "./src/remove-tools.ts"
+      }
+    },
+    "actions": {
+      "connect": {
+        "host": [
+          "tenants"
+        ]
+      },
+      "ready": {
+        "rerun": "change",
+        "returns": [
+          "ready:server"
+        ]
+      },
+      "publish": {
+        "requires": [
+          [
+            "app_exists",
+            "ready:server"
+          ]
+        ],
+        "reads": [
+          "stack.production",
+          "publish.release"
+        ],
+        "writes": [
+          "publish.release"
+        ],
+        "returns": [],
+        "start": {
+          "agent": "server"
+        }
+      },
+      "live": {
+        "rerun": "value",
+        "requires": [
+          [
+            "app_exists"
+          ]
+        ],
+        "returns": [
+          "published:server"
+        ]
+      },
+      "removable": {
+        "rerun": "value",
+        "returns": [
+          "removable:server"
+        ],
+        "skip": "never"
+      },
+      "remove": {
+        "requires": [
+          [
+            "removable:server"
+          ]
+        ],
+        "reads": [
+          "publish.release",
+          "publish.holding",
+          "publish.take-down"
+        ],
+        "writes": [
+          "publish.release"
+        ],
+        "returns": [],
+        "start": {
+          "agent": "server-remove"
+        }
+      }
+    },
+    "facts": {
+      "ready:server": "the saved app says how it runs in production, as a publish to the person's own server needs",
+      "published:server": "the app as saved now is published on the person's own server",
+      "removable:server": "the person agreed, on the take-down screen, to take down the app as it is published on their own server now"
+    },
+    "examples": [
+      "put my app on my server",
+      "publish the app to my VPS",
+      "is my app still up on my server",
+      "take the app off my server"
+    ]
+  }
+}
