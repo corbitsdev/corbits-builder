@@ -8,14 +8,14 @@ import type { ScreenViewProps } from "@corbits-builder/plugin-ui/screen";
 import type { ComponentType } from "react";
 import {
   isScreen,
-  ReadyPlanBuilder,
   ScreenActionBuilder,
   SpecialistBuilder,
-  type ReadyPlanOffer,
 } from "@corbits-builder/plugin";
-import { actionRole, byAction, pluginFolder } from "./roles.ts";
+import { byAction, pluginFolder } from "./roles.ts";
 import {
+  listedHost,
   screenHost,
+  type ListedHostProps,
   type ViewResources,
   type ScreenHostProps,
 } from "./screen-question.tsx";
@@ -34,24 +34,15 @@ export type ScreenFiles = {
   >;
 };
 
+// A screen as a question draws it, over the room when it says main-page; and, for one the hub shows
+// by itself, as its place draws it.
 type Installed = {
   host: ComponentType<ScreenHostProps>;
-  // Where its manifest places it, or the conversation when the manifest names no place.
-  place: ScreenActionBuilder["place"];
+  page: boolean;
+  listed: ComponentType<ListedHostProps>;
 };
 
 let installed: ReadonlyMap<string, Installed> = new Map();
-
-type ReadyPlan = Omit<ReadyPlanOffer, "takeDown"> & {
-  takeDown: { plugin: string; action: string } | undefined;
-  groups: readonly string[];
-  ends: string | undefined;
-};
-
-let readyPlans: readonly ReadyPlan[] = [];
-
-// The specialists' handles, each with the groups its manifest lists.
-let specialistGroups: ReadonlyMap<string, readonly string[]> = new Map();
 
 // The specialist packages sharing each handle, and which of them says it is the default.
 let packages: ReadonlyMap<
@@ -81,7 +72,6 @@ export function installScreens({
   const dataOf = byAction(data);
   const viewOf = byAction(views);
   const sharing = new Map<string, { name: string; isDefault: boolean }[]>();
-  const groups = new Map<string, readonly string[]>();
   installed = new Map(
     Object.entries(manifests).flatMap(
       ([path, { name: packageName, builder }]) => {
@@ -96,14 +86,12 @@ export function installScreens({
         const {
           handle,
           actions,
-          groups: listed,
           default: isDefault,
         } = SpecialistBuilder.assert(builder);
         const shared = { name: packageName, isDefault: isDefault === true };
         const same = sharing.get(handle);
         if (same === undefined) sharing.set(handle, [shared]);
         else same.push(shared);
-        groups.set(handle, [...(groups.get(handle) ?? []), ...listed]);
         return Object.entries(actions).flatMap(([action, entry]) => {
           const files = `${folder} ${action}`;
           const view = viewOf.get(files);
@@ -124,82 +112,18 @@ export function installScreens({
               );
             data = screen.data.assert(shipped);
           }
-          const host = screenHost(name, declared, { screen, view, data });
-          return [[name, { host, place: declared.place }] as const];
+          const installing: Installed = {
+            host: screenHost(name, declared, { screen, view, data }),
+            page: screen.render === "main-page",
+            listed: listedHost(name, handle, view),
+          };
+          return [[name, installing] as const];
         });
       },
     ),
   );
   packages = sharing;
-  specialistGroups = groups;
-  readyPlans = offeredPlans(manifests);
 }
-
-// One plan per handle. When plans share a handle, the one marked as the default wins, as it does
-// for a project that selects none.
-function offeredPlans(manifests: ScreenFiles["manifests"]): ReadyPlan[] {
-  const plans = Object.values(manifests).flatMap(({ description, builder }) => {
-    if (
-      typeof builder !== "object" ||
-      builder === null ||
-      !("runs" in builder) ||
-      builder.runs !== "plan"
-    )
-      return [];
-    const plan = ReadyPlanBuilder.assert(builder);
-    return [
-      {
-        handle: plan.handle,
-        about: description ?? plan.when,
-        firstPublish: plan.firstPublish,
-        when: plan.when,
-        plugins: [...new Set(plan.steps.map((step) => step.plugin))],
-        takeDown: plan.takeDown,
-        groups: plan.groups,
-        ends: plan.ends,
-        isDefault: plan.default === true,
-      },
-    ];
-  });
-  return plans.flatMap(({ isDefault, ...plan }) =>
-    isDefault ||
-    !plans.some((other) => other.handle === plan.handle && other.isDefault)
-      ? [plan]
-      : [],
-  );
-}
-
-/** The installed ready-made plans that list a group, worded by their manifests and actions. */
-export const readyPlansIn = (group: string): readonly ReadyPlanOffer[] =>
-  readyPlans
-    .filter((plan) => plan.groups.includes(group))
-    .map(({ handle, about, firstPublish, when, plugins, takeDown }) => ({
-      handle,
-      about,
-      firstPublish,
-      when,
-      plugins,
-      takeDown:
-        takeDown === undefined
-          ? undefined
-          : {
-              ...takeDown,
-              removes: actionRole(`${takeDown.plugin} ${takeDown.action}`)?.says
-                ?.removes,
-            },
-    }));
-
-/** The facts that end the installed ready-made plans listing a group. */
-export const planEndsIn = (group: string): readonly string[] =>
-  readyPlans.flatMap((plan) =>
-    plan.groups.includes(group) && plan.ends !== undefined ? [plan.ends] : [],
-  );
-
-/** The handles of the installed specialists that list a group. */
-export const specialistsIn = (group: string): readonly string[] =>
-  [...specialistGroups].flatMap(([handle, listed]) =>
-    listed.includes(group) ? [handle] : [],
-  );
 
 /**
  * Finds the screen a question names for a project with these values: the package its selection

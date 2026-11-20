@@ -17,8 +17,10 @@ export const QuestionOutcomes = createContext<
   ReadonlyMap<string, AnswerOutcome>
 >(new Map());
 
-export function useQuestionOutcome(signalName: string) {
-  return useContext(QuestionOutcomes).get(signalName);
+/** How the latest answer to a question stands; none for a standing screen, which answers no question. */
+export function useQuestionOutcome(signalName: string | null) {
+  const outcomes = useContext(QuestionOutcomes);
+  return signalName === null ? undefined : outcomes.get(signalName);
 }
 
 /** Lives in the conversation, above hosts that disappear after Cancel or a page submission. */

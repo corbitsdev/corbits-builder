@@ -1,3 +1,4 @@
+import { defineValue } from "@corbits-builder/plugin";
 import { type } from "arktype";
 import manifest from "../package.json";
 
@@ -15,14 +16,14 @@ export const CREDENTIAL =
 
 // The project value for the person's acceptance of Cloudflare's terms for one temporary account:
 // the ISO time they accepted. Cleared once that account is created.
-export const TERMS = "cloudflare.terms";
+export const TERMS = defineValue(
+  "cloudflare.terms",
+  type(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/),
+  "When the person accepted Cloudflare's Terms of Service and Privacy Policy for Builder to publish the app in a new temporary Cloudflare account, as an ISO time. It stands for one such account and for an hour; none once that account was made or the person published with their own account. Only the Publish to Cloudflare screen saves it.",
+);
 
 // How long an acceptance lasts. One given long ago does not show the person wants to publish today.
 export const TERMS_STAND_MS = 60 * 60_000;
-
-// The project value that records what a publish created on Cloudflare, so the next publish updates
-// it.
-export const SITE = "cloudflare.site";
 
 // What a publish created: the account, the worker's name, its database if any, whether the account
 // is temporary and, if so, when Cloudflare removes it unless the person keeps it. Only ids and a
@@ -37,3 +38,11 @@ export const CloudflareSite = type({
   "keepUntil?": "string.date.iso",
 });
 export type CloudflareSite = typeof CloudflareSite.infer;
+
+// The project value that records what a publish created on Cloudflare, so the next publish updates
+// it.
+export const SITE = defineValue(
+  "cloudflare.site",
+  CloudflareSite,
+  "What a publish made on Cloudflare, so the next one updates it: the account, the app's name there, its database, whether the account was a temporary one and, for one, when Cloudflare removes it unless the person keeps it. Only Cloudflare's own tools save it.",
+);

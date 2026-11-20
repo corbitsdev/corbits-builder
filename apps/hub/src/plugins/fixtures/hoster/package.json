@@ -11,16 +11,7 @@
     ],
     "when": "The person wants the app on a machine rented at Hoster.",
     "unless": "They want something else.",
-    "values": {
-      "hoster.choice": {
-        "about": "The machine the person agreed to rent, as { \"size\": its size, \"region\": where it runs }.",
-        "type": "json"
-      },
-      "hoster.region": {
-        "about": "Where the rented machine runs.",
-        "type": "text"
-      }
-    },
+    "values": "./src/values.ts",
     "credentials": {
       "hoster": {
         "about": "Hoster account",

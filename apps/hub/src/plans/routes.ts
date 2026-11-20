@@ -1,15 +1,29 @@
 import { type } from "arktype";
-import type { Hono } from "hono";
+import type { Context, Hono } from "hono";
 import { describeRoute, resolver } from "hono-openapi";
 import type { TenantEnv } from "@intx/hub-api";
+import { getLogger } from "@intx/log";
 import { showsScreen } from "@corbits-builder/schemas/conversation";
 import {
   PlanView,
   PlanWrite,
   StoredPlan,
+  type PlanStepWrite,
+  type StoredPlanChild,
+  type StoredPlanGroup,
 } from "@corbits-builder/schemas/project";
-import { planRefusal } from "@corbits-builder/plugin-host/coordinator";
+import type { PlanAdd } from "@corbits-builder/plugin";
+import {
+  isReadyPlan,
+  type Catalog,
+} from "@corbits-builder/plugin-host/catalog";
+import {
+  planRefusal,
+  readyPlanStep,
+} from "@corbits-builder/plugin-host/coordinator";
+import { unmet } from "@corbits-builder/plugin-host/facts";
 import { planState } from "@corbits-builder/plugin-host/plan";
+import { requiresText } from "@corbits-builder/plugin-host/text";
 import { actorOf } from "../projects/authorization.ts";
 import { ProjectError } from "../projects/errors.ts";
 import { mailRunAsCaller } from "../mail/caller-mail.ts";
@@ -17,20 +31,134 @@ import { askedQuestions } from "../plugins/question.ts";
 import type { Checks } from "../plugins/checks.ts";
 import { personFacts, projectFacts } from "../plugins/facts.ts";
 import { agentDecidesApprovals } from "../config/preferences.ts";
-import type { createArtifactService } from "../artifacts/service.ts";
+import { actionNote, actionUnmetText } from "../config/answers.ts";
+import {
+  savedAppVersion,
+  type createArtifactService,
+} from "../artifacts/service.ts";
 import { body, security } from "../http/route-parts.ts";
 import { catalogOf } from "../plugins/catalog.ts";
+import { projectRead, shownScreens } from "../plugins/screens.ts";
+import { saveValues } from "../values/save.ts";
+import type { createValueService } from "../values/service.ts";
 import type { createPlanService } from "./service.ts";
 
+const log = getLogger(["corbits-builder", "hub", "plans"]);
+
 const AskFirst = type({ "+": "reject", askFirst: "boolean" });
+const ActionRun = type({ "+": "reject", "input?": "Record<string, unknown>" });
+
+// The plan step a task adds: a ready-made plan's group, or one action; none when it adds nothing.
+function added(
+  catalog: Catalog,
+  adds: PlanAdd | undefined,
+): PlanStepWrite | undefined {
+  if (adds === undefined) return undefined;
+  if (!("plan" in adds))
+    return {
+      title: adds.title,
+      plugin: adds.plugin,
+      action: adds.action,
+      input: {},
+      askFirst: false,
+    };
+  const ready = catalog.installed(adds.plan);
+  if (ready === undefined || !isReadyPlan(ready))
+    throw new ProjectError(400, "plan_not_installed", { plan: adds.plan });
+  return readyPlanStep(ready);
+}
+
+/**
+ * The stored plan's steps whose actions are still installed, so a plan saved before a plugin dropped
+ * an action still reads; a group left with no steps goes too. The stored plan keeps them.
+ */
+function installedSteps(
+  catalog: Catalog,
+  projectId: string,
+  steps: StoredPlan["steps"],
+): StoredPlan["steps"] {
+  const installed = (step: StoredPlanChild) => {
+    const found = catalog.actions.some(
+      (each) => each.plugin === step.plugin && each.action === step.action,
+    );
+    if (!found)
+      log.warn("A stored plan step names an action that is not installed", {
+        projectId,
+        plugin: step.plugin,
+        action: step.action,
+      });
+    return found;
+  };
+  return steps.flatMap((step): StoredPlan["steps"] => {
+    if (!("steps" in step)) return installed(step) ? [step] : [];
+    const kept = step.steps.filter(installed);
+    if (kept.length === 0) return [];
+    const group: StoredPlanGroup = {
+      id: step.id,
+      title: step.title,
+      steps: kept,
+    };
+    if (step.plan) group.plan = step.plan;
+    return [group];
+  });
+}
 
 export function mountPlanRoutes(
   app: Hono<TenantEnv>,
   service: ReturnType<typeof createPlanService>,
   artifacts: ReturnType<typeof createArtifactService>,
+  values: Pick<ReturnType<typeof createValueService>, "saveStoredValues">,
   nativeFetch?: (request: Request) => Promise<Response>,
   checks?: Checks,
 ) {
+  // The plan with where each step stands, and what that was worked out from.
+  const readPlan = async (c: Context<TenantEnv>, projectId: string) => {
+    const current = actorOf(c);
+    const plan = await service.projectPlan(current, projectId);
+    if (!checks) throw new ProjectError(503, "plan_state_unavailable");
+    const records = await checks.latest(current, projectId);
+    const listed = await artifacts.list(current, projectId);
+    // Only a person reads the conversation; the coordinator, which asks the questions, cannot be
+    // reading the plan while one waits on an answer.
+    const asked =
+      c.get("principal")?.kind === "user"
+        ? (await askedQuestions(c, nativeFetch, projectId)).questions
+        : [];
+    const catalog = await catalogOf(artifacts.projectState, current, projectId);
+    const stored = installedSteps(catalog, projectId, plan.steps);
+    const facts = projectFacts({
+      artifacts: listed.artifacts,
+      preferences: listed.preferences,
+      checks: records,
+    });
+    const steps = planState(catalog, stored, {
+      facts,
+      personFacts: personFacts(listed.artifacts),
+      asksApprovals: !agentDecidesApprovals(listed.preferences),
+      checks: records,
+      runs: await artifacts.stepRuns(
+        current,
+        projectId,
+        stored.flatMap((step) =>
+          "steps" in step ? step.steps.map(({ id }) => id) : [step.id],
+        ),
+      ),
+      questions: asked.flatMap((question) =>
+        question.status === "open" && showsScreen(question)
+          ? [question.asked]
+          : [],
+      ),
+    });
+    const app = await artifacts.savedApp(current, projectId);
+    const read = projectRead(
+      catalog,
+      await artifacts.projectState(current, projectId),
+      app === undefined ? undefined : savedAppVersion(app),
+      facts,
+      steps,
+    );
+    return { plan, catalog, facts, steps, read };
+  };
   app.get(
     "/:projectId/plan",
     describeRoute({
@@ -48,47 +176,148 @@ export function mountPlanRoutes(
       },
     }),
     async (c) => {
+      const { plan, catalog, steps, read } = await readPlan(
+        c,
+        c.req.param("projectId"),
+      );
+      return c.json({
+        steps,
+        updatedAt: plan.updatedAt,
+        screens:
+          c.get("principal")?.kind === "user"
+            ? shownScreens(catalog, read)
+            : [],
+      });
+    },
+  );
+  app.post(
+    "/:projectId/plugins/:plugin/actions/:action",
+    describeRoute({
+      tags: ["Artifacts"],
+      operationId: "runPluginAction",
+      description:
+        "The signed-in person runs one of a plugin's actions from its screen, refused while what the action requires does not hold. A task runs in the hub: it saves the values it writes and may add work to the plan with the person's go-ahead. A check runs against the project as saved. A workflow is added to the plan with the person's go-ahead. The coordinator gets a hub note saying what happened, so it carries the work out without asking again.",
+      security: [{ sessionCookie: [] }, { deviceBearer: [] }],
+      requestBody: {
+        required: true,
+        content: { "application/json": { schema: resolver(ActionRun) } },
+      },
+      responses: {
+        200: { description: "The action ran" },
+        400: { description: "An input the action does not take" },
+        403: { description: "The caller is not a person on the project" },
+        404: { description: "No task, check or workflow by that name" },
+        409: {
+          description:
+            "What the action requires does not hold; text says what is missing",
+        },
+      },
+    }),
+    async (c) => {
+      if (c.get("principal")?.kind !== "user")
+        throw new ProjectError(403, "only_a_person_acts");
+      if (!checks) throw new ProjectError(503, "plan_state_unavailable");
+      const asked = ActionRun(await body(c));
+      if (asked instanceof type.errors)
+        throw new ProjectError(400, "invalid_action_run", { issues: asked });
       const current = actorOf(c);
       const projectId = c.req.param("projectId");
-      const plan = await service.projectPlan(current, projectId);
-      if (!checks) throw new ProjectError(503, "plan_state_unavailable");
-      const records = await checks.latest(current, projectId);
-      const listed = await artifacts.list(current, projectId);
-      // Only a person reads the conversation; the coordinator, which asks the questions, cannot be
-      // reading the plan while one waits on an answer.
-      const asked =
-        c.get("principal")?.kind === "user"
-          ? (await askedQuestions(c, nativeFetch, projectId)).questions
-          : [];
-      return c.json({
-        steps: planState(
-          await catalogOf(artifacts.projectState, current, projectId),
-          plan.steps,
+      const plugin = c.req.param("plugin");
+      const name = c.req.param("action");
+      const input = asked.input ?? {};
+      const origin = new URL(c.req.url).origin;
+      const { catalog, facts, read } = await readPlan(c, projectId);
+      const named = (each: { plugin: string; action: string }) =>
+        each.plugin === plugin && each.action === name;
+      const action = catalog.tasks.find(named) ?? catalog.actions.find(named);
+      // A screen opens only as the coordinator's question.
+      if (!action || action.kind === "screen")
+        throw new ProjectError(404, "action_not_found", {
+          plugin,
+          action: name,
+        });
+      if (action.kind === "check")
+        return c.json(
+          await checks.run(
+            current,
+            projectId,
+            { plugin, action: name, input },
+            {
+              triggeredBy: `person:${current.principalId}`,
+              waited: false,
+              origin,
+            },
+          ),
+        );
+      const missing = unmet(action.builder.requires ?? [], facts);
+      if (missing.length > 0)
+        throw new ProjectError(409, "action_requirement_unmet", {
+          text: actionUnmetText(requiresText(missing, catalog.factText)),
+        });
+      const checked = action.validate(input);
+      if (!checked.ok)
+        throw new ProjectError(400, "action_input_refused", {
+          text: checked.text,
+        });
+      const mailRun = (runId: string, content: string) =>
+        mailRunAsCaller(c, nativeFetch, current.tenantId, runId, content);
+      const ran = { plugin, action: name };
+      if (action.kind === "workflow") {
+        await service.addPlanStep(
+          current,
+          projectId,
           {
-            facts: projectFacts({
-              artifacts: listed.artifacts,
-              preferences: listed.preferences,
-              checks: records,
-            }),
-            personFacts: personFacts(listed.artifacts),
-            asksApprovals: !agentDecidesApprovals(listed.preferences),
-            checks: records,
-            runs: await artifacts.stepRuns(
-              current,
-              projectId,
-              plan.steps.flatMap((step) =>
-                "steps" in step ? step.steps.map(({ id }) => id) : [step.id],
-              ),
-            ),
-            questions: asked.flatMap((question) =>
-              question.status === "open" && showsScreen(question)
-                ? [question.asked]
-                : [],
-            ),
+            title: action.description,
+            plugin,
+            action: name,
+            input,
+            askFirst: false,
           },
-        ),
-        updatedAt: plan.updatedAt,
+          {
+            note: actionNote(
+              `The person gave the go-ahead for "${action.description}".`,
+              action.name,
+              undefined,
+              action.description,
+            ),
+            mailRun,
+          },
+        );
+        return c.json(ran);
+      }
+      const done = action.run(read, checked.input);
+      const unwritten = done.saves.find(({ name }) => !action.writes.has(name));
+      if (unwritten !== undefined)
+        throw new Error(
+          `${action.name} saves ${unwritten.name}, which it does not write`,
+        );
+      await saveValues(
+        c,
+        projectId,
+        Object.fromEntries(done.saves.map(({ name, value }) => [name, value])),
+        artifacts,
+        values,
+        nativeFetch,
+      );
+      // The checks that follow what was saved stand again before the coordinator reads the one note
+      // of this action.
+      await checks.changed(current, projectId, origin, true);
+      const step = added(catalog, done.adds);
+      if (step === undefined) {
+        await service.tellCoordinator(
+          projectId,
+          actionNote(action.says, action.name, done.note, undefined),
+          mailRun,
+        );
+        return c.json(ran);
+      }
+      const refused = planRefusal(catalog, [step]);
+      if (refused) throw new ProjectError(400, "plan_step_refused", refused);
+      await service.addPlanStep(current, projectId, step, {
+        note: actionNote(action.says, action.name, done.note, step.title),
+        mailRun,
       });
+      return c.json(ran);
     },
   );
   app.put(

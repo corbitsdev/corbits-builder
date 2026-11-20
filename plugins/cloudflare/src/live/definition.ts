@@ -1,5 +1,5 @@
 import { defineCheck } from "@corbits-builder/plugin";
-import { publishedCheck } from "@corbits-builder/plugin/publish";
+import { publishedCheck } from "@corbits-builder/publishing";
 import { TARGET } from "../target.ts";
 
 // Compares the release this target recorded with the saved app's version, without contacting

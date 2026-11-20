@@ -41,6 +41,29 @@ export const stepAskFirstNote = (title: string, askFirst: boolean) =>
     ? `${HUB_NOTE_LEAD}The person asked to be consulted before the plan step "${title}" starts.\n\nDo not start it until they give the go-ahead on the plan.`
     : `${HUB_NOTE_LEAD}The person no longer wants to be consulted before the plan step "${title}" starts.\n\nStart it when the plan reaches it.`;
 
+// Why an action the person ran from its screen did not run, for the person.
+export const actionUnmetText = (needs: string) =>
+  `This can't run yet. It needs ${needs}.`;
+
 // Why a plan step cannot be given a go-ahead, for the person.
 export const STEP_NOT_ASK_FIRST_TEXT =
   "This step was not set to ask you first, so it needs no go-ahead.";
+
+// The hub's note to the coordinator once the person ran a plugin's action from its screen: the line
+// the person reads, in the action's own words, then which action ran, what it says it did and, when
+// it added work to the plan, that the person already gave their go-ahead for it.
+export const actionNote = (
+  says: string,
+  action: string,
+  said: string | undefined,
+  added: string | undefined,
+) =>
+  [
+    `${HUB_NOTE_LEAD}${says}`,
+    `They ran ${action} from its screen.`,
+    said,
+    added &&
+      `Builder added "${added}" to the plan with their go-ahead. Carry it out now without asking them again; if a check it needs has not run, run it first.`,
+  ]
+    .filter((part) => part !== undefined)
+    .join("\n\n");

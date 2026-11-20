@@ -221,6 +221,14 @@
         "react-dom": "19.3.0",
       },
     },
+    "packages/publishing": {
+      "name": "@corbits-builder/publishing",
+      "version": "0.1.0",
+      "dependencies": {
+        "@corbits-builder/plugin": "workspace:*",
+        "arktype": "catalog:",
+      },
+    },
     "packages/schemas": {
       "name": "@corbits-builder/schemas",
       "version": "0.1.0-rc.3",
@@ -244,6 +252,7 @@
       "version": "0.1.0",
       "dependencies": {
         "@corbits-builder/plugin": "workspace:*",
+        "@corbits-builder/publishing": "workspace:*",
         "@corbits/zip": "workspace:*",
         "@intx/types": "workspace:*",
         "arktype": "catalog:",
@@ -284,6 +293,7 @@
       "dependencies": {
         "@corbits-builder/plugin": "workspace:*",
         "@corbits-builder/plugin-ui": "workspace:*",
+        "@corbits-builder/publishing": "workspace:*",
         "@corbits-builder/schemas": "workspace:*",
         "@corbits/react-ui": "0.5.1",
         "@corbits/zip": "workspace:*",
@@ -299,6 +309,9 @@
     "plugins/cloudflare-publish": {
       "name": "@corbits-builder/cloudflare-publish",
       "version": "0.1.0-rc.3",
+      "dependencies": {
+        "@corbits-builder/publishing": "workspace:*",
+      },
     },
     "plugins/coder": {
       "name": "@corbits-builder/coder",
@@ -340,6 +353,7 @@
       "dependencies": {
         "@corbits-builder/plugin": "workspace:*",
         "@corbits-builder/plugin-ui": "workspace:*",
+        "@corbits-builder/publishing": "workspace:*",
         "@corbits-builder/schemas": "workspace:*",
         "@corbits-builder/ssh-publish": "workspace:*",
         "@corbits/react-ui": "0.5.1",
@@ -354,6 +368,9 @@
     "plugins/digitalocean-publish": {
       "name": "@corbits-builder/digitalocean-publish",
       "version": "0.1.0",
+      "dependencies": {
+        "@corbits-builder/publishing": "workspace:*",
+      },
     },
     "plugins/presenter": {
       "name": "@corbits-builder/presenter",
@@ -390,6 +407,7 @@
       "dependencies": {
         "@corbits-builder/plugin": "workspace:*",
         "@corbits-builder/plugin-ui": "workspace:*",
+        "@corbits-builder/publishing": "workspace:*",
         "@corbits/react-ui": "0.5.1",
         "arktype": "catalog:",
         "react": "19.3.0",
@@ -416,6 +434,7 @@
       "dependencies": {
         "@corbits-builder/plugin": "workspace:*",
         "@corbits-builder/plugin-ui": "workspace:*",
+        "@corbits-builder/publishing": "workspace:*",
         "@corbits-builder/schemas": "workspace:*",
         "@corbits-builder/ssh-publish": "workspace:*",
         "@corbits/react-ui": "0.5.1",
@@ -430,6 +449,9 @@
     "plugins/server-publish": {
       "name": "@corbits-builder/server-publish",
       "version": "0.1.0",
+      "dependencies": {
+        "@corbits-builder/publishing": "workspace:*",
+      },
     },
     "plugins/serverless-skills": {
       "name": "@corbits-builder/serverless-skills",
@@ -1011,6 +1033,8 @@
     "@corbits-builder/publish": ["@corbits-builder/publish@workspace:plugins/publish"],
 
     "@corbits-builder/publish-skills": ["@corbits-builder/publish-skills@workspace:plugins/publish-skills"],
+
+    "@corbits-builder/publishing": ["@corbits-builder/publishing@workspace:packages/publishing"],
 
     "@corbits-builder/react-router-skills": ["@corbits-builder/react-router-skills@workspace:plugins/react-router-skills"],
 

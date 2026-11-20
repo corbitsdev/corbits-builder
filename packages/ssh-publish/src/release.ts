@@ -5,13 +5,14 @@ import {
   failed,
   type Outcome as PluginOutcome,
 } from "@corbits-builder/plugin/tools";
-import { declaredProduction, parsed } from "@corbits-builder/plugin";
+import { declaredProduction } from "@corbits-builder/plugin";
 import {
-  PUBLISH_RELEASE,
+  RELEASE,
   PublishRelease,
   TAKE_DOWN_VALUES,
   takeDownAgreed,
-} from "@corbits-builder/plugin/publish";
+  clearedFor,
+} from "@corbits-builder/publishing";
 import { serverScript } from "./scripts.ts" with { type: "macro" };
 import type { ScriptName } from "./scripts.ts";
 import {
@@ -427,7 +428,7 @@ async function recorded(
     version,
     at: at.toISOString(),
   };
-  await deps.hub.record({ [PUBLISH_RELEASE]: published });
+  await deps.hub.record({ [RELEASE.name]: published });
   if (!(await deps.answersFromOutside(url)))
     return failed("unreachable_from_outside", { url });
   // The release is recorded already; the person needs only the address.
@@ -569,7 +570,6 @@ export async function unpublish(target: string, deps: Deps): Promise<Outcome> {
   );
   if (isOutcome(report)) return report;
   if (report.code === "other_app_present") return failed(report.code);
-  if (parsed(PublishRelease(values[PUBLISH_RELEASE]))?.target === target)
-    await deps.hub.record({ [PUBLISH_RELEASE]: null });
+  await deps.hub.record(clearedFor(target, values));
   return { ok: true };
 }

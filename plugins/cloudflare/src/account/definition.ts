@@ -1,14 +1,11 @@
-import { defineScreen } from "@corbits-builder/plugin";
+import { defineScreen, parsed } from "@corbits-builder/plugin";
 import {
-  PUBLISH_HOLDING,
-  PUBLISH_KEEP,
-  PUBLISH_RELEASE,
-  PUBLISH_TAKE_DOWN,
-  PublishHolding,
+  KEEP,
+  RELEASE,
   PublishKeep,
   PublishRelease,
-  takeDownStands,
-} from "@corbits-builder/plugin/publish";
+  takeDownAgreed,
+} from "@corbits-builder/publishing";
 import { type } from "arktype";
 import {
   CloudflareSite,
@@ -55,7 +52,7 @@ export const text = {
   temporary: {
     heading: "Start without a Cloudflare account",
     about:
-      "Your app goes online now. To keep it, sign in to Cloudflare or make a free account from the Publish tab within about an hour, or Cloudflare removes it. Publishing changes later needs that account.",
+      "Your app goes online now. To keep it, sign in to Cloudflare or make a free account from the screen that shows where the app is published within about an hour, or Cloudflare removes it. Publishing changes later needs that account.",
     acceptBefore: "I accept Cloudflare's ",
     terms: "Terms of Service",
     and: " and ",
@@ -73,7 +70,7 @@ export const text = {
   // For an app already on Cloudflare in a temporary account Builder made.
   already: {
     keepable:
-      "To publish changes to the app you have now, keep it from the Publish tab, then add a token for that account below. Publishing without an account puts a new copy at a new address instead, and the first one can no longer be kept from Builder.",
+      "To publish changes to the app you have now, keep it from the screen that shows where the app is published, then add a token for that account below. Publishing without an account puts a new copy at a new address instead, and the first one can no longer be kept from Builder.",
     lapsed:
       "The time to keep your app has passed. If you kept it, add a token for that account below to publish changes. If not, Cloudflare has removed it, and publishing without an account puts it at a new address.",
   },
@@ -95,22 +92,6 @@ export const text = {
   },
 };
 
-const parsed = <T>(checked: T | type.errors) =>
-  checked instanceof type.errors ? undefined : checked;
-
-/**
- * Whether the person agreed to take down the current release: their go-ahead names this target,
- * and the recorded release is the one they were shown.
- */
-function agreedToTakeDown(project: Readonly<Record<string, unknown>>) {
-  return takeDownStands(
-    project[PUBLISH_TAKE_DOWN],
-    TARGET,
-    parsed(PublishRelease(project[PUBLISH_RELEASE])),
-    parsed(PublishHolding(project[PUBLISH_HOLDING])),
-  );
-}
-
 export default defineScreen({
   input: type({ "+": "reject" }),
   output: Output,
@@ -121,14 +102,14 @@ export default defineScreen({
   // recorded, not the link itself. Once the person cleared it, because they kept the app or saw it
   // gone, the screen does not say that Cloudflare removes the app by itself.
   prepare: (_input, _data, project): Prepared => {
-    const site = parsed(CloudflareSite(project[SITE]));
-    const release = parsed(PublishRelease(project[PUBLISH_RELEASE]));
+    const site = parsed(CloudflareSite(project[SITE.name]));
+    const release = parsed(PublishRelease(project[RELEASE.name]));
     const onTemporary = site?.temporary === true && release?.target === TARGET;
     const keepUntil = onTemporary ? site.keepUntil : undefined;
     const passed =
       keepUntil !== undefined && new Date(keepUntil).getTime() <= Date.now();
-    if (agreedToTakeDown(project)) {
-      const keeping = parsed(PublishKeep(project[PUBLISH_KEEP])) !== undefined;
+    if (takeDownAgreed(project, TARGET)) {
+      const keeping = parsed(PublishKeep(project[KEEP.name])) !== undefined;
       return keepUntil === undefined || !keeping
         ? { mode: "takeDown" }
         : { mode: "takeDown", unkept: { until: keepUntil, passed } };
@@ -143,7 +124,7 @@ export default defineScreen({
   // their own account clears any earlier acceptance, so it cannot create a temporary account later.
 
   writes: {
-    [TERMS]: (output) =>
+    [TERMS.name]: (output) =>
       output.account === "temporary" ? new Date().toISOString() : null,
   },
   describe: {
@@ -152,7 +133,7 @@ export default defineScreen({
       chose: (output) => text.settled[output.account],
     },
     summary:
-      'Offers the person two ways to publish the app to Cloudflare: without a Cloudflare account, where they accept Cloudflare\'s Terms of Service and Privacy Policy and then have about an hour to keep the app from the Publish tab; or with their own Cloudflare account, by saving a token for it. The answer is { account: "temporary", accepted: true }, saving their acceptance as cloudflare.terms, or { account: "own", saved: true }, clearing any earlier acceptance; the publish can then start. Once the person agreed on publish take-down to take the app down, it asks only for a token for the account the app is in, saying, for an app in a temporary account they never said they kept, when Cloudflare removes it by itself; the answer is then { account: "own", saved: true, takeDown: true }, and the take-down can start.',
+      'Offers the person two ways to publish the app to Cloudflare: without a Cloudflare account, where they accept Cloudflare\'s Terms of Service and Privacy Policy and then have about an hour to keep the app from the screen that shows where the app is published; or with their own Cloudflare account, by saving a token for it. The answer is { account: "temporary", accepted: true }, saving their acceptance as cloudflare.terms, or { account: "own", saved: true }, clearing any earlier acceptance; the publish can then start. Once the person agreed on publish take-down to take the app down, it asks only for a token for the account the app is in, saying, for an app in a temporary account they never said they kept, when Cloudflare removes it by itself; the answer is then { account: "own", saved: true, takeDown: true }, and the take-down can start.',
     when: "The app is to be published to Cloudflare and neither a Cloudflare token is saved nor has the person accepted Cloudflare's terms for a new temporary account within the hour, or they want to change which account it goes to; or they agreed to take it down from Cloudflare and no token is saved.",
     unless:
       "A Cloudflare token is saved or cloudflare.terms was set within the hour, and they did not ask to change it.",

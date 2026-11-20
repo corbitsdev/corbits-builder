@@ -1,5 +1,5 @@
 import { defineCheck } from "@corbits-builder/plugin";
-import { productionReady } from "@corbits-builder/ssh-publish/ready";
+import { productionCheck } from "@corbits-builder/publishing";
 
 export default defineCheck({
   describe: {
@@ -9,5 +9,7 @@ export default defineCheck({
     failed:
       "The app does not say how it runs in production, so it cannot be published to a server yet; the evidence names what falls short. Start coder change to make the app ready to publish as the publish skill pack describes, naming what the evidence says, then run it again. No server is made until it passes, and the person does nothing technical.",
   },
-  run: productionReady,
+  run: productionCheck({
+    notDeclared: "The app does not say how it runs in production",
+  }),
 });

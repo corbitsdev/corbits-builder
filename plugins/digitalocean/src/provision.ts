@@ -1,12 +1,12 @@
 import { parsed } from "@corbits-builder/plugin";
 import {
-  PUBLISH_HOLDING,
-  PUBLISH_RELEASE,
+  HOLDING,
+  RELEASE,
   PublishHolding,
-  PublishRelease,
   TAKE_DOWN_VALUES,
   takeDownAgreed,
-} from "@corbits-builder/plugin/publish";
+  clearedFor,
+} from "@corbits-builder/publishing";
 import {
   BuilderUnavailable,
   waitingWithin,
@@ -106,7 +106,7 @@ type Key = ServerKeyState | { outcome: Outcome; taken?: true };
 type Noted = ServerNote;
 
 const notedOf = (values: Readonly<Record<string, unknown>>) =>
-  parsed(ServerNote(values[SERVER]));
+  parsed(ServerNote(values[SERVER.name]));
 
 // Turns the hub's reason for not giving out the server key into an outcome.
 const keyRefused = (
@@ -248,8 +248,8 @@ const heldHere = (value: unknown) => {
 
 // The notes once nothing is held at DigitalOcean, keeping the count of tries for the choice.
 const noneHeld = (tries: number, choice: Choice) => ({
-  [SERVER]: { attempts: tries, for: choice.at } satisfies UnboundNote,
-  [PUBLISH_HOLDING]: null,
+  [SERVER.name]: { attempts: tries, for: choice.at } satisfies UnboundNote,
+  [HOLDING.name]: null,
 });
 
 // Finds the server Builder made by its recorded id, or by name after waiting out the listing's lag,
@@ -272,7 +272,7 @@ async function locate(
 // DigitalOcean reports it gone for the team it was made under, it no longer costs money or answers,
 // so the server and its choice are forgotten. What was held and published there is cleared, and the
 // next create waits until the person chooses a server and its price again. If the server is still
-// there after the person said in the Publish tab that it is gone, its cost line is recorded again.
+// there after the person said on the screen that shows where the app is published that it is gone, its cost line is recorded again.
 async function stillUp(
   deps: Deps,
   key: ServerKeyState,
@@ -280,25 +280,21 @@ async function stillUp(
   choice: Choice,
   values: Readonly<Record<string, unknown>>,
 ): Promise<Outcome> {
-  const held = heldHere(values[PUBLISH_HOLDING]);
+  const held = heldHere(values[HOLDING.name]);
   const located = await locate(deps, key.label, noted, true);
   if ("gone" in located) {
-    const release = parsed(PublishRelease(values[PUBLISH_RELEASE]));
     // Clear the choice before revoking the key. If the call stops in between, the next create asks
     // the person to choose again instead of reusing the choice made for the server that is gone.
-    await deps.hub.record({
-      [SERVER]: null,
-      [CHOICE]: null,
-      ...(held === undefined ? {} : { [PUBLISH_HOLDING]: null }),
-      ...(release?.target === TARGET ? { [PUBLISH_RELEASE]: null } : {}),
-    });
+    await deps.hub.record(
+      clearedFor(TARGET, values, [SERVER.name, CHOICE.name]),
+    );
     await deps.hub.revokeServerKey(SERVER_CREDENTIAL);
     await settleLater(deps, key.label);
     return failed("server_gone");
   }
   const { server } = located;
   const costs =
-    held === undefined ? { [PUBLISH_HOLDING]: holding(deps, choice) } : {};
+    held === undefined ? { [HOLDING.name]: holding(deps, choice) } : {};
   const address =
     key.state === "bound" && server.address === key.address
       ? server.address
@@ -307,7 +303,7 @@ async function stillUp(
     address !== undefined &&
     (noted?.stage !== "bound" || noted.address !== address)
       ? {
-          [SERVER]: {
+          [SERVER.name]: {
             stage: "bound",
             id: server.id,
             address,
@@ -340,7 +336,7 @@ async function agreedStill(
   if (monthly === undefined) return failed("size_unavailable");
   if (Math.round(monthly * 100) !== Math.round(choice.monthly * 100)) {
     const quote: Quote = { size: choice.size, monthly };
-    await deps.hub.record({ [QUOTE]: quote });
+    await deps.hub.record({ [QUOTE.name]: quote });
     return failed("price_changed", { monthly, agreed: choice.monthly });
   }
   return undefined;
@@ -463,12 +459,12 @@ async function forgetTaken(
 export async function createServer(deps: Deps): Promise<Outcome> {
   const started = deps.clock.now();
   const values = await deps.hub.values([
-    CHOICE,
-    SERVER,
-    PUBLISH_HOLDING,
-    PUBLISH_RELEASE,
+    CHOICE.name,
+    SERVER.name,
+    HOLDING.name,
+    RELEASE.name,
   ]);
-  const choice = parsed(Choice(values[CHOICE]));
+  const choice = parsed(Choice(values[CHOICE.name]));
   if (choice === undefined) return failed("no_choice");
   const noted = notedOf(values);
   const key = await serverKey(deps);
@@ -477,10 +473,10 @@ export async function createServer(deps: Deps): Promise<Outcome> {
   if (isOutcome(key))
     return key.taken && noted?.stage === "creating"
       ? await forgetTaken(deps, noted, choice, {
-          [SERVER]: null,
-          ...(heldHere(values[PUBLISH_HOLDING]) === undefined
+          [SERVER.name]: null,
+          ...(heldHere(values[HOLDING.name]) === undefined
             ? {}
-            : { [PUBLISH_HOLDING]: null }),
+            : { [HOLDING.name]: null }),
         })
       : key.outcome;
   try {
@@ -514,8 +510,8 @@ export async function createServer(deps: Deps): Promise<Outcome> {
       label: key.label,
     };
     await deps.hub.record({
-      [SERVER]: { stage: "creating", ...creating } satisfies UnboundNote,
-      [PUBLISH_HOLDING]: holding(deps, choice),
+      [SERVER.name]: { stage: "creating", ...creating } satisfies UnboundNote,
+      [HOLDING.name]: holding(deps, choice),
     });
     const created = await createOnce(deps, key, choice, hostKey);
     if ("refused" in created) {
@@ -527,7 +523,7 @@ export async function createServer(deps: Deps): Promise<Outcome> {
     if ("unknown" in created) return failed("provider_unavailable");
     const { server } = created;
     await deps.hub.record({
-      [SERVER]: {
+      [SERVER.name]: {
         stage: "creating",
         id: server.id,
         ...creating,
@@ -549,7 +545,7 @@ export async function createServer(deps: Deps): Promise<Outcome> {
       return failed(bound === undefined ? "server_slow" : "key_taken");
     }
     await deps.hub.record({
-      [SERVER]: {
+      [SERVER.name]: {
         stage: "bound",
         id: server.id,
         address: bound.address,
@@ -623,19 +619,16 @@ async function createOnce(
  * person can delete it there.
  */
 export async function removeServer(deps: Deps): Promise<Outcome> {
-  const values = await deps.hub.values([SERVER, CHOICE, ...TAKE_DOWN_VALUES]);
+  const values = await deps.hub.values([
+    SERVER.name,
+    CHOICE.name,
+    ...TAKE_DOWN_VALUES,
+  ]);
   if (!takeDownAgreed(values, TARGET)) return failed("not_agreed");
-  const release = parsed(PublishRelease(values[PUBLISH_RELEASE]));
-  const held = parsed(PublishHolding(values[PUBLISH_HOLDING]));
   const noted = notedOf(values);
-  const choice = parsed(Choice(values[CHOICE]));
+  const choice = parsed(Choice(values[CHOICE.name]));
   // A new server after this needs the person's answer on the account screen again.
-  const cleared = {
-    ...(release?.target === TARGET ? { [PUBLISH_RELEASE]: null } : {}),
-    ...(held?.target === TARGET ? { [PUBLISH_HOLDING]: null } : {}),
-    [SERVER]: null,
-    [CHOICE]: null,
-  };
+  const cleared = clearedFor(TARGET, values, [SERVER.name, CHOICE.name]);
   const key = await heldKey(deps);
   // No key was ever made, so no server was either: there is nothing to look for or revoke.
   if (key === undefined) {
@@ -674,7 +667,7 @@ export async function removeServer(deps: Deps): Promise<Outcome> {
 
 /** Whether DigitalOcean still has the server Builder made, and its state and address there. */
 export async function serverStatus(deps: Deps): Promise<Outcome> {
-  const values = await deps.hub.values([SERVER, CHOICE]);
+  const values = await deps.hub.values([SERVER.name, CHOICE.name]);
   const noted = notedOf(values);
   if (noted?.stage === undefined) return { ok: true, state: "none" };
   const key = await heldKey(deps);
@@ -684,7 +677,7 @@ export async function serverStatus(deps: Deps): Promise<Outcome> {
     const account = await deps.vendor.account();
     const otherTeam = sameTeam(
       account,
-      madeUnder(noted, parsed(Choice(values[CHOICE]))),
+      madeUnder(noted, parsed(Choice(values[CHOICE.name]))),
     );
     if (otherTeam !== undefined) return otherTeam;
     const located = await locate(deps, key.label, noted, false);

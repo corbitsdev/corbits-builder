@@ -72,7 +72,9 @@ test("a private value's content never reaches discover or the assignment of a ru
   expect(assignment).toContain("https://app.keeper.example");
   expect(assignment).not.toContain(KEEP);
   // The run saves the address with report_values, and is never asked to hold the keep link.
-  expect(assignment).toContain("- keeper.address (link)");
+  expect(assignment).toContain(
+    "- keeper.address (a link, as { link: an http or https address })",
+  );
   expect(assignment).not.toContain("- keeper.keep (link)");
   expect(assignment).toContain("Your own tools save keeper.keep");
 });

@@ -136,12 +136,16 @@ installed plugin declares under its own `values`, or the hub refuses to start.
 The worker declares none: it reads `brand.guidelines`, which the writer
 declares, and `stack.language`, which the coder declares, so a copy of its
 manifest needs both of those plugins installed. A plugin that brings its own
-value declares it by a dotted name, such as `brand.guidelines`, with `about`
-(what it holds, in one line) and `type` (`text`, `json`, `link`, `file`, or a
-list of them). A text value may add `pattern`, a regular expression it must
-match, and `style`, the design token it lives in once the project has a filed
-design; a run cannot write a value that has a `style`. A value that says
-`"private": true`, such as a link that works like a password, is read only by
+values points `values` at a module, such as `"./src/values.ts"`, whose default
+export lists them, each made once in code with
+`defineValue(name, schema, about, { private?, style? })` from
+`@corbits-builder/plugin`: a dotted name such as `brand.guidelines`, the
+arktype schema a saved value must fit (`LinkValue` and `FileValue` for a link
+or an attached file), and what it holds in one line. Code reads a value by its
+declaration, such as `view.value(RELEASE)`, so a wrong name does not compile
+and what comes back is typed. `style` names the design token a text value lives
+in once the project has a filed design; a run cannot write a value that has a
+`style`. A value declared `private: true`, such as a link that works like a password, is read only by
 someone who manages the project, by a screen's view, and by a plugin's own
 tools through the run's values; for anyone else the values route answers null.
 No model reads it: `discover` and an assignment name it by its `about` alone,
@@ -392,10 +396,25 @@ values its answer saves, each a function of the answer that returns the value
 `undefined` to leave it as it is); `approves`, the documents it approves at the version
 shown; `validate`, the fields of a well-typed input it still cannot show;
 `data`, the schema of a `data.json` it ships; and `decision`, when its answer is
-to accept or send back. Its manifest entry may say what it `requires`, the
-values it `reads`, the facts its answer `returns`, `"place": "page"` to open
-over the whole room or `"place": "publish"` to open in the Publish tab, and what
-the interface itself supplies it under `host`.
+to accept or send back. Its definition's `render` says where it is drawn:
+`inline-chat` (the default, in the conversation), `main-page` (over the whole
+room) or `plugin-bar` (a tab in the right pane). A screen with
+a `state(project)` function is never a question: the hub runs `state` on the
+project's values, facts and plan, lists the screen in `GET plan` with what it
+returned while that is not `undefined`, and the coordinator never sees it. Its
+view draws that state and runs its own plugin's actions by name through
+`POST /:projectId/plugins/:plugin/actions/:action`, with each action's
+`requires` enforced. Its manifest entry may say what it `requires`, the
+values it `reads`, the facts its answer `returns`, and what the interface
+itself supplies it under `host`.
+
+A task is plugin code the hub runs on a person's click, with no model: its
+definition, made with `defineTask`, has `says`, the line the person reads in
+the conversation once it ran, an `input`, `describe.fields`, the
+values it `writes` and `run(project, input)`, which returns the values to
+save, an optional plan step or ready-made plan to add with the person's
+go-ahead, and a note the coordinator is sent. Neither the coordinator nor a
+plan can start one.
 
 The view is a React component that gets everything as props, typed by
 `ScreenViewProps` from `@corbits-builder/plugin-ui/screen`, and never touches
@@ -572,8 +591,11 @@ starter of the same name.
 A place the app can be published to is a specialist in the `publish` group with
 a ready-made plan that ends on `published:<handle>`, as `plugins/server` with
 `plugins/server-publish` and `plugins/cloudflare` with
-`plugins/cloudflare-publish` are. Its screens say `"place": "publish"`, so they
-draw in the Publish tab.
+`plugins/cloudflare-publish` are. Its plan's `steps` is a module that calls
+`publishSteps` from `@corbits-builder/publishing`, so its `publish` step
+requires the person's go-ahead (`agreed:publish`) like every other place's.
+The person publishes and takes down from the publish plugin's `published`
+screen, which shows by itself beside the plan.
 
 Its agent's tools are `fixedTools` from `@corbits-builder/plugin/tools`. Each
 takes no input and answers `{ ok: true, ... }` or one of the plugin's fixed
@@ -630,12 +652,15 @@ Taking the app down needs three more pieces:
 
 - A `removable` check, `"rerun": "value"` and `"skip": "never"`, returning
   `removable:<handle>`, whose run is `removableCheck` from
-  `@corbits-builder/plugin/publish`, called with `TARGET` and the two
-  sentences it fails with, `notAsked` and `earlier`. The answer on the
-  `publish take-down` screen is `{ target, release?, holding? }`, with the
+  `@corbits-builder/publishing`, called with `TARGET` and the two
+  sentences it fails with, `notAsked` and `earlier`. Confirming Take it down
+  on the publish screen runs the `publish take-down` task, which saves
+  `publish.take-down` as `{ target, release?, holding? }`, with the
   `at` and the `since` the person was shown, and the check passes only while
   that answer names this place and the release and holding recorded for it now
-  are the ones shown. `"skip": "never"` keeps the person from skipping it, since a
+  are the ones shown. When the person asks in the conversation, the coordinator
+  adds `<handle> remove` to the plan, and the publish plugin's `ask` screen
+  asks them there with the same button. `"skip": "never"` keeps the person from skipping it, since a
   skipped check's fact counts.
 - A `remove` workflow action that `requires: [["removable:<handle>"]]`, reads
   and writes the values its tools do, and starts its own agent, such as
@@ -645,24 +670,23 @@ Taking the app down needs three more pieces:
   starter uses `startAlone` gets one run at a time that way; on the
   hand-connected server, the release script's lock answers `busy` instead, so
   two runs never work on the server at once. Its definition gives every input
-  field a default, since a take-down starts on no input, and its
-  `says.removes` holds what the person reads before they agree: `what` goes,
-  and whether what people `entered` in the app is destroyed or kept. Its tool
-  clears `publish.release` only when the release is this place's, and
-  `publish.holding` only once the provider confirms what it held is gone.
-- `"takeDown": { "plugin": "<handle>", "action": "remove" }` in the plan, and
-  a paragraph in its guidance: open `publish take-down` with the plan's
-  handle, then run `<handle> removable`, then start `<handle> remove`.
+  field a default, since a take-down starts on no input, and its `says.confirm`
+  is what the person reads before they agree: what goes and what is kept. Its tool clears what
+  this place recorded with `clearedFor`, and `publish.holding` only once the
+  provider confirms what it held is gone.
+- A paragraph in the plan's guidance: once Builder adds `<handle> remove`
+  with the person's go-ahead, run `<handle> removable`, then start
+  `<handle> remove`.
 
 The person's go-ahead to publish is the publish plugin's, not the place's.
-`publish confirm` saves `publish.go-ahead` (`{ plan, at }`, dated by the hub),
-and `publish agreed`, the publish plugin's own check, makes `agreed:publish` hold from that answer until a release is recorded after it,
+Pressing Publish, on the publish screen or on the `ask` screen the conversation
+shows once the coordinator adds a publish plan for the person, runs the
+`publish publish` task, which saves
+`publish.go-ahead` (`{ plan, at }`, dated by the hub) and adds the chosen plan.
+`publish agreed`, the publish plugin's own check, makes `agreed:publish` hold from that answer until a release is recorded after it,
 the person chooses another plan, or they agree to a take-down, which clears it.
-A screen cannot read the saved app's version, so the release recorded after the
-go-ahead is what says the publish it allowed went out. The plan's guidance runs
-`publish agreed` before opening the confirm, and carries on under it through an
-attempt that fails, is blocked or needs another step first; no publish action
-requires it.
+Every place's `publish` action requires `agreed:publish`, so the hub refuses a
+publish without it.
 
 The publish agent's own tools never take the app down.
 
@@ -672,7 +696,7 @@ A place that publishes to a Debian or Ubuntu machine over SSH builds on
 call `unpublish` and `status`, each with its own target handle and with
 `sshReleaseDeps` over its own `ssh` credential; its `ready` check runs
 `productionReady`. Every place's take-down tool checks the person's go-ahead
-for itself with `takeDownAgreed` from `@corbits-builder/plugin/publish` and
+for itself with `takeDownAgreed` from `@corbits-builder/publishing` and
 answers `not_agreed` without it, as `unpublish` does.
 
 To add a place that rents the machine for the person, instead of publishing
@@ -682,8 +706,8 @@ key is `provisioned`, listed in `provisions` by its `create` and `remove`
 actions. Its `create` tool records `publish.holding` before it asks the
 provider for a server, and binds the hub's key with `serverKey` and
 `bindServerKey`; its take-down and status tools only read the key, with
-`heldServerKey`. Its `remove` action deletes the server, so its `says.removes`
-says that what people entered goes with it. Its three agents, one each to
+`heldServerKey`. Its `remove` action deletes the server, and what people
+entered goes with it. Its three agents, one each to
 make, publish to and delete the server, share one role and start through the
 plugin's starter (`src/start.ts`), which uses `startAlone`, so one run at a
 time works on the server. The provisioning steps in `src/provision.ts` reach
@@ -733,18 +757,12 @@ A step's `requires` is advice, `optional` lets the person decline it, and
 `plugins/build-web-app`) is the one way a step waits for the person; see
 [the plan](https://github.com/corbitsdev/corbits-builder/blob/main/docs/ARCHITECTURE.md#the-plan).
 `ends` names the fact that ends the plan, after which the project stops
-following it. A plan that publishes may say `takeDown: { "plugin": ...,
-"action": ... }`, the workflow action that takes down what it published. That
-action takes no input of its own, and what the person is told it takes down
-comes from its `definition.ts` (`says.removes`). Such a plan's `description`
-is the one line `publish choose` lists it by (what the person gets, what it
-costs and who bills), and its `firstPublish` is what `publish confirm` shows
-before the app first goes out by it: where it goes and the one thing to know
-first, such as an address that is not secure (https) yet. Neither is shown
-again for changes. The catalog refuses a step that names an
-action no installed plugin with that handle has, a `takeDown` that is not a
-workflow action of every installed plugin with that handle or that does not
-start on no input, a step whose `requires` names a fact only a
+following it. `steps` may instead be the path of a module whose default export
+is the steps, so plans that share a shape build them with one helper, as the
+publish plans do with `publishSteps`. A publish plan's `description` is the one
+line the publish screen lists it by (what the person gets, what it costs and
+who bills). The catalog refuses a step that names an
+action no installed plugin with that handle has, a step whose `requires` names a fact only a
 screen's answer makes true, and a step the person may not decline that needs a
 fact only declinable steps in the same plan make. This plan shares its handle
 with `plugins/build-web-app`, which says `"default": true`; a project uses the

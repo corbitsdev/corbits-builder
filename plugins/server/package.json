@@ -9,6 +9,7 @@
   "dependencies": {
     "@corbits-builder/plugin": "workspace:*",
     "@corbits-builder/plugin-ui": "workspace:*",
+    "@corbits-builder/publishing": "workspace:*",
     "@corbits-builder/schemas": "workspace:*",
     "@corbits-builder/ssh-publish": "workspace:*",
     "@corbits/react-ui": "0.5.1",
@@ -73,7 +74,6 @@
     },
     "actions": {
       "connect": {
-        "place": "publish",
         "host": [
           "tenants"
         ]
@@ -88,7 +88,8 @@
         "requires": [
           [
             "app_exists",
-            "ready:server"
+            "ready:server",
+            "agreed:publish"
           ]
         ],
         "reads": [

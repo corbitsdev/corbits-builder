@@ -11,17 +11,7 @@
     ],
     "when": "The person wants the app published to Keeper.",
     "unless": "They want something else.",
-    "values": {
-      "keeper.keep": {
-        "about": "The link that hands the published app's account to the person.",
-        "type": "link",
-        "private": true
-      },
-      "keeper.address": {
-        "about": "Where the published app answers.",
-        "type": "link"
-      }
-    },
+    "values": "./src/values.ts",
     "credentials": {
       "keeper-api": {
         "about": "Keeper API key",

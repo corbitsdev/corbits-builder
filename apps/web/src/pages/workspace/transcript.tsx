@@ -626,8 +626,6 @@ export type RoomThreadContent = {
   screenSupplies?: HostSupplies;
   /** Opens the screen the coordinator placed on the page again, while its question is open. */
   onOpenPageScreen?: () => void;
-  /** Opens the Publish tab, where an open question of a plugin that publishes is drawn. */
-  onOpenPublishScreen?: () => void;
 };
 
 export type RoomThreadProps = RoomThreadContent & {
@@ -659,7 +657,6 @@ export function RoomThread({
   screenOf,
   screenSupplies,
   onOpenPageScreen,
-  onOpenPublishScreen,
   children,
 }: RoomThreadProps) {
   const renderTurnText = (part: PartText) => (
@@ -760,25 +757,13 @@ export function RoomThread({
         const installed = screenOf?.(question.asked);
         const placedOnPage =
           question.status === "open" &&
-          installed?.place === "page" &&
+          installed?.page === true &&
           onOpenPageScreen !== undefined;
-        const placedInPublish =
-          question.status === "open" &&
-          installed?.place === "publish" &&
-          onOpenPublishScreen !== undefined;
         let shown: ReactNode;
         if (question.status === "closed")
           shown = <ClosedQuestions asks={[askedLabel(question.asked)]} />;
         else if (placedOnPage)
           shown = <PageScreenCard onOpen={onOpenPageScreen} />;
-        else if (placedInPublish)
-          shown = (
-            <PageScreenCard
-              onOpen={onOpenPublishScreen}
-              note={wording.publish.asking}
-              open={wording.publish.reopen}
-            />
-          );
         else
           shown = (
             <ScreenQuestion

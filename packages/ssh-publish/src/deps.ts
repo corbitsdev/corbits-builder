@@ -1,3 +1,4 @@
+import { visit } from "@corbits-builder/publishing";
 import { cappedBytes, runHub } from "@corbits-builder/plugin/run-hub";
 import { fixedTools, type ToolEnv } from "@corbits-builder/plugin/tools";
 import { release, status, type Deps } from "./release.ts";
@@ -11,17 +12,9 @@ const OUTSIDE_WAIT_MS = 3_000;
 // Any HTTP response counts: this only checks that the server is reachable on port 80.
 async function answersFromOutside(url: string, signal: AbortSignal) {
   for (let tried = 1; ; tried++) {
-    try {
-      await fetch(url, {
-        redirect: "manual",
-        signal: AbortSignal.any([signal, AbortSignal.timeout(10_000)]),
-      });
-      return true;
-    } catch (error) {
-      if (signal.aborted) throw error;
-      if (tried === OUTSIDE_TRIES) return false;
-      await Bun.sleep(OUTSIDE_WAIT_MS);
-    }
+    if ((await visit(url, signal)) !== undefined) return true;
+    if (tried === OUTSIDE_TRIES) return false;
+    await Bun.sleep(OUTSIDE_WAIT_MS);
   }
 }
 

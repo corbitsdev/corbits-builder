@@ -6,6 +6,7 @@ import {
   PortVariable,
 } from "@corbits-builder/schemas/installed-workflows";
 import { Tier } from "@corbits-builder/schemas/models";
+import type { ScreenRender } from "@corbits-builder/schemas/project";
 import { SpecialistInstruction } from "@corbits-builder/schemas/native-specialist";
 
 /** The value an arktype type checked, or undefined when the check failed. */
@@ -28,7 +29,7 @@ export const LinkValue = type({
   link: type("string.url")
     .and(/^https?:\/\//i)
     .describe("an http or https address"),
-});
+}).describe("a link, as { link: an http or https address }");
 
 // What a file value holds: a file the person attached to the project, by the id its material was
 // filed under, and its name, which Builder fills in from the material.
@@ -36,35 +37,7 @@ export const FileValue = type({
   "+": "reject",
   file: "string > 0",
   "name?": "string > 0",
-});
-
-const ValueType = type("'text' | 'json' | 'link' | 'file'");
-export type ValueType = typeof ValueType.infer;
-
-// A named piece of project data a plugin brings, such as "brand.guidelines": what it holds, in one
-// line, and what Builder checks a saved value against. text is a string; json is any JSON value;
-// link and file are as above. A list of types takes a value of any one of them. pattern is a
-// regular expression a text value must match.
-export const ValueDeclaration = type({
-  "+": "reject",
-  about: "string > 0",
-  type: ValueType.or(ValueType.array().atLeastLength(2)),
-  "pattern?": "string > 0",
-  // A text value whose home, once the project has a filed design, is a token of the design's
-  // styles rather than the project's own store: the token's name and, for a token that lists
-  // several values, as a font lists its fallbacks, that the value leads the list and the rest stay.
-  "style?": {
-    "+": "reject",
-    token: /^[a-z][a-z0-9-]*$/,
-    "leads?": "true",
-  },
-  // A value no model may read, such as a link that works like a password. The person sees it in the
-  // interface and a plugin's tool code reads it through the run's values. Any text a model reads
-  // shows the value's about in place of its content. Only the person or a plugin's tool code saves
-  // it.
-  "private?": "true",
-});
-export type ValueDeclaration = typeof ValueDeclaration.infer;
+}).describe("a file the person attached, as { file: its id }");
 
 // A folder's path from the app's root. A path that climbs out with .., starts at / or has a .
 // segment would name a folder the release does not own, or one that two readers resolve to
@@ -192,8 +165,7 @@ const Common = type({
   // else the one that says it is the default. Exactly one of them must.
   handle: "string > 0",
   "default?": "true",
-  // The groups discover finds it by. The host also reads the group "publish" (PUBLISH_GROUP in
-  // ./publish.ts): the Publish tab offers every target and ready-made plan in it.
+  // The groups discover finds it by.
   groups: "string[] > 0",
   when: "string > 0",
   unless: "string > 0",
@@ -203,8 +175,9 @@ const Common = type({
   // Each fact this plugin's work is about, in plain words, as refusals and discover say it; "!fact"
   // words the fact not holding.
   "facts?": { "[string]": "string > 0" },
-  // The project values this plugin brings, by namespaced name; any plugin may then read them.
-  "values?": { "[string]": ValueDeclaration },
+  // The path of the module whose default export lists the project values this plugin brings, each
+  // as defineValue makes one; any plugin may then read them.
+  "values?": "string > 0",
 });
 
 // What a plugin's manifest says of one action: only what its folder cannot. An action is the folder
@@ -224,10 +197,6 @@ export const ScreenActionBuilder = type({
   // The facts the person's answer can make true, each recorded from what the definition's approves
   // names; a templated fact names an input field, so the person approves only what was asked.
   "returns?": Facts,
-  // "page" draws the screen over the whole room with the prompt box still in reach; "publish" draws
-  // it in the Publish tab, where the person follows publishing; without it the screen draws in the
-  // conversation.
-  "place?": "'page' | 'publish'",
   // What the host itself supplies the view, by the names its registry knows: data too large or too
   // live for the input or project values, or a part only the host may draw.
   "host?": "string[]",
@@ -667,18 +636,15 @@ export const ReadyPlanBuilder = Common.merge({
   steps: ReadyPlanStepBuilder.array().atLeastLength(1),
   // The fact that ends the plan. A plan with none is followed until the coordinator leaves it.
   "ends?": "string > 0",
-  // The workflow action that removes what the plan published. It starts with no input, and the
-  // person is told what it removes from that action's definition. Only a plan that publishes or
-  // holds something names one. The take-down screen offers it for what the plan's target recorded,
-  // and nothing else starts it.
-  "takeDown?": { "+": "reject", plugin: "string > 0", action: "string > 0" },
-  // What the person reads, in plain words, before a plan that publishes first sends the app out:
-  // where it goes and the one thing they should know first. Only the confirm screen reads it, for a
-  // plan in the publish group and only on a first publish there. The list of places shows the
-  // plan's description instead.
-  "firstPublish?": "string > 0",
 });
 export type ReadyPlanBuilder = typeof ReadyPlanBuilder.infer;
+
+// A ready-made plan as its manifest declares it: its steps listed there, or the path of a module
+// whose default export lists them, so plans that share steps share the code that makes them.
+export const ReadyPlanManifest = ReadyPlanBuilder.merge({
+  steps: ReadyPlanBuilder.get("steps").or("string > 0"),
+});
+export type ReadyPlanManifest = typeof ReadyPlanManifest.infer;
 
 // Guidance a specialist's agent reads when its work calls for it: the markdown files in skills,
 // which the host lays into the agent's workspace and lists in its assignment, one line per pack.
@@ -737,32 +703,129 @@ export type Describe<Fields extends PropertyKey> = {
 
 // What a person reads of a started action while it works and once done, such as "Writing the
 // build plan". {thing} stands for the document or concept its work is about; a phrase that names
-// one reads as its role's status while none is known.
-// Only an action that a ready-made plan names as its takeDown says removes. The take-down screen
-// shows it before the person agrees.
-export type Says = { doing: string; done: string; removes?: Removes };
+// one reads as its role's status while none is known. confirm, for an action the person agrees to
+// first, is what they read before agreeing, such as what it removes and what it keeps.
+export type Says = { doing: string; done: string; confirm?: string };
 
-// What the person reads before agreeing to an action that removes what a publish made: what goes,
-// and whether what people entered in the app is destroyed with it or kept.
-export type Removes = { what: string; entered: string };
-
-/** An installed ready-made plan as the host offers it to a screen, in its manifest's words. */
+/** An installed ready-made plan as the host offers it, in its manifest's words. */
 export type ReadyPlanOffer = {
   handle: string;
   // What it does, as its package describes it.
   about: string;
-  // What the person reads before the app first goes out by it, when it publishes.
-  firstPublish?: string | undefined;
   // When it is the right plan, as its manifest says.
   when: string;
-  // The handles of the plugins its steps name, each once.
-  plugins: readonly string[];
-  // The action that takes down what it published, when it declares one, with what that action's
-  // definition tells the person it removes.
-  takeDown?:
-    | { plugin: string; action: string; removes?: Removes | undefined }
-    | undefined;
 };
+
+/**
+ * A project value a plugin declares in code: its registered name, what it holds in one line, and
+ * the schema a saved value must fit. Whatever reads or saves it takes the declaration, so a wrong
+ * name is a type error and what comes back is typed. A private value is one no model may read.
+ */
+export type Value<Schema extends Type = Type> = {
+  name: string;
+  about: string;
+  schema: Schema;
+  private: boolean;
+  // A text value whose home, once the project has a filed design, is a token of the design's styles
+  // rather than the project's own store: the token's name and, for a token that lists several
+  // values, as a font lists its fallbacks, that the value leads the list and the rest stay.
+  style: { token: string; leads: boolean } | undefined;
+};
+
+export const defineValue = <Schema extends Type>(
+  name: string,
+  schema: Schema,
+  about: string,
+  options: { private?: true; style?: { token: string; leads?: true } } = {},
+): Value<Schema> => ({
+  name,
+  about,
+  schema,
+  private: options.private === true,
+  style:
+    options.style === undefined
+      ? undefined
+      : { token: options.style.token, leads: options.style.leads === true },
+});
+
+/** A value as read from the project's values by name, or undefined while unset or not of its schema. */
+export const valueIn = <Schema extends Type>(
+  values: ProjectValues,
+  value: Value<Schema>,
+): Schema["infer"] | undefined =>
+  value.schema.allows(values[value.name])
+    ? value.schema.assert(values[value.name])
+    : undefined;
+
+/** Where a step of the project's plan stands, as a screen's state and a task read it. */
+export type StepStatus = {
+  plugin: string;
+  action: string;
+  // The ready-made plan the step was added with, when it was.
+  plan: string | undefined;
+  state:
+    | "done"
+    | "failed"
+    | "running"
+    | "needs_you"
+    | "waiting"
+    | "not_started"
+    | "skipped"
+    | "cancelled";
+  summary: string | undefined;
+};
+
+/** The project as the hub reads it for a screen's state or a task: its values, facts and plan. */
+export type ProjectRead = {
+  value<Schema extends Type>(value: Value<Schema>): Schema["infer"] | undefined;
+  // The saved app's version, as a release records it; undefined while there is none.
+  appVersion: string | undefined;
+  // What an installed workflow tells the person before they agree to it, when it says.
+  confirm(plugin: string, action: string): string | undefined;
+  facts: ReadonlySet<Fact>;
+  plan: readonly StepStatus[];
+  // The installed ready-made plans that list a group.
+  plans(group: string): readonly ReadyPlanOffer[];
+};
+
+/** A value a task saves, as save makes one: null clears it. */
+type Saved = { name: string; value: unknown };
+
+export const save = <Schema extends Type>(
+  value: Value<Schema>,
+  to: Schema["infer"] | null,
+): Saved => ({ name: value.name, value: to });
+
+/**
+ * What the hub adds to the project's plan for a task, with the person's go-ahead, so the
+ * coordinator runs it without asking again: a ready-made plan by its handle, or one action.
+ */
+export type PlanAdd =
+  | { plan: string }
+  | { plugin: string; action: string; title: string };
+
+/** What a task did: the values it saves, what it adds to the plan, and the note the coordinator reads. */
+export type TaskDone = {
+  saves: readonly Saved[];
+  adds?: PlanAdd | undefined;
+  note: string;
+};
+
+/**
+ * Plugin code a person's click runs in the hub, with no model: it reads the project and says what
+ * to save and what to add to the plan. writes are the values it may save, and says is the line the
+ * person reads in the conversation once it ran, such as "The person pressed Publish."
+ */
+export type Task<In> = {
+  says: string;
+  input: Type<In>;
+  // Only the person runs it, so a refusal of its input names its fields and nothing more.
+  describe: Pick<Describe<keyof Type<In>["inferIn"]>, "fields">;
+  writes: readonly Value[];
+  run(project: ProjectRead, input: In): TaskDone;
+};
+
+export const defineTask = <In>(task: Task<In>) => task;
 
 // What a person reads of a screen in the conversation's map: its label from the input it was
 // opened with, and what an answer chose.
@@ -812,6 +875,11 @@ export type Offer<Output> = {
 };
 
 export type Screen<In, Out, Data, Prepared> = {
+  // Where it draws: in the conversation unless stated.
+  render?: ScreenRender;
+  // For a screen shown without a question: what its view draws now, worked out in the hub from
+  // the project, or undefined while it should not show.
+  state?: (project: ProjectRead) => Prepared | undefined;
   input: Type<In>;
   output: Type<Out>;
   data?: Type<Data>;
@@ -1128,6 +1196,10 @@ export type ProjectView = {
   };
   // A project value as stored, null while the project has none.
   values(name: string): Promise<unknown>;
+  // A value declared in code, undefined while unset or not of its schema.
+  value<Schema extends Type>(
+    value: Value<Schema>,
+  ): Promise<Schema["infer"] | undefined>;
   // Whether the person approved a version of a document kind.
   approvals(kind: string): Promise<boolean>;
   facts(): Promise<ReadonlySet<Fact>>;
@@ -1215,6 +1287,27 @@ export const isWorkflow = (value: unknown): value is Workflow<unknown> =>
   typeof value["describe"]["when"] === "string" &&
   typeof value["describe"]["unless"] === "string" &&
   isRecord(value["describe"]["fields"]);
+
+/** Whether a module's default export is a task, as defineTask makes one. */
+export const isTask = (value: unknown): value is Task<unknown> =>
+  isRecord(value) &&
+  typeof value["says"] === "string" &&
+  typeof value["input"] === "function" &&
+  typeof value["run"] === "function" &&
+  Array.isArray(value["writes"]) &&
+  isRecord(value["describe"]) &&
+  isRecord(value["describe"]["fields"]);
+
+/** Whether a module's default export lists values, each as defineValue makes one. */
+export const isValues = (value: unknown): value is readonly Value[] =>
+  Array.isArray(value) &&
+  value.every(
+    (each) =>
+      isRecord(each) &&
+      typeof each["name"] === "string" &&
+      typeof each["about"] === "string" &&
+      typeof each["schema"] === "function",
+  );
 
 /** Whether a module's default export is a screen, as defineScreen makes one. */
 export const isScreen = (
@@ -1304,7 +1397,7 @@ export function validateOutput<In, Out, Data, Prepared>(
 
 export function validateWorkflowInput<In>(
   handle: string,
-  workflow: Workflow<In>,
+  workflow: Pick<Workflow<In> | Task<In>, "input" | "describe">,
   rawInput: unknown,
 ): { ok: true; input: Type<In>["infer"] } | Refused {
   const input = workflow.input(rawInput);

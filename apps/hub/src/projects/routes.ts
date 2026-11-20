@@ -246,6 +246,7 @@ export function createProjectRoutes(
       actorOf(c),
       c.req.param("projectId"),
       new URL(c.req.url).origin,
+      false,
     );
   });
   app.post(
@@ -753,7 +754,7 @@ export function createProjectRoutes(
     appBuilds,
   });
   mountAnswerRoutes(app, answer);
-  mountPlanRoutes(app, plans, artifacts, nativeFetch, checks);
+  mountPlanRoutes(app, plans, artifacts, values, nativeFetch, checks);
   mountValueRoutes(app, values, artifacts, nativeFetch);
   if (serverKeys) mountRunCredentialRoutes(app, serverKeys, artifacts);
   if (checks) mountCheckRoutes(app, checks);

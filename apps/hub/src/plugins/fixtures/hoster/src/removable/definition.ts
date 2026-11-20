@@ -1,6 +1,6 @@
-import { defineCheck } from "@corbits-builder/plugin";
-import { removableCheck } from "@corbits-builder/plugin/publish";
+import { defineCheck, fail } from "@corbits-builder/plugin";
 
+// The tests that load this fixture give removable:hoster as a fact; the check itself never passes.
 export default defineCheck({
   describe: {
     summary:
@@ -8,8 +8,6 @@ export default defineCheck({
     when: "Before hoster remove.",
     failed: "The person has not agreed to take down what Hoster holds now.",
   },
-  run: removableCheck("hoster", {
-    notAsked: "The person has not asked to take the app down from Hoster",
-    earlier: "The person agreed to take down an earlier release on Hoster",
-  }),
+  run: async () =>
+    fail("The person has not agreed to take down what Hoster holds now"),
 });

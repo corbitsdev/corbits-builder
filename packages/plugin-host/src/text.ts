@@ -5,7 +5,7 @@ import {
   type CheckActionBuilder,
   type Fact,
   type Field,
-  type ValueDeclaration,
+  type Value,
 } from "@corbits-builder/plugin";
 import type { Choice, Plugin, ScreenAction } from "./catalog.ts";
 
@@ -70,7 +70,7 @@ export const writesText = (values: Values, writes: readonly string[]) =>
     "\n\nWhen you learn any of these about the project, save it with report_values, giving its name and value; it saves only these:",
     ...writes.map(
       (name) =>
-        `- ${name} (${[values.get(name)?.type].flat().join(" or ")}): ${values.get(name)?.about}`,
+        `- ${name} (${values.get(name)?.schema.description}): ${values.get(name)?.about}`,
     ),
   ].join("\n");
 
@@ -130,7 +130,7 @@ export const suppliedText = (reads: readonly string[]) =>
         `Builder gives the run the project's ${reads.join(", ")} itself; do not pass them.`,
       ];
 
-type Values = ReadonlyMap<string, ValueDeclaration>;
+type Values = ReadonlyMap<string, Value>;
 
 /** The block a run's assignment carries for the project values its action reads. */
 export const assignedValuesText = (
@@ -150,7 +150,7 @@ export const PRIVATE_VALUE =
   "Set. Builder keeps what it holds from you; tools that need it read it themselves.";
 
 // A value as a run reads it: a link as its address, a file as its name and where to read it.
-function assignedValue(value: unknown, declared: ValueDeclaration | undefined) {
+function assignedValue(value: unknown, declared: Value | undefined) {
   if (value === null) return "Not set.";
   if (declared?.private) return PRIVATE_VALUE;
   if (LinkValue.allows(value))
@@ -163,7 +163,7 @@ function assignedValue(value: unknown, declared: ValueDeclaration | undefined) {
 // How much of a value discover shows; the actions that read it get all of it.
 const SHOWN_VALUE = 200;
 
-const shownValue = (value: unknown, declared: ValueDeclaration) => {
+const shownValue = (value: unknown, declared: Value) => {
   if (value === null) return "Not set.";
   if (declared.private) return `Now: ${PRIVATE_VALUE}`;
   if (LinkValue.allows(value)) return `Now: ${value.link}`;

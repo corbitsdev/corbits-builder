@@ -7,7 +7,7 @@ description: Use when a Cloudflare tool answers ok false - what each code means,
 
 Every failed tool answer carries one `code`, and nothing else about Cloudflare reaches you, so explain only what the code says. Speak of "Cloudflare", "your Cloudflare account" and "your app's address", never of workers, scripts, APIs or databases by their technical names.
 
-The person never does anything technical. Every reason you give points them to their Cloudflare dashboard, Builder's Publish to Cloudflare screen, the Publish tab or asking Builder to change the app, or says they can try again later.
+The person never does anything technical. Every reason you give points them to their Cloudflare dashboard, Builder's Publish to Cloudflare screen, the screen that shows where the app is published or asking Builder to change the app, or says they can try again later.
 
 A publish is blocked when the code leaves the app unpublished; a take-down is blocked when the code leaves the app up. Report either with report_blocked: the person reads its reason as the explanation, so write it in one or two sentences, without the code. Suggest the Publish to Cloudflare screen only where this skill says it is the fix. In `tried`, say which tools you ran.
 
@@ -17,7 +17,7 @@ Retry `cloudflare_release` at most once. Each acceptance of Cloudflare's terms m
 
 When a release fails after Builder made a temporary Cloudflare account, the answer carries `emptyTemporaryAccount`, and the person's acceptance of Cloudflare's terms is used up: to publish again without an account, they accept the terms again on the Publish to Cloudflare screen. Say so plainly, after the cause.
 
-- `emptyTemporaryAccount: "keepable"`: the account is in the project and the Publish tab shows how to keep it, but nothing is published in it. They can keep it from the Publish tab and then add a token for it on the Publish to Cloudflare screen, so the next publish goes there, or leave it for Cloudflare to remove.
+- `emptyTemporaryAccount: "keepable"`: the account is in the project and the screen that shows where the app is published shows how to keep it, but nothing is published in it. They can keep it from the screen that shows where the app is published and then add a token for it on the Publish to Cloudflare screen, so the next publish goes there, or leave it for Cloudflare to remove.
 - `emptyTemporaryAccount: "unreachable"`: not even the link to keep the account reached the project, so it is out of their reach and Cloudflare removes it. There is nothing for them to do.
 
 ## The app
@@ -53,7 +53,7 @@ When a release fails after Builder made a temporary Cloudflare account, the answ
 
 ## After the upload
 
-- **not_answering_yet**: the app is published at `url` and the publish is recorded, but its address did not answer within two minutes; Cloudflare can take a little longer to start serving an app. This is not blocked, so never report it with report_blocked. Finish with your reply: it is published at that address, it may take a little longer to start answering, and they can ask to check again shortly. You may run `cloudflare_status` once to see whether it answers now. With `keepWithinMinutes`, the app is in a temporary account: they still keep it from the Publish tab within that many minutes, or Cloudflare removes it.
+- **not_answering_yet**: the app is published at `url` and the publish is recorded, but its address did not answer within two minutes; Cloudflare can take a little longer to start serving an app. This is not blocked, so never report it with report_blocked. Finish with your reply: it is published at that address, it may take a little longer to start answering, and they can ask to check again shortly. You may run `cloudflare_status` once to see whether it answers now. With `keepWithinMinutes`, the app is in a temporary account: they still keep it from the screen that shows where the app is published within that many minutes, or Cloudflare removes it.
 
 ## Taking it down
 
@@ -61,4 +61,4 @@ When a release fails after Builder made a temporary Cloudflare account, the answ
 - **other_account**: the saved token reaches a different Cloudflare account from the one the app is in. They delete it in the dashboard of the account that holds it, or save a token for that account on the Publish to Cloudflare screen.
 - **not_published**: nothing was published to Cloudflare from this project.
 - **not_agreed**: the person has not agreed on the take-down screen to take down what is published on Cloudflare now: they were not asked, kept it, or the app was published again since. Nothing was taken down. Builder asks them on the take-down screen again.
-- If the person says Cloudflare already removed the app with a temporary account they never kept, the Publish tab lets them say it is gone, which clears what Builder recorded.
+- If the person says Cloudflare already removed the app with a temporary account they never kept, the screen that shows where the app is published lets them say it is gone, which clears what Builder recorded.

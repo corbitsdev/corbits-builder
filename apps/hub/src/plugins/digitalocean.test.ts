@@ -1,10 +1,5 @@
 import { expect, test } from "bun:test";
-import type { ProjectView } from "@corbits-builder/plugin";
-import {
-  PUBLISH_HOLDING,
-  PUBLISH_RELEASE,
-  PUBLISH_TAKE_DOWN,
-} from "@corbits-builder/plugin/publish";
+import { valueIn, type ProjectView, type Value } from "@corbits-builder/plugin";
 import { isCheckAction } from "@corbits-builder/plugin-host/catalog";
 import {
   execute,
@@ -57,7 +52,7 @@ const publishing = asked("publish", {
 });
 
 test("a publish waits for the server create makes, and create starts without its key", async () => {
-  const ready = ["ready:digitalocean"];
+  const ready = ["ready:digitalocean", "agreed:publish"];
   const signedIn = holding(ready, ["plugin.digitalocean"]);
   expect(await executePause(CATALOG, signedIn, publishing)).toEqual(
     expect.stringContaining("digitalocean create"),
@@ -80,7 +75,7 @@ test("signed out, every action that starts work opens DigitalOcean's screen, nev
       await executePause(
         CATALOG,
         holding(
-          ["ready:digitalocean", "removable:digitalocean"],
+          ["ready:digitalocean", "agreed:publish", "removable:digitalocean"],
           ["plugin.digitalocean-server"],
         ),
         call,
@@ -116,6 +111,7 @@ async function ran(
   const view = {
     app: { version },
     values: async (name: string) => stored[name] ?? null,
+    value: async (value: Value) => valueIn(stored, value),
   } as unknown as ProjectView;
   return check.run(view, {});
 }
@@ -137,17 +133,19 @@ const held = {
 };
 
 test("live passes while the saved version is the one published at DigitalOcean", async () => {
-  expect(await ran("live", { [PUBLISH_RELEASE]: release })).toMatchObject({
+  expect(await ran("live", { ["publish.release"]: release })).toMatchObject({
     pass: true,
   });
   expect(
-    await ran("live", { [PUBLISH_RELEASE]: release }, "def456"),
+    await ran("live", { ["publish.release"]: release }, "def456"),
   ).toMatchObject({
     pass: false,
     summary: "The server at DigitalOcean holds an earlier version of the app",
   });
   expect(
-    await ran("live", { [PUBLISH_RELEASE]: { ...release, target: "server" } }),
+    await ran("live", {
+      ["publish.release"]: { ...release, target: "server" },
+    }),
   ).toMatchObject({
     pass: false,
     summary: "The app is not published on DigitalOcean",
@@ -157,15 +155,15 @@ test("live passes while the saved version is the one published at DigitalOcean",
 test("removable counts the go-ahead for what is held there now, server made but nothing published included", async () => {
   expect(
     await ran("removable", {
-      [PUBLISH_HOLDING]: held,
-      [PUBLISH_TAKE_DOWN]: { target: "digitalocean", holding: HELD },
+      ["publish.holding"]: held,
+      ["publish.take-down"]: { target: "digitalocean", holding: HELD },
     }),
   ).toMatchObject({ pass: true });
   expect(
     await ran("removable", {
-      [PUBLISH_HOLDING]: held,
-      [PUBLISH_RELEASE]: release,
-      [PUBLISH_TAKE_DOWN]: {
+      ["publish.holding"]: held,
+      ["publish.release"]: release,
+      ["publish.take-down"]: {
         target: "digitalocean",
         release: RELEASED,
         holding: HELD,
@@ -174,11 +172,11 @@ test("removable counts the go-ahead for what is held there now, server made but 
   ).toMatchObject({ pass: true });
   expect(
     await ran("removable", {
-      [PUBLISH_HOLDING]: { ...held, since: "2026-11-18T11:00:00.000Z" },
-      [PUBLISH_TAKE_DOWN]: { target: "digitalocean", holding: HELD },
+      ["publish.holding"]: { ...held, since: "2026-11-18T11:00:00.000Z" },
+      ["publish.take-down"]: { target: "digitalocean", holding: HELD },
     }),
   ).toMatchObject({ pass: false });
-  expect(await ran("removable", { [PUBLISH_HOLDING]: held })).toMatchObject({
+  expect(await ran("removable", { ["publish.holding"]: held })).toMatchObject({
     pass: false,
     summary: "The person has not asked to take the app down from DigitalOcean",
   });

@@ -67,11 +67,6 @@
         }
       }
     },
-    "values": {
-      "tester.notes": {
-        "about": "What the person asked the tester to look into last.",
-        "type": "text"
-      }
-    }
+    "values": "./src/values.ts"
   }
 }

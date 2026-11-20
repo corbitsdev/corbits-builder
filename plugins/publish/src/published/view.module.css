@@ -1,0 +1,28 @@
+.lines {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.address {
+  overflow-wrap: anywhere;
+}
+
+/* The whole row picks the place, as the DigitalOcean size picker does. */
+.place {
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--foreground);
+  text-align: start;
+}
+
+.place:hover:not(:disabled) {
+  background: var(--muted);
+}
+
+.place[aria-checked="true"] {
+  border-color: var(--foreground);
+  background: var(--muted);
+}

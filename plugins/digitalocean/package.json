@@ -9,6 +9,7 @@
   "dependencies": {
     "@corbits-builder/plugin": "workspace:*",
     "@corbits-builder/plugin-ui": "workspace:*",
+    "@corbits-builder/publishing": "workspace:*",
     "@corbits-builder/schemas": "workspace:*",
     "@corbits-builder/ssh-publish": "workspace:*",
     "@corbits/react-ui": "0.5.1",
@@ -27,20 +28,7 @@
     ],
     "when": "The person wants their app published to, checked on or taken off a server at DigitalOcean that Builder makes for them in their own DigitalOcean account, so people can open it at the server's address.",
     "unless": "The project has no saved app yet, the person wants it published somewhere other than DigitalOcean, or they already rent a server of their own to publish to.",
-    "values": {
-      "digitalocean.choice": {
-        "about": "The server the person agreed to rent at DigitalOcean, as { \"size\": DigitalOcean's name for its size, \"region\": where it runs, \"monthly\": the monthly price in US dollars they were shown, \"team\": { \"id\", \"name\" } of the DigitalOcean team that pays, \"at\": when they agreed, as an ISO time }; none once the server it was for is gone, so a new one needs a new answer. Only the Publish to DigitalOcean screen saves it, and only DigitalOcean's own tools clear it.",
-        "type": "json"
-      },
-      "digitalocean.quote": {
-        "about": "The monthly price DigitalOcean asked for a size when it differed from the one the person was shown, as { \"size\", \"monthly\" }, so the Publish to DigitalOcean screen shows the real price when opened again. Only DigitalOcean's own tools save it.",
-        "type": "json"
-      },
-      "digitalocean.server": {
-        "about": "DigitalOcean's tools' own note of the server Builder makes there, as { \"stage\": creating while a create is under way, bound once Builder's key works on it, \"id\" at DigitalOcean once known, \"address\" once bound, \"label\": its name there, \"team\": { \"id\", \"name\" } of the DigitalOcean team it is made under, \"attempts\": servers made for the choice agreed at \"for\" }; with no stage, nothing is made and only the tries are kept; none once the server is gone. Only DigitalOcean's own tools save it.",
-        "type": "json"
-      }
-    },
+    "values": "./src/values.ts",
     "credentials": {
       "digitalocean": {
         "about": "Your DigitalOcean sign-in",
@@ -128,7 +116,6 @@
     },
     "actions": {
       "account": {
-        "place": "publish",
         "reads": [
           "digitalocean.choice",
           "digitalocean.quote",
@@ -148,7 +135,8 @@
         "requires": [
           [
             "app_exists",
-            "ready:digitalocean"
+            "ready:digitalocean",
+            "agreed:publish"
           ]
         ],
         "reads": [
@@ -176,7 +164,8 @@
         "requires": [
           [
             "app_exists",
-            "ready:digitalocean"
+            "ready:digitalocean",
+            "agreed:publish"
           ]
         ],
         "reads": [

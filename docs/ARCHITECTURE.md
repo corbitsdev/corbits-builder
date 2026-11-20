@@ -303,16 +303,16 @@ approvals to Builder, every filed planning document counts as approved. A
 plugin describes the facts its work is about in plain words, and those words
 are what refusals and `discover` say.
 
-A project value is a named piece of project data that a plugin declares, such
-as `brand.guidelines` or `look.font-primary`, with what it holds in a line and
-its type: text (optionally with a pattern), JSON, a link or an attached file.
+A project value is a named piece of project data that a plugin declares once in
+code with `defineValue`, such as `brand.guidelines` or `look.font-primary`,
+with what it holds in a line and the schema a saved value must fit.
 A value is declared once, so its words and type never disagree, and any action
 may read it. The hub supplies the values an action reads: a screen gets them as
 props, and a run gets them as a labelled block in its assignment, so the
 coordinator never has to find or pass what the project already stores. A person
-saves a value by answering a screen, or where the interface offers it: the
-Publish tab clears `publish.keep` and `publish.holding`, and with them a
-`publish.release` the person says is gone. A run saves only the values its action
+saves a value by answering a screen, or by pressing a button on a screen that
+runs one of its plugin's tasks, as "I kept it" on the publish screen clears
+`publish.keep`. A run saves only the values its action
 lists under `writes`, with `report_values`, and the hub checks the name and the
 type. A value that names a style token, as the designer's fonts and colours do,
 lives in the filed design's `styles.css` once there is a design, and in the
@@ -508,169 +508,73 @@ changes what gets built, in which case it asks.
 ## Publishing
 
 Publishing puts the saved app where people can open it. Every place it can go
-is a plugin in the `publish` group, so the host names none. When the person
-presses Publish, the interface sends their own message. The coordinator finds
-the ready-made plans in the group, opens `publish choose` when more than one is
-installed, and follows the chosen plan: the place's `ready` check, `publish
-confirm` for the go-ahead, then the place's `publish` action. That action
-pauses on its key screen while a key its agent's tools use is missing
-([DEV.md](https://github.com/corbitsdev/corbits-builder/blob/main/docs/DEV.md#the-folder-and-the-manifest)). The place's tools do the
-work in fixed steps and record `publish.release`. Its `live` check turns that
-record into the fact that ends the plan, `published:<place>`, which lapses when
-a newer version is saved. The Publish tab works out its state from these
-records alone.
+is a plugin in the `publish` group, so the host names none. Nothing outside
+`plugins/` and `packages/publishing` knows about publishing.
 
-`publish choose` lists each plan by its package's `description`: what the
-person gets, what it costs and who bills. `publish confirm` shows, before the
-app first goes out by a plan, the plan's `firstPublish`: where it goes and the
-one thing to know first, such as an address that is not secure (https) yet. For
-changes it says only that the address people open will show the version saved
-last. A publish that cannot update the release recorded, because it goes to
-another place or one that cannot update it yet, shows `firstPublish` and says
-the app gets a new address while the earlier one keeps the earlier version.
+The publish plugin's `published` screen shows by itself, as a tab beside the
+plan, once the project has an app. Its definition's `state` runs in the hub and
+returns one tagged state from the project's values and plan: never published,
+publishing, published, failed, taking down or taken down. The view only draws
+it. Its buttons run the publish plugin's tasks through the hub's action route:
 
-The confirm saves the go-ahead as `publish.go-ahead`, `{ plan, at }`, dated by
-the hub. The `publish agreed` check, which cannot be skipped, returns
-`agreed:publish` from that answer until a release is recorded after it, `publish.plan` names another plan, or the take-down screen
-clears it. A screen cannot read the saved app's version yet, so the release
-recorded after the go-ahead is what says the publish it allowed went out. Each
-plan's guidance runs `publish agreed` before opening the confirm and carries on
-under it through an attempt that fails, is blocked or needs another step
-first. The check is guidance for now: no vendor's `publish` action requires
-`agreed:publish`, since a go-ahead that cannot name the version the person
-agreed to is the coordinator's sign not to ask again, not a gate.
+- Publish (`publish publish`) saves `publish.go-ahead` (`{ plan, at }`, dated
+  by the hub) and `publish.plan`, clears `publish.take-down`, and adds the
+  chosen place's ready-made plan with the person's go-ahead. The coordinator
+  is told in a hub note and carries the plan out without asking again.
+- Take it down asks for confirmation on the screen itself, then
+  (`publish take-down`) saves `publish.take-down` as
+  `{ target, release?, holding? }`, with the `at` and `since` the person was
+  shown, clears the go-ahead to publish, and adds the place's `remove` action.
+- I kept it (`publish kept`) and It's already gone (`publish gone`) clear what
+  is recorded; the coordinator is told.
 
-Taking the app down works the same way. The person presses Take it down in the
-Publish tab, or asks in their own words, and the coordinator opens `publish
-take-down` with the plan whose place `publish.holding` or `publish.release`
-names. The screen shows, in the take-down action's own words (its definition's
-`says.removes`), what goes and what becomes of what people entered, with the
-address people open and, for something held, where it is and what it costs.
-"Take it down" saves `publish.take-down` as `{ target, release?, holding? }`,
-with the `at` of the release and the `since` of the holding the person was
-shown, and clears `publish.go-ahead`, so a later publish asks again; "Keep it"
-saves it as null, and so does the go-ahead to publish again on the confirm
-screen, so a later take-down asks again. The coordinator then runs the place's
-`removable` check and starts the plan's `takeDown` action, which the hub refuses until that
-check's fact holds. The take-down's agent holds only tools that take the app
-down and look, never one that publishes, and the publish agent holds none that
-takes it down. A republish, or a take-down that cleared what the person was
-shown, changes what the check read, so an old go-ahead never takes down a later
-release; a take-down that failed can be tried again on the same one.
+Each place's plan is built by `publishSteps`: the place's `ready` check, any
+steps of its own, its `publish` action, then its `live` check. Every place's
+`publish` action requires `agreed:publish`, which the `publish agreed` check
+returns from the go-ahead until a release is recorded after it, the person
+picks another plan, or a take-down clears it, so the hub refuses a publish the
+person did not ask for. The place's tools do the work in fixed steps and
+record `publish.release`; its `live` check turns that into
+`published:<place>`, which lapses when a newer version is saved.
 
-Cloudflare's account screen has a take-down mode. While the person's go-ahead
-to take down stands for Cloudflare, it asks only for a token for the account
-the app is in; for an app in a temporary account whose keep link is still
-recorded, it also says when Cloudflare removes the app by itself, or that it
-did. `cloudflare remove` pauses on that screen while no token is saved, unless
-`cloudflare.terms` is set, so the screen usually comes first. When it runs
-without a token it answers `needs_own_account`; an app Cloudflare already
-removed is cleared by the person from the Publish tab.
+The place's `remove` action requires the fact of its `removable` check, which
+passes only while `publish.take-down` names this place and each release and
+holding recorded now is the one the person was shown, so a go-ahead for an
+earlier release never takes down a later one. The take-down's agent holds only
+tools that take the app down and look, never one that publishes, and each
+place's take-down tool checks the go-ahead again with `takeDownAgreed` before
+it acts. Removing a release from the person's own server still needs an agent:
+it needs the server's ssh key, which only a run receives from Interchange.
 
 Publishing has three tiers: core, archetype and vendor. The core is the publish
-plugin (`plugins/publish`) and the shared code in `packages/plugin`
-(`publish.ts`, `run-hub.ts`, `tools.ts`). An archetype is a form of hosting,
-such as a machine reached over SSH or a serverless host. Code that an archetype's
-vendors share goes in a package: `packages/ssh-publish` holds the SSH release
-(the scripts that ready a Debian or Ubuntu machine, release, report and take
-the app down, the tools' failure codes, `sshReleaseTools`, the publish tools a
-vendor names in its own words, and the production-ready check), and each of its
-functions takes the vendor's target handle and credential. A release is
-recorded once the server has switched to it, so an app that cannot be reached
-from outside is still recorded and can be taken down, and the tool answers
-`unreachable_from_outside`. A server that already runs the saved version with
-the same production settings, with no release recorded, has it recorded without
-a new build. The
-archetype's guidance for the coder stays in the `publish-skills` packs, which
-say how to make an app ready for it. Each vendor is a specialist with its own
-plan, handle, facts, credential and words. `plugins/server` ("a server you
-rent yourself") and `plugins/digitalocean` ("a server Builder makes for you")
-are the two vendors of the SSH archetype; `plugins/cloudflare` is a serverless
-one.
+plugin (`plugins/publish`) and the shared contract in `packages/publishing`
+(the release, keep, holding and take-down values, the checks every place
+builds on, `clearedFor` and `publishSteps`). An archetype is a form of hosting,
+such as a machine reached over SSH or a serverless host. `packages/ssh-publish`
+holds the SSH release (the scripts that ready a Debian or Ubuntu machine,
+release, report and take the app down, the tools' failure codes and
+`sshReleaseTools`), and each of its functions takes the vendor's target handle
+and credential. Each vendor is a specialist with its own plan, handle, facts,
+credential and words. `plugins/server` ("a server you rent yourself") and
+`plugins/digitalocean` ("a server Builder makes for you") are the two vendors
+of the SSH archetype; `plugins/cloudflare` is a serverless one.
 
 A new place implements this contract:
 
-- It lists `publish` in its groups, and its ready-made plan ends on
-  `published:<place>`, using `publishedCheck` for its `live` check.
+- It lists `publish` in its groups, its plan's `steps` module calls
+  `publishSteps`, and its `live`, `ready` and `removable` checks are built with
+  `publishedCheck`, `productionCheck` and `removableCheck`.
 - Its own tool writes `publish.release` and, for an app the person must still
   keep, `publish.keep`, with `replaceable: false` on a release the next publish
-  cannot update.
-- Its screens set `place: "publish"`, so they draw in the Publish tab.
+  cannot update. For as long as something it made costs money its tool records
+  `publish.holding`, and clears it only once the provider confirms the thing is
+  gone.
+- Its removal is a workflow action named `remove` that starts on no input and
+  requires `removable:<place>`.
 - Its tools are `fixedTools` that reach the hub through `runHub` and answer
   with fixed codes and a few typed fields, never the place's own output.
-- Its account key is an http credential, which may declare `signIn` so the
-  person signs in at the provider instead of pasting it. A machine key the hub
-  makes for it is an ssh credential that says `provisioned: true` and has no
-  form; the actions that make it list it in `provisions`.
-- For as long as something it made costs money, such as a rented server, its
-  own tool records `publish.holding` (`target`, `place`, `since`, and `costs`
-  as the person reads it), and it clears that only once the provider confirms
-  the thing is gone.
-- Its plan declares `takeDown`, the workflow action that takes down what it
-  published or holds. That action starts on no input (each field has a
-  default), so nothing the coordinator writes widens what the person agreed
-  to. Its definition's `says.removes` says what goes and whether what people
-  entered is destroyed or kept, and the take-down screen shows that. The
-  action runs its own agent, whose tools only take down and look, and it
-  requires the fact of a check built with `removableCheck` (`"rerun": "value"`,
-  `"skip": "never"`). That check passes only while `publish.take-down` names
-  this place and each release and holding recorded now is the one the person
-  was shown, so a go-ahead for an earlier release never takes down a later
-  one, even while the machine it is on is still held. The person cannot skip
-  the check: a skipped check's fact counts, and only their answer on the
-  take-down screen may make this one true. `recordedFor`
-  in `@corbits-builder/plugin/publish` decides which release and holding a
-  take-down covers, and `takeDownStands` whether the go-ahead still stands for
-  them; the check, the screens, the place's own tools and the Publish tab all
-  read them through those. Each place's take-down tool checks it again for
-  itself through `takeDownAgreed` before it acts and answers `not_agreed`, so
-  "Keep it" pressed after the coordinator started the removal is seen.
-
-The Publish tab's state comes from these records alone, never from what the
-page remembers or an agent wrote. The rows that decide it are in the comment on
-`publishState` in `apps/web/src/pages/workspace/publish-state.ts`, and the first
-row that matches wins. A publish or a take-down is a chain of hand-offs (a
-press, the coordinator's turn, a screen, an answer, a check, a run, its report),
-and between links nothing may be at work and nothing asked. So the project is
-busy while anything is at work on it, and for 20 seconds after work last moved
-on: a run of any plugin on it ended, or the person pressed Publish or Take it
-down or gave a publishing question an answer that went ahead. That window is
-the only rule read from the clock, which is the hub's, so a browser's clock that
-runs ahead or behind does not change it. Once the window passes with nothing at
-work the tab reads what the records say.
-
-The release is behind once its ending fact, which the `live` check records,
-lapses after the release went out: a newer version was saved, which is not a
-publish under way. A release recorded for its place passes, so the plan reaches
-its end with no step left to the coordinator. A release to another place, or a
-take-down that clears it, drops the fact with no failed step, since an app
-published elsewhere or taken down on purpose has not failed. Saving a newer app
-re-runs nothing and leaves the record stale. A check never run has read
-nothing, so the coordinator still runs the first publish's `live` step. The
-check re-runs by itself once it has a record
-([DEV.md](https://github.com/corbitsdev/corbits-builder/blob/main/docs/DEV.md#one-action)).
-
-While `publish.keep` is set, the way to keep the app shows over whichever state
-applies. While `publish.holding` is set, every state shows one more line, a
-fact beside the state's own rather than a notice (`wording.publish.holding`):
-"Hosted on DigitalOcean · $6 a month" under the address and its date once
-published, or "Hosting on DigitalOcean since" its date before, with "billed
-there" for a place that does not say its price. While a question is open it
-shows under the question. Its menu holds "I already removed it from
-DigitalOcean…" for hosting the person removed themselves, which asks a second
-time in the menu, then clears the holding and any release its place recorded.
-
-The tab offers a quiet "Take it down", apart from its main button, while a
-release or a holding is recorded and a publish plan's `takeDown` names its
-target (a holding's target wins over a release's). It is not offered while
-work is under way, while a question is open, or after a failed take-down,
-whose own "Try again" asks for the take-down again. Its menu holds "I already
-removed it myself…" for an app the person removed where it went, such as by
-cancelling the server, which no take-down can reach. It asks a second time in
-the menu, then clears the release and the go-ahead to take down. Nor is it offered while a
-keep link is recorded and nothing is held, since no take-down can reach an app
-the person has not kept yet. It sends the person's message as Publish does; the
-screen is where they decide.
+- Its account key is an http credential, which may declare `signIn`. A machine
+  key the hub makes for it is an ssh credential that says `provisioned: true`.
 
 The hub makes and saves the key for a person's server (below). A Cloudflare
 token is saved to Interchange like any plugin key. A temporary Cloudflare account's

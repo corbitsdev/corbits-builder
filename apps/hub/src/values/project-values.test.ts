@@ -4,7 +4,8 @@ import type { TenantEnv } from "@intx/hub-api";
 import { ProjectError } from "../projects/errors.ts";
 import { setThemeTokens } from "../artifacts/design-tweaks.ts";
 import type { createArtifactService } from "../artifacts/service.ts";
-import type { ValueDeclaration } from "@corbits-builder/plugin";
+import { type } from "arktype";
+import { defineValue, type Value } from "@corbits-builder/plugin";
 import { projectValueWrites } from "./project-values.ts";
 import { mountValueRoutes } from "./routes.ts";
 
@@ -155,9 +156,15 @@ test("saving null clears a value whatever its type refuses, but not a filed desi
 });
 
 test("a json value is saved as the object it is given, and a text value refuses one", () => {
-  const declared = new Map<string, ValueDeclaration>([
-    ["hoster.choice", { about: "The machine to rent", type: "json" }],
-    ["hoster.region", { about: "Where it runs", type: "text" }],
+  const declared = new Map<string, Value>([
+    [
+      "hoster.choice",
+      defineValue("hoster.choice", type("unknown"), "The machine to rent"),
+    ],
+    [
+      "hoster.region",
+      defineValue("hoster.region", type("string"), "Where it runs"),
+    ],
   ]);
   const state = { styles: undefined, stored: {}, materials: [] };
   expect(

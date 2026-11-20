@@ -29,27 +29,10 @@ export async function refusalBody(cause: ProductApiError): Promise<unknown> {
 
 let client: ProductApiClient | undefined;
 
-/** The Date header of the hub's latest answer, and when this page received it by its own clock. */
-export type HubDate = { date: string; receivedAt: number };
-
-let hubDate: HubDate | null = null;
-
-/**
- * The Date header of the hub's latest answer, for code that compares the hub's times with the
- * current time; null before any answer had one.
- */
-export const latestHubDate = (): HubDate | null => hubDate;
-
 /** The typed client against the hub origin, cookies included. */
 export function productClient(): ProductApiClient {
   return (client ??= createProductApiClient({
     baseUrl: hubOrigin(),
     credentials: hubCredentials(),
-    fetch: async (request) => {
-      const response = await fetch(request);
-      const date = response.headers.get("date");
-      if (date !== null) hubDate = { date, receivedAt: Date.now() };
-      return response;
-    },
   }));
 }

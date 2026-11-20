@@ -2,10 +2,13 @@
   "name": "@corbits-builder/server-publish",
   "version": "0.1.0",
   "private": true,
-  "description": "Your own server: one you already rent. Your hosting provider bills you.",
+  "description": "Your own server: one you already rent. Your hosting provider bills you. It goes at the server's IP address, which isn't secure (https) yet, so don't use the app for passwords or payments.",
   "license": "SEE LICENSE IN ../../LICENSE.md",
   "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
   "type": "module",
+  "dependencies": {
+    "@corbits-builder/publishing": "workspace:*"
+  },
   "builder": {
     "handle": "publish-to-server",
     "runs": "plan",
@@ -16,53 +19,8 @@
     "when": "The project has an app and the person wants it published on a server of their own that they rent, so people can open it.",
     "unless": "The project has no app yet, or the person wants it published somewhere else.",
     "guidance": "./SKILL.md",
-    "steps": [
-      {
-        "plugin": "server",
-        "action": "ready",
-        "title": "Check your app is ready for your server",
-        "requires": [
-          "app_exists"
-        ]
-      },
-      {
-        "plugin": "publish",
-        "action": "confirm",
-        "title": "Confirm where your app goes",
-        "requires": [
-          "app_exists"
-        ],
-        "input": {
-          "plan": "publish-to-server"
-        }
-      },
-      {
-        "plugin": "server",
-        "action": "publish",
-        "title": "Publish the app to your server",
-        "requires": [
-          "app_exists",
-          "ready:server"
-        ],
-        "input": {
-          "instruction": "Publish the project's saved app to the person's own server, readying the server first if it needs it, and report the address people open it at."
-        }
-      },
-      {
-        "plugin": "server",
-        "action": "live",
-        "title": "Confirm the saved version is the one published",
-        "requires": [
-          "app_exists"
-        ]
-      }
-    ],
+    "steps": "./steps.ts",
     "ends": "published:server",
-    "firstPublish": "It goes on your own server, at its IP address. That address isn't secure (https) yet, so don't use the app for passwords or payments.",
-    "takeDown": {
-      "plugin": "server",
-      "action": "remove"
-    },
     "examples": [
       "publish my app on my own server",
       "put the app on the VPS I rent"

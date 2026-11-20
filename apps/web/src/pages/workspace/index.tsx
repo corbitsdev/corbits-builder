@@ -9,7 +9,6 @@ import { ConceptMockup } from "./design-concepts.tsx";
 import { LiveApp } from "./live-app.tsx";
 import { TweakPanel } from "./mockup-tweaks.tsx";
 import { NextStepLine } from "./next-step.tsx";
-import { PublishView } from "./publish.view.tsx";
 import {
   useRoom,
   useRoomGate,
@@ -18,6 +17,7 @@ import {
 } from "./room.model.ts";
 import { RoomFault, RoomSkeleton } from "./room-skeleton.tsx";
 import { RoomView } from "./room.view.tsx";
+import { PluginScreens } from "./plugin-screens.tsx";
 import { ScreenQuestion } from "./screen-question.tsx";
 
 /** The room shows its loading or fault state until its first read is in hand. */
@@ -36,7 +36,7 @@ function ReadyRoom(props: ReadyRoomProps) {
     enableAi,
     liveApp,
     pageScreen,
-    publish,
+    pluginScreens,
     questionOutcomes,
   } = useRoom(props);
   return (
@@ -44,20 +44,16 @@ function ReadyRoom(props: ReadyRoomProps) {
       <RoomView
         {...view}
         nextStep={nextStep === null ? null : <NextStepLine {...nextStep} />}
-        page={pageScreen === null ? null : <ScreenQuestion {...pageScreen} />}
+        page={
+          pageScreen === null ? (
+            <PluginScreens room={pluginScreens} render="main-page" />
+          ) : (
+            <ScreenQuestion {...pageScreen} />
+          )
+        }
+        chat={<PluginScreens room={pluginScreens} render="inline-chat" />}
         paneParts={{
           liveApp: liveApp === null ? null : <LiveApp {...liveApp} />,
-          publish:
-            publish === null ? null : (
-              <PublishView
-                {...publish}
-                question={
-                  publish.question === null ? null : (
-                    <ScreenQuestion {...publish.question} />
-                  )
-                }
-              />
-            ),
           conceptMockup: (concept, frame) => (
             <ConceptMockup projectId={projectId} concept={concept} {...frame} />
           ),

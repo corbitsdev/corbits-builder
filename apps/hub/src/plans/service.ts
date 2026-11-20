@@ -217,6 +217,67 @@ export function createPlanService(rawDB: DB["db"]) {
       });
     },
 
+    // A person's click adds work to the plan with their go-ahead: a ready-made plan's group, or one
+    // action, in place of an earlier one of the same, and the coordinator is told to carry it out.
+    async addPlanStep(
+      actor: Actor,
+      projectId: string,
+      step: PlanStepWrite,
+      told: {
+        note: string;
+        mailRun: (runId: string, content: string) => Promise<void>;
+      },
+    ) {
+      await authorizeProject(rawDB, actor, projectId, "manage");
+      const at = new Date().toISOString();
+      const mark = { by: actor.principalId, at };
+      const child = (each: PlanChildWrite) => {
+        const saved = savedPlanStep(each, () => undefined);
+        saved.goAhead = mark;
+        return saved;
+      };
+      const group = (each: Extract<PlanStepWrite, { steps: unknown }>) => {
+        const saved: StoredPlanGroup = {
+          id: newPlanStepId(),
+          title: each.title,
+          steps: each.steps.map(child),
+        };
+        if (each.plan) saved.plan = each.plan;
+        return saved;
+      };
+      const added = "steps" in step ? group(step) : child(step);
+      const same = (each: StoredPlanStep) =>
+        "steps" in step
+          ? "steps" in each && each.plan === step.plan
+          : !("steps" in each) &&
+            each.plugin === step.plugin &&
+            each.action === step.action;
+      const plan = await rawDB.transaction(async (tx) => {
+        const stored = (await lockedPlan(tx, projectId)) ?? {
+          steps: [],
+          updatedAt: at,
+        };
+        const plan = {
+          steps: [...stored.steps.filter((each) => !same(each)), added],
+          updatedAt: at,
+        };
+        await writePlan(tx, projectId, plan);
+        return plan;
+      });
+      await this.tellCoordinator(projectId, told.note, told.mailRun);
+      return plan;
+    },
+
+    // A hub note to the project's coordinator, when one is running.
+    async tellCoordinator(
+      projectId: string,
+      note: string,
+      mailRun: (runId: string, content: string) => Promise<void>,
+    ) {
+      const coordinator = await activeCoordinator(rawDB, projectId);
+      if (coordinator) await mailRun(coordinator.runId, note);
+    },
+
     // The person gives the go-ahead on a step they asked to be consulted on, or turns "ask me
     // first" on or off for a step, and the coordinator is told. Only a person may.
     async askPlanStep(

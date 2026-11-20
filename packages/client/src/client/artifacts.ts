@@ -26,16 +26,14 @@ export function buildArtifactsMethods(
   | "downloadApp"
   | "exportProjectArchive"
   | "saveDesignTweaks"
-  | "projectChecks"
-  | "projectRuns"
   | "projectPlan"
+  | "runPluginAction"
   | "declinePlanStep"
   | "stopRun"
   | "restorePlanStep"
   | "goAheadPlanStep"
   | "setPlanStepAskFirst"
   | "projectValues"
-  | "saveProjectValues"
   | "approveDocument"
   | "chooseDesign"
   | "acceptedMaterials"
@@ -169,11 +167,12 @@ export function buildArtifactsMethods(
         input,
       );
     },
-    projectChecks(tenantId, projectId, signal) {
-      return request(`${projectPath(tenantId, projectId)}/checks`, signal);
-    },
-    projectRuns(tenantId, projectId, signal) {
-      return request(`${projectPath(tenantId, projectId)}/runs`, signal);
+    async runPluginAction(tenantId, projectId, run, signal) {
+      await request(
+        `${projectPath(tenantId, projectId)}/plugins/${encodeURIComponent(run.plugin)}/actions/${encodeURIComponent(run.action)}`,
+        signal,
+        { input: run.input },
+      );
     },
     projectPlan(tenantId, projectId, signal) {
       return request(`${projectPath(tenantId, projectId)}/plan`, signal);
@@ -222,13 +221,6 @@ export function buildArtifactsMethods(
       return request(
         `${projectPath(tenantId, projectId)}/values?${new URLSearchParams({ keys: keys.join(",") })}`,
         signal,
-      );
-    },
-    saveProjectValues(tenantId, projectId, input, signal) {
-      return request(
-        `${projectPath(tenantId, projectId)}/values`,
-        signal,
-        input,
       );
     },
     approveDocument(tenantId, projectId, artifactId, version, signal) {

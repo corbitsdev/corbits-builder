@@ -13,9 +13,7 @@ import documentPane, {
 } from "./artifact-pane.stories.tsx";
 import nextStep, { YourTurn as yourTurn } from "./next-step.stories.tsx";
 import { NextStepLineView } from "./next-step.view.tsx";
-import type { Publishing } from "./publish-state.ts";
-import { PublishView } from "./publish.view.tsx";
-import { LIVE_TAB, PUBLISH_TAB } from "./tab-follow.ts";
+import { LIVE_TAB } from "./tab-follow.ts";
 import {
   RoomView,
   type RoomComposer,
@@ -127,7 +125,7 @@ const meta = {
     paneRef: createRef(),
     nextStep: <NextStepLineView {...nextStep.args} />,
     page: null,
-    publish: null,
+    chat: null,
   },
   render: (args) => <Room {...args} />,
 } satisfies Meta<typeof RoomView>;
@@ -377,59 +375,5 @@ export const ChoosingADesign: Story = {
   args: {
     ...withDocuments,
     ...paneOf(conceptTabs.args),
-  },
-};
-
-/** A saved app not yet published: the Publish control beside the project control. */
-export const ReadyToPublish: Story = {
-  args: {
-    ...AppBuilt.args,
-    layout: withDocuments.layout,
-    publish: {
-      publishing: {
-        state: { state: "unpublished" },
-        keep: null,
-        holding: null,
-        takeDown: false,
-      },
-      onOpen: fn(),
-    },
-  },
-};
-
-const published: Publishing = {
-  state: {
-    state: "published",
-    url: "http://203.0.113.7",
-    at: "2026-11-17T10:00:00.000Z",
-  },
-  keep: null,
-  holding: null,
-  takeDown: true,
-};
-
-/** The app is published: the control says so, and its tab gives the address and when it went out. */
-export const Published: Story = {
-  args: {
-    ...ProjectOpen.args,
-    ...paneOf({
-      ...appAndManual.args,
-      openTab: { value: PUBLISH_TAB },
-      publish: (
-        <PublishView
-          publish={published}
-          sending={false}
-          question={null}
-          keeping={false}
-          keptFault={null}
-          clearing={false}
-          clearFault={null}
-        />
-      ),
-    }),
-    publish: {
-      publishing: published,
-      onOpen: fn(),
-    },
   },
 };

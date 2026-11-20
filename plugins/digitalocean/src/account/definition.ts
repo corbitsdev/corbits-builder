@@ -1,8 +1,5 @@
 import { defineScreen } from "@corbits-builder/plugin";
-import {
-  PUBLISH_HOLDING,
-  PublishHolding,
-} from "@corbits-builder/plugin/publish";
+import { HOLDING, PublishHolding } from "@corbits-builder/publishing";
 import { type } from "arktype";
 import {
   CHOICE,
@@ -68,7 +65,7 @@ export const text = {
   noTeam:
     "DigitalOcean didn't say which team this sign-in is for. Sign in again to choose the team that pays.",
   warning: (costs: string | undefined) =>
-    `Disconnecting doesn't delete your server${costs === undefined ? "" : `, which costs ${costs}`}. To delete it, take the app down from the Publish tab.`,
+    `Disconnecting doesn't delete your server${costs === undefined ? "" : `, which costs ${costs}`}. To delete it, take the app down from the screen that shows where the app is published.`,
   settled: (output: Output) =>
     "size" in output
       ? `${sizeOf(output.size)?.memory ?? output.size} server in ${cityOf(output.region)}, ${monthlyWords(output.monthly)}${output.team.name === undefined ? "" : `, billed to ${output.team.name}`}`
@@ -77,7 +74,7 @@ export const text = {
 
 /** The sizes offered, using the live price a tool recorded when it differed from the listed one. */
 function offeredSizes(project: Readonly<Record<string, unknown>>) {
-  const quote = Quote(project[QUOTE]);
+  const quote = Quote(project[QUOTE.name]);
   return SIZES.map(({ slug, memory, disk, monthly }): SizeOffer => ({
     slug,
     memory,
@@ -89,9 +86,9 @@ function offeredSizes(project: Readonly<Record<string, unknown>>) {
   }));
 }
 
-/** What the project holds at DigitalOcean, as the Publish tab shows it, or undefined. */
+/** What the project holds at DigitalOcean, as the person is shown it, or undefined. */
 function heldHere(project: Readonly<Record<string, unknown>>) {
-  const held = PublishHolding(project[PUBLISH_HOLDING]);
+  const held = PublishHolding(project[HOLDING.name]);
   return held instanceof type.errors || held.target !== TARGET
     ? undefined
     : held;
@@ -105,7 +102,7 @@ export default defineScreen({
   prepare: (_input, _data, project): Prepared => {
     const held = heldHere(project);
     if (held !== undefined) return { mode: "signIn", costs: held.costs };
-    const earlier = Choice(project[CHOICE]);
+    const earlier = Choice(project[CHOICE.name]);
     const chosen = earlier instanceof type.errors ? undefined : earlier;
     return {
       mode: "choose",
@@ -116,7 +113,7 @@ export default defineScreen({
   },
   // Only a choose answer writes the choice. Signing in again leaves it as it is.
   writes: {
-    [CHOICE]: (output) => {
+    [CHOICE.name]: (output) => {
       if (!("size" in output)) return undefined;
       const choice: Chosen = {
         size: output.size,

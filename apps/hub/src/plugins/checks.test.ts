@@ -429,6 +429,7 @@ test("a failed hub re-run on a value is not repeated by unrelated saves, and run
       { tenantId: "tenant", principalId: "person" },
       "project",
       "http://hub.test",
+      false,
     );
     return runs.mock.calls.length - before;
   };

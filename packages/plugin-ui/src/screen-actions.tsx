@@ -19,7 +19,8 @@ import { Button } from "@corbits/react-ui";
 import styles from "./screen-actions.module.css";
 
 export type ScreenRow = {
-  cancel: { label: string; onCancel: () => void };
+  /** Withdraws the question; null for a standing screen, which answers none. */
+  cancel: { label: string; onCancel: () => void } | null;
   /** On the page, back to the conversation with the question still open and its draft kept. */
   back: { label: string; onBack: () => void } | null;
   /** Why the last answer was not sent, one sentence above the buttons that send it again. */
@@ -169,7 +170,7 @@ export function ScreenActions({
             {row.back.label}
           </Button>
         ) : null}
-        {row === null ? null : (
+        {row?.cancel ? (
           <Button
             type="button"
             size="sm"
@@ -178,7 +179,7 @@ export function ScreenActions({
           >
             {row.cancel.label}
           </Button>
-        )}
+        ) : null}
       </div>
       {shownNote === undefined || shownNote === null ? null : (
         <div className={styles.note}>{shownNote}</div>

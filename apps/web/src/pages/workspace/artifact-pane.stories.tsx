@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
-import { expect, fn } from "storybook/test";
+import { fn } from "storybook/test";
 import { wording } from "../../config.ts";
 import { APPROVAL_PACKAGE_MEDIA_TYPE } from "./approval-package.ts";
 import approvalRounds, {
@@ -13,14 +13,10 @@ import {
   type PaneDocument,
 } from "./artifact-pane.tsx";
 import type { DeliverableState } from "./deliverable-block.tsx";
-import { accountScreen } from "./digitalocean-screens.stories.tsx";
 import designConcept from "./design-concepts.stories.tsx";
 import { ConceptMockupView } from "./design-concepts.view.tsx";
 import liveApp from "./live-app.stories.tsx";
 import { LiveAppView } from "./live-app.view.tsx";
-import { PublishView } from "./publish.view.tsx";
-import { ScreenStory } from "./screen-story.tsx";
-import { PUBLISH_TAB } from "./tab-follow.ts";
 import { TweakPanelView } from "./mockup-tweaks.view.tsx";
 import { sampleDesign, sampleDraft } from "./sample-design.ts";
 import { WithPictures as manual } from "./user-manual.stories.tsx";
@@ -230,62 +226,5 @@ export const ApprovalPackage: Story = {
         versions: [],
       },
     },
-  },
-};
-
-/**
- * A tall screen in the Publish tab of a short pane. The card is as tall as its content and the tab
- * scrolls to its bottom, so nothing is hidden in a scroller inside the card.
- */
-export const TallScreenInPublishTab: Story = {
-  args: {
-    documents: [brief],
-    openTab: { value: PUBLISH_TAB },
-    publish: (
-      <PublishView
-        publish={{
-          state: { state: "needsYou" },
-          keep: null,
-          holding: null,
-          takeDown: false,
-        }}
-        sending={false}
-        question={
-          <ScreenStory
-            screen={accountScreen}
-            state="open"
-            input={{}}
-            project={{}}
-          />
-        }
-        keeping={false}
-        keptFault={null}
-        clearing={false}
-        clearFault={null}
-      />
-    ),
-  },
-  render: (args) => (
-    <div style={{ display: "flex", width: 800, height: 514 }}>
-      <ArtifactPane {...args} />
-    </div>
-  ),
-  play: async ({ canvas, canvasElement }) => {
-    await canvas.findAllByRole("radio");
-    const card = canvasElement.querySelector('[data-gate-kind="form"]');
-    const tab = card?.closest('[data-slot="panel-pane"]');
-    if (!card || !tab) throw new Error("The screen's card is not in the tab.");
-    await expect(tab.scrollHeight).toBeGreaterThan(tab.clientHeight);
-    const between: Element[] = [];
-    let box = card.parentElement;
-    while (box !== null && box !== tab) {
-      between.push(box);
-      box = box.parentElement;
-    }
-    const scrollers = [...between, card, ...card.querySelectorAll("*")].filter(
-      (box) => ["auto", "scroll"].includes(getComputedStyle(box).overflowY),
-    );
-    for (const box of scrollers)
-      await expect(box.scrollHeight).toBeLessThanOrEqual(box.clientHeight);
   },
 };

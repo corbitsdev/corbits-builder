@@ -34,7 +34,6 @@ import type {
   AppSnapshotReceipt,
   AppVersionList,
   ArtifactContent,
-  CheckList,
   DecidedApprovalList,
   DesignDraft,
   DesignThemeList,
@@ -48,9 +47,7 @@ import type {
   LiveApp,
   MaterialReceipt,
   MaterialRemovedReceipt,
-  ProjectRuns,
   ProjectValues,
-  ProjectValuesWrite,
 } from "@corbits-builder/schemas/artifact";
 import type {
   ApprovalRound,
@@ -450,18 +447,13 @@ export type ProductApiClient = Readonly<{
     input: DesignTweaks,
     signal?: AbortSignal,
   ): Promise<DesignTweaksReceipt>;
-  /** The latest record of each check of the project, with whether it is still current. */
-  projectChecks(
+  /** Runs one of a plugin's actions as the person, from its screen. */
+  runPluginAction(
     tenantId: string,
     projectId: string,
+    run: { plugin: string; action: string; input: Record<string, unknown> },
     signal?: AbortSignal,
-  ): Promise<CheckList>;
-  /** The coordinator's runs of plugin actions in the project, newest first: those running and the latest that ended. */
-  projectRuns(
-    tenantId: string,
-    projectId: string,
-    signal?: AbortSignal,
-  ): Promise<ProjectRuns>;
+  ): Promise<void>;
   /** The project's saved plan, an empty list where it has none. */
   projectPlan(
     tenantId: string,
@@ -509,13 +501,6 @@ export type ProductApiClient = Readonly<{
     tenantId: string,
     projectId: string,
     keys: readonly string[],
-    signal?: AbortSignal,
-  ): Promise<ProjectValues>;
-  /** Saves project values by name for the person; null clears one. Returns the values as stored. */
-  saveProjectValues(
-    tenantId: string,
-    projectId: string,
-    input: ProjectValuesWrite,
     signal?: AbortSignal,
   ): Promise<ProjectValues>;
   /** The person approves a filed document at the version they read, with no question asking. */

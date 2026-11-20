@@ -179,10 +179,24 @@ const PlanViewGroup = type({
   "needs?": "string[]",
   steps: PlanViewChild.array(),
 });
+// Where a plugin's screen draws: over the room, in the conversation, or as a tab beside the plan.
+export const ScreenRender = type("'main-page' | 'inline-chat' | 'plugin-bar'");
+export type ScreenRender = typeof ScreenRender.infer;
+// A screen to show now, with what it draws, as its plugin's state worked it out for the person.
+export const ShownScreen = type({
+  "+": "reject",
+  plugin: "string > 0",
+  action: "string > 0",
+  render: ScreenRender,
+  state: "unknown",
+});
+export type ShownScreen = typeof ShownScreen.infer;
 export const PlanView = type({
   "+": "reject",
   steps: PlanViewChild.or(PlanViewGroup).array(),
   updatedAt: "string | null",
+  // Only a person's read lists them, since a screen's state may hold what no model may read.
+  screens: ShownScreen.array(),
 });
 export type PlanView = typeof PlanView.infer;
 // A saved step may leave its id out; the hub assigns one.

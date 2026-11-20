@@ -15,7 +15,6 @@ import {
   type Offer,
   type PageControls,
   type ProjectValues,
-  type ReadyPlanOffer,
   type Screen,
   type ScreenActionBuilder,
 } from "@corbits-builder/plugin";
@@ -78,8 +77,6 @@ export type HostSupplies = {
   reply: ReplyBox;
   /** The project's and its workspace's tenants, where a credential is saved; null until both are read. */
   tenants: Tenants | null;
-  /** The installed ready-made plans that list the group a screen names, in their manifests' words. */
-  readyPlans: (group: string) => readonly ReadyPlanOffer[];
 };
 
 export type Tenants = { project: string; workspace: string };
@@ -91,7 +88,6 @@ export type ViewResources = {
   documents: { list: readonly ShownDocument[] };
   designConcepts: readonly ChoosableConcept[];
   tenants: Tenants;
-  readyPlans: HostSupplies["readyPlans"];
 };
 
 /** What the prompt box sends in place of the person's words while a screen has feedback staged. */
@@ -125,7 +121,6 @@ const SUPPLIED: ReadonlySet<string> = new Set<keyof HostSupplies>([
   "documents",
   "designConcepts",
   "tenants",
-  "readyPlans",
 ]);
 
 /** The pending items an offer would send back, in the decision's words; null while there are none. */
@@ -202,8 +197,8 @@ export const draftOf =
   };
 
 export type ScreenHostProps = {
-  /** The question's signal, which keys what the person has chosen so far. */
-  signalName: string;
+  /** The question's signal, which keys what the person has chosen so far; null for a standing screen. */
+  signalName: string | null;
   input: Record<string, unknown>;
   output: Record<string, unknown> | undefined;
   projectValues: ProjectValuesStore;
@@ -236,7 +231,8 @@ export function screenHost<In, Out, Data, Prepared>(
   // such as something published to take down, would refuse it.
   const answeredScreen: typeof screen = { ...screen, validate: () => [] };
   const readDraft = draftOf(screen.output);
-  const { reads = [], host: supplied = [] } = builder;
+  const { host: supplied = [] } = builder;
+  const reads = [...(builder.reads ?? [])];
   const unknown = supplied.find((name) => !SUPPLIED.has(name));
   if (unknown !== undefined)
     throw new Error(
@@ -257,7 +253,7 @@ export function screenHost<In, Out, Data, Prepared>(
     const [project, setProject] = useState<ProjectValues>();
     const [unreadable, setUnreadable] = useState(false);
     const answering = useAnswer(
-      `unsent:screen:${signalName}`,
+      `unsent:screen:${signalName ?? handle}`,
       readDraft,
       onAnswer,
     );
@@ -351,7 +347,6 @@ export function screenHost<In, Out, Data, Prepared>(
             documents: { list: host.documents.list },
             designConcepts: host.designConcepts,
             tenants,
-            readyPlans: host.readyPlans,
           },
         }}
         draft={answering.draft ?? {}}
@@ -394,10 +389,14 @@ export function screenHost<In, Out, Data, Prepared>(
     return (
       <ScreenRow
         value={{
-          cancel: {
-            label: text.cancel,
-            onCancel: () => void answering.send({ reply: text.cancelReply }),
-          },
+          cancel:
+            signalName === null
+              ? null
+              : {
+                  label: text.cancel,
+                  onCancel: () =>
+                    void answering.send({ reply: text.cancelReply }),
+                },
           fault:
             outcome !== undefined && "fault" in outcome ? (
               <Fault>{outcome.fault}</Fault>
@@ -424,6 +423,81 @@ export function screenHost<In, Out, Data, Prepared>(
           </div>
         </ScreenDecision>
       </ScreenRow>
+    );
+  };
+}
+
+export type ListedHostProps = {
+  /** What the hub worked out the screen draws now. */
+  state: unknown;
+  /** Runs one of the screen's own plugin's actions through the hub, to why it failed when it did. */
+  act: (
+    plugin: string,
+    action: string,
+    input: Record<string, unknown>,
+  ) => Promise<string | undefined>;
+  host: HostSupplies;
+};
+
+// Where the person's last click on a listed screen stands: none, on its way, or refused, and why.
+type Click =
+  | { is: "none" }
+  | { is: "acting" }
+  | { is: "refused"; fault: string };
+
+/**
+ * A screen the hub shows by itself, drawn from the state the hub worked out for it. It answers no
+ * question; its view runs its plugin's actions, and the only thing kept here is whether one is on
+ * its way and why the last one failed.
+ */
+export function listedHost(
+  name: string,
+  plugin: string,
+  View: ComponentType<
+    ScreenViewProps<unknown, unknown, unknown, ViewResources>
+  >,
+): ComponentType<ListedHostProps> {
+  return function ListedHost({ state, act, host }) {
+    const [click, setClick] = useState<Click>({ is: "none" });
+    const [draft, setDraft] = useState({});
+    const { tenants } = host;
+    if (tenants === null) return <InlineNote>{text.screenLoading}</InlineNote>;
+    const run = async (action: string, input: Record<string, unknown> = {}) => {
+      setClick({ is: "acting" });
+      const fault = await act(plugin, action, input);
+      setClick(fault === undefined ? { is: "none" } : { is: "refused", fault });
+    };
+    return (
+      <View
+        prepared={{
+          input: {},
+          data: state,
+          project: {},
+          facts: projectFacts,
+          resources: {
+            design: host.design,
+            mockupFrame: host.mockupFrame,
+            earlierAnswer: undefined,
+            documents: { list: host.documents.list },
+            designConcepts: host.designConcepts,
+            tenants,
+          },
+        }}
+        draft={draft}
+        setDraft={(change) =>
+          setDraft((current) =>
+            typeof change === "function" ? change(current) : change,
+          )
+        }
+        submit={async () => {
+          throw new Error(`${name} answers no question.`);
+        }}
+        submitting={click.is === "acting"}
+        answer={undefined}
+        place="card"
+        fault={click.is === "refused" ? click.fault : undefined}
+        act={run}
+      />
     );
   };
 }
@@ -480,24 +554,13 @@ export function ScreenQuestion({
   );
 }
 
-/**
- * The link in the conversation to a screen drawn elsewhere, over the room or in the project view.
- * note says what waits there; open is the link's label.
- */
-export function PageScreenCard({
-  onOpen,
-  note = text.pageScreenOpen,
-  open = text.pageScreenReopen,
-}: {
-  onOpen: () => void;
-  note?: string;
-  open?: string;
-}) {
+/** In the conversation, a screen open over the room: the way back to it after it was closed. */
+export function PageScreenCard({ onOpen }: { onOpen: () => void }) {
   return (
     <InlineNote>
-      {note}{" "}
+      {text.pageScreenOpen}{" "}
       <Button type="button" size="sm" variant="outline" onClick={onOpen}>
-        {open}
+        {text.pageScreenReopen}
       </Button>
     </InlineNote>
   );

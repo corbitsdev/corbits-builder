@@ -100,10 +100,6 @@
   background: var(--wb-primary);
 }
 
-.alert[data-mark="live"] {
-  background: var(--wb-okay);
-}
-
 .count {
   font-size: 0.75rem;
   font-variant-numeric: tabular-nums;

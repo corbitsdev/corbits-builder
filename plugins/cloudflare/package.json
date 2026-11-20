@@ -9,6 +9,7 @@
   "dependencies": {
     "@corbits-builder/plugin": "workspace:*",
     "@corbits-builder/plugin-ui": "workspace:*",
+    "@corbits-builder/publishing": "workspace:*",
     "@corbits-builder/schemas": "workspace:*",
     "@corbits/react-ui": "0.5.1",
     "@corbits/zip": "workspace:*",
@@ -28,17 +29,7 @@
     ],
     "when": "The person wants their app published to, checked on or taken off Cloudflare, so people can open it at its own address, or asks whether it is ready to go there.",
     "unless": "The project has no saved app yet, or the person wants it published somewhere other than Cloudflare.",
-    "values": {
-      "cloudflare.terms": {
-        "about": "When the person accepted Cloudflare's Terms of Service and Privacy Policy for Builder to publish the app in a new temporary Cloudflare account, as an ISO time. It stands for one such account and for an hour; none once that account was made or the person published with their own account. Only the Publish to Cloudflare screen saves it.",
-        "type": "text",
-        "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$"
-      },
-      "cloudflare.site": {
-        "about": "What a publish made on Cloudflare, so the next one updates it: the account, the app's name there, its database, whether the account was a temporary one and, for one, when Cloudflare removes it unless the person keeps it. Only Cloudflare's own tools save it.",
-        "type": "json"
-      }
-    },
+    "values": "./src/values.ts",
     "credentials": {
       "cloudflare": {
         "about": "Your Cloudflare API token",
@@ -87,7 +78,6 @@
     },
     "actions": {
       "account": {
-        "place": "publish",
         "reads": [
           "cloudflare.site",
           "publish.release",
@@ -109,7 +99,8 @@
         "requires": [
           [
             "app_exists",
-            "ready:cloudflare"
+            "ready:cloudflare",
+            "agreed:publish"
           ]
         ],
         "reads": [

@@ -44,7 +44,7 @@ function changed(
   );
 }
 
-test("a plugin with a sign-in credential, a provisioned one and a plan that takes down loads", () => {
+test("a plugin with a sign-in credential and a provisioned one loads", () => {
   expect(catalog.credentials.map(({ name }) => name)).toContain(
     "hoster-server",
   );
@@ -144,28 +144,12 @@ test("a provisioned credential no action of its plugin provisions stops the hub"
   );
 });
 
-test("a plan that takes down with anything but an installed workflow action stops the hub", async () => {
-  for (const action of ["account", "removable", "destroy"])
-    await expect(
-      changed("hoster-publish", [["takeDown", "action"], action]),
-    ).rejects.toThrow(
-      `publish-to-hoster takes down with hoster ${action}, which is not an installed workflow action of every plugin with that handle`,
-    );
-});
-
-test("a plan that takes down with an action the coordinator must give input stops the hub", async () => {
-  await expect(
-    changed("hoster-publish", [["takeDown", "action"], "publish"]),
-  ).rejects.toThrow(
-    "publish-to-hoster takes down with hoster publish, which does not start on no input: give each of its fields a default",
-  );
-});
-
-// A project with the app, these credentials saved and nothing else.
-const holding = (saved: readonly string[]) =>
+// A project with the app, these credentials saved and nothing else, the go-ahead to take down
+// included unless it is left out.
+const holding = (saved: readonly string[], facts = ["removable:hoster"]) =>
   ({
     state: async () => ({
-      facts: new Set(["app_exists", "removable:hoster"]),
+      facts: new Set(["app_exists", ...facts]),
       personFacts: new Set<string>(),
       asksApprovals: false,
       checks: [],
@@ -192,7 +176,12 @@ test("a missing provisioned credential lets the actions that make it start and r
   expect(
     await executePause(catalog, signedIn, asked("remove")),
   ).toBeUndefined();
-  const refused = await executePause(catalog, signedIn, asked("publish"));
+  // Only a maker that can start now is named: remove waits on the go-ahead to take down.
+  const refused = await executePause(
+    catalog,
+    holding(["plugin.hoster"], []),
+    asked("publish"),
+  );
   expect(refused).toBeTypeOf("string");
   expect(refused).toContain("hoster create");
   expect(refused).not.toContain("hoster remove");

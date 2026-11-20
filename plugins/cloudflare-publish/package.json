@@ -6,6 +6,9 @@
   "license": "SEE LICENSE IN ../../LICENSE.md",
   "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
   "type": "module",
+  "dependencies": {
+    "@corbits-builder/publishing": "workspace:*"
+  },
   "builder": {
     "handle": "publish-to-cloudflare",
     "runs": "plan",
@@ -16,53 +19,8 @@
     "when": "The project has an app and the person wants it published on Cloudflare, so people can open it at its own address, with their own Cloudflare account or without one.",
     "unless": "The project has no app yet, or the person wants it published somewhere else.",
     "guidance": "./SKILL.md",
-    "steps": [
-      {
-        "plugin": "cloudflare",
-        "action": "ready",
-        "title": "Check your app is ready for Cloudflare",
-        "requires": [
-          "app_exists"
-        ]
-      },
-      {
-        "plugin": "publish",
-        "action": "confirm",
-        "title": "Confirm where your app goes",
-        "requires": [
-          "app_exists"
-        ],
-        "input": {
-          "plan": "publish-to-cloudflare"
-        }
-      },
-      {
-        "plugin": "cloudflare",
-        "action": "publish",
-        "title": "Publish the app to Cloudflare",
-        "requires": [
-          "app_exists",
-          "ready:cloudflare"
-        ],
-        "input": {
-          "instruction": "Publish the project's saved app to Cloudflare and report the address people open it at, and, when it went out without the person's own Cloudflare account, how long they have to keep it."
-        }
-      },
-      {
-        "plugin": "cloudflare",
-        "action": "live",
-        "title": "Confirm the saved version is the one published",
-        "requires": [
-          "app_exists"
-        ]
-      }
-    ],
+    "steps": "./steps.ts",
     "ends": "published:cloudflare",
-    "firstPublish": "It goes on Cloudflare, at a secure web address of its own.",
-    "takeDown": {
-      "plugin": "cloudflare",
-      "action": "remove"
-    },
     "examples": [
       "publish my app on Cloudflare",
       "put the app on Cloudflare Workers"

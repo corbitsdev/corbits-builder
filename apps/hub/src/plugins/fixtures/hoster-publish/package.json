@@ -35,10 +35,6 @@
           "instruction": "Put the project's saved app on the machine rented at Hoster."
         }
       }
-    ],
-    "takeDown": {
-      "plugin": "hoster",
-      "action": "remove"
-    }
+    ]
   }
 }

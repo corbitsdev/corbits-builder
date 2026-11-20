@@ -130,7 +130,6 @@
         "returns": [
           "design_chosen"
         ],
-        "place": "page",
         "host": [
           "design",
           "mockupFrame",
@@ -146,7 +145,6 @@
         "returns": [
           "design_chosen"
         ],
-        "place": "page",
         "host": [
           "designConcepts",
           "mockupFrame"
@@ -237,41 +235,6 @@
         }
       ]
     },
-    "values": {
-      "look.font-primary": {
-        "about": "The font for headings and text.",
-        "type": "text",
-        "pattern": "^[A-Za-z0-9 -]{1,40}$",
-        "style": {
-          "token": "font-sans",
-          "leads": true
-        }
-      },
-      "look.font-secondary": {
-        "about": "The font for code and figures.",
-        "type": "text",
-        "pattern": "^[A-Za-z0-9 -]{1,40}$",
-        "style": {
-          "token": "font-mono",
-          "leads": true
-        }
-      },
-      "look.color-primary": {
-        "about": "The brand colour of buttons and links.",
-        "type": "text",
-        "pattern": "^#[0-9a-fA-F]{6}$",
-        "style": {
-          "token": "primary"
-        }
-      },
-      "look.color-background": {
-        "about": "The page colour behind everything.",
-        "type": "text",
-        "pattern": "^#[0-9a-fA-F]{6}$",
-        "style": {
-          "token": "background"
-        }
-      }
-    }
+    "values": "./src/values.ts"
   }
 }

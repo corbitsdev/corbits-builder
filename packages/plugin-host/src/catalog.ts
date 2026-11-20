@@ -4,14 +4,19 @@ import {
   CHECK_MS,
   WriterDocumentKind,
 } from "@corbits-builder/schemas/artifact";
+import { ScreenRender } from "@corbits-builder/schemas/project";
 import {
   CheckActionBuilder,
   guidanceText,
   inputText,
   isCheck,
   isScreen,
+  isTask,
+  defineValue,
+  isValues,
   isWorkflow,
   ReadyPlanBuilder,
+  ReadyPlanManifest,
   ScreenActionBuilder,
   SkillsBuilder,
   SpecialistBuilder,
@@ -41,13 +46,16 @@ import {
   type ProjectValues,
   type ProjectView,
   type Proof,
+  type ProjectRead,
+  type Task,
+  type TaskDone,
   type ModelSetting,
   type OutputBudget,
   type Refused,
   type Screen,
   type DesignBuilder,
   type Shown,
-  type ValueDeclaration,
+  type Value,
   type Workflow,
 } from "@corbits-builder/plugin";
 import {
@@ -177,7 +185,7 @@ const Manifest = type({
   name: "string > 0",
   version: "string > 0",
   "description?": "string",
-  builder: SpecialistBuilder.or(ReadyPlanBuilder),
+  builder: SpecialistBuilder.or(ReadyPlanManifest),
 });
 // A skill pack's manifest, told apart from a plugin's by what it runs before either is checked.
 const RunsSkills = type({ builder: { runs: "'skills'" } });
@@ -212,6 +220,8 @@ export type WorkflowAction = ActionBase & {
   presents: string | null;
   // The skill packs its specialist's agent is given when this action starts it.
   packs: readonly SkillPack[];
+  // What the person reads before agreeing to it, as its definition says.
+  confirm: string | undefined;
   // The installed workflow it starts: the one its start block names, or its declared agent's.
   workflow: string;
   // The starter a plugin brings for the workflow its start block names, or the default one for an
@@ -225,6 +235,12 @@ type KeptCheck = { ok: true; record: unknown } | { ok: false; problem: string };
 export type ScreenAction = ActionBase & {
   kind: "screen";
   builder: ScreenActionBuilder;
+  render: NonNullable<Screen<unknown, unknown, unknown, unknown>["render"]>;
+  // The project values Builder supplies it, by name, as its manifest reads them.
+  reads: readonly string[];
+  // What it draws now when shown without a question, or undefined while it should not show; absent
+  // for a screen only a question opens.
+  state?: (project: ProjectRead) => unknown;
   // Why this input cannot be shown, or undefined when it can.
   refusal: (input: unknown, project: ProjectValues) => string | undefined;
   // The person's answer checked against the screen's output, with the project values it saves, the
@@ -256,9 +272,40 @@ export type CheckAction = ActionBase & {
 };
 export type Action = WorkflowAction | ScreenAction | CheckAction;
 
+// Plugin code the hub runs when a person clicks, with no model. Neither the coordinator nor a plan
+// starts one, so it is kept apart from the actions they can.
+const TaskActionBuilder = type({
+  "+": "reject",
+  "requires?": type("string > 0")
+    .array()
+    .atLeastLength(1)
+    .array()
+    .atLeastLength(1),
+});
+type TaskAction = {
+  kind: "task";
+  plugin: string;
+  action: string;
+  name: string;
+  builder: typeof TaskActionBuilder.infer;
+  says: string;
+  validate: (input: unknown) => { ok: true; input: unknown } | Refused;
+  run: (project: ProjectRead, input: unknown) => TaskDone;
+  // The values it may save, by name.
+  writes: ReadonlySet<string>;
+};
+
+// A screen the hub shows by itself while its state returns something. It is never opened as a
+// question, so the coordinator never sees it.
+type ShownAction = ScreenAction & {
+  state: NonNullable<ScreenAction["state"]>;
+};
+
 export type SpecialistPlugin = PluginBase & {
   builder: SpecialistBuilder;
   actions: readonly Action[];
+  tasks: readonly TaskAction[];
+  shown: readonly ShownAction[];
 };
 export type ReadyPlanPlugin = PluginBase & { builder: ReadyPlanBuilder };
 // A skill pack as the host lays it into a specialist's workspace and lists it in the assignment.
@@ -355,6 +402,10 @@ export type Catalog = {
   plugins: readonly Plugin[];
   // The screens an execute call can show.
   screens: readonly ScreenAction[];
+  // What a person's click may run in the hub.
+  tasks: readonly TaskAction[];
+  // The screens the hub lists by themselves, each while its state returns something.
+  shown: readonly ShownAction[];
   // Every action of every specialist: started, run or opened with execute.
   actions: readonly Action[];
   installed(handle: string): Plugin | undefined;
@@ -362,7 +413,7 @@ export type Catalog = {
   factText(fact: Fact): string;
   // Every project value by name: each one a plugin declares, and the selection of each handle
   // several plugins share.
-  values: ReadonlyMap<string, ValueDeclaration>;
+  values: ReadonlyMap<string, Value>;
   // Every credential name an installed plugin declares, whichever of a shared handle a project uses.
   credentials: readonly PluginCredential[];
   // Each workflow package a plugin brings, by name, with the name of the role its runs play: its
@@ -387,6 +438,9 @@ export type Catalog = {
   // The catalog as a project with these values sees it; only the selection values are read.
   select(values: Readonly<Record<string, unknown>>): Catalog;
 };
+
+const isShownAction = (action: Action): action is ShownAction =>
+  isScreenAction(action) && action.state !== undefined;
 
 export const isSpecialist = (plugin: Plugin): plugin is SpecialistPlugin =>
   plugin.builder.runs === "specialist";
@@ -487,7 +541,12 @@ export async function manifestFiles(found: Found) {
     };
   const { builder } = manifestOf(found);
   if (builder.runs !== "specialist")
-    return { modules: [], texts: [builder.guidance], folders: [], present: [] };
+    return {
+      modules: typeof builder.steps === "string" ? [builder.steps] : [],
+      texts: [builder.guidance],
+      folders: [],
+      present: [],
+    };
   const files = Object.keys(builder.actions).flatMap((action) => {
     const { definition, view, data } = actionFiles(action);
     return [definition, view, data];
@@ -512,6 +571,7 @@ export async function manifestFiles(found: Found) {
       ...present.filter(
         (path) => files.includes(path) && !path.endsWith(".tsx"),
       ),
+      ...(typeof builder.values === "string" ? [builder.values] : []),
       ...Object.values(builder.starters ?? {}),
       ...prompts.filter((prompt) => !isText(prompt)),
       ...Object.values(builder.agents).flatMap(({ workspace }) =>
@@ -548,7 +608,12 @@ type Declared =
       builder: WorkflowActionBuilder;
       definition: Workflow<unknown>;
     }
-  | { kind: "check"; builder: CheckActionBuilder; definition: Check<unknown> };
+  | { kind: "check"; builder: CheckActionBuilder; definition: Check<unknown> }
+  | {
+      kind: "task";
+      builder: typeof TaskActionBuilder.infer;
+      definition: Task<unknown>;
+    };
 
 // An action with a view is shown to the person; one with check proofs, or whose definition is a
 // check's, is a check; any other starts work.
@@ -588,6 +653,12 @@ async function declaredAction(
     throw new Error(
       `${name} ships ${files.data}, which only a screen, with a view, reads`,
     );
+  if (isTask(definition)) {
+    const builder = TaskActionBuilder(entry);
+    if (builder instanceof type.errors)
+      throw new Error(`${where} is a task: ${builder.summary}`);
+    return { kind: "task", builder, definition };
+  }
   if ("all" in entry || "any" in entry || isCheck(definition)) {
     const builder = CheckActionBuilder(entry);
     if (builder instanceof type.errors)
@@ -614,6 +685,7 @@ async function declaredAction(
 async function manifested(found: Found) {
   const { builder, about } = manifestOf(found);
   const actions = new Map<string, Declared>();
+  const values = await declaredIn(found, builder);
   if (builder.runs === "specialist") {
     for (const [action, entry] of Object.entries(builder.actions))
       actions.set(
@@ -630,7 +702,22 @@ async function manifested(found: Found) {
         );
     checkProvisions(builder, actions);
   }
-  return { found, builder, about, actions };
+  return { found, builder, about, actions, values };
+}
+
+// The values a plugin declares, by name, from the module its manifest names.
+async function declaredIn(
+  found: Found,
+  builder: SpecialistBuilder | ReadyPlanManifest,
+): Promise<ReadonlyMap<string, Value>> {
+  if (builder.runs !== "specialist" || builder.values === undefined)
+    return new Map();
+  const declared = await found.module(builder.values);
+  if (!isValues(declared))
+    throw new Error(
+      `${builder.handle}'s values ${builder.values} lists no values as its default export`,
+    );
+  return new Map(declared.map((value) => [value.name, value]));
 }
 
 // Only a run of its plugin makes a provisioned credential. So an action may provision only its
@@ -751,7 +838,7 @@ function factWords(
 
 // The value names that no plugin declares, of those an action names.
 const undeclared = (
-  values: ReadonlyMap<string, ValueDeclaration>,
+  values: ReadonlyMap<string, Value>,
   named: readonly string[],
 ) => named.find((name) => !values.has(name));
 
@@ -759,10 +846,9 @@ const undeclared = (
 const VALUE_NAME = /^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)+$/;
 
 // Each handle several plugins share, with its default, the one that says so; exactly one must.
-function sharedHandles<Each extends { builder: Plugin["builder"] }>(
-  all: readonly Each[],
-  packageOf: (each: Each) => string,
-) {
+function sharedHandles<
+  Each extends { builder: { handle: string; default?: true } },
+>(all: readonly Each[], packageOf: (each: Each) => string) {
   const byHandle = new Map<string, Each[]>();
   for (const each of all) {
     const { handle } = each.builder;
@@ -780,24 +866,12 @@ function sharedHandles<Each extends { builder: Plugin["builder"] }>(
   });
 }
 
-// Why a value's pattern or style is wrong, or undefined when it is right: a pattern is a regular
-// expression, and only text has one or lives in the design's styles, one value to a token.
-function valueProblem(
-  value: ValueDeclaration,
-  tokens: ReadonlyMap<string, string>,
-) {
-  const text = value.type === "text";
-  if (value.pattern !== undefined) {
-    if (!text) return "has a pattern, which only a text value takes";
-    try {
-      new RegExp(value.pattern);
-    } catch (error) {
-      if (!(error instanceof SyntaxError)) throw error;
-      return `has a pattern that is not a regular expression: ${error.message}`;
-    }
-  }
+// Why a value's style is wrong, or undefined when it is right: only text lives in the design's
+// styles, one value to a token.
+function styleProblem(value: Value, tokens: ReadonlyMap<string, string>) {
   if (value.style === undefined) return undefined;
-  if (!text) return "lives in the design's styles, where only text can";
+  if (!value.schema.extends(type("string")))
+    return "lives in the design's styles, where only text can";
   const other = tokens.get(value.style.token);
   return other === undefined
     ? undefined
@@ -808,19 +882,23 @@ function valueProblem(
 // plugin declares. A value is declared once, so its words and type never disagree; any number of
 // actions may read it.
 function declaredValues(manifests: readonly Manifested[]) {
-  const values = new Map<string, ValueDeclaration>();
+  const values = new Map<string, Value>();
   for (const { handle, preset, sharing } of sharedHandles(
     manifests,
     ({ about }) => about.package,
   ))
-    values.set(selectionName(handle), {
-      about: `Which ${handle} plugin this project uses, by package name: ${sharing.map(({ about }) => about.package).join(" or ")}. Without one it uses ${preset.about.package}.`,
-      type: "text",
-    });
+    values.set(
+      selectionName(handle),
+      defineValue(
+        selectionName(handle),
+        type("string"),
+        `Which ${handle} plugin this project uses, by package name: ${sharing.map(({ about }) => about.package).join(" or ")}. Without one it uses ${preset.about.package}.`,
+      ),
+    );
   const owners = new Map<string, string>();
   const tokens = new Map<string, string>();
-  for (const { builder } of manifests)
-    for (const [name, value] of Object.entries(builder.values ?? {})) {
+  for (const { builder, values: declared } of manifests)
+    for (const [name, value] of declared) {
       if (!VALUE_NAME.test(name))
         throw new Error(
           `${builder.handle} declares ${name}, which is not a namespaced value name such as brand.guidelines`,
@@ -829,7 +907,7 @@ function declaredValues(manifests: readonly Manifested[]) {
         throw new Error(
           `${builder.handle} declares ${name}, which ${owners.get(name) ?? "Builder"} declares too`,
         );
-      const problem = valueProblem(value, tokens);
+      const problem = styleProblem(value, tokens);
       if (problem !== undefined)
         throw new Error(`${builder.handle} declares ${name}, which ${problem}`);
       if (value.style) tokens.set(value.style.token, name);
@@ -838,7 +916,7 @@ function declaredValues(manifests: readonly Manifested[]) {
     }
   for (const { builder, actions } of manifests)
     for (const [action, declared] of actions) {
-      if (declared.kind === "check") continue;
+      if (declared.kind === "check" || declared.kind === "task") continue;
       const unknown = undeclared(values, declared.builder.reads ?? []);
       if (unknown !== undefined)
         throw new Error(
@@ -881,7 +959,7 @@ const obtained = (declaration: CredentialDeclaration) =>
 // way, because a person saves it once for all of them.
 function declaredCredentials(
   manifests: readonly Manifested[],
-  values: ReadonlyMap<string, ValueDeclaration>,
+  values: ReadonlyMap<string, Value>,
 ) {
   const credentials = new Map<string, PluginCredential>();
   const firsts = new Map<string, { package: string; obtained: string }>();
@@ -957,13 +1035,14 @@ function installScreen(
 ): ScreenAction {
   const name = `${handle} ${action}`;
   const writes = Object.entries(screen.writes ?? {});
-  const unknown = undeclared(
-    values,
-    writes.map(([value]) => value),
-  );
+  const reads = [...(builder.reads ?? [])];
+  const unknown = undeclared(values, [
+    ...writes.map(([value]) => value),
+    ...reads,
+  ]);
   if (unknown !== undefined)
     throw new Error(
-      `${name}'s screen writes ${unknown}, which no plugin declares as a project value`,
+      `${name}'s screen names ${unknown}, which no plugin declares as a project value`,
     );
   // A screen's answer is the coordinator's result, so a private value it saved would reach the
   // model.
@@ -989,17 +1068,24 @@ function installScreen(
         ? `${name} returns facts, but its screen approves nothing`
         : `${name}'s screen approves, but its manifest returns no facts`,
     );
-  return {
+  const render = ScreenRender(screen.render ?? "inline-chat");
+  if (render instanceof type.errors)
+    throw new Error(`${name}'s definition render ${render.summary}`);
+  if (screen.state !== undefined && typeof screen.state !== "function")
+    throw new Error(`${name}'s definition state must be a function`);
+  const installed: ScreenAction = {
     kind: "screen",
     plugin: handle,
     action,
     name,
     builder,
+    render,
+    reads,
     when: screen.describe.when,
     unless: screen.describe.unless,
     description: screen.describe.summary,
     guidance: [
-      guidanceText(name, screen, builder.reads ?? []),
+      guidanceText(name, screen, reads),
       ...(requires.length > 0
         ? [`Requires: ${requiresText(requires, factText)}.`]
         : []),
@@ -1027,6 +1113,37 @@ function installScreen(
       };
     },
     returns: (input) => resolveFacts(returns, input),
+  };
+  if (screen.state) installed.state = screen.state;
+  return installed;
+}
+
+function installTask(
+  handle: string,
+  action: string,
+  { builder, definition: task }: Extract<Declared, { kind: "task" }>,
+  { known, values }: Pick<Installing, "known" | "values">,
+): TaskAction {
+  const name = `${handle} ${action}`;
+  checkFacts(name, (builder.requires ?? []).flat(), known, () => false);
+  const unknown = undeclared(
+    values,
+    task.writes.map((value) => value.name),
+  );
+  if (unknown !== undefined)
+    throw new Error(
+      `${name} writes ${unknown}, which no plugin declares as a project value`,
+    );
+  return {
+    kind: "task",
+    plugin: handle,
+    action,
+    name,
+    builder,
+    says: task.says,
+    validate: (raw) => validateWorkflowInput(name, task, raw),
+    run: (project, input) => task.run(project, input),
+    writes: new Set(task.writes.map((value) => value.name)),
   };
 }
 
@@ -1138,7 +1255,7 @@ type Installing = {
   known: ReadonlySet<Fact>;
   factText: (fact: Fact) => string;
   packs: readonly SkillPack[];
-  values: ReadonlyMap<string, ValueDeclaration>;
+  values: ReadonlyMap<string, Value>;
   preferences: ReadonlySet<string>;
   starters: ReadonlyMap<string, Starter>;
 };
@@ -1176,6 +1293,8 @@ function installAction(
     return installScreen(handle, action, declared, installing);
   if (declared.kind === "check")
     return installCheck(handle, action, declared, installing);
+  if (declared.kind === "task")
+    throw new Error(`${handle} ${action} is a task, installed apart`);
   const { builder, definition: workflow } = declared;
   const { known, factText, packs, starters } = installing;
   const name = `${handle} ${action}`;
@@ -1229,6 +1348,7 @@ function installAction(
     validate: (raw) => validateWorkflowInput(name, workflow, raw),
     presents: presentsOf(name, handle, actions, builder.presents),
     packs: packs.filter(({ serves }) => serves.includes(name)),
+    confirm: workflow.describe.says?.confirm,
     workflow: started,
     starter,
     keep: (kept) => keptFor(name, workflow.record, builder.writes ?? [], kept),
@@ -1264,8 +1384,15 @@ function specialistPlugin(
   const { handle } = builder;
   const { description } = about;
   const { packs } = installing;
-  const actions = [...declared].map(([name, each]) =>
-    installAction(builder, declared, name, each, installing),
+  const installed = [...declared].flatMap(([name, each]) =>
+    each.kind === "task"
+      ? []
+      : [installAction(builder, declared, name, each, installing)],
+  );
+  const shown = installed.filter(isShownAction);
+  const actions = installed.filter((action) => !isShownAction(action));
+  const tasks = [...declared].flatMap(([name, each]) =>
+    each.kind === "task" ? [installTask(handle, name, each, installing)] : [],
   );
   const own = packs
     .filter((pack) => pack.specialist === handle && pack.depth === 0)
@@ -1276,6 +1403,8 @@ function specialistPlugin(
     label: about.label,
     description,
     actions,
+    tasks,
+    shown,
     guidance: [
       ...lines(handle, builder, description),
       `Start one of its actions with execute({ plugin: "${handle}", action, input }), with the input that action describes; a screen opens the same way.`,
@@ -1291,11 +1420,22 @@ function specialistPlugin(
 
 async function readyPlanPlugin(
   found: Found,
-  builder: ReadyPlanBuilder,
+  declared: ReadyPlanManifest,
   about: Manifested["about"],
   known: ReadonlySet<Fact>,
 ): Promise<ReadyPlanPlugin> {
   const { description } = about;
+  if (typeof declared.steps === "string") {
+    const steps = ReadyPlanBuilder.get("steps")(
+      await found.module(declared.steps),
+    );
+    if (steps instanceof type.errors)
+      throw new Error(
+        `${declared.handle}'s steps ${declared.steps} must export its steps: ${steps.summary}`,
+      );
+    declared.steps = steps;
+  }
+  const builder = ReadyPlanBuilder.assert(declared);
   checkFacts(
     builder.handle,
     [
@@ -1322,23 +1462,17 @@ async function readyPlanPlugin(
 }
 
 // Every action a ready-made plan names is an action of each installed specialist with its handle, so
-// whichever of them a project uses has it. A screen is a step too: asking the person is work. A
-// plan's takeDown action must be work an agent does, not a screen or a check, and it starts with no
-// input, so nothing the coordinator writes can widen what the person agreed to remove.
+// whichever of them a project uses has it. A screen is a step too: asking the person is work.
 function checkCatalog(plugins: readonly Plugin[]) {
   const specialists = plugins.filter(isSpecialist);
-  const offered = (
-    handle: string,
-    name: string,
-    fits: (action: Action) => boolean = () => true,
-  ) => {
+  const offered = (handle: string, name: string) => {
     const sharing = specialists.filter(
       ({ builder }) => builder.handle === handle,
     );
     return (
       sharing.length > 0 &&
       sharing.every(({ actions }) =>
-        actions.some((action) => action.action === name && fits(action)),
+        actions.some((action) => action.action === name),
       )
     );
   };
@@ -1349,25 +1483,6 @@ function checkCatalog(plugins: readonly Plugin[]) {
         throw new Error(
           `${builder.handle} names ${step.plugin} ${step.action}, which is not an installed action of every plugin with that handle`,
         );
-    const { takeDown } = builder;
-    if (
-      takeDown !== undefined &&
-      !offered(takeDown.plugin, takeDown.action, isWorkflowAction)
-    )
-      throw new Error(
-        `${builder.handle} takes down with ${takeDown.plugin} ${takeDown.action}, which is not an installed workflow action of every plugin with that handle`,
-      );
-    if (
-      takeDown !== undefined &&
-      !offered(
-        takeDown.plugin,
-        takeDown.action,
-        (action) => isWorkflowAction(action) && action.validate({}).ok,
-      )
-    )
-      throw new Error(
-        `${builder.handle} takes down with ${takeDown.plugin} ${takeDown.action}, which does not start on no input: give each of its fields a default`,
-      );
   }
 }
 
@@ -1925,6 +2040,8 @@ export async function loadCatalog(
     return {
       plugins: using,
       screens: actions.filter(isScreenAction),
+      tasks: using.filter(isSpecialist).flatMap(({ tasks }) => tasks),
+      shown: using.filter(isSpecialist).flatMap(({ shown }) => shown),
       actions,
       installed: (handle) =>
         using.find((plugin) => plugin.builder.handle === handle),

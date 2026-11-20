@@ -85,7 +85,7 @@ function project(
     if (path.endsWith("/checks")) return Response.json({ checks });
     if (path.endsWith("/plan")) {
       if (body) state.plan = body.steps.map(stored);
-      return Response.json({ steps: state.plan, updatedAt: null });
+      return Response.json({ steps: state.plan, updatedAt: null, screens: [] });
     }
     if (path.endsWith("/run-concepts")) {
       recorded.push(body);
@@ -248,7 +248,7 @@ test("coder change starts a coder on a project that holds only an imported app, 
   expect(imported.deployed).toHaveLength(1);
   expect(imported.mailed[0]).toContain(change.instruction);
   expect(imported.mailed[0]).toContain(
-    "save it with report_values, giving its name and value; it saves only these:\n- stack.language (text)",
+    "save it with report_values, giving its name and value; it saves only these:\n- stack.language (a string)",
   );
   expect(imported.approvals).toEqual([]);
   expect(imported.state.following).toEqual([]);
@@ -689,6 +689,16 @@ const serverReady = {
   createdAt: new Date(0).toISOString(),
 };
 
+// A current pass of the publish plugin's agreed check: the person gave their go-ahead to publish.
+const agreed = {
+  ...serverReady,
+  checkId: "agreed",
+  plugin: "publish",
+  action: "agreed",
+  summary: "The person gave their go-ahead to publish",
+  returns: ["agreed:publish"],
+};
+
 test("server publish is not started while the app does not say how it runs in production", async () => {
   const unready = project([filed("app")]);
   const refused = await unready.execute({
@@ -705,7 +715,7 @@ test("server publish is not started while the app does not say how it runs in pr
 });
 
 test("server publish waits on the connect screen while no server is connected, and runs again once it is", async () => {
-  const unconnected = project([filed("app")], [], {}, [serverReady]);
+  const unconnected = project([filed("app")], [], {}, [serverReady, agreed]);
   expect(
     await unconnected.pause({
       plugin: "server",

@@ -7,11 +7,11 @@
   "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts",
-    "./ready": "./src/ready.ts"
+    ".": "./src/index.ts"
   },
   "dependencies": {
     "@corbits-builder/plugin": "workspace:*",
+    "@corbits-builder/publishing": "workspace:*",
     "@corbits/zip": "workspace:*",
     "@intx/types": "workspace:*",
     "arktype": "catalog:"

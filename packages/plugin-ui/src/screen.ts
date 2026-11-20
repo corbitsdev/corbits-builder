@@ -23,6 +23,10 @@ export type ScreenViewProps<Input, Output, Prepared, Resources = unknown> = {
         sendBack?: Output;
       }) => void)
     | undefined;
+  /** For a screen the hub shows by itself: runs one of its own plugin's actions through the hub. */
+  act?:
+    | ((action: string, input?: Record<string, unknown>) => Promise<void>)
+    | undefined;
   /** Writer's document approval opens a filed document by kind. */
   openDocument?: ((kind: string) => void) | undefined;
 };

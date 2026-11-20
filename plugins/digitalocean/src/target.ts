@@ -1,3 +1,4 @@
+import { defineValue } from "@corbits-builder/plugin";
 import { type } from "arktype";
 import manifest from "../package.json";
 
@@ -14,11 +15,6 @@ export const CREDENTIAL =
 // The key to the server, which the hub makes for this plugin's create and remove actions.
 export const SERVER_CREDENTIAL =
   "digitalocean-server" satisfies keyof typeof manifest.builder.credentials;
-
-// The project values this plugin adds.
-export const CHOICE = "digitalocean.choice";
-export const QUOTE = "digitalocean.quote";
-export const SERVER = "digitalocean.server";
 
 // The image every server is made with. The SSH release needs Ubuntu 20.04 or later.
 export const IMAGE = "ubuntu-24-04-x64";
@@ -108,3 +104,20 @@ export const ServerNote = Bound.or(Unbound);
 export type ServerNote = typeof ServerNote.infer;
 export type BoundNote = typeof Bound.infer;
 export type UnboundNote = typeof Unbound.infer;
+
+// The project values this plugin adds.
+export const CHOICE = defineValue(
+  "digitalocean.choice",
+  Choice,
+  'The server the person agreed to rent at DigitalOcean, as { "size": DigitalOcean\'s name for its size, "region": where it runs, "monthly": the monthly price in US dollars they were shown, "team": { "id", "name" } of the DigitalOcean team that pays, "at": when they agreed, as an ISO time }; none once the server it was for is gone, so a new one needs a new answer. Only the Publish to DigitalOcean screen saves it, and only DigitalOcean\'s own tools clear it.',
+);
+export const QUOTE = defineValue(
+  "digitalocean.quote",
+  Quote,
+  'The monthly price DigitalOcean asked for a size when it differed from the one the person was shown, as { "size", "monthly" }, so the Publish to DigitalOcean screen shows the real price when opened again. Only DigitalOcean\'s own tools save it.',
+);
+export const SERVER = defineValue(
+  "digitalocean.server",
+  ServerNote,
+  'DigitalOcean\'s tools\' own note of the server Builder makes there, as { "stage": creating while a create is under way, bound once Builder\'s key works on it, "id" at DigitalOcean once known, "address" once bound, "label": its name there, "team": { "id", "name" } of the DigitalOcean team it is made under, "attempts": servers made for the choice agreed at "for" }; with no stage, nothing is made and only the tries are kept; none once the server is gone. Only DigitalOcean\'s own tools save it.',
+);

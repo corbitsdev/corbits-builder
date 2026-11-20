@@ -1,0 +1,16 @@
+{
+  "name": "@corbits-builder/publishing",
+  "version": "0.1.0",
+  "private": true,
+  "description": "What every plugin that publishes the app shares: the project values a publish records, the checks every place runs on them, and the steps every publish plan takes.",
+  "license": "SEE LICENSE IN ../../LICENSE.md",
+  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@corbits-builder/plugin": "workspace:*",
+    "arktype": "catalog:"
+  }
+}

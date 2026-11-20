@@ -7,10 +7,10 @@ import type { DB } from "@intx/db";
 import { workflowRun, workflowRunLaunchSpec } from "@intx/db/schema";
 import type { TenantEnv } from "@intx/hub-api";
 import { getLogger } from "@intx/log";
-import type {
-  CheckOutcome,
-  CommandRun,
-  CommandSteps,
+import {
+  type CheckOutcome,
+  type CommandRun,
+  type CommandSteps,
 } from "@corbits-builder/plugin";
 import {
   isCheckAction,
@@ -62,6 +62,7 @@ import { requestErrorMetadata } from "../request-error.ts";
 import { CATALOG, projectCatalog } from "./catalog.ts";
 import type { createCommandRunner } from "./command-runner.ts";
 import { projectFacts } from "./facts.ts";
+import { valueOf } from "./screens.ts";
 
 const log = getLogger(["corbits-builder", "hub", "checks"]);
 
@@ -195,6 +196,8 @@ export function savedProject({
           `value:${name}`,
           readProjectValues([name], state, CATALOG.values)[name],
         ),
+      value: async (value) =>
+        read(`value:${value.name}`, valueOf(CATALOG.values, state)(value)),
       approvals: async (kind) => read(`approval:${kind}`, approvedNow(kind)),
       facts: async () => read("facts", base),
     };
@@ -553,8 +556,14 @@ export function createChecks(deps: {
   // Re-runs, once each, the project's checks whose latest record went stale in a way they re-run
   // on. A re-run writes its record straight to the table, never through a saving route, so the
   // record does not count as a change itself. A re-run reads the project as the person who saved
-  // the change.
-  const rerun = async (actor: Actor, projectId: string, origin: string) => {
+  // the change. waited says the caller tells the coordinator what the change did, so no note of a
+  // re-run is sent besides.
+  const rerun = async (
+    actor: Actor,
+    projectId: string,
+    origin: string,
+    waited: boolean,
+  ) => {
     const { due, now } = await standing(actor, projectId);
     for (const { record, action } of due) {
       const id = record.checkId;
@@ -567,7 +576,7 @@ export function createChecks(deps: {
           projectId,
           action,
           record.input,
-          { triggeredBy: BY_HUB, waited: false, origin },
+          { triggeredBy: BY_HUB, waited, origin },
         );
         const settling = settled
           .then(({ unrecorded }) => {
@@ -591,9 +600,14 @@ export function createChecks(deps: {
   // After a change is saved, re-runs the checks that ask for it whose latest record the change made
   // stale. It answers once those have run; what goes wrong is logged here, since the change that set
   // it off is already saved.
-  const changed = async (actor: Actor, projectId: string, origin: string) => {
+  const changed = async (
+    actor: Actor,
+    projectId: string,
+    origin: string,
+    waited: boolean,
+  ) => {
     try {
-      await rerun(actor, projectId, origin);
+      await rerun(actor, projectId, origin, waited);
     } catch (error) {
       log.error("Checks were not re-run after a change", {
         projectId,
@@ -642,6 +656,7 @@ export function createChecks(deps: {
         },
         projectId,
         origin,
+        false,
       );
     },
 

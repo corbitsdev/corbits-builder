@@ -180,7 +180,7 @@ test("cloudflare publish waits on the account screen while there is neither a ke
   const holding = (stored: Record<string, unknown>) =>
     ({
       state: async () => ({
-        facts: new Set(["app_exists", "ready:cloudflare"]),
+        facts: new Set(["app_exists", "ready:cloudflare", "agreed:publish"]),
         personFacts: new Set<string>(),
         asksApprovals: false,
         checks: [],

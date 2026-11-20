@@ -331,6 +331,7 @@ export async function runCheck(
     app: saved.app,
     documents: saved.documents,
     values: saved.values,
+    value: saved.value,
     approvals: saved.approvals,
     facts: saved.facts,
     check: (proof) => prove(proof, view),

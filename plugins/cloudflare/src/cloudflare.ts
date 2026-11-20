@@ -7,13 +7,14 @@ import {
 } from "@corbits-builder/plugin/run-hub";
 import { failed } from "@corbits-builder/plugin/tools";
 import {
-  PUBLISH_KEEP,
-  PUBLISH_RELEASE,
+  KEEP,
+  RELEASE,
   PublishKeep,
   PublishRelease,
   TAKE_DOWN_VALUES,
   takeDownAgreed,
-} from "@corbits-builder/plugin/publish";
+  clearedFor,
+} from "@corbits-builder/publishing";
 import {
   accountSubdomain,
   CloudflareRefused,
@@ -122,7 +123,7 @@ type Destination = {
 };
 
 const siteOf = (values: Readonly<Record<string, unknown>>) => {
-  const site = CloudflareSite(values[SITE]);
+  const site = CloudflareSite(values[SITE.name]);
   return site instanceof type.errors ? undefined : site;
 };
 
@@ -171,7 +172,7 @@ async function calling<T>(
 
 // Whether the person accepted Cloudflare's terms for a temporary account within the hour.
 function accepted(deps: Deps, values: Readonly<Record<string, unknown>>) {
-  const at = values[TERMS];
+  const at = values[TERMS.name];
   if (typeof at !== "string") return false;
   const since = deps.now().getTime() - new Date(at).getTime();
   return since >= -CLOCK_SKEW_MS && since <= TERMS_STAND_MS;
@@ -190,7 +191,7 @@ async function chosenAccount(
   if (key === undefined) {
     if (accepted(deps, values)) return { account: "temporary" };
     // Clear an expired acceptance so Builder asks the person again before the next publish.
-    if (set(values[TERMS])) await deps.hub.record({ [TERMS]: null });
+    if (set(values[TERMS.name])) await deps.hub.record({ [TERMS.name]: null });
     return failed("no_account_chosen");
   }
   const client: Client = { fetch: key, plain: deps.fetch, signal: deps.signal };
@@ -355,9 +356,9 @@ async function savedKeepLink(
   });
   if (keep instanceof type.errors) throw new CloudflareUnavailable();
   await recordSurely(deps, {
-    [TERMS]: null,
-    [PUBLISH_KEEP]: keep,
-    [SITE]: siteFor(
+    [TERMS.name]: null,
+    [KEEP.name]: keep,
+    [SITE.name]: siteFor(
       { account: "temporary", id: made.account.id, keepUntil },
       script,
       undefined,
@@ -438,7 +439,9 @@ async function readyDatabase(
     found = created;
     // Record it now, so a publish stopped after this point reuses it instead of creating a second
     // database with the same name.
-    await deps.hub.record({ [SITE]: siteFor(destination, config.name, found) });
+    await deps.hub.record({
+      [SITE.name]: siteFor(destination, config.name, found),
+    });
   }
   const id = found;
   const { table } = declared;
@@ -600,14 +603,14 @@ async function finish(
     ...(destination.account === "own" ? {} : { replaceable: false as const }),
   };
   await recordSurely(deps, {
-    [SITE]: siteFor(destination, script, database),
-    [PUBLISH_RELEASE]: release,
+    [SITE.name]: siteFor(destination, script, database),
+    [RELEASE.name]: release,
     // A publish with the person's own key leaves no temporary account to keep. It also settles
     // which account they publish with, so any earlier acceptance of the terms is cleared.
     ...(destination.account === "own"
       ? {
-          [PUBLISH_KEEP]: null,
-          ...(set(values[TERMS]) ? { [TERMS]: null } : {}),
+          [KEEP.name]: null,
+          ...(set(values[TERMS.name]) ? { [TERMS.name]: null } : {}),
         }
       : {}),
   });
@@ -624,9 +627,9 @@ async function finish(
 async function releaseApp(deps: Deps): Promise<Outcome> {
   const values = await deps.hub.values([
     "stack.production",
-    PUBLISH_RELEASE,
-    SITE,
-    TERMS,
+    RELEASE.name,
+    SITE.name,
+    TERMS.name,
   ]);
   const saved = await savedApp(deps.hub, values);
   if (isOutcome(saved)) return saved;
@@ -677,7 +680,7 @@ async function releaseApp(deps: Deps): Promise<Outcome> {
 }
 
 const recordedRelease = (values: Readonly<Record<string, unknown>>) => {
-  const release = PublishRelease(values[PUBLISH_RELEASE]);
+  const release = PublishRelease(values[RELEASE.name]);
   return release instanceof type.errors || release.target !== TARGET
     ? undefined
     : release;
@@ -685,7 +688,7 @@ const recordedRelease = (values: Readonly<Record<string, unknown>>) => {
 
 /** Whether the address the app was last published at answers. */
 async function statusOf(deps: Deps): Promise<Outcome> {
-  const release = recordedRelease(await deps.hub.values([PUBLISH_RELEASE]));
+  const release = recordedRelease(await deps.hub.values([RELEASE.name]));
   if (release === undefined) return { ok: true, state: "not_published" };
   return {
     ok: true,
@@ -701,7 +704,7 @@ async function statusOf(deps: Deps): Promise<Outcome> {
  * go-ahead on the take-down screen for the release that is published now.
  */
 async function unpublishApp(deps: Deps): Promise<Outcome> {
-  const values = await deps.hub.values([...TAKE_DOWN_VALUES, SITE]);
+  const values = await deps.hub.values([...TAKE_DOWN_VALUES, SITE.name]);
   if (!takeDownAgreed(values, TARGET)) return failed("not_agreed");
   const site = siteOf(values);
   if (site === undefined) return failed("not_published");
@@ -721,12 +724,7 @@ async function unpublishApp(deps: Deps): Promise<Outcome> {
     (error) => (error.status === 404 ? { ok: true } : undefined),
   );
   if (isOutcome(deleted) && !deleted.ok) return deleted;
-  await deps.hub.record({
-    ...(recordedRelease(values) === undefined
-      ? {}
-      : { [PUBLISH_RELEASE]: null }),
-    [PUBLISH_KEEP]: null,
-  });
+  await deps.hub.record(clearedFor(TARGET, values, [KEEP.name]));
   return { ok: true, databaseKept: site.database !== undefined };
 }
 

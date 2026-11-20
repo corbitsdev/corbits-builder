@@ -1,8 +1,5 @@
 import { expect, test } from "bun:test";
-import {
-  PUBLISH_RELEASE,
-  PublishRelease,
-} from "@corbits-builder/plugin/publish";
+import { RELEASE, PublishRelease } from "@corbits-builder/publishing";
 import {
   release,
   status,
@@ -128,7 +125,7 @@ function setup(
         throw new Error("a server publish never asks the hub for a key");
       },
       record: async (values) => {
-        const release = values[PUBLISH_RELEASE];
+        const release = values[RELEASE.name];
         recorded.push(release === null ? null : PublishRelease.assert(release));
       },
     },
