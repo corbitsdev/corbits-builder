@@ -338,13 +338,6 @@ export const wording = {
     checklistDone: "Checked",
     checklistOpen: "Not checked yet",
   },
-  nextStep: {
-    action: {
-      open_app: "Open the preview",
-      reply: "Reply",
-      resume_coordinator: "Start the coordinator",
-    },
-  },
   paneBar: {
     hide: "Hide the controls",
     show: "Show the controls",
