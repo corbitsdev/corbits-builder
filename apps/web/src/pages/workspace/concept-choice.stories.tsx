@@ -6,7 +6,8 @@ import View from "@plugins/designer/src/choose/view.tsx";
 import { wording } from "../../config.ts";
 import { ScreenStory, storyScreen } from "./screen-story.tsx";
 
-const SEND = "Choose this design";
+// Crisp is picked in the draft, so the forward button names it.
+const SEND = "Use Crisp";
 
 const screen = storyScreen(
   "@corbits-builder/designer choose",
@@ -61,7 +62,9 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+/** Nothing picked yet: the forward button waits, saying what it does. */
 export const Open: Story = {};
+/** A concept picked: it is marked in ink and the forward button, green, names it. */
 export const Chosen: Story = { args: { state: "chosen" } };
 /** While the answer is on its way the whole screen is inert. */
 export const Sending: Story = { args: { state: "sending" } };

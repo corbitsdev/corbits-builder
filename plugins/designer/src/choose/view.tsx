@@ -8,7 +8,10 @@ import type { ScreenViewProps } from "@corbits-builder/plugin-ui/screen";
 import type { ComponentType } from "react";
 import { Button } from "@corbits/react-ui";
 
-import { ScreenActions } from "@corbits-builder/plugin-ui/screen-actions";
+import {
+  ScreenActions,
+  usePromptPlaceholder,
+} from "@corbits-builder/plugin-ui/screen-actions";
 import { ScreenSettled } from "@corbits-builder/plugin-ui/screen-card";
 import { Comparison } from "@corbits-builder/plugin-ui/comparison";
 import type { FrameProps } from "../review/view.tsx";
@@ -42,6 +45,10 @@ export const text = {
   title: "Choose a design",
   comment: "Comment",
   choose: "Choose this design",
+  /** The forward button once a concept is picked. */
+  use: (concept: string) => `Use ${concept}`,
+  /** The prompt box once a concept is picked: words sent now go with it. */
+  addDetails: (concept: string) => `Add details for ${concept}…`,
   noConcepts: "There are no design concepts to choose from yet.",
   asked: "Which design?",
   chosen: (concept: string, comments: number) => {
@@ -89,6 +96,9 @@ function Choose({
   const comments = draft.comments ?? NONE;
   const picked = host.designConcepts.find(
     (concept) => concept.label === draft.concept,
+  );
+  usePromptPlaceholder(
+    picked === undefined ? undefined : text.addDetails(picked.label),
   );
 
   const choose = (concept: Concept, option: string) =>
@@ -176,7 +186,7 @@ function Choose({
               if ("option" in approval) void choose(picked, approval.option);
             }}
           >
-            {text.choose}
+            {picked === undefined ? text.choose : text.use(picked.label)}
           </Button>
         </ScreenActions>
       </div>
