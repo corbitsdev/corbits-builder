@@ -17,7 +17,6 @@ import { RoomDockView } from "./room.view.tsx";
 const waits = {
   question: () => (
     <QuestionsCard
-      place="box"
       question={question}
       disabled={false}
       onAnswer={fn(() => Promise.resolve(true))}

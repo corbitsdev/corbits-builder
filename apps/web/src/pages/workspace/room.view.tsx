@@ -477,7 +477,6 @@ function waitingCard(
     case "question":
       return (
         <QuestionsCard
-          place="box"
           question={waiting.question}
           disabled={waiting.disabled}
           onAnswer={waiting.onAnswer}
