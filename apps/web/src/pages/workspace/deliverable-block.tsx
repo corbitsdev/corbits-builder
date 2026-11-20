@@ -5,9 +5,8 @@
  * for HTML and JSON.
  */
 import { wording } from "../../config.ts";
-import { useState, type ReactNode } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 import { CsvTable, ShimmerText } from "@corbits/react-ui";
-import { DocumentView } from "@corbits-builder/plugin-ui/markdown";
 import { APPROVAL_PACKAGE_MEDIA_TYPE } from "./approval-package.ts";
 import { ApprovalPackagePreview } from "./approval-package-preview.tsx";
 import { DESIGN_MEDIA_TYPE, parseBundle } from "./design-bundle.ts";
@@ -32,11 +31,10 @@ import {
   ZIP_TYPE,
   zipFile,
 } from "./pane-file.tsx";
-import { splitLeadingHeading } from "./reading-selection.ts";
 import type { ApproachesMeta } from "@corbits-builder/schemas/approaches";
-import { ApproachesComparison } from "./approaches-comparison.tsx";
 import type { ApproachChoice } from "./approach-choice.ts";
 import type { TweakPanelProps } from "./mockup-tweaks.view.tsx";
+import type { DocumentPageProps } from "./document-page.model.ts";
 import { Fault, InlineNote } from "../../components.jsx";
 import styles from "./deliverable-block.module.css";
 
@@ -88,10 +86,15 @@ function mediaKind(
   return mediaType.startsWith("image/") ? "image" : "file";
 }
 
-/** A spreadsheet fills its pane edge to edge, as a mockup does. */
+/** A written document, read as a printed page rather than in the pane's own reading view. */
+const readsAsPage = (document: LoadedDeliverable) =>
+  mediaKind(document.mediaType, document.title) === "prose";
+
+/** A spreadsheet or a written document's page fills its pane edge to edge, as a mockup does. */
 export const fillsPane = (state: DeliverableState | undefined) =>
   state?.status === "ready" &&
-  mediaKind(state.document.mediaType, state.document.title) === "sheet";
+  (readsAsPage(state.document) ||
+    mediaKind(state.document.mediaType, state.document.title) === "sheet");
 
 /** What an approval package's tab hands the approval rounds drawn in it. */
 export type PackageRounds = {
@@ -124,6 +127,8 @@ export type DeliverableSlots = {
   approvalRounds: (rounds: PackageRounds) => ReactNode;
   /** The look panel a design mockup's bar opens over it. */
   tweakPanel: (panel: TweakPanelProps) => ReactNode;
+  /** A written document's printed page, which reads the versions it is asked for. */
+  writtenDocument: (page: DocumentPageProps) => ReactNode;
 };
 
 export function DeliverableBody({
@@ -143,6 +148,7 @@ export function DeliverableBody({
   onOpenSource,
   approvalRounds,
   tweakPanel,
+  writtenDocument,
 }: DeliverableSlots & {
   state: DeliverableState | undefined;
   /** Approving the document being read; absent where it cannot be approved here. */
@@ -179,9 +185,28 @@ export function DeliverableBody({
   }
   if (state.status === "error")
     return <Fault onRetry={onRetry}>{state.message}</Fault>;
+  const key = `${state.document.sha256}:${String(state.document.version)}:${state.document.content}`;
+  if (readsAsPage(state.document))
+    return (
+      <Fragment key={key}>
+        {writtenDocument({
+          project: fileName.project,
+          name: fileName.document,
+          document: state.document,
+          changesOpen,
+          onToggleChanges,
+          onReadVersion,
+          onViewVersion,
+          requestedVersion,
+          approval,
+          approachChoice,
+          onAddToPrompt,
+        })}
+      </Fragment>
+    );
   return (
     <ReadyDocument
-      key={`${state.document.sha256}:${String(state.document.version)}:${state.document.content}`}
+      key={key}
       document={state.document}
       designPart={designPart}
       fileName={fileName}
@@ -191,7 +216,6 @@ export function DeliverableBody({
       {...(onAddToPrompt === undefined ? {} : { onAddToPrompt })}
       {...(onDeliverMessage === undefined ? {} : { onDeliverMessage })}
       {...(onViewVersion === undefined ? {} : { onViewVersion })}
-      {...(approachChoice === undefined ? {} : { approachChoice })}
       approval={approval}
       {...(requestedVersion === undefined ? {} : { requestedVersion })}
       {...(onOpenSource === undefined ? {} : { onOpenSource })}
@@ -211,13 +235,12 @@ function ReadyDocument({
   onAddToPrompt,
   onDeliverMessage,
   onViewVersion,
-  approachChoice,
   approval,
   requestedVersion,
   onOpenSource,
   approvalRounds,
   tweakPanel,
-}: DeliverableSlots & {
+}: Omit<DeliverableSlots, "writtenDocument"> & {
   document: LoadedDeliverable;
   approval: DocumentApprovalControl | undefined;
   designPart: DesignPart;
@@ -228,13 +251,11 @@ function ReadyDocument({
   onAddToPrompt?: (passage: PassageQuote) => void;
   onDeliverMessage?: ((message: string) => Promise<boolean | void>) | undefined;
   onViewVersion?: () => void;
-  approachChoice?: ApproachChoice;
   requestedVersion?: { version: number; seq: number } | undefined;
   onOpenSource?: ((kind: string, version: number) => void) | undefined;
 }) {
   const {
     viewing,
-    shown,
     afterText,
     beforeText,
     compareWith,
@@ -259,15 +280,7 @@ function ReadyDocument({
   const mediaType = viewed?.mediaType ?? document.mediaType;
   const title = viewed?.title ?? document.title;
   const kind = mediaKind(mediaType, title);
-  const approaches = shown?.approaches;
-  const chooseApproach =
-    viewing === document.version ? approachChoice?.choose : undefined;
-
-  const lifted =
-    kind === "prose"
-      ? splitLeadingHeading(afterText ?? "")
-      : { heading: null, body: afterText ?? "" };
-  const body = lifted.body;
+  const body = afterText ?? "";
   const comparing =
     changesOpen &&
     compareWith !== null &&
@@ -280,7 +293,7 @@ function ReadyDocument({
         after={afterText}
         beforeVersion={compareWith}
         afterVersion={viewing}
-        prose={kind === "prose"}
+        prose={false}
         onClose={stopComparing}
       />
     ) : null;
@@ -295,8 +308,6 @@ function ReadyDocument({
     kind === "design" && afterText !== null ? parseBundle(afterText) : null;
   const plan = designPart === "plan" ? design?.["DESIGN.md"] : undefined;
   const sourceFile = (): PaneFile | null => {
-    if (kind === "prose" && afterText !== null)
-      return documentFile(markdownFile(stem, afterText));
     if (plan !== undefined) return documentFile(markdownFile(stem, plan));
     if (design !== null && designPart === "mockup")
       return {
@@ -391,32 +402,12 @@ function ReadyDocument({
       return <pre className={styles.raw}>{body}</pre>;
     if (kind === "image")
       return <img className={styles.image} src={body} alt={title} />;
-    if (kind === "file")
-      return (
-        <p>
-          <a href={body} download={title}>
-            {wording.attach.open(title)}
-          </a>
-        </p>
-      );
-    if (comparing) return null;
     return (
-      <>
-        {approaches === undefined ? null : (
-          <ApproachesComparison
-            meta={approaches}
-            chosen={
-              shown === null
-                ? undefined
-                : approachChoice?.chosen(approaches, shown.filedAt)
-            }
-            {...(chooseApproach === undefined
-              ? {}
-              : { onChoose: chooseApproach })}
-          />
-        )}
-        <DocumentView source={body} />
-      </>
+      <p>
+        <a href={body} download={title}>
+          {wording.attach.open(title)}
+        </a>
+      </p>
     );
   };
   const add = onAddToPrompt === undefined ? {} : { onAdd: onAddToPrompt };
@@ -448,7 +439,7 @@ function ReadyDocument({
       <>
         <header className={styles.header} data-slot="document-header">
           <h1 className={styles.title} title={title}>
-            {lifted.heading ?? title}
+            {title}
           </h1>
         </header>
         {notes}

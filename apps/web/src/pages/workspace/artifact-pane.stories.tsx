@@ -20,6 +20,8 @@ import { LiveAppView } from "./live-app.view.tsx";
 import { TweakPanelView } from "./mockup-tweaks.view.tsx";
 import { sampleDesign, sampleDraft } from "./sample-design.ts";
 import { WithPictures as manual } from "./user-manual.stories.tsx";
+import writtenDocument from "./written-document.stories.tsx";
+import { WrittenDocumentView } from "./written-document.view.tsx";
 
 const brief: PaneDocument = {
   id: "problem_brief",
@@ -144,6 +146,8 @@ const meta = {
     tweakPanel: (panel) => (
       <TweakPanelView {...panel} onSave={onSave} saving={false} />
     ),
+    // The page the brief reads as, drawn from its own story's args.
+    writtenDocument: () => <WrittenDocumentView {...writtenDocument.args} />,
   },
   render: (args) => <Pane {...args} />,
 } satisfies Meta<typeof ArtifactPane>;

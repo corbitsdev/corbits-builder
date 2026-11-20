@@ -14,7 +14,10 @@ export function printDocument(
   fileName: string,
   status: string,
 ): void {
-  const body = pane.querySelector('[data-slot="deliverable-body"]');
+  // A written document prints its sheet, which carries its own running header and title.
+  const body =
+    pane.querySelector('[data-slot="document-page"] article') ??
+    pane.querySelector('[data-slot="deliverable-body"]');
   if (body === null) return;
   const copy = body.cloneNode(true) as HTMLElement;
   for (const element of copy.querySelectorAll(SCREEN_ONLY)) element.remove();
