@@ -467,11 +467,6 @@ export const wording = {
       writing: "being written",
       failed: "could not be written",
     },
-    /** How the live app stands, read out with its switch. */
-    running: "Running",
-    stopped: "Stopped",
-    starting: "Starting…",
-    stopping: "Stopping…",
     projectSettings: "Project settings",
   },
   whatsNew: {

@@ -60,14 +60,12 @@ function Clickable(args: ProjectSidebarViewProps) {
   const [steps, setSteps] = useState(args.steps);
   const [selected, setSelected] = useState(args.selectedDocument);
   const [open, setOpen] = useState(args.open);
-  const [liveApp, setLiveApp] = useState(args.liveApp);
   return (
     <ProjectSidebarView
       {...args}
       steps={steps}
       selectedDocument={selected}
       open={open}
-      liveApp={liveApp}
       onToggleSidebar={() => {
         setOpen(!open);
         args.onToggleSidebar();
@@ -83,11 +81,6 @@ function Clickable(args: ProjectSidebarViewProps) {
       onOpenDocument={(documentId) => {
         setSelected(documentId);
         args.onOpenDocument(documentId);
-      }}
-      onToggleLiveApp={(running) => {
-        setLiveApp({ running: !running, changing: true });
-        setTimeout(() => setLiveApp({ running, changing: false }), 1200);
-        args.onToggleLiveApp(running);
       }}
     />
   );
@@ -137,12 +130,10 @@ const meta = {
     drawer: false,
     steps: planning,
     selectedDocument: "problem_brief",
-    liveApp: null,
     workspaceMenu: workspaceMenu("Bakery Co."),
     onToggleSidebar: fn(),
     onToggleStep: fn(),
     onOpenDocument: fn(),
-    onToggleLiveApp: fn(),
     onProjectSettings: fn(),
     onSecrets: fn(),
     onAllProjects: fn(),
@@ -164,13 +155,12 @@ export const Planning: Story = {};
 const buildingArgs = {
   steps: building,
   selectedDocument: "app",
-  liveApp: { running: true, changing: false },
 };
 
-/** While building: Plan is folded; Design and Build are open, and the app runs. */
+/** While building: Plan is folded; Design and Build are open. */
 export const Building: Story = { args: buildingArgs };
 
-/** A new project: every step is named, none has started, and there is no app yet. */
+/** A new project: every step is named, and none has started. */
 export const NewProject: Story = {
   args: {
     steps: [step("plan", []), ...notStarted],
@@ -218,16 +208,6 @@ export const LongNames: Story = {
     ],
     selectedDocument: "pricing",
   },
-};
-
-/** The app is stopped: the switch is off. */
-export const LiveAppStopped: Story = {
-  args: { ...buildingArgs, liveApp: { running: false, changing: false } },
-};
-
-/** A start is on its way: the switch holds until it lands. */
-export const LiveAppStarting: Story = {
-  args: { ...buildingArgs, liveApp: { running: false, changing: true } },
 };
 
 /**
