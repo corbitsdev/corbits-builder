@@ -867,9 +867,15 @@ function RoomComposerView({
         ) : undefined
       }
       // Always the sheet, even with nothing to pull up, so the box is never remounted (and never
-      // loses the cursor) when work starts and the pill appears.
+      // loses the cursor) when work starts and the pill appears. Putting the chat back returns the
+      // cursor to the words, where the person left them.
       around={(inner) => (
-        <ChatSheet {...chatStart} status={status} box={inner}>
+        <ChatSheet
+          {...chatStart}
+          status={status}
+          box={inner}
+          putBackTo={inputRef}
+        >
           {chat}
         </ChatSheet>
       )}
