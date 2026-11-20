@@ -43,7 +43,7 @@ const emptyRoom: RoomSnapshot = {
     questions: [],
   },
   artifacts: [],
-  plan: [],
+  plan: { steps: [], updatedAt: null, screens: [] },
   inFlight: [],
   failed: [],
   documents: {},

@@ -370,3 +370,17 @@ export async function triageReviewerFeedback(
     input,
   );
 }
+
+/** Runs one of a plugin's actions from its screen; the hub refuses what it requires and does not hold. */
+export async function runPluginAction(
+  projectId: string,
+  plugin: string,
+  action: string,
+  input: Record<string, unknown>,
+) {
+  await productClient().runPluginAction(await workspaceTenantId(), projectId, {
+    plugin,
+    action,
+    input,
+  });
+}

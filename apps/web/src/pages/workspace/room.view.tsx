@@ -53,6 +53,8 @@ export type RoomSlots = {
   paneParts: ArtifactPaneSlots;
   /** The coordinator's open question drawn over the whole room; null while there is none. */
   page: ReactNode;
+  /** The screens the hub lists for the conversation, after its last turn. */
+  chat: ReactNode;
 };
 
 /** The box the person writes to the coordinator in. */
@@ -170,6 +172,7 @@ export function RoomView({
   nextStep,
   paneParts,
   page,
+  chat,
 }: RoomViewProps) {
   const { projectReady, projectOpen, onProjectOpenChange, pageOpen } = layout;
   const conversationRef = useRef<HTMLElement>(null);
@@ -291,6 +294,7 @@ export function RoomView({
             <RoomThread {...conversation.thread}>
               <EmptyConversation empty={conversation.empty} />
             </RoomThread>
+            {chat}
             {dockInConversation ? roomDock : null}
           </div>
         </section>

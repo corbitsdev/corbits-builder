@@ -217,6 +217,49 @@ export function createPlanService(rawDB: DB["db"]) {
       });
     },
 
+    // A second click replaces the step an earlier click added rather than queueing the same work twice.
+    async addPlanStep(
+      actor: Actor,
+      projectId: string,
+      step: PlanChildWrite,
+      told: {
+        note: string;
+        mailRun: (runId: string, content: string) => Promise<void>;
+      },
+    ) {
+      await authorizeProject(rawDB, actor, projectId, "manage");
+      const at = new Date().toISOString();
+      const added = savedPlanStep(step, () => undefined);
+      added.goAhead = { by: actor.principalId, at };
+      const same = (each: StoredPlanStep) =>
+        !("steps" in each) &&
+        each.plugin === step.plugin &&
+        each.action === step.action;
+      const plan = await rawDB.transaction(async (tx) => {
+        const stored = (await lockedPlan(tx, projectId)) ?? {
+          steps: [],
+          updatedAt: at,
+        };
+        const plan = {
+          steps: [...stored.steps.filter((each) => !same(each)), added],
+          updatedAt: at,
+        };
+        await writePlan(tx, projectId, plan);
+        return plan;
+      });
+      await this.tellCoordinator(projectId, told.note, told.mailRun);
+      return plan;
+    },
+
+    async tellCoordinator(
+      projectId: string,
+      note: string,
+      mailRun: (runId: string, content: string) => Promise<void>,
+    ) {
+      const coordinator = await activeCoordinator(rawDB, projectId);
+      if (coordinator) await mailRun(coordinator.runId, note);
+    },
+
     // The person gives the go-ahead on a step they asked to be consulted on, or turns "ask me
     // first" on or off for a step, and the coordinator is told. Only a person may.
     async askPlanStep(

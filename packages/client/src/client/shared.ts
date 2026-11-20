@@ -446,6 +446,13 @@ export type ProductApiClient = Readonly<{
     projectId: string,
     signal?: AbortSignal,
   ): Promise<PlanView>;
+  /** Runs one of a plugin's actions as the person, from its screen. */
+  runPluginAction(
+    tenantId: string,
+    projectId: string,
+    run: { plugin: string; action: string; input: Record<string, unknown> },
+    signal?: AbortSignal,
+  ): Promise<void>;
   /** The person declines an optional plan step; it stays in the plan as skipped. Refused for a required step. */
   declinePlanStep(
     tenantId: string,

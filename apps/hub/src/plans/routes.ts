@@ -1,5 +1,5 @@
 import { type } from "arktype";
-import type { Hono } from "hono";
+import type { Context, Hono } from "hono";
 import { describeRoute, resolver } from "hono-openapi";
 import type { TenantEnv } from "@intx/hub-api";
 import { showsScreen } from "@corbits-builder/schemas/conversation";
@@ -9,7 +9,9 @@ import {
   StoredPlan,
 } from "@corbits-builder/schemas/project";
 import { planRefusal } from "@corbits-builder/plugin-host/coordinator";
+import { resolveFacts, unmet } from "@corbits-builder/plugin-host/facts";
 import { planState } from "@corbits-builder/plugin-host/plan";
+import { requiresText } from "@corbits-builder/plugin-host/text";
 import { actorOf } from "../projects/authorization.ts";
 import { ProjectError } from "../projects/errors.ts";
 import { mailRunAsCaller } from "../mail/caller-mail.ts";
@@ -17,20 +19,74 @@ import { askedQuestions } from "../plugins/question.ts";
 import type { Checks } from "../plugins/checks.ts";
 import { personFacts, projectFacts } from "../plugins/facts.ts";
 import { agentDecidesApprovals } from "../config/preferences.ts";
+import {
+  actionUnmetText,
+  taskNote,
+  workflowAddedNote,
+} from "../config/answers.ts";
 import type { createArtifactService } from "../artifacts/service.ts";
 import { body, security } from "../http/route-parts.ts";
 import { catalogOf } from "../plugins/catalog.ts";
+import { projectRead, shownScreens } from "../plugins/screens.ts";
+import { saveValues } from "../values/save.ts";
+import type { createValueService } from "../values/service.ts";
 import type { createPlanService } from "./service.ts";
 
 const AskFirst = type({ "+": "reject", askFirst: "boolean" });
+const ActionRun = type({ "+": "reject", "input?": "Record<string, unknown>" });
 
 export function mountPlanRoutes(
   app: Hono<TenantEnv>,
   service: ReturnType<typeof createPlanService>,
   artifacts: ReturnType<typeof createArtifactService>,
+  values: Pick<ReturnType<typeof createValueService>, "saveStoredValues">,
   nativeFetch?: (request: Request) => Promise<Response>,
   checks?: Checks,
 ) {
+  const readPlan = async (c: Context<TenantEnv>, projectId: string) => {
+    const current = actorOf(c);
+    const plan = await service.projectPlan(current, projectId);
+    if (!checks) throw new ProjectError(503, "plan_state_unavailable");
+    const records = await checks.latest(current, projectId);
+    const listed = await artifacts.list(current, projectId);
+    // Only a person reads the conversation; the coordinator, which asks the questions, cannot be
+    // reading the plan while one waits on an answer.
+    const asked =
+      c.get("principal")?.kind === "user"
+        ? (await askedQuestions(c, nativeFetch, projectId)).questions
+        : [];
+    const catalog = await catalogOf(artifacts.projectState, current, projectId);
+    const facts = projectFacts({
+      artifacts: listed.artifacts,
+      preferences: listed.preferences,
+      checks: records,
+    });
+    const steps = planState(catalog, plan.steps, {
+      facts,
+      personFacts: personFacts(listed.artifacts),
+      asksApprovals: !agentDecidesApprovals(listed.preferences),
+      checks: records,
+      runs: await artifacts.stepRuns(
+        current,
+        projectId,
+        plan.steps.flatMap((step) =>
+          "steps" in step ? step.steps.map(({ id }) => id) : [step.id],
+        ),
+      ),
+      questions: asked.flatMap((question) =>
+        question.status === "open" && showsScreen(question)
+          ? [question.asked]
+          : [],
+      ),
+    });
+    const read = projectRead(
+      catalog,
+      await artifacts.projectState(current, projectId),
+      facts,
+      steps,
+    );
+    return { plan, catalog, facts, steps, read };
+  };
   app.get(
     "/:projectId/plan",
     describeRoute({
@@ -48,47 +104,138 @@ export function mountPlanRoutes(
       },
     }),
     async (c) => {
+      const { plan, catalog, steps, read } = await readPlan(
+        c,
+        c.req.param("projectId"),
+      );
+      return c.json({
+        steps,
+        updatedAt: plan.updatedAt,
+        // A screen's state may hold what no model may read.
+        screens:
+          c.get("principal")?.kind === "user"
+            ? shownScreens(catalog, read)
+            : [],
+      });
+    },
+  );
+  app.post(
+    "/:projectId/plugins/:plugin/actions/:action",
+    describeRoute({
+      tags: ["Artifacts"],
+      operationId: "runPluginAction",
+      description:
+        "The signed-in person runs one of a plugin's actions from its screen, refused while what it requires does not hold. A check runs; a workflow joins the plan with the person's go-ahead; a task runs in the hub and saves the values it writes. The coordinator gets one hub note of it.",
+      security: [{ sessionCookie: [] }, { deviceBearer: [] }],
+      requestBody: {
+        required: true,
+        content: { "application/json": { schema: resolver(ActionRun) } },
+      },
+      responses: {
+        200: { description: "The action ran" },
+        400: { description: "An input the action does not take" },
+        403: { description: "The caller is not a person on the project" },
+        404: { description: "No task, check or workflow by that name" },
+        409: {
+          description:
+            "What the action requires does not hold; text says what is missing",
+        },
+      },
+    }),
+    async (c) => {
+      if (c.get("principal")?.kind !== "user")
+        throw new ProjectError(403, "only_a_person_acts");
+      if (!checks) throw new ProjectError(503, "plan_state_unavailable");
+      const asked = ActionRun(await body(c));
+      if (asked instanceof type.errors)
+        throw new ProjectError(400, "invalid_action_run", { issues: asked });
       const current = actorOf(c);
       const projectId = c.req.param("projectId");
-      const plan = await service.projectPlan(current, projectId);
-      if (!checks) throw new ProjectError(503, "plan_state_unavailable");
-      const records = await checks.latest(current, projectId);
-      const listed = await artifacts.list(current, projectId);
-      // Only a person reads the conversation; the coordinator, which asks the questions, cannot be
-      // reading the plan while one waits on an answer.
-      const asked =
-        c.get("principal")?.kind === "user"
-          ? (await askedQuestions(c, nativeFetch, projectId)).questions
-          : [];
-      return c.json({
-        steps: planState(
-          await catalogOf(artifacts.projectState, current, projectId),
-          plan.steps,
-          {
-            facts: projectFacts({
-              artifacts: listed.artifacts,
-              preferences: listed.preferences,
-              checks: records,
-            }),
-            personFacts: personFacts(listed.artifacts),
-            asksApprovals: !agentDecidesApprovals(listed.preferences),
-            checks: records,
-            runs: await artifacts.stepRuns(
-              current,
-              projectId,
-              plan.steps.flatMap((step) =>
-                "steps" in step ? step.steps.map(({ id }) => id) : [step.id],
-              ),
-            ),
-            questions: asked.flatMap((question) =>
-              question.status === "open" && showsScreen(question)
-                ? [question.asked]
-                : [],
-            ),
-          },
+      const plugin = c.req.param("plugin");
+      const name = c.req.param("action");
+      const input = asked.input ?? {};
+      const { catalog, facts, read } = await readPlan(c, projectId);
+      const named = (each: { plugin: string; action: string }) =>
+        each.plugin === plugin && each.action === name;
+      const action = catalog.tasks.find(named) ?? catalog.actions.find(named);
+      // A screen opens only as the coordinator's question.
+      if (!action || action.kind === "screen")
+        throw new ProjectError(404, "action_not_found", {
+          plugin,
+          action: name,
+        });
+      const checked = action.validate(input);
+      if (!checked.ok)
+        throw new ProjectError(400, "action_input_refused", {
+          text: checked.text,
+        });
+      const missing = unmet(
+        (action.builder.requires ?? []).map((alternative) =>
+          resolveFacts(alternative, checked.input),
         ),
-        updatedAt: plan.updatedAt,
-      });
+        facts,
+      );
+      if (missing.length > 0)
+        throw new ProjectError(409, "action_requirement_unmet", {
+          text: actionUnmetText(requiresText(missing, catalog.factText)),
+        });
+      if (action.kind === "check")
+        return c.json(
+          await checks.run(
+            current,
+            projectId,
+            { plugin, action: name, input },
+            {
+              triggeredBy: `person:${current.principalId}`,
+              waited: false,
+              origin: new URL(c.req.url).origin,
+            },
+          ),
+        );
+      const mailRun = (runId: string, content: string) =>
+        mailRunAsCaller(c, nativeFetch, current.tenantId, runId, content);
+      const ran = { plugin, action: name };
+      if (action.kind === "workflow") {
+        await service.addPlanStep(
+          current,
+          projectId,
+          {
+            title: action.description,
+            plugin,
+            action: name,
+            input,
+            askFirst: false,
+          },
+          {
+            note: workflowAddedNote(action.description, action.name),
+            mailRun,
+          },
+        );
+        return c.json(ran);
+      }
+      const task = action.definition;
+      const done = task.run(read, checked.input);
+      const unwritten = done.saves.find(
+        ({ name }) => !task.writes.includes(name),
+      );
+      if (unwritten !== undefined)
+        throw new Error(
+          `${action.name} saves ${unwritten.name}, which it does not write`,
+        );
+      await saveValues(
+        c,
+        projectId,
+        Object.fromEntries(done.saves.map(({ name, value }) => [name, value])),
+        artifacts,
+        values,
+        nativeFetch,
+      );
+      await service.tellCoordinator(
+        projectId,
+        taskNote(task.says, action.name, done.note),
+        mailRun,
+      );
+      return c.json(ran);
     },
   );
   app.put(

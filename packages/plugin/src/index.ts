@@ -3,6 +3,10 @@ import { ToolCredentialHandle } from "@intx/types/package-json";
 import { WriterDocumentKind } from "@corbits-builder/schemas/artifact";
 import { AppRun } from "@corbits-builder/schemas/installed-workflows";
 import { Tier } from "@corbits-builder/schemas/models";
+import type {
+  PlanStepStateName,
+  ScreenRender,
+} from "@corbits-builder/schemas/project";
 import { SpecialistInstruction } from "@corbits-builder/schemas/native-specialist";
 
 // Something true of the project that Builder works out from what it stores, such as "app_exists". A
@@ -164,9 +168,6 @@ export const ScreenActionBuilder = type({
   // The facts the person's answer can make true, each recorded from what the definition's approves
   // names; a templated fact names an input field, so the person approves only what was asked.
   "returns?": Facts,
-  // "page" draws the screen over the whole room with the prompt box still in reach; without it the
-  // screen draws in the conversation.
-  "place?": "'page'",
   // What the host itself supplies the view, by the names its registry knows: data too large or too
   // live for the input or project values, or a part only the host may draw.
   "host?": "string[]",
@@ -273,6 +274,10 @@ export const CheckActionBuilder = type({
     ctx.mustBe("a check with all or any, not both"),
 );
 export type CheckActionBuilder = typeof CheckActionBuilder.infer;
+
+// Plugin code the hub runs when the person clicks, with no agent, as defineTask makes one.
+export const TaskActionBuilder = type({ "+": "reject", "requires?": Requires });
+export type TaskActionBuilder = typeof TaskActionBuilder.infer;
 
 // The hub's tools a role's agent gets, by name. read_artifact lists and reads the project's
 // documents, with report_values when an action that starts the role writes project values;
@@ -508,6 +513,12 @@ export const ReadyPlanBuilder = Common.merge({
 });
 export type ReadyPlanBuilder = typeof ReadyPlanBuilder.infer;
 
+// steps may be the path of a module whose default export lists them, so plans share step code.
+export const ReadyPlanManifest = ReadyPlanBuilder.merge({
+  steps: ReadyPlanBuilder.get("steps").or("string > 0"),
+});
+export type ReadyPlanManifest = typeof ReadyPlanManifest.infer;
+
 // Guidance a specialist's agent reads when its work calls for it: the markdown files in skills,
 // which the host lays into the agent's workspace and lists in its assignment, one line per pack.
 // extends names the specialist, or the pack this one narrows, as a framework's pack narrows a web
@@ -606,7 +617,44 @@ export type Offer<Output> = {
   sendBack?: Output;
 };
 
+export type StepStatus = {
+  plugin: string;
+  action: string;
+  plan: string | undefined;
+  state: PlanStepStateName;
+  summary: string | undefined;
+};
+
+export type ProjectRead = {
+  // A project value as stored, null while the project has none.
+  value(name: string): unknown;
+  facts: ReadonlySet<Fact>;
+  plan: readonly StepStatus[];
+};
+
+export type TaskDone = {
+  saves: readonly { name: string; value: unknown }[];
+  note: string;
+};
+
+// Plugin code a person's click runs in the hub, with no model; says and the note it returns are
+// what the coordinator is told.
+export type Task<In> = {
+  says: string;
+  input: Type<In>;
+  // Only the person runs it, so a refusal of its input names its fields and nothing more.
+  describe: Pick<Describe<keyof Type<In>["inferIn"]>, "fields">;
+  writes: readonly string[];
+  run(project: ProjectRead, input: In): TaskDone;
+};
+
+export const defineTask = <In>(task: Task<In>) => task;
+
 export type Screen<In, Out, Data, Prepared> = {
+  // Where it draws: in the conversation unless stated.
+  render?: ScreenRender;
+  // Run in the hub for a screen shown without a question; undefined while it should not show.
+  state?: (project: ProjectRead) => Prepared | undefined;
   input: Type<In>;
   output: Type<Out>;
   data?: Type<Data>;
@@ -1008,6 +1056,15 @@ export const isWorkflow = (value: unknown): value is Workflow<unknown> =>
   typeof value["describe"]["unless"] === "string" &&
   isRecord(value["describe"]["fields"]);
 
+export const isTask = (value: unknown): value is Task<unknown> =>
+  isRecord(value) &&
+  typeof value["says"] === "string" &&
+  typeof value["input"] === "function" &&
+  typeof value["run"] === "function" &&
+  Array.isArray(value["writes"]) &&
+  isRecord(value["describe"]) &&
+  isRecord(value["describe"]["fields"]);
+
 /** Whether a module's default export is a screen, as defineScreen makes one. */
 export const isScreen = (
   value: unknown,
@@ -1096,7 +1153,7 @@ export function validateOutput<In, Out, Data, Prepared>(
 
 export function validateWorkflowInput<In>(
   handle: string,
-  workflow: Workflow<In>,
+  workflow: Pick<Workflow<In> | Task<In>, "input" | "describe">,
   rawInput: unknown,
 ): { ok: true; input: Type<In>["infer"] } | Refused {
   const input = workflow.input(rawInput);

@@ -57,6 +57,7 @@
           "agent": "tester"
         }
       },
+      "notes": {},
       "probe": {
         "returns": [],
         "writes": [

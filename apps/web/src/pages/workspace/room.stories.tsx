@@ -124,6 +124,7 @@ const meta = {
     ...paneOf(),
     paneRef: createRef(),
     nextStep: <NextStepLineView {...nextStep.args} />,
+    chat: null,
     page: null,
   },
   render: (args) => <Room {...args} />,

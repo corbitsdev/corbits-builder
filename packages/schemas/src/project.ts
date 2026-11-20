@@ -152,6 +152,7 @@ export type StoredPlan = typeof StoredPlan.infer;
 const PlanStepStateName = type(
   "'done' | 'failed' | 'running' | 'needs_you' | 'waiting' | 'not_started' | 'skipped' | 'cancelled'",
 );
+export type PlanStepStateName = typeof PlanStepStateName.infer;
 // Where a step stands, worked out from the project's records each time the plan is read.
 const PlanStepState = type({
   "+": "reject",
@@ -179,10 +180,23 @@ const PlanViewGroup = type({
   "needs?": "string[]",
   steps: PlanViewChild.array(),
 });
+// Where a plugin's screen draws: over the room, in the conversation, or as a tab beside the plan.
+export const ScreenRender = type("'main-page' | 'inline-chat' | 'plugin-bar'");
+export type ScreenRender = typeof ScreenRender.infer;
+export const ShownScreen = type({
+  "+": "reject",
+  plugin: "string > 0",
+  action: "string > 0",
+  render: ScreenRender,
+  state: "unknown",
+});
+export type ShownScreen = typeof ShownScreen.infer;
 export const PlanView = type({
   "+": "reject",
   steps: PlanViewChild.or(PlanViewGroup).array(),
   updatedAt: "string | null",
+  // Only a person's read lists them, since a screen's state may hold what no model may read.
+  screens: ShownScreen.array(),
 });
 export type PlanView = typeof PlanView.infer;
 // A saved step may leave its id out; the hub assigns one.
