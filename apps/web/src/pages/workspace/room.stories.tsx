@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { createRef, useState, type ReactNode } from "react";
-import { expect, fn, userEvent, within } from "storybook/test";
+import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 import { wording } from "../../config.ts";
 import { AppView } from "../../App.view.tsx";
 import app from "../../App.stories.tsx";
@@ -22,6 +22,7 @@ import PickColoursView from "@plugins/designer/src/pick-colours/view.tsx";
 import { question } from "./prompt-box.fixtures.ts";
 import { ScreenStory, storyScreen } from "./screen-story.tsx";
 import { LIVE_TAB } from "./tab-follow.ts";
+import { RoomThread } from "./transcript.tsx";
 import writtenDocument, {
   Comparing as comparingVersions,
   OlderVersion as olderVersion,
@@ -627,6 +628,97 @@ export const OpenFileKeepsMessage: Story = {
 
 export const ProjectOpenDark: Story = {
   ...ProjectOpen,
+  globals: { mode: "dark" },
+};
+
+// The project view open on the brief, with the conversation behind the prompt box to pull up.
+const chatBehindBox = {
+  ...ProjectOpen.args,
+  chat: <RoomThread {...thread.args} />,
+} satisfies Partial<RoomViewProps>;
+
+/** The chat over the project view, which is shown only while pulled up. */
+const chatHistory = (canvasElement: HTMLElement) =>
+  canvasElement.querySelector(
+    '[data-slot="room-project"] [data-slot="chat-history"]',
+  );
+
+/** Pulls the chat up from the handle, as the keyboard does it, so it opens at once. */
+async function openChat(canvasElement: HTMLElement) {
+  const handle = canvasElement.querySelector<HTMLElement>(
+    '[data-slot="room-project"] [data-slot="pull-handle"]',
+  );
+  if (handle === null) throw new Error("No handle on the box");
+  handle.focus();
+  await userEvent.keyboard("{ArrowUp}");
+  await waitFor(() =>
+    expect(chatHistory(canvasElement)).not.toHaveAttribute("hidden"),
+  );
+}
+
+/** Over the project view the box has a handle on its top edge; the chat waits behind it. */
+export const ChatSheetClosed: Story = { args: chatBehindBox };
+
+/** The chat pulled up over the page, the box where it was; the page still shows above it. */
+export const ChatSheetOpen: Story = {
+  args: chatBehindBox,
+  play: async ({ canvasElement }) => openChat(canvasElement),
+};
+
+/** Full screen, the chat hides the page and names it for the way back. */
+export const ChatSheetFullScreen: Story = {
+  args: chatBehindBox,
+  play: async ({ canvasElement }) => {
+    await openChat(canvasElement);
+    await userEvent.click(
+      within(canvasElement).getByRole("button", {
+        name: wording.promptBox.chat.fullScreen,
+      }),
+    );
+    await expect(
+      await within(canvasElement).findByRole("button", {
+        name: wording.promptBox.chat.backTo(briefName),
+      }),
+    ).toBeInTheDocument();
+  },
+};
+
+/**
+ * The box is the same box with the chat up or put back: what was typed stays, and Escape puts the
+ * chat back with the cursor in the words.
+ */
+export const ChatSheetKeepsMessage: Story = {
+  args: chatBehindBox,
+  play: async ({ canvasElement }) => {
+    const box = within(canvasElement).getByRole("textbox");
+    await userEvent.type(box, "Also take orders by");
+    await openChat(canvasElement);
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() =>
+      expect(chatHistory(canvasElement)).toHaveAttribute("hidden"),
+    );
+    await expect(box).toHaveFocus();
+    await expect(box).toHaveValue("Also take orders by");
+    // The project view stays open: the first Escape was the chat's.
+    await expect(
+      canvasElement.querySelector('[data-slot="room-project"]'),
+    ).not.toHaveAttribute("hidden");
+  },
+};
+
+/** At phone width the sheet keeps its inset around the box over the page. */
+export const ChatSheetNarrow: Story = {
+  ...ChatSheetOpen,
+  globals: { viewport: { value: "mobile1" } },
+};
+
+export const ChatSheetClosedDark: Story = {
+  ...ChatSheetClosed,
+  globals: { mode: "dark" },
+};
+
+export const ChatSheetOpenDark: Story = {
+  ...ChatSheetOpen,
   globals: { mode: "dark" },
 };
 
