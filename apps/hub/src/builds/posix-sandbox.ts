@@ -1178,8 +1178,14 @@ export async function createPosixBuildExecutor(
           throw new BuildExecutionError("host_gate_invocation_refused");
         if (trustedGate && call.id !== trustedGate.nonce)
           throw new BuildExecutionError("concurrent_build_tool_refused");
+        const started = performance.now();
         const turn = runAfter(queue, call, signal);
         queue = turn.catch(() => undefined);
+        void turn.finally(() =>
+          log.warn(
+            `[timing] tool ${call.name} ${Math.round(performance.now() - started)}ms ${JSON.stringify(call.arguments).slice(0, 160)}`,
+          ),
+        );
         return turn;
       },
       /**
@@ -1196,6 +1202,7 @@ export async function createPosixBuildExecutor(
           throw new BuildExecutionError(`unknown_command: ${name}`);
         signal.throwIfAborted();
         if (replay) return replay.command(name, args);
+        const commandStarted = performance.now();
         const child = Bun.spawn(
           [
             "/bin/sh",
@@ -1226,6 +1233,9 @@ export async function createPosixBuildExecutor(
           const output = await new Response(child.stdout).text();
           await relay;
           const exitCode = await child.exited;
+          log.warn(
+            `[timing] command ${name} ${Math.round(performance.now() - commandStarted)}ms exit ${exitCode} ${args.join(" ").slice(0, 120)}`,
+          );
           // A command that died before printing its checklist would otherwise fail with nothing said.
           const text =
             exitCode === 0
