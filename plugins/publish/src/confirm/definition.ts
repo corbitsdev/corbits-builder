@@ -6,7 +6,7 @@ import {
   PublishKeep,
   PublishRelease,
 } from "@corbits-builder/publish-contract";
-import { PUBLISH_GO_AHEAD, PUBLISH_GROUP } from "../go-ahead.ts";
+import { PUBLISH_ASKED, PUBLISH_GO_AHEAD, PUBLISH_GROUP } from "../go-ahead.ts";
 import { Input, Output } from "./schema.ts";
 
 // A publish replaces what people open only when a plugin of the chosen plan recorded the release
@@ -54,11 +54,16 @@ export default defineScreen({
     };
   },
   // The go-ahead is for the plan the person agreed to, from the time they agreed. The hub's clock
-  // dates it, so it allows the next publish recorded after it. Publishing again ends any go-ahead
-  // to take the app down, so a later take-down asks again.
+  // dates it, so it allows the next publish recorded after it, and the Publish tab shows the publish
+  // under way from then. Publishing again ends any go-ahead to take the app down, so a later
+  // take-down asks again.
   writes: {
     [PUBLISH_GO_AHEAD]: ({ plan }) => ({
       plan,
+      at: new Date().toISOString(),
+    }),
+    [PUBLISH_ASKED]: () => ({
+      kind: "publish",
       at: new Date().toISOString(),
     }),
     [PUBLISH_TAKE_DOWN]: () => null,

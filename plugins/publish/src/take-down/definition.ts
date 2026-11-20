@@ -12,7 +12,7 @@ import {
   recordedFor,
   type PublishTakeDown,
 } from "@corbits-builder/publish-contract";
-import { PUBLISH_GO_AHEAD, PUBLISH_GROUP } from "../go-ahead.ts";
+import { PUBLISH_ASKED, PUBLISH_GO_AHEAD, PUBLISH_GROUP } from "../go-ahead.ts";
 import { Input, Output } from "./schema.ts";
 
 // The removal action's own text says what goes and what happens to what people entered, so this
@@ -114,9 +114,14 @@ export default defineScreen({
       },
     },
   },
-  // Agreeing to take the app down ends any go-ahead to publish it, so a later publish asks again.
+  // Agreeing to take the app down ends any go-ahead to publish it, so a later publish asks again,
+  // and the Publish tab shows the take-down under way from then. Keep it withdraws the ask.
   writes: {
     [PUBLISH_TAKE_DOWN]: ({ agreed }) => agreed,
     [PUBLISH_GO_AHEAD]: ({ agreed }) => (agreed === null ? undefined : null),
+    [PUBLISH_ASKED]: ({ agreed }) =>
+      agreed === null
+        ? null
+        : { kind: "takeDown", at: new Date().toISOString() },
   },
 });

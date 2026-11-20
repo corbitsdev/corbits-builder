@@ -16,9 +16,17 @@ export function Points({
   );
 }
 
-export function Address({ url }: { url: string }) {
+/** label names the link for assistive tech when the address alone would not say what it is. */
+export function Address({ url, label }: { url: string; label?: string }) {
   return (
-    <a className={styles.address} href={url} target="_blank" rel="noreferrer">
+    <a
+      className={styles.address}
+      data-slot="publish-address"
+      href={url}
+      target="_blank"
+      rel="noreferrer"
+      aria-label={label}
+    >
       {url}
     </a>
   );
