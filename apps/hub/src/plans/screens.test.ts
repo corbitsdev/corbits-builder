@@ -226,37 +226,33 @@ test("a task saves the values it returns, and may write only its own plugin's va
   const saved: Record<string, unknown>[] = [];
   const app = new Hono<TenantEnv>();
   app.use("*", signedIn);
-  app.post("/", async (c) =>
-    c.json({
-      note: await runTask(
-        c,
-        "project-1",
-        catalog,
-        {
-          task,
-          read: projectRead(catalog, empty, new Set(), []),
-          input: { text: "the contact form" },
-        },
-        {
-          artifacts: {
-            projectState: async () => empty,
-            saveStyleTokens: async () => {
-              throw new Error("a task saved a design token");
-            },
-          },
-          values: {
-            saveStoredValues: async (_actor, _project, values) => {
-              saved.push(values);
-            },
+  app.post("/", async (c) => {
+    await runTask(
+      c,
+      "project-1",
+      catalog,
+      {
+        task,
+        read: projectRead(catalog, empty, new Set(), []),
+        input: { text: "the contact form" },
+      },
+      {
+        artifacts: {
+          projectState: async () => empty,
+          saveStyleTokens: async () => {
+            throw new Error("a task saved a design token");
           },
         },
-      ),
-    }),
-  );
-  const response = await app.request("/", { method: "POST" });
-  expect(await response.json()).toEqual({
-    note: "Look into: the contact form",
+        values: {
+          saveStoredValues: async (_actor, _project, values) => {
+            saved.push(values);
+          },
+        },
+      },
+    );
+    return c.body(null, 204);
   });
+  expect((await app.request("/", { method: "POST" })).status).toBe(204);
   expect(saved).toEqual([{ "tester.notes": "the contact form" }]);
 
   const writing = (writes: string[]) =>

@@ -65,7 +65,7 @@ export const shownScreens = (
       : [{ plugin, action, render, state: drawn }];
   });
 
-/** Runs a person's task on the project and saves the values it returns, each one it writes; returns its note. */
+/** Runs a person's task on the project and saves the values it returns, each one it writes. */
 export async function runTask(
   c: Context<TenantEnv>,
   projectId: string,
@@ -89,5 +89,4 @@ export async function runTask(
     stores,
     nativeFetch,
   );
-  return done.note;
 }

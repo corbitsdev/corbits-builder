@@ -49,8 +49,6 @@ export const actionUnmetText = (needs: string) =>
 export const STEP_NOT_ASK_FIRST_TEXT =
   "This step was not set to ask you first, so it needs no go-ahead.";
 
-// The hub's notes to the coordinator once the person ran a plugin's action from its screen.
-export const taskNote = (says: string, action: string, note: string) =>
-  `${HUB_NOTE_LEAD}${says}\n\nThey ran ${action} from its screen.\n\n${note}`;
+// The hub's note to the coordinator once the person ran a plugin's workflow from its screen.
 export const workflowAddedNote = (title: string, action: string) =>
   `${HUB_NOTE_LEAD}The person gave the go-ahead for "${title}".\n\nThey ran ${action} from its screen.\n\nBuilder added "${title}" to the plan with their go-ahead. Carry it out now without asking them again; if a check it needs has not run, run it first.`;

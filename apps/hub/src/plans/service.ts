@@ -253,17 +253,9 @@ export function createPlanService(rawDB: DB["db"]) {
         await writePlan(tx, projectId, plan);
         return plan;
       });
-      await this.tellCoordinator(projectId, told.note, told.mailRun);
-      return plan;
-    },
-
-    async tellCoordinator(
-      projectId: string,
-      note: string,
-      mailRun: (runId: string, content: string) => Promise<void>,
-    ) {
       const coordinator = await activeCoordinator(rawDB, projectId);
-      if (coordinator) await mailRun(coordinator.runId, note);
+      if (coordinator) await told.mailRun(coordinator.runId, told.note);
+      return plan;
     },
 
     // The person gives the go-ahead on a step they asked to be consulted on, or turns "ask me
