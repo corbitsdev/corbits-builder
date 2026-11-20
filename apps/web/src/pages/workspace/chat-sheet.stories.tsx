@@ -32,6 +32,17 @@ const whileWorking = {
   ),
 };
 
+/** A document is ready to open, and the conversation behind the box can still be read. */
+const ready = {
+  ...composer,
+  status: {
+    state: "ready",
+    label: "Problem brief is ready",
+    action: "Open",
+    onAction: fn(),
+  },
+} satisfies Args["dock"];
+
 // A stand-in for the page the box sits under: a document in the room's own page, which hides
 // everything but the box while the chat is full screen.
 function Page({ children }: { children: ReactNode }) {
@@ -190,6 +201,27 @@ export const HandleFocused: Story = {
     handle?.focus({ focusVisible: true });
     await expect(handle).toHaveFocus();
   },
+};
+
+/**
+ * A document is ready and the pill offers to open it: the pill does that, and the handle stays
+ * beneath it, so the chat is never behind the person pressing through each document first.
+ */
+export const ReadyWithChat: Story = {
+  args: { dock: ready },
+  play: async ({ canvasElement }) => {
+    const handle = canvasElement.querySelector<HTMLElement>(
+      '[data-slot="pull-handle"]',
+    );
+    if (handle === null) throw new Error("No handle");
+    await userEvent.click(handle);
+    await expect(within(canvasElement).getByRole("log")).toBeVisible();
+  },
+};
+
+export const DarkReadyWithChat: Story = {
+  args: { dock: ready },
+  globals: { mode: "dark" },
 };
 
 export const DarkHandleFocused: Story = {

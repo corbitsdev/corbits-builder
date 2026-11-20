@@ -257,7 +257,12 @@ export function ChatSheet({
     const field = target === "grip" ? (putBackTo?.current ?? null) : null;
     if (field !== null) return field.focus();
     const ref = target === "grip" ? gripRef : handleRef;
-    ref.current?.querySelector<HTMLElement>("button")?.focus();
+    // Back to the chat's own control: the handle where one shows, else the pill standing in for it.
+    const within = ref.current;
+    (
+      within?.querySelector<HTMLElement>('[data-slot="pull-handle"]') ??
+      within?.querySelector<HTMLElement>("button")
+    )?.focus();
   }, [state, moving]);
 
   // The newest line is the one to read, so the conversation opens at its end.
@@ -370,8 +375,12 @@ export function ChatSheet({
         <PullHandle {...pullProps} onPress={press} />
       ) : null
     ) : status.onAction !== undefined ? (
-      // A pill with an action of its own does that when pressed, and is not the chat's control.
-      <StatusPill {...status} onPress={status.onAction} />
+      // A pill with an action of its own does that when pressed, and is not the chat's control, so
+      // the handle stays beneath it: the chat never waits on the person pressing through actions.
+      <>
+        <StatusPill {...status} onPress={status.onAction} />
+        {hasChat ? <PullHandle {...pullProps} onPress={press} /> : null}
+      </>
     ) : (
       <StatusPill
         {...status}
