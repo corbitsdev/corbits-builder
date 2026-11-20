@@ -9,7 +9,7 @@ import {
   symlink,
   writeFile,
 } from "node:fs/promises";
-import { dirname, join, relative, sep } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { isIP } from "node:net";
 import { homedir, tmpdir } from "node:os";
 import {
@@ -18,6 +18,7 @@ import {
 } from "@anthropic-ai/sandbox-runtime";
 import { type } from "arktype";
 import { getLogger } from "@intx/log";
+import { createPosixTools } from "@intx/tools-posix";
 import { hasCode } from "@intx/types/has-code";
 import { ToolResult, type ToolCall } from "@intx/types/runtime";
 import { errorCode, requestErrorMetadata } from "../request-error.ts";
@@ -503,6 +504,75 @@ async function readReplay(folder: string) {
   };
 }
 
+/**
+ * The build tests' executor, which starts no sandbox: the posix tools run here on the workspace,
+ * and shell lines and commands are answered from the recordings. An app, a browser or a gate is
+ * never started, so asking for one fails the test by name.
+ */
+async function createReplayExecutor(
+  workspace: string,
+  folder: string,
+  readOnly: readonly string[] = [],
+) {
+  const cwd = await realpath(workspace);
+  const replay = await readReplay(folder);
+  const tools = createPosixTools({ cwd });
+  const unsupported = (member: string) => (): never => {
+    throw new BuildExecutionError(`tool_replay_unsupported: ${member}`);
+  };
+  // As in the sandbox, a path is refused by where it resolves, through links, not by how it is named.
+  const allows = async (call: ToolCall) => {
+    const named = call.arguments["path"];
+    let path = resolve(cwd, typeof named === "string" ? named : ".");
+    if (
+      (call.name === "write_file" || call.name === "edit_file") &&
+      readOnly.some((folder) => contains(join(cwd, folder), path))
+    )
+      return false;
+    for (;;) {
+      try {
+        return contains(cwd, await realpath(path));
+      } catch (error) {
+        if (!hasCode(error) || error.code !== "ENOENT") throw error;
+        path = dirname(path);
+      }
+    }
+  };
+  return {
+    policy: undefined,
+    version: SANDBOX_RUNTIME_VERSION,
+    async run(call: ToolCall, signal: AbortSignal): Promise<ToolResult> {
+      const started = performance.now();
+      try {
+        if (call.name === "run_shell") return replay.shell(call);
+        if (!(await allows(call)))
+          return {
+            callId: call.id,
+            content: `refused: ${String(call.arguments["path"])} is outside what this workspace lets the tool touch`,
+            isError: true,
+          };
+        return await tools.run(call, signal);
+      } finally {
+        log.warn(
+          `[timing] tool ${call.name} ${Math.round(performance.now() - started)}ms ${JSON.stringify(call.arguments).slice(0, 160)}`,
+        );
+      }
+    },
+    async command(name: string, args: readonly string[], signal: AbortSignal) {
+      signal.throwIfAborted();
+      return replay.command(name, args);
+    },
+    reports: (): string[] => [],
+    runGate: unsupported("runGate"),
+    violationCount: () => 0,
+    app: unsupported("app"),
+    browser: unsupported("browser"),
+    appState: (): DevApp | undefined => undefined,
+    restartApp: (): Promise<DevApp> | undefined => undefined,
+    dispose: () => tools.dispose(),
+  };
+}
+
 export async function createPosixBuildExecutor(
   workspace: string,
   limits: BuildExecutionPolicy,
@@ -533,6 +603,11 @@ export async function createPosixBuildExecutor(
       throw new BuildExecutionError(
         "explicit_positive_execution_limits_required",
       );
+  // Inlined into the agent packages by build-packages.ts; passed to the command host in its env.
+  // oxlint-disable-next-line eslint/no-restricted-properties
+  const replayFolder = process.env.BUILDER_TOOL_REPLAY;
+  if (replayFolder !== undefined)
+    return createReplayExecutor(workspace, replayFolder, options.readOnly);
   leased = true;
   let initialized = false;
   let shimDirectory: string | undefined;
@@ -540,11 +615,6 @@ export async function createPosixBuildExecutor(
   let stage = "workspace";
   try {
     const cwd = await realpath(workspace);
-    // Inlined into the agent packages by build-packages.ts; passed to the command host in its env.
-    // oxlint-disable-next-line eslint/no-restricted-properties
-    const replayFolder = process.env.BUILDER_TOOL_REPLAY;
-    const replay =
-      replayFolder === undefined ? undefined : await readReplay(replayFolder);
     stage = "dependencies";
     const protectedPaths = [
       layout.assetDirectory,
@@ -1169,8 +1239,6 @@ export async function createPosixBuildExecutor(
       policy,
       version: SANDBOX_RUNTIME_VERSION,
       run(call: ToolCall, signal: AbortSignal): Promise<ToolResult> {
-        if (replay && call.name === "run_shell")
-          return Promise.resolve(replay.shell(call));
         if (
           call.name === "__sb_host_gate" &&
           (!trustedGate || call.id !== trustedGate.nonce)
@@ -1201,7 +1269,6 @@ export async function createPosixBuildExecutor(
         if (options.commands?.[name] === undefined)
           throw new BuildExecutionError(`unknown_command: ${name}`);
         signal.throwIfAborted();
-        if (replay) return replay.command(name, args);
         const commandStarted = performance.now();
         const child = Bun.spawn(
           [
