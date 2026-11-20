@@ -607,9 +607,8 @@ export const wording = {
     /** A plugin tab's status in the room's top bar, for a screen reader, which otherwise hears only it. */
     tabStatus: (tab: string, status: string) => `${tab}: ${status}`,
     openTab: (tab: string) => `Open ${tab}`,
-    /** A plan step's settings and go-ahead, in its row's menu in the project sidebar. */
+    /** A plan step's settings, in its row's menu in the project sidebar. */
     plan: {
-      goAhead: "Go ahead",
       askFirst: "Ask me first",
       notChanged: "That step could not be changed.",
     },

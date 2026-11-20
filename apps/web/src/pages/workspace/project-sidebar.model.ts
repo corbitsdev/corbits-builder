@@ -10,7 +10,6 @@ import { isDocumentKind } from "@corbits-builder/schemas/artifact";
 import type { PlanView } from "@corbits-builder/schemas/project";
 import {
   declinePlanStep,
-  goAheadPlanStep,
   restorePlanStep,
   setPlanStepAskFirst,
 } from "../../api/artifacts.ts";
@@ -134,8 +133,6 @@ export function useProjectSidebar(input: ProjectSidebarInput): {
         void change(() =>
           (declined ? declinePlanStep : restorePlanStep)(projectId, stepId),
         ),
-      onGoAhead: (stepId) =>
-        void change(() => goAheadPlanStep(projectId, stepId)),
       onOpenApp: () => input.onOpen(LIVE_TAB),
       onProjectSettings: () => setSettingsOpen(true),
       onSecrets: () => input.onOpenSettings("secrets"),

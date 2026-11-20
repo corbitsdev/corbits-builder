@@ -75,8 +75,6 @@ export type SidebarStep = {
   askFirst: boolean | null;
   /** The person declined the step; null where it cannot be declined. */
   declined: boolean | null;
-  /** The step waits on the person's go-ahead, which its menu gives. */
-  goAhead: boolean;
 };
 
 /** A part of the plan; its name is a heading only when the plan has more than one. */
@@ -138,7 +136,6 @@ export type ProjectSidebarViewProps = {
   onRemoveFile: (fileId: string) => void;
   onAskFirst: (stepId: string, askFirst: boolean) => void;
   onDecline: (stepId: string, declined: boolean) => void;
-  onGoAhead: (stepId: string) => void;
   onOpenApp: () => void;
   onProjectSettings: () => void;
   onSecrets: () => void;
@@ -163,7 +160,6 @@ export function ProjectSidebarView({
   onRemoveFile,
   onAskFirst,
   onDecline,
-  onGoAhead,
   onOpenApp,
   onProjectSettings,
   onSecrets,
@@ -230,7 +226,6 @@ export function ProjectSidebarView({
               onRemoveFile={onRemoveFile}
               onAskFirst={onAskFirst}
               onDecline={onDecline}
-              onGoAhead={onGoAhead}
             />
             <Live app={app} open={appOpen} onOpen={onOpenApp} />
             <div className={styles.utilities}>
@@ -369,7 +364,6 @@ function ProjectTree({
   onRemoveFile,
   onAskFirst,
   onDecline,
-  onGoAhead,
 }: {
   label: string;
   plan: readonly SidebarPlanGroup[];
@@ -380,7 +374,6 @@ function ProjectTree({
   onRemoveFile: (fileId: string) => void;
   onAskFirst: (stepId: string, askFirst: boolean) => void;
   onDecline: (stepId: string, declined: boolean) => void;
-  onGoAhead: (stepId: string) => void;
 }) {
   // The row whose menu is open, and what to do once it has closed and handed focus back.
   const [menu, setMenu] = useState<string | null>(null);
@@ -580,7 +573,6 @@ function ProjectTree({
                         menu={menuOf(stepKey(step.id), step.name)}
                         onAskFirst={(askFirst) => onAskFirst(step.id, askFirst)}
                         onDecline={(declined) => onDecline(step.id, declined)}
-                        onGoAhead={() => onGoAhead(step.id)}
                       />
                     ) : null
                   }
@@ -808,7 +800,7 @@ function FileItem({
 }
 
 const stepHasMenu = (step: SidebarStep) =>
-  step.goAhead || step.askFirst !== null || step.declined !== null;
+  step.askFirst !== null || step.declined !== null;
 
 const fileHasMenu = (file: SidebarFile) => file.printable || file.removable;
 
@@ -890,22 +882,15 @@ function StepMenu({
   menu,
   onAskFirst,
   onDecline,
-  onGoAhead,
 }: {
   step: SidebarStep;
   menu: RowMenuProps;
   onAskFirst: (askFirst: boolean) => void;
   onDecline: (declined: boolean) => void;
-  onGoAhead: () => void;
 }) {
   const { askFirst, declined } = step;
   return (
     <RowMenu {...menu}>
-      {step.goAhead ? (
-        <MenuItem onSelect={onGoAhead}>
-          {wording.conversation.plan.goAhead}
-        </MenuItem>
-      ) : null}
       {askFirst === null ? null : (
         <CheckItem checked={askFirst} onSelect={() => onAskFirst(!askFirst)}>
           {wording.conversation.plan.askFirst}

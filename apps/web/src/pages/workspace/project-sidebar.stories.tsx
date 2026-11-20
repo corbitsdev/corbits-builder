@@ -24,16 +24,13 @@ const step = (
   id: string,
   name: string,
   state: SidebarStepState = "to_do",
-  settings: Partial<
-    Pick<SidebarStep, "askFirst" | "declined" | "goAhead">
-  > = {},
+  settings: Partial<Pick<SidebarStep, "askFirst" | "declined">> = {},
 ): SidebarStep => ({
   id,
   name,
   state,
   askFirst: state === "to_do" || state === "needs_you" ? false : null,
   declined: state === "declined" ? true : null,
-  goAhead: false,
   ...settings,
 });
 
@@ -195,7 +192,6 @@ const meta = {
     onRemoveFile: fn(),
     onAskFirst: fn(),
     onDecline: fn(),
-    onGoAhead: fn(),
     onOpenApp: fn(),
     onProjectSettings: fn(),
     onSecrets: fn(),
@@ -435,34 +431,6 @@ export const StepMenu: Story = {
     await userEvent.click(askFirst);
     await expect(args.onAskFirst).toHaveBeenCalledWith("requirements", false);
     await expect(requirements).toHaveFocus();
-  },
-};
-
-/**
- * A step the person asked to be consulted on waits on their go-ahead, which its menu gives first.
- */
-export const GoAhead: Story = {
-  args: {
-    plan: onePart([
-      step("brief", "Write the brief", "done"),
-      step("requirements", "Write the requirements", "needs_you", {
-        askFirst: true,
-        goAhead: true,
-      }),
-      step("design", "Design the screens"),
-    ]),
-  },
-  play: async ({ canvasElement, args }) => {
-    const canvas = within(canvasElement);
-    canvas.getByRole("treeitem", { name: /^Write the requirements/ }).focus();
-    await userEvent.keyboard("{Enter}");
-    const page = within(document.body);
-    await userEvent.click(
-      await page.findByRole("menuitem", {
-        name: wording.conversation.plan.goAhead,
-      }),
-    );
-    await expect(args.onGoAhead).toHaveBeenCalledWith("requirements");
   },
 };
 
