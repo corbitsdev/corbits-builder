@@ -234,8 +234,12 @@ export type ArtifactPaneContent = {
   manual?: UserManual | null;
   /** The design concepts the person compares, a tab each, until one is picked. */
   concepts: readonly DesignConcept[];
-  /** A tab the conversation asks for that is not a filed document, such as a concept. */
+  /** The tab the room asks for, from the conversation or the sidebar; a new object asks again. */
   openTab?: { value: string } | null;
+  /** A written document the room asks to print; it prints once the pane has read it. */
+  printTab?: { value: string } | null;
+  /** Hears which tab the pane shows, so the room can mark it. */
+  onShownChange?: (tab: string | null) => void;
   /** The filed documents, a tab each. */
   documents: readonly PaneDocument[];
   /** The document the pane reads, by its id. */
@@ -280,6 +284,8 @@ export function ArtifactPane({
   manual = null,
   concepts,
   openTab = null,
+  printTab = null,
+  onShownChange,
   liveApp = null,
   conceptMockup,
   documents,
@@ -359,23 +365,6 @@ export function ArtifactPane({
       remember(conceptTab(firstConcept));
     }
   }, [conceptsStarted]);
-  useEffect(() => {
-    if (openTab === null) return;
-    if (plugins.some((tab) => tab.value === openTab.value)) {
-      setPluginTab(openTab.value);
-      return;
-    }
-    setPluginTab(null);
-    setSide(
-      openTab.value === LIVE_TAB ||
-        openTab.value === DRAFT_TAB ||
-        openTab.value === MANUAL_TAB ||
-        conceptOfTab(openTab.value) !== undefined
-        ? openTab.value
-        : null,
-    );
-    remember(openTab.value);
-  }, [openTab]);
   const sideConcept = side === null ? undefined : conceptOfTab(side);
   const conceptShown = concepts.some(
     (concept) => concept.label === sideConcept,
@@ -415,6 +404,9 @@ export function ArtifactPane({
       setDesignPart(id === MOCKUP_TAB ? "mockup" : "plan");
     onSelect(id === MOCKUP_TAB ? "design" : id);
   };
+  useEffect(() => {
+    if (openTab !== null) choose(openTab.value);
+  }, [openTab]);
   const openSourceDocument = (kind: string, version: number) => {
     setRequestedVersions((current) => {
       const previous = current[kind];
@@ -437,6 +429,22 @@ export function ArtifactPane({
     (tabId !== null && isSideOnly(tabId)) || conceptShown || openId !== tabId
       ? undefined
       : documents.find((item) => item.id === selectedId);
+  useEffect(() => {
+    onShownChange?.(openId);
+  }, [openId]);
+  // A print the room asked for waits until the document it names is read on the pane.
+  const [toPrint, setToPrint] = useState<string | null>(null);
+  useEffect(() => {
+    if (printTab === null) return;
+    choose(printTab.value);
+    setToPrint(printTab.value);
+  }, [printTab]);
+  useEffect(() => {
+    if (toPrint === null || shown?.id !== toPrint) return;
+    if (state?.status === "loading") return;
+    setToPrint(null);
+    if (state?.status === "ready") print(toPrint);
+  }, [toPrint, shown?.id, state?.status]);
   const strip = useTabStrip();
   // A written document's tab has a menu, by right-click or Shift+F10, that prints it; a mockup is a
   // page of its own. Opening the menu selects the tab, so its pane is the one printed.
