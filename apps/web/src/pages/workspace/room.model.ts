@@ -1831,7 +1831,8 @@ export function useRoom({
       title: projectTitle,
       layout: {
         projectReady: !nothingYet,
-        projectOpen,
+        // The view cannot be open once it has nothing to show, or the prompt box is placed in it unseen.
+        projectOpen: projectOpen && !nothingYet,
         onProjectOpenChange: setProjectOpen,
         pageOpen:
           pageOpen ||
