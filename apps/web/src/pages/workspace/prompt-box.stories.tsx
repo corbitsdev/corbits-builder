@@ -208,12 +208,12 @@ export const QuestionPicked: Story = {
 };
 
 /**
- * The last question, pick-any, with a pick: rail rows marked by their blue rail with no checkboxes,
- * and Continue where Send stands, as on every other question.
+ * The last question, pick-any, with both picked: each pick marked by its blue rail with no
+ * checkboxes, and Continue where Send stands, as on every other question.
  */
 export const QuestionPickAny: Story = {
   args: asking,
-  beforeEach: questionAt(2, ["Phone"]),
+  beforeEach: questionAt(2, ["Phone", "Desktop browser"]),
 };
 
 /**
@@ -256,14 +256,22 @@ export const QuestionOwnAnswer: Story = {
  * Approving a document: what is asked, the document's summary in a line, the document as a chip
  * that opens it, and Approve where Send stands.
  */
-export const ApproveDocuments: Story = {
+const approving = {
+  dock: {
+    ...composer,
+    placeholder:
+      approveDefinition.describe?.says?.reply ?? composer.placeholder,
+  },
+  waiting: "documents",
+} satisfies Args;
+
+export const ApproveDocuments: Story = { args: approving };
+
+/** Typing says what should change instead: Send, blue, takes Approve's place. */
+export const ApproveDocumentsTyping: Story = {
   args: {
-    dock: {
-      ...composer,
-      placeholder:
-        approveDefinition.describe?.says?.reply ?? composer.placeholder,
-    },
-    waiting: "documents",
+    ...approving,
+    dock: { ...approving.dock, text: "Move the launch to the second Saturday" },
   },
 };
 
@@ -319,7 +327,7 @@ export const CommentsWaiting: Story = {
   args: { dock: { ...composer, comments: 3 } },
 };
 
-/** Long words wrap under the controls and the box grows, up to a point, then scrolls. */
+/** Long words wrap in their own column beside the controls; the box grows, up to a point, then scrolls. */
 export const LongText: Story = {
   args: {
     dock: {
@@ -341,6 +349,36 @@ export const Dark: Story = {
 
 export const DarkWorking: Story = {
   args: { dock: working },
+  globals: { mode: "dark" },
+};
+
+export const DarkSending: Story = {
+  ...Sending,
+  globals: { mode: "dark" },
+};
+
+export const DarkQuestionPicked: Story = {
+  ...QuestionPicked,
+  globals: { mode: "dark" },
+};
+
+export const DarkApproveDocuments: Story = {
+  ...ApproveDocuments,
+  globals: { mode: "dark" },
+};
+
+export const DarkToolApproval: Story = {
+  ...ToolApproval,
+  globals: { mode: "dark" },
+};
+
+export const DarkCommentsWaiting: Story = {
+  ...CommentsWaiting,
+  globals: { mode: "dark" },
+};
+
+export const DarkChangingEarlierDocument: Story = {
+  ...ChangingEarlierDocument,
   globals: { mode: "dark" },
 };
 
