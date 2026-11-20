@@ -164,9 +164,14 @@ async function readBuilt(directory: string, manifest: Manifest) {
 }
 
 async function buildAndRead(key: string, inference: Inference) {
+  const keyedAt = performance.now();
   const built = join(BUILT, await buildKey(inference));
   const saved = Bun.file(join(built, "manifest.json"));
-  if (await saved.exists()) return readBuilt(built, await saved.json());
+  const hit = await saved.exists();
+  log.warn(
+    `[timing] workflow packages ${hit ? "hit" : "miss"} key ${Math.round(performance.now() - keyedAt)}ms ${built.slice(-12)} inference ${createHash("sha256").update(JSON.stringify(inference)).digest("hex").slice(0, 12)}`,
+  );
+  if (hit) return readBuilt(built, await saved.json());
   const directory = await mkdtemp(join(tmpdir(), "sb-hub-packages-"));
   try {
     const manifest = await buildWorkflowPackages(
