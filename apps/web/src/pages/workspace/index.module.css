@@ -129,6 +129,13 @@
   flex: none;
 }
 
+/* The status pill floats 8px above the box where the way back to the latest message stands; while
+   the pill shows, that button stands clear above it. */
+.conversation:has(> [data-slot="composer"] [data-slot="pill"])
+  [data-slot="conversation-scroll-button"] {
+  bottom: calc(var(--space-2) + 32px + var(--space-3));
+}
+
 /* The prompt box, and what stands in its place, keep the box's measure in the middle of the canvas
    however wide it is. */
 :is(.conversation, .page) > :is([data-slot="composer"], .archived, .notice) {
