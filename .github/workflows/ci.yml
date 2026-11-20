@@ -37,7 +37,7 @@ jobs:
           persist-credentials: false
           sparse-checkout: test/e2e/builds
       - id: build-tests
-        run: echo "files=$(cd test/e2e/builds && ls *.test.ts | jq -Rcs 'split("\n")[:-1]')" >> "$GITHUB_OUTPUT"
+        run: echo "files=$(cd test/e2e/builds && ls *.test.ts | grep -vx new-app.test.ts | jq -Rcs 'split("\n")[:-1]')" >> "$GITHUB_OUTPUT"
       - id: filter
         if: github.event_name == 'pull_request'
         uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
@@ -159,7 +159,7 @@ jobs:
       - run: bun run test
 
   e2e:
-    name: e2e (${{ matrix.shard }}/2)
+    name: e2e (${{ matrix.shard }}/8)
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.e2e == 'true'
     runs-on: ubuntu-24.04
@@ -167,7 +167,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
     env:
       E2E_DB_HOST: 127.0.0.1
       E2E_DB_PORT: 5432
@@ -194,10 +194,9 @@ jobs:
       - run: >-
           bun --conditions=intx-src test ./test/e2e
           --path-ignore-patterns='test/e2e/builds/**'
-          --shard=${{ matrix.shard }}/2 --timings=test/e2e/timings.json --isolate
+          --shard=${{ matrix.shard }}/8 --timings=test/e2e/timings.json --isolate
 
   e2e-builds:
-    name: e2e-builds (${{ matrix.file }})
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.e2e-builds == 'true'
     runs-on: ubuntu-24.04
@@ -206,8 +205,15 @@ jobs:
       fail-fast: false
       matrix:
         file: ${{ fromJSON(needs.changes.outputs.build-tests) }}
+        # Its two full pipelines each get a job of their own.
+        include:
+          - file: new-app.test.ts
+            test: the long way
+          - file: new-app.test.ts
+            test: just build it
     env:
       FILE: ${{ matrix.file }}
+      TEST: ${{ matrix.test }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -226,7 +232,7 @@ jobs:
             libexpat1 libgbm1 libglib2.0-0t64 libnspr4 libnss3 libx11-6 libxcb1
             libxcomposite1 libxdamage1 libxext6 libxfixes3 libxkbcommon0 libxrandr2
       - run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-      - run: bun --conditions=intx-src test "./test/e2e/builds/$FILE"
+      - run: bun --conditions=intx-src test "./test/e2e/builds/$FILE" -t "${TEST:-.}"
         env:
           E2E_DB_HOST: 127.0.0.1
           E2E_DB_PORT: 5432
