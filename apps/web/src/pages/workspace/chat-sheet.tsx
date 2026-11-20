@@ -238,11 +238,15 @@ export function ChatSheet({
 
   useLayoutEffect(() => {
     const target = refocus.current;
-    refocus.current = null;
+    if (target === null) return;
     const active = document.activeElement;
-    // Only when the control that had focus is gone, so a person typing keeps their place.
-    if (target === null || (active !== null && active !== document.body))
+    // Only when the control that had focus is gone, so a person typing keeps their place. A press
+    // springs the sheet first, its control still in place, so the way back waits for it to settle.
+    if (active !== null && active !== document.body) {
+      if (!moving) refocus.current = null;
       return;
+    }
+    refocus.current = null;
     const ref = target === "grip" ? gripRef : handleRef;
     ref.current?.querySelector<HTMLElement>("button")?.focus();
   }, [state, moving]);
