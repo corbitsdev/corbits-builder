@@ -56,6 +56,24 @@ export const ActionsSlot = createContext<
   ((buttons: ReactNode) => ReactNode) | null
 >(null);
 
+/**
+ * Where the host takes what a screen in the prompt box says the box should invite, such as "Add
+ * details for Concept B…" once an option is picked. Null where the screen is not in the box.
+ */
+export const PromptPlaceholder = createContext<
+  ((placeholder: string | undefined) => void) | null
+>(null);
+
+/** Sets the prompt box's placeholder while this screen is in the box, and gives it back after. */
+export function usePromptPlaceholder(placeholder: string | undefined) {
+  const set = useContext(PromptPlaceholder);
+  useEffect(() => {
+    if (set === null) return;
+    set(placeholder);
+    return () => set(undefined);
+  }, [set, placeholder]);
+}
+
 export const decisionText = {
   anyway: (accept: string) => `${accept} anyway`,
   discard: (accept: string, pending: string) =>

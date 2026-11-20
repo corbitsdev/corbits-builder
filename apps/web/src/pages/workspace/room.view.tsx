@@ -37,7 +37,10 @@ import {
   PromptInputToolbar,
 } from "@corbits/react-ui";
 import type { ScreenStatus } from "@corbits-builder/plugin";
-import { ActionsSlot } from "@corbits-builder/plugin-ui/screen-actions";
+import {
+  ActionsSlot,
+  PromptPlaceholder,
+} from "@corbits-builder/plugin-ui/screen-actions";
 import type { PlanView } from "@corbits-builder/schemas/project";
 import { wording } from "../../config.ts";
 import { Banner, BannerAction, Fault } from "../../components.jsx";
@@ -561,6 +564,8 @@ function RoomComposerView({
     [actionsAt],
   );
   const waitingActions = waiting !== undefined && !caution;
+  // A card in the box can say what the words should be, such as details for the option picked.
+  const [cardPlaceholder, setCardPlaceholder] = useState<string>();
   const box = (
     <AttachmentDropZone
       onFiles={attachments.onAdd}
@@ -644,7 +649,7 @@ function RoomComposerView({
                   ? wording.conversation.enableAiFirst
                   : comments > 0
                     ? wording.promptBox.commentsPlaceholder
-                    : placeholder
+                    : (cardPlaceholder ?? placeholder)
               }
             />
             <PromptInputToolbar>
@@ -713,7 +718,11 @@ function RoomComposerView({
         caution || waiting !== undefined ? (
           <>
             <ActionsSlot value={waitingActions ? toRow : null}>
-              {waiting}
+              <PromptPlaceholder
+                value={waitingActions ? setCardPlaceholder : null}
+              >
+                {waiting}
+              </PromptPlaceholder>
             </ActionsSlot>
             {/* Nearest the words it is about, after anything else that waits; its two ways on
                 stand where Send is. */}
