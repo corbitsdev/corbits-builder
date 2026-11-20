@@ -442,8 +442,14 @@ The specialists installed today:
   to publish when more than one place is installed, the person's go-ahead
   before each publish, and before the app is taken down. It declares the values every target shares (`publish.release`,
   `publish.plan`, `publish.keep`, `publish.holding`, `publish.take-down`).
-- The Cloudflare plugin (`plugins/cloudflare`) has checks only: whether the app
-  is ready for Cloudflare Workers, and whether it is routed to a domain.
+- The Cloudflare plugin (`plugins/cloudflare`) publishes the app to Cloudflare
+  Workers at its own workers.dev address, either in the person's own
+  Cloudflare account through a token they save or in a temporary account: they
+  accept Cloudflare's terms for it and have an hour to keep the app. Its checks say
+  whether the app is made to run on Workers, whether the saved version is the
+  one published, and whether the person agreed to take it down. Its `remove`
+  action takes the app down with the person's own key; it cannot reach an app
+  in a temporary account, and says so.
 
 The ready-made plans installed today:
 
@@ -453,14 +459,16 @@ The ready-made plans installed today:
   and nothing in it waits on the person. The first is the default.
 - `add-feature` (`plugins/add-feature`): revised requirements and a build plan
   the person approves, then the change to an existing app.
-- `publish-to-cloudflare` (`plugins/cloudflare-publish`): checks that a built
-  app has what a Cloudflare Workers deploy needs, then that it is routed to a
-  domain.
+- `publish-to-cloudflare` (`plugins/cloudflare-publish`): checks the app is
+  made to run on Cloudflare Workers, asks the person's go-ahead, publishes it
+  to Cloudflare and checks the saved version is the one published. It takes
+  the app down with `cloudflare remove`.
 
 The skill packs installed today, each for the coder or a pack it narrows:
 `web-app-skills`, narrowed by `react-router-skills` and `sveltekit-skills`;
 `web-app-starter-skills` for the `web-app` starter; `rust-skills`;
-`desktop-app-skills`; `chat-bot-skills`; and `publish-skills`.
+`desktop-app-skills`; `chat-bot-skills`; and `publish-skills`, narrowed by
+`serverless-skills`, itself narrowed by `workers-skills`.
 
 Every specialist run is triggered by mail, takes exactly one assignment and
 ends; only the coordinator keeps its agent and takes each later message as
@@ -526,6 +534,15 @@ down and look, never one that publishes, and the publish agent holds none that
 takes it down. A republish, or a take-down that cleared what the person was
 shown, changes what the check read, so an old go-ahead never takes down a later
 release; a take-down that failed can be tried again on the same one.
+
+Cloudflare's account screen has a take-down mode. While the person's go-ahead
+to take down stands for Cloudflare, it asks only for a token for the account
+the app is in; for an app in a temporary account whose keep link is still
+recorded, it also says when Cloudflare removes the app by itself, or that it
+did. `cloudflare remove` pauses on that screen while no token is saved, unless
+`cloudflare.terms` is set, so the screen usually comes first. When it runs
+without a token it answers `needs_own_account`; an app Cloudflare already
+removed is cleared by the person from the Publish tab.
 
 A new target implements this contract:
 
@@ -620,6 +637,12 @@ the menu, then clears the release and the go-ahead to take down. Nor is it
 offered while a keep link is recorded and nothing is held, since no take-down
 can reach an app the person has not kept yet. The question it leads to is
 where they decide.
+
+The hub makes and saves the key for a person's server (below). A Cloudflare
+token is saved to Interchange like any plugin key. A temporary Cloudflare account's
+token lives in the tool's memory for the one release that made the account.
+The keep link is `publish.keep`, a private value: only someone who manages the
+project reads it, and no model does.
 
 ### Hub-made server keys
 

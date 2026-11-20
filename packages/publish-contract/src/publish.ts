@@ -1,8 +1,10 @@
 import { type } from "arktype";
 import {
+  declaredProduction,
   fail,
   parsed,
   pass,
+  type CheckOutcome,
   type ProjectView,
   type ReadyPlanStepBuilder,
 } from "@corbits-builder/plugin";
@@ -266,4 +268,56 @@ export function publishSteps(plan: {
       ["app_exists"],
     ),
   ];
+}
+
+// Long enough for an app that just started to answer, short enough to leave a tool its time.
+const VISIT_TIMEOUT_MS = 10_000;
+
+/**
+ * The status the address answers with when asked from outside, as a visitor's browser would ask,
+ * or undefined when nothing answered in time. Any answer counts, so a redirect is not followed and
+ * the body is not read. A cancelled run ends it with the run's own reason.
+ */
+export async function visit(
+  url: string,
+  signal: AbortSignal,
+): Promise<number | undefined> {
+  try {
+    const response = await fetch(url, {
+      redirect: "manual",
+      signal: AbortSignal.any([signal, AbortSignal.timeout(VISIT_TIMEOUT_MS)]),
+    });
+    await response.body?.cancel();
+    return response.status;
+  } catch (error) {
+    if (signal.aborted) throw error;
+    return undefined;
+  }
+}
+
+/**
+ * For a target's ready check: whether the saved app says how it runs in production, read as a
+ * release reads it, so a pass means a release can use it. A target that words the summary for an
+ * app that says nothing its own way passes that as unset.
+ */
+export async function productionReady(
+  view: ProjectView,
+  unset = "The app does not say how it runs in production",
+): Promise<CheckOutcome> {
+  const production = declaredProduction({
+    "stack.production": await view.values("stack.production"),
+  });
+  if (production === undefined)
+    return fail(unset, ["the project's stack.production is not set"]);
+  if (production instanceof type.errors)
+    return fail("The app's production settings cannot be used", [
+      production.summary,
+    ]);
+  return pass("The app says how it runs in production", [
+    "it says how it installs, builds and starts",
+    `it answers on the port in ${production.port}`,
+    production.data.length === 0
+      ? "it keeps no data between releases"
+      : `it keeps ${production.data.join(", ")} between releases`,
+  ]);
 }

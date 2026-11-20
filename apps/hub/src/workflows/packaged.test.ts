@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { afterAll, expect, test } from "bun:test";
 import { NativeSpecialistDeployment } from "@corbits-builder/schemas/native-specialist";
 import { MODEL_PROVIDERS, tierBinding } from "../config/models.ts";
 import { projectLiveToInert } from "@intx/workflow/projection";
@@ -18,6 +18,15 @@ import {
 const AGENT_ENTRY = "./agent-package.ts";
 let browser: string | undefined;
 
+// installed sets these for each import, so the process gets back what it had once this file is done.
+const SET = ["BUILDER_AGENT", "BUILDER_BROWSER", "BUILDER_TOOLS"] as const;
+const had = SET.map((name) => [name, process.env[name]] as const);
+afterAll(() => {
+  for (const [name, value] of had)
+    if (value === undefined) delete process.env[name];
+    else process.env[name] = value;
+});
+
 // An installed plugin's workflow package by name: the agent it declares, built as build-packages.ts
 // builds it, else loaded from the entry its plugin names for it. The agent's declaration reaches
 // the shared entry through the environment, so one is built at a time, each run of the module with
@@ -30,7 +39,26 @@ async function installed(name: string) {
   browser ??= JSON.stringify(await browserCatalog());
   process.env.BUILDER_AGENT = JSON.stringify(brought.agent);
   process.env.BUILDER_BROWSER = browser;
+  if (brought.agent.tools === null) delete process.env.BUILDER_TOOLS;
+  else process.env.BUILDER_TOOLS = resolve(PLUGINS_FOLDER, brought.agent.tools);
   return (await import(`${AGENT_ENTRY}?${name}`)).default;
+}
+
+// The workflow a package is built from, as build-packages.ts finds it: a plugin's, else the hub's own.
+// A workflow reads its role's inference when imported, so it is set for the import and put back.
+async function source(name: string) {
+  const before = process.env.BUILDER_ROLE_INFERENCE;
+  process.env.BUILDER_ROLE_INFERENCE = JSON.stringify(
+    inference[WORKFLOW_PACKAGES.get(name) ?? name],
+  );
+  try {
+    return CATALOG.packages.has(name)
+      ? await installed(name)
+      : (await import(`./entries/${name}.ts`)).default;
+  } finally {
+    if (before === undefined) delete process.env.BUILDER_ROLE_INFERENCE;
+    else process.env.BUILDER_ROLE_INFERENCE = before;
+  }
 }
 
 // Each named package in turn, never two at once.
@@ -169,6 +197,7 @@ test("built npm tarballs contain importable production workflow metadata and def
   );
   try {
     const manifest = await buildWorkflowPackages(directory, "1.0.0", inference);
+    let optional = 0;
     for (const metadata of manifest) {
       const extracted = join(directory, metadata.assetName);
       await mkdir(extracted);
@@ -190,7 +219,24 @@ test("built npm tarballs contain importable production workflow metadata and def
       );
       expect(entry.director).toBeDefined();
       expect(Object.keys(entry.default.steps)).toHaveLength(1);
-      expect(entry.default.credentialBindings ?? []).toEqual([]);
+      const name = [...WORKFLOW_PACKAGES.keys()].find(
+        (each) => nativePackageName(each) === metadata.packageName,
+      );
+      if (name === undefined)
+        throw new Error(`${metadata.packageName} is no installed package`);
+      const bindings: { handle: string; optional?: true }[] =
+        entry.default.credentialBindings ?? [];
+      expect(bindings).toEqual((await source(name)).credentialBindings ?? []);
+      // A credential the run may start without, one the person can do without or one the hub makes,
+      // stays optional in the package.
+      const brought = CATALOG.packages.get(name);
+      if (brought !== undefined && "agent" in brought)
+        for (const binding of bindings) {
+          expect(binding.optional === true).toBe(
+            brought.agent.optional.includes(binding.handle),
+          );
+          if (binding.optional) optional += 1;
+        }
       // The hub accepts a run as a specialist's only when its launch bundle yields a role.
       if (metadata.packageName !== nativePackageName("coordinator"))
         expect(
@@ -199,7 +245,8 @@ test("built npm tarballs contain importable production workflow metadata and def
           }),
         ).toBeDefined();
     }
-    expect(manifest).toHaveLength(10);
+    expect(manifest).toHaveLength(WORKFLOW_PACKAGES.size);
+    expect(optional).toBeGreaterThan(0);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

@@ -10,12 +10,15 @@ import { kitDigest } from "./kit.ts" with { type: "macro" };
 // load the catalog, and with it this module, far from the files.
 
 // The coder works in the project's code: check-stack finishes every coder, check-app proves a web
-// app the starter's BUILDER-CHECKS.txt names it for, and installing a package asks the person.
+// app the starter's BUILDER-CHECKS.txt names it for, check-serverless proves the worker of an app
+// made for a serverless host once the serverless pack has it listed there, and installing a package
+// asks the person.
 export default defineWorkspace({
   kind: "app",
   commands: {
     "check-stack": coderScript("check-stack"),
     "check-app": checkScript("check-app"),
+    "check-serverless": checkScript("check-serverless"),
   },
   commandModules: checkModules(),
   pageWatcher: coderScript("watch-page"),

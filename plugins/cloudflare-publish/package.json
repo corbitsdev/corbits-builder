@@ -2,37 +2,31 @@
   "name": "@corbits-builder/cloudflare-publish",
   "version": "0.1.0-rc.3",
   "private": true,
-  "description": "Gets a built app ready to publish on Cloudflare Workers: checks it has what a deploy needs, then that the Worker is routed to a domain.",
+  "description": "Cloudflare: a secure (https) web address of its own. Free to start, and no account needed.",
   "license": "SEE LICENSE IN ../../LICENSE.md",
   "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
   "type": "module",
+  "dependencies": {
+    "@corbits-builder/plugin": "workspace:*",
+    "@corbits-builder/publish-contract": "workspace:*"
+  },
   "builder": {
     "handle": "publish-to-cloudflare",
     "runs": "plan",
     "groups": [
-      "deploy",
+      "publish",
       "plan"
     ],
-    "when": "The project has an app and the person wants it published on Cloudflare Workers.",
-    "unless": "The app is meant for another host, or the project has no app yet.",
+    "when": "The project has an app and the person wants it published on Cloudflare, so people can open it at its own address, with their own Cloudflare account or without one.",
+    "unless": "The project has no app yet, or the person wants it published somewhere else.",
     "guidance": "./SKILL.md",
-    "steps": [
-      {
-        "plugin": "cloudflare",
-        "action": "ready",
-        "title": "Check the app is ready for Cloudflare",
-        "requires": []
-      },
-      {
-        "plugin": "cloudflare",
-        "action": "routes",
-        "title": "Check the Worker is routed to a domain",
-        "requires": [
-          "ready:cloudflare"
-        ]
-      }
-    ],
-    "ends": "routed:cloudflare",
+    "steps": "./steps.ts",
+    "ends": "published:cloudflare",
+    "firstRun": "It goes on Cloudflare, at a secure web address of its own.",
+    "takeDown": {
+      "plugin": "cloudflare",
+      "action": "remove"
+    },
     "examples": [
       "publish my app on Cloudflare",
       "put the app on Cloudflare Workers"
