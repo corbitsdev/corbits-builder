@@ -148,6 +148,15 @@
   padding: var(--space-2) var(--space-4) var(--space-4);
 }
 
+/* The chat taken full screen stands in for the project view or page it was pulled up over; that
+   stays mounted, only hidden. */
+.page:has(
+    > [data-slot="composer"] > [data-slot="chat-sheet"][data-state="full"]
+  )
+  > :not([data-slot="composer"]) {
+  display: none;
+}
+
 /* A quiet line with its ways on: before a change to what a specialist builds from, or on an
    archived project. */
 .caution {
@@ -170,9 +179,25 @@
   gap: var(--space-1);
 }
 
+/* Comments waiting to be made, carried with whatever is typed after them. */
+.commentsToken {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-1);
+  align-self: center;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 6px;
+  background: var(--wb-muted);
+  color: var(--wb-foreground);
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-medium);
+  white-space: nowrap;
+}
+
 /* Says what Send carries while a screen has feedback staged, so the one send control names its load. */
 .sendLabel {
-  margin-inline-start: auto;
   color: var(--wb-muted-foreground);
   font-size: 0.8125rem;
   white-space: nowrap;
