@@ -8,6 +8,17 @@
   min-width: 0;
 }
 
+/* The turns keep a chat's reading measure in the middle of a wide canvas, 48rem as the usual chat
+   apps hold theirs, the width of a document's page; the prompt box runs to their text's edges. */
+.thread
+  > [data-slot="conversation-content"]
+  > [data-slot="conversation-column"] {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 48rem;
+  margin-inline: auto;
+}
+
 /* The log scrolls inside the room. flex-shrink 0 made its height follow the
    settle spacer, and the spacer then grew from that new height. */
 .log {
