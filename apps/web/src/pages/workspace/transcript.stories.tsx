@@ -47,9 +47,6 @@ const meta = {
     turns: opening,
     documents: [BRIEF],
     onOpenDocument: fn(),
-    onDecide: fn(),
-    onRequestChanges: fn(),
-    onAnswerQuestion: fn(() => Promise.resolve(true)),
     standing: () => workUnit.args,
   },
   parameters: { layout: "fullscreen" },
@@ -96,26 +93,34 @@ export const Streaming: Story = {
   },
 };
 
-export const AskingForApproval: Story = {
+/** A decision stays in the conversation once made; one still open waits in the prompt box. */
+export const ApprovalDecided: Story = {
   args: {
     approvals: [
       {
         approvalId: "approval-1",
         toolName: "run_shell",
         subject: "bun run build",
+        outcome: { status: "approved", scope: "once" },
       },
     ],
   },
 };
 
-export const AskingQuestions: Story = {
+/** An answered question stays in the conversation; the open one waits in the prompt box. */
+export const QuestionAnswered: Story = {
   args: {
     questions: [
       {
         at: 4,
         signalName: "signal:question-1",
         asked,
-        status: "open",
+        status: "answered",
+        answer: {
+          answers: {
+            "5d0c1b8e-2a47-4f3e-8b19-6e7d2c4a9f10": ["The owner (Recommended)"],
+          },
+        },
       },
     ],
   },

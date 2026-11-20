@@ -68,8 +68,8 @@ export const Open: Story = {
     ).toHaveFocus();
   },
 };
-export const PageSubmission: Story = {
-  args: { state: "chosen", placed: "page" },
+export const SubmitFromSpace: Story = {
+  args: { state: "chosen" },
   play: async ({ canvas, userEvent }) => {
     await userEvent.click(await canvas.findByRole("button", { name: SEND }));
     await expect(

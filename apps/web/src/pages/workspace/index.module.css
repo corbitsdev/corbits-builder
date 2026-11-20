@@ -1,4 +1,11 @@
 .room {
+  /* The plugin space's column: what a reading measure in the middle of the window leaves it, within
+     bounds a screen can be used in. */
+  --plugin-column: clamp(20rem, (100% - 46rem) / 2 - var(--space-2), 28rem);
+  /* How wide the sidebar and the plugin space's column stand on either side of the page. */
+  --beside-start: 0px;
+  --beside-end: 0px;
+
   position: relative;
   display: flex;
   flex-direction: row;
@@ -10,8 +17,17 @@
   background: var(--card);
 }
 
-/* The page beside the sidebar, which the project view and a screen cover. Its own stacking
-   context, so what covers it stays under the sidebar's drawer. */
+.room:has(> [data-slot="project-sidebar"][data-open]:not([data-drawer])) {
+  --beside-start: var(--rail-width);
+}
+
+.room:has(> [data-slot="plugin-space"][data-as="column"]) {
+  --beside-end: var(--plugin-column);
+}
+
+/* The page beside the sidebar: the conversation, the project view over it and the plugin sheet
+   over both; the plugin space's column stands beside it. Its own stacking context, so what covers
+   it stays under the sidebar's drawer. */
 .main {
   position: relative;
   isolation: isolate;
@@ -19,11 +35,30 @@
   flex: 1;
   min-width: 0;
   min-height: 0;
+  /* The page keeps its middle on the window's, so the conversation, the document and the prompt box
+     stay put whatever opens beside them: the side with less beside it takes the difference as
+     ground. */
   margin: var(--space-2);
+  margin-inline-start: calc(
+    var(--space-2) + max(0px, var(--beside-end) - var(--beside-start))
+  );
+  margin-inline-end: calc(
+    var(--space-2) + max(0px, var(--beside-start) - var(--beside-end))
+  );
   overflow: hidden;
   border-radius: var(--radius-panel);
   background: var(--wb-background);
   box-shadow: var(--wb-pane-shadow);
+  /* In step with the sidebar as it opens and closes. */
+  transition: margin-inline var(--duration-standard) var(--ease-out);
+}
+
+.room:has(> [data-slot="project-sidebar"][data-open]) .main {
+  transition-duration: var(--duration-large);
+}
+
+.room:has(> [data-slot="project-sidebar"][data-instant]) .main {
+  transition: none;
 }
 
 .conversationPane {
@@ -135,7 +170,7 @@
   padding: var(--space-2) var(--space-4) var(--space-4);
 }
 
-/* The chat taken full screen stands in for the project view or page it was pulled up over; that
+/* The chat taken full screen stands in for the project view or sheet it was pulled up over; that
    stays mounted, only hidden. */
 .page:has(
     > [data-slot="composer"] > [data-slot="chat-sheet"][data-state="full"]
@@ -211,7 +246,8 @@
   padding-bottom: var(--space-2);
 }
 
-/* A screen placed on the page, or the project view, covers the room, the prompt box at its foot. */
+/* The project view, or the plugin sheet on a narrow room, covers the main area, the prompt box at
+   its foot. */
 .page {
   position: absolute;
   inset: 0;
@@ -244,13 +280,6 @@
   .page {
     transition: none;
   }
-}
-
-.pageScreen {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-height: 0;
 }
 
 .page > [data-slot="composer"] {

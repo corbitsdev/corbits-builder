@@ -49,7 +49,15 @@ function Page({ children }: { children: ReactNode }) {
   return (
     <div style={{ position: "relative", height: "100vh" }}>
       <div className={room.page} style={{ background: "var(--wb-frame)" }}>
-        <div className={room.pageScreen} style={{ overflow: "auto" }}>
+        <div
+          style={{
+            display: "flex",
+            flex: 1,
+            flexDirection: "column",
+            minHeight: 0,
+            overflow: "auto",
+          }}
+        >
           <article
             style={{
               width: "min(640px, calc(100% - 32px))",

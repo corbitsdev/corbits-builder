@@ -1,4 +1,15 @@
-import { Component, type ReactElement, type ReactNode } from "react";
+/**
+ * Where a plugin's screens show. A screen meant for a tab of its own stays a tab in the project
+ * view, saying where its work stands; every other screen, the coordinator's question asked with a
+ * plugin's screen or one a plugin shows of its own accord for the chat or the main page, opens in
+ * the plugin space.
+ */
+import {
+  Component,
+  type ComponentType,
+  type ReactElement,
+  type ReactNode,
+} from "react";
 import type { ScreenStatus } from "@corbits-builder/plugin";
 import type {
   ScreenRender,
@@ -6,13 +17,21 @@ import type {
 } from "@corbits-builder/schemas/project";
 import { screenWords } from "./roles.ts";
 import type { ScreenLookup } from "./screens.ts";
-import type { HostSupplies, ListedHostProps } from "./screen-question.tsx";
+import {
+  ScreenQuestion,
+  type HostSupplies,
+  type ListedHostProps,
+  type ScreenQuestionProps,
+} from "./screen-question.tsx";
 
 export const SLOT = {
   "main-page": "page",
   "inline-chat": "chat",
   "plugin-bar": "tab",
 } as const satisfies Record<ScreenRender, "page" | "chat" | "tab">;
+
+/** A screen meant for a tab of its own, which the project view shows rather than the space. */
+export const inTab = (screen: ShownScreen) => SLOT[screen.render] === "tab";
 
 type PluginScreensRoom = {
   screens: readonly ShownScreen[];
@@ -45,38 +64,49 @@ class Contained extends Component<
   }
 }
 
-export function pluginSlots(room: PluginScreensRoom) {
-  const slots: {
-    page: ReactElement[];
-    chat: ReactElement[];
-    tabs: PluginTab[];
-    // In how many milliseconds the clock alone changes a drawn screen, so the room reads it again.
-    rereadIn: number | undefined;
-  } = { page: [], chat: [], tabs: [], rereadIn: undefined };
+/** The project view's plugin tabs, and when the clock alone next changes any shown screen. */
+export function pluginTabs(room: PluginScreensRoom) {
+  const tabs: PluginTab[] = [];
+  // In how many milliseconds the clock alone changes a drawn screen, so the room reads it again.
+  let rereadIn: number | undefined;
   for (const screen of room.screens) {
     const Listed = room.screenOf(screen)?.listed;
     if (Listed === undefined) continue;
     const { changesIn } = screen;
     if (changesIn !== undefined)
-      slots.rereadIn = Math.min(slots.rereadIn ?? Infinity, changesIn);
+      rereadIn = Math.min(rereadIn ?? Infinity, changesIn);
+    if (!inTab(screen)) continue;
     const key = `${screen.plugin} ${screen.action}`;
-    const element = (
-      <Contained key={key} name={key}>
-        <Listed state={screen.state} act={room.act} host={room.supplies} />
-      </Contained>
-    );
-    const slot = SLOT[screen.render];
-    if (slot === "tab")
-      slots.tabs.push({
-        value: `plugin-${screen.plugin}-${screen.action}`,
-        label:
-          screenWords(screen.plugin, screen.action)?.label({}) ?? screen.action,
-        pane: element,
-        status: screen.status,
-      });
-    else slots[slot].push(element);
+    tabs.push({
+      value: `plugin-${screen.plugin}-${screen.action}`,
+      label:
+        screenWords(screen.plugin, screen.action)?.label({}) ?? screen.action,
+      pane: (
+        <Contained key={key} name={key}>
+          <Listed state={screen.state} act={room.act} host={room.supplies} />
+        </Contained>
+      ),
+      status: screen.status,
+    });
   }
-  return slots;
+  return { tabs, rereadIn };
 }
 
-export type PluginSlots = ReturnType<typeof pluginSlots>;
+export type SpaceScreenProps =
+  | { kind: "question"; question: ScreenQuestionProps }
+  | {
+      kind: "plugin";
+      name: string;
+      Listed: ComponentType<ListedHostProps>;
+      listed: ListedHostProps;
+    };
+
+export function SpaceScreen(props: SpaceScreenProps) {
+  if (props.kind === "question") return <ScreenQuestion {...props.question} />;
+  const { name, Listed, listed } = props;
+  return (
+    <Contained key={name} name={name}>
+      <Listed {...listed} />
+    </Contained>
+  );
+}

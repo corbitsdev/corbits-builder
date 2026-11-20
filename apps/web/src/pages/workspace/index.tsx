@@ -9,7 +9,7 @@ import { ApprovalRoundsPanel } from "./approval-rounds.tsx";
 import { ConceptMockup } from "./design-concepts.tsx";
 import { LiveApp } from "./live-app.tsx";
 import { TweakPanel } from "./mockup-tweaks.tsx";
-import { NextStepLine } from "./next-step.tsx";
+import { SpaceScreen } from "./plugin-screens.tsx";
 import {
   useRoom,
   useRoomGate,
@@ -18,7 +18,6 @@ import {
 } from "./room.model.ts";
 import { RoomFault, RoomSkeleton } from "./room-skeleton.tsx";
 import { RoomView } from "./room.view.tsx";
-import { ScreenQuestion } from "./screen-question.tsx";
 
 /** The room shows its loading or fault state until its first read is in hand. */
 export function StageWorkspace(props: StageWorkspaceProps) {
@@ -33,26 +32,18 @@ function ReadyRoom(props: ReadyRoomProps) {
   const {
     view,
     projectSettings,
-    nextStep,
     enableAi,
     liveApp,
-    pluginScreens,
-    pageScreen,
+    spaceScreen,
     questionOutcomes,
   } = useRoom(props);
   return (
     <QuestionOutcomes value={questionOutcomes}>
       <RoomView
         {...view}
-        nextStep={nextStep === null ? null : <NextStepLine {...nextStep} />}
-        page={
-          pageScreen === null ? (
-            pluginScreens.page
-          ) : (
-            <ScreenQuestion {...pageScreen} />
-          )
+        pluginSpace={
+          spaceScreen === null ? null : <SpaceScreen {...spaceScreen} />
         }
-        chatScreens={pluginScreens.chat}
         paneParts={{
           liveApp: liveApp === null ? null : <LiveApp {...liveApp} />,
           conceptMockup: (concept, frame) => (
