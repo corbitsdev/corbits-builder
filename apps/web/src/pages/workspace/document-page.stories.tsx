@@ -178,6 +178,11 @@ export const Filed: Story = {};
 /** A passage in each state its comment can be in: saved, and selected while it is written. */
 export const PassageStates: Story = { args: { passages: STATES } };
 
+export const PassageStatesDark: Story = {
+  args: { passages: STATES },
+  globals: { mode: "dark" },
+};
+
 export const ZoomedOut: Story = {
   args: { children: body(LONG_BRIEF), initialZoom: 0.75 },
 };

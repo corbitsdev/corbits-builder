@@ -134,3 +134,10 @@ export const AllStates: Story = {
     </div>
   ),
 };
+
+export const WritingDark: Story = {
+  args: { state: "writing" },
+  globals: { mode: "dark" },
+};
+
+export const SavedDark: Story = { globals: { mode: "dark" } };
