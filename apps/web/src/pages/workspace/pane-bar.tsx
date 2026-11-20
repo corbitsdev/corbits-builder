@@ -1,5 +1,6 @@
 /**
- * The document pane's one floating control bar. Each view passes its own groups of actions; the
+ * The document pane's one control bar, heading a written page or standing up the edge of one that
+ * fills the pane. Each view passes its own groups of actions; the
  * bar draws them as quiet buttons with a rule between groups, so every view's controls sit in
  * the same place and look the same. Every bar ends with the tips, while the person keeps them on.
  */
@@ -11,15 +12,8 @@ import {
   MenuLabel,
   MenuTrigger,
 } from "@corbits/react-ui/ui/menu";
-import { ChevronDown, ChevronUp, Lightbulb } from "lucide-react";
-import {
-  Fragment,
-  useEffect,
-  useRef,
-  useState,
-  type ReactNode,
-  type Ref,
-} from "react";
+import { ChevronLeft, ChevronRight, Lightbulb } from "lucide-react";
+import { Fragment, useEffect, useRef, type ReactNode, type Ref } from "react";
 import { wording } from "../../config.ts";
 import {
   useDocumentTips,
@@ -59,36 +53,80 @@ export type PaneBarGroup = readonly PaneBarAction[];
 function ActionRow({
   label,
   actions,
+  upright,
 }: {
   label: string;
   actions: readonly PaneBarAction[];
+  upright: boolean;
 }) {
   const row = useRef<HTMLDivElement>(null);
   const pressed = actions.findIndex((item) => item.active);
+  // The pressed chip is kept in sight along the strip, across or down as the bar runs.
   useEffect(() => {
     const strip = row.current;
     const chip = strip?.children[pressed] as HTMLElement | undefined;
     if (strip === null || chip === undefined) return;
-    if (chip.offsetLeft < strip.scrollLeft) strip.scrollLeft = chip.offsetLeft;
-    else if (
-      chip.offsetLeft + chip.offsetWidth >
-      strip.scrollLeft + strip.clientWidth
-    )
-      strip.scrollLeft = chip.offsetLeft + chip.offsetWidth - strip.clientWidth;
-  }, [pressed, actions.length]);
+    const [start, size, scroll, view] = upright
+      ? ([
+          chip.offsetTop,
+          chip.offsetHeight,
+          strip.scrollTop,
+          strip.clientHeight,
+        ] as const)
+      : ([
+          chip.offsetLeft,
+          chip.offsetWidth,
+          strip.scrollLeft,
+          strip.clientWidth,
+        ] as const);
+    const to =
+      start < scroll
+        ? start
+        : start + size > scroll + view
+          ? start + size - view
+          : null;
+    if (to === null) return;
+    if (upright) strip.scrollTop = to;
+    else strip.scrollLeft = to;
+  }, [pressed, actions.length, upright]);
   return (
     <div ref={row} className={styles.row} role="group" aria-label={label}>
       {actions.map((item) => (
-        <ActionButton key={item.id} action={item} />
+        <ActionButton key={item.id} action={item} upright={upright} />
       ))}
     </div>
   );
 }
 
-function ActionButton({ action }: { action: PaneBarAction }) {
-  const words = action.text === undefined ? null : <span>{action.text}</span>;
+function ActionButton({
+  action,
+  upright,
+}: {
+  action: PaneBarAction;
+  /** In a bar standing up the window's edge, whose menus open beside it rather than above. */
+  upright: boolean;
+}) {
   if (action.row)
-    return <ActionRow label={action.label} actions={action.row} />;
+    return (
+      <ActionRow label={action.label} actions={action.row} upright={upright} />
+    );
+  // Standing up the window's edge, a note with an icon keeps to it so a line of text never widens
+  // the strip; pressing the icon shows its words, so they are never only on hover.
+  if (
+    upright &&
+    action.note === true &&
+    action.icon !== undefined &&
+    action.text !== undefined
+  ) {
+    const { text, note: _note, ...rest } = action;
+    return (
+      <ActionButton
+        action={{ ...rest, menu: <PaneBarTip>{text}</PaneBarTip> }}
+        upright
+      />
+    );
+  }
+  const words = action.text === undefined ? null : <span>{action.text}</span>;
   if (action.note)
     return (
       <span
@@ -127,7 +165,7 @@ function ActionButton({ action }: { action: PaneBarAction }) {
   return (
     <Menu>
       <MenuTrigger asChild>{button}</MenuTrigger>
-      <MenuContent align="center" side="top">
+      <MenuContent align="center" side={upright ? "left" : "top"}>
         {action.menu}
       </MenuContent>
     </Menu>
@@ -188,7 +226,7 @@ export function PaneBar({
 }: {
   label: string;
   groups: readonly PaneBarGroup[];
-  /** Floats over the foot of a page that fills the pane, and can be folded to a small handle. */
+  /** Stands up the right edge of a page that fills the pane, and can be folded to a small handle. */
   floating?: boolean;
   /** A panel an action opens just above the bar; passing it, even as null, anchors the bar. */
   popover?: ReactNode;
@@ -197,31 +235,12 @@ export function PaneBar({
 }) {
   const folded =
     useStoredPreference(FLOATING_KEY, parseFloating, "shown") === "hidden";
-  const [floatingBar, setFloatingBar] = useState<HTMLElement | null>(null);
-  // The pane keeps its foot clear of the floating bar at whatever height the bar wraps to.
-  useEffect(() => {
-    const pane =
-      floatingBar?.closest<HTMLElement>('[data-slot="panel-pane"]') ?? null;
-    if (floatingBar === null || pane === null) return;
-    const observer = new ResizeObserver(() =>
-      pane.style.setProperty(
-        "--pane-bar-height",
-        `${String(floatingBar.offsetHeight)}px`,
-      ),
-    );
-    observer.observe(floatingBar);
-    return () => {
-      observer.disconnect();
-      pane.style.removeProperty("--pane-bar-height");
-    };
-  }, [floatingBar]);
   const tips = useTipsGroup();
   const shown = [...groups, tips].filter((group) => group.length > 0);
   if (shown.length === 0) return null;
   const bar =
     floating && folded ? (
       <Button
-        ref={setFloatingBar}
         type="button"
         variant="ghost"
         size="icon"
@@ -231,11 +250,10 @@ export function PaneBar({
         title={wording.paneBar.show}
         onClick={() => writeStoredPreference(FLOATING_KEY, "shown")}
       >
-        <ChevronUp size={14} aria-hidden="true" />
+        <ChevronLeft size={14} aria-hidden="true" />
       </Button>
     ) : (
       <div
-        ref={floating ? setFloatingBar : undefined}
         className={styles.bar}
         data-slot="pane-bar"
         data-floating={floating ? "" : undefined}
@@ -248,7 +266,11 @@ export function PaneBar({
               <span className={styles.rule} aria-hidden="true" />
             ) : null}
             {group.map((action) => (
-              <ActionButton key={action.id} action={action} />
+              <ActionButton
+                key={action.id}
+                action={action}
+                upright={floating}
+              />
             ))}
           </Fragment>
         ))}
@@ -256,10 +278,11 @@ export function PaneBar({
           <>
             <span className={styles.rule} aria-hidden="true" />
             <ActionButton
+              upright
               action={{
                 id: "fold",
                 label: wording.paneBar.hide,
-                icon: <ChevronDown size={16} aria-hidden="true" />,
+                icon: <ChevronRight size={16} aria-hidden="true" />,
                 onSelect: () => writeStoredPreference(FLOATING_KEY, "hidden"),
               }}
             />

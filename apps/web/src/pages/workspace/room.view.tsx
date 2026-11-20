@@ -54,6 +54,7 @@ import {
 import { InBox, useBoxPorts, type BoxPorts } from "./box-ports.tsx";
 import { ScreenCard, StepCard } from "./box-cards.tsx";
 import { DocumentDecision, PackageDecision } from "./document-decision.tsx";
+import { FootFade } from "./foot-fade.tsx";
 import { PluginSpace } from "./plugin-space.tsx";
 import { QuestionsCard } from "./questions-card.tsx";
 import type { DocumentApproval } from "./transcript.tsx";
@@ -262,6 +263,35 @@ export function RoomView({
   useEffect(() => {
     if (!narrow) setDrawerOpen(false);
   }, [narrow]);
+  // The box floats over the project view's foot, so the view keeps what it must reach clear of it
+  // by the box's height, which grows as the person writes.
+  const projectRef = useRef<HTMLDivElement>(null);
+  // Set before paint, so the view's first frame already keeps clear of the box.
+  useLayoutEffect(() => {
+    const page = projectRef.current;
+    const box = page?.querySelector<HTMLElement>(
+      ':scope > [data-slot="composer"]',
+    );
+    if (page === null || page === undefined) return;
+    // Checked on every render, as the box comes and goes with what stands in its place; the
+    // height stays set between renders so the view's foot never jumps while it is read again.
+    if (box === null || box === undefined) {
+      page.style.removeProperty("--box-height");
+      return;
+    }
+    // The box at rest: while the chat is pulled up over the view, the view keeps the foot it had.
+    const measure = () => {
+      if (
+        box.querySelector('[data-slot="chat-sheet"]:not([data-state="closed"])')
+      )
+        return;
+      page.style.setProperty("--box-height", `${String(box.offsetHeight)}px`);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(box);
+    return () => observer.disconnect();
+  });
   const leaveDrawer =
     <Args extends unknown[]>(go: (...args: Args) => void) =>
     (...args: Args) => {
@@ -444,6 +474,7 @@ export function RoomView({
           {projectReady ? (
             // Kept while closed, so its panes, previews and drafts keep their place.
             <div
+              ref={projectRef}
               className={styles.page}
               data-slot="room-project"
               hidden={!projectOpen}
@@ -454,6 +485,10 @@ export function RoomView({
                 paneRef={paneRef}
                 open={projectOpen}
               />
+              {/* Shown only under a box floating over a written page, which runs on beneath it. */}
+              <div className={styles.footFade}>
+                <FootFade />
+              </div>
               {dockInProject ? roomDock : null}
             </div>
           ) : null}

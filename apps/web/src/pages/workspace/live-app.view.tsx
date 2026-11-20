@@ -15,6 +15,7 @@ import {
 import {
   AppWindow,
   ExternalLink,
+  KeyRound,
   ListChecks,
   LoaderCircle,
   Square,
@@ -296,6 +297,7 @@ export function LiveAppView({
             id: "demo-login",
             label: text.demoLogin(demoLogin.email, demoLogin.password),
             text: text.demoLogin(demoLogin.email, demoLogin.password),
+            icon: <KeyRound size={16} aria-hidden="true" />,
             note: true,
           },
         ]),
