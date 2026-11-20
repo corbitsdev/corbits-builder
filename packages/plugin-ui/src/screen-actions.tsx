@@ -11,6 +11,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type ReactNode,
@@ -55,6 +56,60 @@ export const ScreenDecision = createContext<DecisionControls | null>(null);
 export const ActionsSlot = createContext<
   ((buttons: ReactNode) => ReactNode) | null
 >(null);
+
+/**
+ * Where the host takes what a screen in the prompt box says the box should invite, such as "Add
+ * details for Concept B…" once an option is picked. Null where the screen is not in the box.
+ */
+export const PromptPlaceholder = createContext<
+  ((placeholder: string | undefined) => void) | null
+>(null);
+
+/** Sets the prompt box's placeholder while this screen is in the box, and gives it back after. */
+export function usePromptPlaceholder(placeholder: string | undefined) {
+  const set = useContext(PromptPlaceholder);
+  useEffect(() => {
+    if (set === null) return;
+    set(placeholder);
+    return () => set(undefined);
+  }, [set, placeholder]);
+}
+
+/**
+ * Where the host draws a screen's one forward action when the screen covers the page and the prompt
+ * box stays beneath it, so the action stands where Send does instead of in a second row. Null
+ * draws it in the screen's own row.
+ */
+export const PromptAction = createContext<
+  ((action: ReactNode) => ReactNode) | null
+>(null);
+
+/** Takes the words the person sends from the prompt box; whether the screen took them. */
+export type PromptTake = (words: string) => boolean;
+
+/**
+ * Where the host hands a screen in the prompt box what the person sends from it, so words typed
+ * after a pick go with the pick rather than replacing it. Null where the screen is not in the box.
+ */
+export const PromptSend = createContext<
+  ((take: PromptTake | undefined) => void) | null
+>(null);
+
+/** Takes what the prompt box sends while this screen is in it and `take` is given. */
+export function usePromptSend(take: PromptTake | undefined) {
+  const set = useContext(PromptSend);
+  // The host keeps one taker for as long as the screen offers one; it reads the screen's latest.
+  const latest = useRef(take);
+  useLayoutEffect(() => {
+    latest.current = take;
+  });
+  const offered = take !== undefined;
+  useEffect(() => {
+    if (set === null || !offered) return;
+    set((words) => latest.current?.(words) ?? false);
+    return () => set(undefined);
+  }, [set, offered]);
+}
 
 export const decisionText = {
   anyway: (accept: string) => `${accept} anyway`,
