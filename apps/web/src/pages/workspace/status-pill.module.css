@@ -1,0 +1,27 @@
+.lead {
+  display: grid;
+  place-items: center;
+  flex: none;
+  min-width: 14px;
+  height: 16px;
+}
+
+/* The pill is the one loader, and it stays in ink: the brand orange is never a loader. */
+.lead [aria-hidden] {
+  background: var(--wb-foreground);
+}
+
+.label[data-state="failed"] {
+  color: var(--wb-destructive);
+}
+
+.label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.action {
+  flex: none;
+  color: var(--wb-muted-foreground);
+}
