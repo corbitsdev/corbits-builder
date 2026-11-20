@@ -453,6 +453,57 @@ export const wording = {
     noProjectLead:
       "Pick a project from the list. Its outputs open from the conversation.",
   },
+  /** What frames an open project: its name and sidebar top left. */
+  projectShell: {
+    /** The project's name opens and closes its sidebar; the shortcut does the same. */
+    openSidebar: "Open the project sidebar",
+    closeSidebar: "Close the project sidebar",
+    shortcut: { mac: "⌘\\", other: "Ctrl+\\" },
+    sidebar: "Project",
+    groups: {
+      thisProject: "This project",
+      projects: "Projects",
+      workspace: "Workspace",
+    },
+    plan: "Plan",
+    noPlan: "No steps yet",
+    /** Read after a step's name, since its mark alone does not say it. */
+    stepState: {
+      to_do: "to do",
+      running: "running",
+      needs_you: "needs you",
+      done: "done",
+      failed: "failed",
+      declined: "declined",
+    },
+    /** A row's menu: a step's settings, or what can be done with a file. */
+    rowMenu: (name: string) => `More for ${name}`,
+    decline: "Decline",
+    removeFromProject: "Remove from project…",
+    files: "Files",
+    noFiles: "None yet",
+    live: "Live",
+    /** How the project's app stands, beside Live. */
+    appState: {
+      not_built: "Not built",
+      starting: "Starting…",
+      running: "Running",
+      stopped: "Stopped",
+      failed: "Failed",
+    },
+    openApp: "Open app",
+    /** Read after a file's name where its mark says more than the name does. */
+    fileState: {
+      needs_you: "needs you",
+      writing: "being written",
+      drawing: "being drawn",
+      failed: "could not be written",
+    },
+    projectSettings: "Project settings",
+    allProjects: "All projects",
+    workspaceSettings: "Workspace settings",
+    account: "Account",
+  },
   whatsNew: {
     title: "What's new",
     sections: "What's new features",
