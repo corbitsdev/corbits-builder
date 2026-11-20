@@ -390,7 +390,11 @@ function ProjectTree({
       !event.currentTarget.contains(event.target)
     )
       return;
-    const index = rows.findIndex((row) => row.key === tabStop);
+    // The row the key was pressed on, which is the tab stop unless focus got there unannounced.
+    const on =
+      [...items.current].find(([, element]) => element === event.target)?.[0] ??
+      tabStop;
+    const index = rows.findIndex((row) => row.key === on);
     const row = rows[index];
     if (row === undefined || event.altKey || event.metaKey || event.ctrlKey)
       return;
