@@ -574,7 +574,7 @@ function RoomComposerView({
       disabled={!attaching}
       label={wording.conversation.dropFiles}
     >
-      <Dictated value={text} onValueChange={onTextChange} disabled={busy}>
+      <Dictated value={text} onValueChange={onTextChange}>
         {(mic) => (
           <PromptInput
             value={text}
