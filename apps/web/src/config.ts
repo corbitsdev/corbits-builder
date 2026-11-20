@@ -584,16 +584,6 @@ export const wording = {
   },
   conversation: {
     label: "Conversation",
-    map: "Conversation map",
-    /** A map entry for a filed document: "Requirements v1". */
-    mapDocument: (name: string, version: number) =>
-      `${name} v${String(version)}`,
-    /** A map entry with where it ended: "Pick a font · Answered". */
-    mapMarked: (label: string, mark: string) => `${label} · ${mark}`,
-    /** How the map marks a question or approval once answered. */
-    mapAnswered: "Answered",
-    /** A map marker's accessible name, saying it jumps there, so it never shares a name with the card's own controls. */
-    mapGoTo: (label: string) => `Go to: ${label}`,
     empty: "Nothing in the conversation yet",
     emptyLead:
       "Replies show here, and each saved document opens from where it was saved.",
