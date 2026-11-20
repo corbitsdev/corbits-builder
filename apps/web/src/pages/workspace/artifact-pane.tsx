@@ -29,7 +29,7 @@ import {
 } from "./design-concept.ts";
 import type { UserManual } from "@corbits-builder/schemas/artifact";
 import type { PreviewDevice } from "./device-preview.tsx";
-import type { PassageQuote } from "./passage-note.tsx";
+import type { PassageQuote } from "./passage-quote.ts";
 import {
   readStoredPreference,
   writeStoredPreference,

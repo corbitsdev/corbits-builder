@@ -128,7 +128,7 @@ import {
 import { decideApproval, openDecisions } from "../../api/decisions.ts";
 import type { PaneDocument } from "./artifact-pane.tsx";
 import type { DeliverableState } from "./deliverable-block.tsx";
-import { formatPassageQuote, type PassageQuote } from "./passage-note.tsx";
+import { formatPassageQuote, type PassageQuote } from "./passage-quote.ts";
 import { humanFault, humanFaultWithCode, responseCode } from "./human-fault.ts";
 import { suggestedReplies } from "./suggested-replies.ts";
 import { visibleChatText } from "./visible-chat.ts";

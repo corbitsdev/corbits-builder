@@ -7,20 +7,10 @@ import { MessageSquareQuote } from "lucide-react";
 import { createContext, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { wording } from "../../config.ts";
+import type { PassageQuote } from "./passage-quote.ts";
 import styles from "./passage-note.module.css";
 
-export type PassageQuote = {
-  quote: string;
-  version: number;
-  title: string;
-};
-
 const QUOTE_LIMIT = 600;
-
-export function formatPassageQuote(passage: PassageQuote): string {
-  const quote = passage.quote.replace(/\s+/g, " ").trim().slice(0, QUOTE_LIMIT);
-  return `On "${passage.title}" v${String(passage.version)}:\n\n> ${quote}\n\n`;
-}
 
 /** Offers a passage read from a sandboxed preview, which the page itself cannot select into. */
 export const QuoteOffer = createContext<

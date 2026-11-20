@@ -41,7 +41,7 @@ import type {
   Round,
 } from "./approval-rounds.view.tsx";
 import { humanFault, responseCode } from "./human-fault.ts";
-import type { PassageQuote } from "./passage-note.tsx";
+import type { PassageQuote } from "./passage-quote.ts";
 import type { SharePackageProps } from "./share-package.model.ts";
 
 const roundText = wording.approvalRound;
