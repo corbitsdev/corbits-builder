@@ -665,6 +665,39 @@ export const ChatSheetOpen: Story = {
   play: async ({ canvasElement }) => openChat(canvasElement),
 };
 
+/**
+ * Pulled up over a design, the chat lies over it as it does over a written page: the design keeps
+ * its size beneath it, and the design's floating bar steps aside rather than stand over the design
+ * on the sheet's top edge.
+ */
+export const ChatSheetOverDesign: Story = {
+  args: {
+    ...ChoosingADesign.args,
+    layout: { ...withDocuments.layout, projectOpen: true },
+    chat: <RoomThread {...thread.args} />,
+  },
+  play: async ({ canvasElement }) => {
+    const project = canvasElement.querySelector<HTMLElement>(
+      '[data-slot="room-project"]',
+    );
+    const pane = project?.querySelector<HTMLElement>(
+      '[data-slot="artifact-pane"]',
+    );
+    if (!project || !pane) throw new Error("No project view");
+    // The design's own bar, once its pane has opened and faded in.
+    const bar = () =>
+      project.querySelector(
+        '[data-slot="panel-pane"][data-state="active"] [data-slot="pane-bar"][data-floating]',
+      );
+    await waitFor(() => expect(bar()).toBeVisible());
+    await openChat(canvasElement);
+    await expect(pane.getBoundingClientRect().height).toBe(
+      project.getBoundingClientRect().height,
+    );
+    await expect(bar()).not.toBeVisible();
+  },
+};
+
 /** Full screen, the chat hides the page and names it for the way back. */
 export const ChatSheetFullScreen: Story = {
   args: chatBehindBox,
