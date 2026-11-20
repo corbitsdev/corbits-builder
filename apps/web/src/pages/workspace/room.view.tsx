@@ -28,6 +28,7 @@ import {
   PromptInputTextarea,
   PromptInputToolbar,
 } from "@corbits/react-ui";
+import type { ScreenStatus } from "@corbits-builder/plugin";
 import type { PlanView } from "@corbits-builder/schemas/project";
 import { wording } from "../../config.ts";
 import { Banner, BannerAction, Fault } from "../../components.jsx";
@@ -148,9 +149,13 @@ export type RoomContent = {
   /** The person turns "ask me first" on or off for a step that has not started. */
   onAskFirstStep: (stepId: string, askFirst: boolean) => Promise<void>;
   documentPane: ArtifactPaneContent;
+  /** Where each plugin tab that says so stands, beside the plan, each opening its tab. */
+  tabStatus: readonly TabStatus[];
   /** The project view's pane, which takes focus as it opens. */
   paneRef: RefObject<HTMLElement | null>;
 };
+
+export type TabStatus = ScreenStatus & { tab: string; onOpen: () => void };
 
 /** Below this width of the room, the plan is a drawer over the conversation. */
 const NARROW_ROOM_PX = 900;
@@ -167,6 +172,7 @@ export function RoomView({
   onGoAheadStep,
   onAskFirstStep,
   documentPane,
+  tabStatus,
   paneRef,
   nextStep,
   paneParts,
@@ -271,6 +277,23 @@ export function RoomView({
                       )}
                     </UiButton>
                   )}
+                  {tabStatus.map(({ tab, label, mark, onOpen }) => (
+                    <UiButton
+                      key={tab}
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className={styles.control}
+                      aria-label={wording.conversation.tabStatus(tab, label)}
+                      title={wording.conversation.openTab(tab)}
+                      onClick={onOpen}
+                    >
+                      <span>{label}</span>
+                      {mark === undefined ? null : (
+                        <span className={styles.alert} data-mark={mark} />
+                      )}
+                    </UiButton>
+                  ))}
                   {projectReady ? (
                     <UiButton
                       type="button"

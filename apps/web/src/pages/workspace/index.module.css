@@ -86,7 +86,8 @@
   background: var(--wb-muted-foreground);
 }
 
-.meter > span[data-mark="done"] {
+.meter > span[data-mark="done"],
+.alert[data-mark="done"] {
   background: var(--wb-okay);
 }
 

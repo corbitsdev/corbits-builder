@@ -1961,6 +1961,11 @@ export function useRoom({
             }),
         plugins: pluginScreens.tabs,
       },
+      tabStatus: pluginScreens.tabs.flatMap(({ value, label, status }) =>
+        status === undefined
+          ? []
+          : [{ ...status, tab: label, onOpen: () => openProject(value) }],
+      ),
       paneRef: documentPaneRef,
     },
     nextStep: archived

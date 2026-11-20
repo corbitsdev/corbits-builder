@@ -364,6 +364,10 @@ export function ArtifactPane({
   }, [conceptsStarted]);
   useEffect(() => {
     if (openTab === null) return;
+    if (plugins.some((tab) => tab.value === openTab.value)) {
+      setPluginTab(openTab.value);
+      return;
+    }
     setPluginTab(null);
     setSide(
       openTab.value === LIVE_TAB ||

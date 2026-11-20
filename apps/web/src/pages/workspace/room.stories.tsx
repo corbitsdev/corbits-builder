@@ -122,6 +122,7 @@ const meta = {
     onGoAheadStep: async () => {},
     onAskFirstStep: async () => {},
     ...paneOf(),
+    tabStatus: [],
     paneRef: createRef(),
     nextStep: <NextStepLineView {...nextStep.args} />,
     chat: null,
@@ -375,5 +376,15 @@ export const ChoosingADesign: Story = {
   args: {
     ...withDocuments,
     ...paneOf(conceptTabs.args),
+  },
+};
+
+/** A plugin's tab says where its work stands beside the plan, and opens from there. */
+export const TabStatus: Story = {
+  args: {
+    ...withDocuments,
+    tabStatus: [
+      { tab: "Publish", label: "Published", mark: "done", onOpen: fn() },
+    ],
   },
 };
