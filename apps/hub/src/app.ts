@@ -102,7 +102,6 @@ import {
 import { createAvailabilityRoutes } from "./availability.ts";
 import { createGitTokenBoundary } from "./git-token-boundary.ts";
 import { createSidecarWebSocket } from "./sidecar-websocket.ts";
-import { createCoordinatorCredentialRefresh } from "./auth/coordinator-credential-refresh.ts";
 import { createAgentTokenBridge } from "./auth/agent-token-bridge.ts";
 import { prepareMailTriggeredSpecialistGrants } from "./auth/specialist-project-grant.ts";
 import {
@@ -473,15 +472,6 @@ export async function createHubRuntime(env: HubEnvironment) {
     );
     app.use("/api/tenants/:tenantId/*", coordinatorTokens.middleware);
     app.use("/api/workflow-project-scope", coordinatorTokens.middleware);
-    app.use(
-      "/api/tenants/:tenantId/credentials/:credentialId",
-      createCoordinatorCredentialRefresh({
-        db: handle.db,
-        router: sidecarRouter,
-        cipher: credentialCipher,
-        loadRunCredentials,
-      }),
-    );
     app.route(
       "/api/integrations",
       createAuthMethodsRoutes(
