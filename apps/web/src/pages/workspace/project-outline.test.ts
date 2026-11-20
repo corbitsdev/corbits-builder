@@ -71,6 +71,23 @@ describe("a step's row", () => {
     expect(declined("done", true)).toBeNull();
     expect(declined("not_started", false)).toBeNull();
   });
+
+  test("waits on a go-ahead only while the person asked to be consulted and has not answered", () => {
+    const waiting = planStep("step", "needs_you", { askFirst: true });
+    expect(outlineStep(waiting).goAhead).toBe(true);
+    expect(
+      outlineStep({
+        ...waiting,
+        goAhead: { by: "person", at: "2026-11-20T10:00:00Z" },
+      }).goAhead,
+    ).toBe(false);
+    expect(
+      outlineStep(planStep("step", "needs_you", { askFirst: false })).goAhead,
+    ).toBe(false);
+    expect(
+      outlineStep(planStep("step", "not_started", { askFirst: true })).goAhead,
+    ).toBe(false);
+  });
 });
 
 describe("the plan", () => {

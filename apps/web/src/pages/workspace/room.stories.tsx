@@ -126,6 +126,7 @@ function sidebarOf(
     onRemoveFile: fn(),
     onAskFirst: fn(),
     onDecline: fn(),
+    onGoAhead: fn(),
     onOpenApp: fn(),
     onProjectSettings: fn(),
     onSecrets: fn(),

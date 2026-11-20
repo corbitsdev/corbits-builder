@@ -616,8 +616,9 @@ export const wording = {
     openTab: (tab: string) => `Open ${tab}`,
     /** Takes the person from the project view back to the conversation. */
     closeProject: "Back to the conversation",
-    /** A plan step's settings, in its row's menu in the project sidebar. */
+    /** A plan step's settings and go-ahead, in its row's menu in the project sidebar. */
     plan: {
+      goAhead: "Go ahead",
       askFirst: "Ask me first",
       notChanged: "That step could not be changed.",
     },

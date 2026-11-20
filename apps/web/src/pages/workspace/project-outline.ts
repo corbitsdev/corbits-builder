@@ -28,6 +28,8 @@ export type OutlineStep = {
   askFirst: boolean | null;
   /** The person declined the step; null where it cannot be declined. */
   declined: boolean | null;
+  /** The step waits on the person's go-ahead, which they asked to give. */
+  goAhead: boolean;
 };
 
 export type OutlineGroup = {
@@ -156,6 +158,8 @@ export function outlineStep(step: PlanChild): OutlineStep {
     state: stepState(step),
     askFirst: mayAsk ? step.askFirst : null,
     declined: mayDecline ? declined : null,
+    goAhead:
+      step.askFirst && step.goAhead === undefined && step.state === "needs_you",
   };
 }
 
