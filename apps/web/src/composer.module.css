@@ -192,7 +192,10 @@
   flex: 1 1 0;
   min-width: 0;
   align-self: stretch;
-  padding-inline-start: var(--space-1);
+  /* Margin, not padding: the visible text is a mirror pinned to this field's
+     edges under a transparent textarea. Padding here moves only the textarea,
+     so the letters drift off the caret and wrap at a different width. */
+  margin-inline-start: var(--space-1);
 }
 
 .box [data-slot="prompt-input"] textarea {
