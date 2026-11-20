@@ -4,7 +4,7 @@ Use `@intx/workflow-deploy/capabilities` to import `walkCapabilities` and
 its grant projections without loading deployment orchestration or package
 materialization.
 
-Use `@intx/workflow-deploy/addresses` for run and step address derivation,
+Use `@intx/workflow-deploy/addresses` for run address derivation,
 and `@intx/workflow-deploy/child-grants` for collecting a child workflow's
 declared resources and credential consumers and filtering its inherited grants.
 
@@ -17,16 +17,10 @@ takes a `WorkflowDefinition`, computes the per-step grant declarations
 the workflow will require, gates them against an operator-supplied
 `ApprovalSet`, and derives the deployment addresses the run occupies.
 
-Address derivation is a pure function of `(runId, stepId, domain)`:
-
-- **Single-step workflow**: the lone step has no distinct address --
-  it IS the deployment head (`deriveRunAddress`, `<runId>@<domain>`).
-- **Multi-step workflow**: each step derives a per-step run address of
-  the form `<runId>-<stepId>@<domain>` (`deriveStepAddress`).
-
-`resolveStepAddress` owns the head/step collapse decision. Because the
-derivation carries no per-deploy state, the supervisor reconstructs the
-same addresses at spawn time from the host-sourced step count alone.
+Address derivation is a pure function of `(runId, domain)`: every step of a
+deployment runs under the deployment address (`deriveRunAddress`,
+`<runId>@<domain>`). Because the derivation carries no per-deploy state, the
+supervisor reconstructs the same address at spawn time.
 
 Public surface:
 
@@ -48,7 +42,10 @@ Public surface:
   action it runs that declares credentials. The filter removes a
   non-credential `allow` only when its pattern covers none of the
   declared set, removes a `credential:` `allow` unless `conditions.tool`
-  equals one of those consumers, and keeps every `deny` and `ask`.
+  equals one of those consumers, and keeps every `deny` and `ask`. The
+  host applies the filter at a child's birth and again to the parent's
+  current grants on each read of a live child, so a live child holds what
+  a new spawn of the same body would hold.
 - `createApprovalSet(grants, requirements)` — the edge of the approval
   vocabulary. An `ApprovalSet` is one approved surface behind one operator
   decision, carrying the two kinds of approved item in two fields:
@@ -105,7 +102,7 @@ Public surface:
   the pinned map.
 - `enumerateInertBodies(...)` — lift each inline trigger body (onTrigger
   section or childWorkflow child), transitively, out of a frozen inert
-  projection so the hub can stage it and pin its per-step sources. The
+  projection so the hub can pin its per-step sources. The
   enumeration is purely structural; each body step's `(provider, model)`
   preference is read at pin time by `buildInertBodyStepSources`.
 - `checkCredentialBindings(projection)` /
@@ -117,7 +114,7 @@ Public surface:
   reserved hub handle `interchange.hub`, and a duplicate binding.
   The hub's probe gate refuses a definition with any of these.
 - `collectHubConsumers(projection)` — the consumers that declare the reserved
-  hub handle anywhere in a frozen inert projection, as `tool:<package>` and
+  hub handle anywhere in a frozen inert projection, as `tool:<factory id>` and
   `action:<handler>`. Each gets a run token for the hub REST API when the run
   principal is created.
 - `inertNestedBodies(step, descent)` — the nested body projections one step of
@@ -133,18 +130,15 @@ Public surface:
   that closed set throws, as does a container kind carrying neither an inline
   body nor a `{ ref }`; a `{ ref }` body yields nothing, because the
   referenced asset is deployed and walked on its own.
-- `deriveRunAddress` / `deriveStepAddress` / `resolveStepAddress` /
-  `deriveRunAgentId` / `deriveStepAgentId` / `deriveWorkflowRunRepoId`
+- `deriveRunAddress` / `deriveWorkflowRunRepoId`
   — the pure address and id derivation helpers.
-- `extractFoldedBody(definition)` — read the launch-relevant fields back
-  out of a folded single-step definition.
 
 The capability walk emits the v1 grant-shape vocabulary: `tool:`,
-`director:`, `capability:`, `inference.source:`, `mail.address:`,
-`mail.send:`. The shapes are deliberately uniform with what the
-existing agent-deploy already enforces implicitly — the parity test
-in this package's test suite is the structural-identity check that
-backs the capability-surface uniformity claim.
+`director:`, `capability:`, `inference.source:`, `mail.address:`. The
+shapes are deliberately uniform with what the existing agent-deploy
+already enforces implicitly — the parity test in this package's test
+suite is the structural-identity check that backs the
+capability-surface uniformity claim.
 
 The walk also emits `mail.accept:` strings from the definition's
 authored `mailAccept` rules, for a definition of any trigger.

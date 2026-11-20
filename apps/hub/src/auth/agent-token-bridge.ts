@@ -10,6 +10,7 @@ import { declaredRun } from "@corbits-builder/plugin";
 import { readJson } from "../lib/json.ts";
 import { verifyAgentToken } from "@corbits/agent-token";
 import { sha256 } from "@intx/crypto";
+import { HUB_CONDITION_REGISTRY } from "@intx/authz";
 import { createGrantStore, type createDB } from "@intx/db";
 import {
   principal,
@@ -20,7 +21,6 @@ import {
 } from "@intx/db/schema";
 import {
   createRequireGrant,
-  HUB_CONDITION_REGISTRY,
   requireAuth,
   type TenantEnv,
   type AppEnv,

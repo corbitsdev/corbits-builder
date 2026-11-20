@@ -21,7 +21,7 @@ import type { AgentActivityTracker } from "./artifacts/activity.ts";
 import { runAction } from "./db/schema.ts";
 import {
   readCommittedTurns,
-  type CoordinatorRepoDirSource,
+  type ConversationRepoStore,
 } from "./mail/conversation-turns.ts";
 import { errorCode, requestErrorMetadata } from "./request-error.ts";
 import { isRecord } from "./lib/json.ts";
@@ -75,7 +75,7 @@ export function createWorkflowRunStreamRoutes(deps: {
   readonly db: DB["db"];
   readonly sidecarRouter: Pick<SidecarRouter, "subscribeAgent" | "events">;
   readonly requireGrant: RequireGrant;
-  readonly repoStore: CoordinatorRepoDirSource;
+  readonly repoStore: ConversationRepoStore;
   readonly activity: Pick<AgentActivityTracker, "unsaved">;
   readonly findRun?: typeof findRoutableById;
 }): Hono<TenantEnv> {

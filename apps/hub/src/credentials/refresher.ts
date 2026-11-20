@@ -15,7 +15,6 @@ import { getDescendantTenants } from "@intx/db";
 import { credential, workflowRun } from "@intx/db/schema";
 import {
   pushCredentialReconcile,
-  pushSourceUpdates,
   type RunCredentialsLoader,
   type SidecarRouter,
 } from "@intx/hub-sessions";
@@ -57,28 +56,17 @@ export async function runsHolding(
 
 /** The pushes that give renewed material to the runs that have it, one per step of a renewal. */
 export type RenewedSteps = {
-  // Pushes the inference sources of the tenant's runs, which include a model's login.
-  sources: () => Promise<void>;
-  // The addresses of the running runs that were given the credential directly.
+  // The addresses of the running runs that were given the credential.
   holders: () => Promise<string[]>;
   // Gives one run its credentials' current material.
   reconcile: (address: string) => Promise<void>;
 };
 
 /**
- * Gives the runs that have a renewed credential its new material. If one step fails the others
- * still run: a run given the credential directly gets it whether or not the inference sources
- * could be pushed. Each failure is logged as a fixed code.
+ * Gives the runs that have a renewed credential its new material. A failure is logged as a fixed
+ * code.
  */
 async function pushRenewed(credentialId: string, steps: RenewedSteps) {
-  try {
-    await steps.sources();
-  } catch {
-    log.warn("Renewed sources not pushed for {credentialId}: {code}", {
-      credentialId,
-      code: "source_push_failed",
-    });
-  }
   let addresses: string[];
   try {
     addresses = await steps.holders();
@@ -93,9 +81,8 @@ async function pushRenewed(credentialId: string, steps: RenewedSteps) {
 }
 
 /**
- * Gives the running runs that have a credential its current material. A specialist's run gets a
- * plugin's credential when it starts and keeps it, but a model's login reaches a run through its
- * inference sources, so both are pushed.
+ * Gives the running runs that have a credential its current material. A run records the
+ * credentials it was given at launch, a model's login included, so its holders are found there.
  */
 export function createRenewedPush(options: {
   db: DB["db"];
@@ -106,7 +93,6 @@ export function createRenewedPush(options: {
   const { db, cipher, sidecarRouter, loadRunCredentials } = options;
   return (tenantId: string, credentialId: string) =>
     pushRenewed(credentialId, {
-      sources: () => pushSourceUpdates(db, sidecarRouter, tenantId, cipher),
       holders: () => runsHolding(db, tenantId, credentialId),
       reconcile: async (address) => {
         await pushCredentialReconcile(

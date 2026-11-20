@@ -223,7 +223,6 @@ export async function startInProcessHub(settings: Record<string, string> = {}) {
         },
         sourceOfferingIds: [],
         defaultSourceOfferingId: "offering",
-        deployContent: {},
       });
       return {
         id,

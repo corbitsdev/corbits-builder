@@ -557,6 +557,7 @@
       "version": "0.5.0",
       "dependencies": {
         "@intx/types": "workspace:*",
+        "arktype": "catalog:",
       },
     },
     "vendor/interchange/packages/crypto": {
@@ -606,7 +607,6 @@
       "dependencies": {
         "@intx/log": "workspace:*",
         "@intx/mail-memory": "workspace:*",
-        "@intx/mailbox": "workspace:*",
         "@intx/mime": "workspace:*",
         "@intx/pack-transport": "workspace:*",
         "@intx/storage-isogit": "workspace:*",
@@ -615,6 +615,7 @@
         "isomorphic-git": "catalog:",
       },
       "devDependencies": {
+        "@intx/authz": "workspace:*",
         "@intx/crypto": "workspace:*",
         "@intx/hub-sessions": "workspace:*",
         "hono": "catalog:",
@@ -663,9 +664,11 @@
       "version": "0.5.0",
       "dependencies": {
         "@intx/agent": "workspace:*",
+        "@intx/authz": "workspace:*",
         "@intx/crypto": "workspace:*",
         "@intx/db": "workspace:*",
         "@intx/hub-common": "workspace:*",
+        "@intx/inference": "workspace:*",
         "@intx/log": "workspace:*",
         "@intx/mime": "workspace:*",
         "@intx/pack-transport": "workspace:*",
@@ -767,7 +770,6 @@
       "name": "@intx/storage-isogit",
       "version": "0.5.0",
       "dependencies": {
-        "@intx/log": "workspace:*",
         "@intx/mime": "workspace:*",
         "@intx/types": "workspace:*",
         "@isomorphic-git/lightning-fs": "4.7.0",
@@ -783,7 +785,6 @@
       "name": "@intx/tool-packaging",
       "version": "0.5.0",
       "dependencies": {
-        "@intx/agent": "workspace:*",
         "@intx/log": "workspace:*",
         "@intx/storage-isogit": "workspace:*",
         "@intx/types": "workspace:*",
@@ -792,13 +793,13 @@
         "npm-package-arg": "^12.0.2",
         "npm-pick-manifest": "^10.0.0",
         "npm-registry-fetch": "^19.0.0",
-        "semver": "catalog:",
+        "semver": "^7.7.2",
         "ssri": "catalog:",
         "tar": "catalog:",
       },
       "devDependencies": {
         "@types/npm-package-arg": "^6.1.4",
-        "@types/semver": "catalog:",
+        "@types/semver": "^7.7.1",
         "@types/ssri": "catalog:",
       },
     },
@@ -850,10 +851,6 @@
       "version": "0.5.0",
       "dependencies": {
         "arktype": "catalog:",
-        "semver": "catalog:",
-      },
-      "devDependencies": {
-        "@types/semver": "catalog:",
       },
     },
     "vendor/interchange/packages/workflow": {
@@ -893,11 +890,15 @@
         "@intx/mail-memory": "workspace:*",
         "@intx/mailbox": "workspace:*",
         "@intx/mime": "workspace:*",
+        "@intx/pack-transport": "workspace:*",
         "@intx/storage-isogit": "workspace:*",
         "@intx/types": "workspace:*",
         "@intx/workflow": "workspace:*",
         "@intx/workflow-deploy": "workspace:*",
         "arktype": "catalog:",
+      },
+      "devDependencies": {
+        "isomorphic-git": "catalog:",
       },
     },
     "workflows/coordinator": {

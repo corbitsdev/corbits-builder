@@ -211,6 +211,7 @@ export async function createWorkflowServices(options: {
     deploymentPlugins: plugins,
     probePlugins: plugins,
     preparedDeployer: options.sessionService,
+    workflowRunRepoStore: repos.repoStore,
     credentialCipher: options.cipher,
     allocationRouter: router,
     hubWebSocketUrl,
@@ -233,6 +234,7 @@ export async function createWorkflowServices(options: {
     historyReceives,
     sendControl: (target, command, timeout) =>
       router.sendWorkflowControl(target, command, timeout),
+    standbyRouter: router,
     // A graceful cancel ends only the turn of a single-step agent such as the coordinator; its model
     // keeps answering tool results until the run is stopped. No Builder workflow does work on
     // cancel, so every cancel here (replacement, archive, lifetime, start timeout) stops the run on
@@ -279,6 +281,8 @@ export async function createWorkflowServices(options: {
   attachSidecarProvisioners({
     provisioners,
     retireProvisionerSidecar: allocationStore.retireProvisionerSidecar,
+    retireIdleProvisionerSidecar: allocationStore.retireIdleProvisionerSidecar,
+    listProvisionerSidecars: allocationStore.listProvisionerSidecars,
     isConnected: router.holdsAllocatedBinding,
   });
   await restoreLocalSidecars(db, local, adapterManifest);
@@ -316,10 +320,15 @@ export async function createWorkflowServices(options: {
     router.events.on("deployment.stopped", (target) =>
       report(() => reconciliation.handleConnected(target)),
     ),
-    router.events.on("mail.inbound.acknowledged", ({ messageId, allocated }) =>
-      allocated === undefined
-        ? undefined
-        : report(() => dispatch.acknowledge({ ...allocated, messageId })),
+    router.events.on("deployment.standby", (standby) =>
+      report(() => lifecycle.noteDeploymentInStandby(standby)),
+    ),
+    router.events.on(
+      "mail.inbound.acknowledged",
+      ({ deliveryKey, allocated }) =>
+        allocated === undefined
+          ? undefined
+          : report(() => dispatch.acknowledge({ ...allocated, deliveryKey })),
     ),
   ];
   const poll = (

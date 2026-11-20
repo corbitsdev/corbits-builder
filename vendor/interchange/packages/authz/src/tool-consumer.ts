@@ -3,7 +3,7 @@
 // Restricts a grant to a specific credential consumer. The grant's
 // conditions object should contain:
 //
-//   { tool: "tool:<package>" }   // a tool package
+//   { tool: "tool:<factory id>" } // a tool factory
 //   { tool: "action:<handler>" } // a workflow action handler
 //   { tool: "<built-in id>" }    // a reserved built-in consumer identity
 //
@@ -13,32 +13,35 @@
 // The evaluator returns true only when ctx.consumer is a non-empty identity
 // that exactly matches the configured value. An absent (empty) consumer fails
 // closed: a consumer-scoped grant never authorizes a caller that supplied no
-// consumer identity, and it must be rejected before the equality check so a
-// grant value of "" cannot match an empty consumer. A non-string condition
-// value is a misconfiguration and throws, mirroring the fail-loud shape of the
-// other evaluators rather than silently withholding.
+// consumer identity. A condition value that is not a non-empty string is a
+// misconfiguration and throws, mirroring the fail-loud shape of the other
+// evaluators rather than silently withholding; because "" never reaches the
+// comparison, an empty grant value cannot match an empty consumer.
+
+import { type } from "arktype";
 
 import type { CredentialBinding } from "@intx/types";
 
-import type { ConditionEvaluator, ConditionRegistry } from "./types";
+import { createConditionEvaluator } from "./condition-evaluator";
+import type { ConditionRegistry } from "./types";
 
 /**
- * Build the consumer identity for a tool package. This is the value stamped
+ * Build the consumer identity for a tool factory. This is the value stamped
  * onto a `credential:{id}` / `use` grant's `{ tool }` condition at launch, and
  * the identical string the runtime gate supplies as `ctx.consumer` when a tool
- * in that package uses the credential. Launch and gate MUST derive a consumer
+ * in that factory uses the credential. Launch and gate MUST derive a consumer
  * identity the same way, through the builders in this module, rather than
- * inline the format. The granularity is package-level: every tool in a package
- * shares one consumer identity.
+ * inline the format. The granularity is the factory: every tool in one
+ * `defineTool` bundle shares one consumer identity.
  */
-export function toolConsumer(packageName: string): string {
-  return `tool:${packageName}`;
+export function toolConsumer(factoryId: string): string {
+  return `tool:${factoryId}`;
 }
 
 /**
  * Build the consumer identity for a workflow action handler, keyed by the
  * handler's export name. The `action:` prefix keeps it disjoint from every
- * tool consumer, so a tool package and an action handler with the same name
+ * tool consumer, so a tool factory and an action handler with the same name
  * never share a grant. Every action step that runs the handler shares one
  * consumer identity.
  */
@@ -47,7 +50,7 @@ export function actionConsumer(handler: string): string {
 }
 
 /**
- * The consumer identity a credential binding names: its tool package or its
+ * The consumer identity a credential binding names: its tool factory or its
  * action handler.
  */
 export function credentialBindingConsumer(binding: CredentialBinding): string {
@@ -61,18 +64,14 @@ export function credentialBindingConsumer(binding: CredentialBinding): string {
  * Register as `tool` in the condition registry:
  *   `{ tool: toolConsumerEvaluator }`
  */
-export const toolConsumerEvaluator: ConditionEvaluator = (
-  value: unknown,
-  ctx,
-): boolean => {
-  if (typeof value !== "string") {
-    throw new Error(
-      `tool: condition value must be a string consumer identity, got ${typeof value}`,
-    );
-  }
-  if (ctx.consumer === "") return false;
-  return ctx.consumer === value;
-};
+export const toolConsumerEvaluator = createConditionEvaluator(
+  "tool",
+  type("string > 0").describe("a non-empty consumer identity"),
+  (consumer, ctx) => {
+    if (ctx.consumer === "") return false;
+    return ctx.consumer === consumer;
+  },
+);
 
 /**
  * The condition registry for credential-use authorization. It carries only the

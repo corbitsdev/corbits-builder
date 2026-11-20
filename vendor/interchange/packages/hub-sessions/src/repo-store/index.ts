@@ -1,4 +1,5 @@
 export type {
+  ApprovalWaitChange,
   AuthorizeFn,
   CommittedReads,
   CommittedTreeEntry,
@@ -20,7 +21,12 @@ export type {
   WriteResult,
   WriteTreePreservingPrefixArgs,
 } from "./types";
-export { RepoRemovedDuringReceiveError, UserPrincipal } from "./types";
+export {
+  isPlainPathSegment,
+  NoBlobAtPathError,
+  RepoRemovedDuringReceiveError,
+  UserPrincipal,
+} from "./types";
 export {
   authorizeUserPrincipal,
   type AuthorizeUserPrincipalArgs,
