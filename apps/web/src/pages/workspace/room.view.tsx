@@ -342,7 +342,6 @@ export function RoomView({
                 {...paneParts}
                 paneRef={paneRef}
                 open={projectOpen}
-                onClose={closeProject}
               />
               {dockInProject ? roomDock : null}
             </div>

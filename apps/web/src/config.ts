@@ -611,11 +611,9 @@ export const wording = {
     /** Opens everything the project has, its documents, design and preview, over the conversation. */
     openProject: "Project",
     openProjectHint: "Open the project's documents, design and preview",
-    /** A plugin tab's status beside the plan, for a screen reader, which otherwise hears only it. */
+    /** A plugin tab's status in the room's top bar, for a screen reader, which otherwise hears only it. */
     tabStatus: (tab: string, status: string) => `${tab}: ${status}`,
     openTab: (tab: string) => `Open ${tab}`,
-    /** Takes the person from the project view back to the conversation. */
-    closeProject: "Back to the conversation",
     /** A plan step's settings, in its row's menu in the project sidebar. */
     plan: {
       askFirst: "Ask me first",

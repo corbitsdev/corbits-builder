@@ -123,7 +123,6 @@ const meta = {
     onSelect: fn(),
     onSeen: fn(),
     open: true,
-    onClose: fn(),
     onRetry: fn(),
     onAddToPrompt: fn(),
     conceptMockup: (concept, frame) => (
