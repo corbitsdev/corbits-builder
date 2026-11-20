@@ -4,14 +4,12 @@
  * over it from a card or the project control and closes back to the conversation.
  */
 import {
-  useCallback,
   useEffect,
   useRef,
   useState,
   type ReactNode,
   type RefObject,
 } from "react";
-import { createPortal } from "react-dom";
 import {
   FolderOpen,
   MessageSquare,
@@ -37,10 +35,6 @@ import {
   PromptInputToolbar,
 } from "@corbits/react-ui";
 import type { ScreenStatus } from "@corbits-builder/plugin";
-import {
-  ActionsSlot,
-  PromptPlaceholder,
-} from "@corbits-builder/plugin-ui/screen-actions";
 import type { PlanView } from "@corbits-builder/schemas/project";
 import { wording } from "../../config.ts";
 import { Banner, BannerAction, Fault } from "../../components.jsx";
@@ -52,6 +46,7 @@ import {
   type ArtifactPaneContent,
   type ArtifactPaneSlots,
 } from "./artifact-pane.tsx";
+import { InBox, useBoxPorts, type BoxPorts } from "./box-ports.tsx";
 import { pastedFiles } from "./pasted-files.ts";
 import { ChatSheet, type ChatSheetProps } from "./chat-sheet.tsx";
 import { PlanPanel, planProgress, usePlanCollapsed } from "./plan-panel.tsx";
@@ -257,11 +252,18 @@ export function RoomView({
   // The prompt box stays in reach under whatever covers the conversation.
   const dockInProject = projectOpen && !pageOpen;
   const dockInConversation = !projectOpen && !pageOpen;
+  // A screen over the page reaches the box beneath it: its forward action, placeholder and Send.
+  const ports = useBoxPorts();
   const conversationDock = (
-    <RoomDockView dock={dock} answersShell={shell.answers} />
+    <RoomDockView dock={dock} ports={ports} answersShell={shell.answers} />
   );
   const roomDock = (
-    <RoomDockView dock={dock} chat={chat} answersShell={shell.answers} />
+    <RoomDockView
+      dock={dock}
+      ports={ports}
+      chat={chat}
+      answersShell={shell.answers}
+    />
   );
   return (
     <StageView aria-label={`Conversation for ${title}`}>
@@ -388,7 +390,11 @@ export function RoomView({
         {page === null ? null : (
           // Kept while closed, so the screen's draft and the page it shows wait for the person.
           <div className={styles.page} data-slot="room-page" hidden={!pageOpen}>
-            <div className={styles.pageScreen}>{page}</div>
+            <div className={styles.pageScreen}>
+              <InBox ports={ports} as={pageOpen ? "page" : null}>
+                {page}
+              </InBox>
+            </div>
             {pageOpen ? roomDock : null}
           </div>
         )}
@@ -434,9 +440,12 @@ export function RoomDockView({
   waiting,
   chat,
   chatStart,
+  ports,
   answersShell,
 }: {
   dock: RoomDock;
+  /** Shared with a screen over the page, so it reaches this box; the box keeps its own otherwise. */
+  ports?: BoxPorts | undefined;
   /**
    * What waits on the person inside the box, as the card the conversation would show it in: a
    * question card, a plugin's screen or an approval. Absent while nothing does.
@@ -502,6 +511,7 @@ export function RoomDockView({
       waiting={waiting}
       chat={chat}
       chatStart={chatStart}
+      ports={ports}
       answersShell={answersShell}
     />
   );
@@ -530,13 +540,17 @@ function RoomComposerView({
   waiting,
   chat,
   chatStart,
+  ports: shared,
   answersShell,
 }: RoomComposer & {
   waiting: ReactNode;
   chat: ReactNode;
   chatStart?: ChatStart | undefined;
+  ports?: BoxPorts | undefined;
   answersShell?: AnswersShell | undefined;
 }) {
+  const own = useBoxPorts();
+  const ports = shared ?? own;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { files } = attachments;
   const accept = needsProvider ? null : attachments.accept;
@@ -547,20 +561,13 @@ function RoomComposerView({
   const send = () => {
     if (files.length === 0 && answersShell?.(text) === true)
       return onTextChange("");
+    // A screen in the box takes the words with what is picked in it, so the pick is not lost.
+    const words = text.trim();
+    if (files.length === 0 && words !== "" && ports.take?.(words) === true)
+      return onTextChange("");
     onSend();
   };
   const stopping = working && onStop !== undefined && !typed;
-  // What waits on the person hands its buttons to the typing row, where they stand in for Send
-  // until the person types, so the box has one main action at a time.
-  const [actionsAt, setActionsAt] = useState<HTMLDivElement | null>(null);
-  const toRow = useCallback(
-    (buttons: ReactNode) =>
-      actionsAt === null ? null : createPortal(buttons, actionsAt),
-    [actionsAt],
-  );
-  const waitingActions = waiting !== undefined;
-  // A card in the box can say what the words should be, such as details for the option picked.
-  const [cardPlaceholder, setCardPlaceholder] = useState<string>();
   const box = (
     <AttachmentDropZone
       onFiles={attachments.onAdd}
@@ -644,7 +651,7 @@ function RoomComposerView({
                   ? wording.conversation.enableAiFirst
                   : comments > 0
                     ? wording.promptBox.commentsPlaceholder
-                    : (cardPlaceholder ?? placeholder)
+                    : (ports.placeholder ?? placeholder)
               }
             />
             <PromptInputToolbar>
@@ -661,16 +668,15 @@ function RoomComposerView({
                 </UiButton>
               ) : (
                 <>
-                  {/* The row's one action: the waiting card's, while it offers one and nothing is
-                      typed, else Send. Kept while the person types, only hidden, so the buttons in
-                      it keep their place and focus. */}
-                  {waitingActions ? (
-                    <div
-                      ref={setActionsAt}
-                      data-slot="composer-actions"
-                      hidden={typed}
-                    />
-                  ) : null}
+                  {/* The row's one action: what waits on the person hands its buttons here, where
+                      they stand in for Send until the person types; Send stands while it is empty.
+                      Kept while the person types, only hidden, so its buttons keep their place
+                      and focus. */}
+                  <div
+                    ref={ports.setActionsAt}
+                    data-slot="composer-actions"
+                    hidden={typed}
+                  />
                   {sendLabel === null ? null : (
                     <span
                       className={styles.sendLabel}
@@ -698,13 +704,9 @@ function RoomComposerView({
       panel={
         restarts !== null || waiting !== undefined ? (
           <>
-            <ActionsSlot value={waitingActions ? toRow : null}>
-              <PromptPlaceholder
-                value={waitingActions ? setCardPlaceholder : null}
-              >
-                {waiting}
-              </PromptPlaceholder>
-            </ActionsSlot>
+            <InBox ports={ports} as={waiting === undefined ? null : "card"}>
+              {waiting}
+            </InBox>
             {/* Nearest the words it is about, after anything else that waits. */}
             {restarts === null ? null : (
               <p className={styles.restarts} role="status">

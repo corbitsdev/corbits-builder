@@ -8,6 +8,7 @@ import {
   answerLabels,
   enterAnswer,
   keyIntent,
+  withWords,
 } from "./questions-card.tsx";
 
 const originalStorage = Object.getOwnPropertyDescriptor(
@@ -388,4 +389,35 @@ test("a refusal sent outside the card is shown by the card from the shared quest
     </QuestionOutcomes>,
   );
   expect(html).toContain(text.answerFault.refused);
+});
+
+describe("words sent from the prompt box", () => {
+  const [audience, firstVersion, devices] = ask.questions;
+
+  test("after a pick they are details that go with it, not in place of it", () => {
+    const answer = withWords(
+      audience!,
+      { chosen: ["Just me"], own: "" },
+      "Mostly at weekends",
+    );
+    expect(answer).toEqual({
+      chosen: ["Just me"],
+      own: "",
+      details: "Mostly at weekends",
+    });
+    expect(answerLabels(audience!, answer!)).toEqual([
+      "Just me",
+      "Mostly at weekends",
+    ]);
+  });
+
+  test("with nothing picked they are the person's own answer where the question takes one", () => {
+    expect(
+      withWords(firstVersion!, { chosen: [], own: "" }, "Share lists"),
+    ).toEqual({ chosen: [], own: "Share lists" });
+    // A question with options and no own answer leaves the words to the conversation.
+    expect(
+      withWords(devices!, { chosen: [], own: "" }, "On a tablet"),
+    ).toBeUndefined();
+  });
 });

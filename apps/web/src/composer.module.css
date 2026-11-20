@@ -100,7 +100,7 @@
   min-width: 0;
 }
 
-.box [data-slot="composer-actions"][hidden] {
+.box [data-slot="composer-actions"]:is([hidden], :empty) {
   display: none;
 }
 

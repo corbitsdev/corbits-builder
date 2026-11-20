@@ -194,6 +194,33 @@ export const QuestionPicked: Story = {
   beforeEach: questionAt(1, ["Freelancers"]),
 };
 
+/**
+ * Details typed after a pick: Send, blue, carries them with the pick and moves on, so neither the
+ * pick nor the answers before it are lost.
+ */
+export const QuestionPickedWithDetails: Story = {
+  args: {
+    ...asking,
+    dock: { ...asking.dock, text: "Mostly one-person bakeries" },
+  },
+  beforeEach: questionAt(1, ["Freelancers"]),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: /send/i }));
+    await waitFor(() =>
+      expect(canvas.getByRole("heading")).toHaveTextContent(
+        "Where will people order from?",
+      ),
+    );
+    const saved = JSON.parse(sessionStorage.getItem(progressKey) ?? "{}");
+    await expect(saved.answers[1]).toEqual({
+      chosen: ["Freelancers"],
+      own: "",
+      details: "Mostly one-person bakeries",
+    });
+  },
+};
+
 /** The person types their own answer instead: Send comes back, blue. */
 export const QuestionOwnAnswer: Story = {
   args: {

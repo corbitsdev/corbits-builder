@@ -29,6 +29,7 @@ import {
 import {
   ActionsSlot,
   usePromptPlaceholder,
+  usePromptSend,
 } from "@corbits-builder/plugin-ui/screen-actions";
 import type {
   PromptQuestion,
@@ -45,15 +46,26 @@ const text = wording.questions;
 type Asked = PromptQuestion["asked"];
 type Question = Asked["questions"][number];
 
-/** The options picked, by label, plus the person's own words; typing those is the "Something else" answer. */
-type Answer = { readonly chosen: readonly string[]; readonly own: string };
+/**
+ * The options picked, by label, plus the person's own words; typing those is the "Something else"
+ * answer. Details are words sent from the prompt box after a pick, and go with it.
+ */
+type Answer = {
+  readonly chosen: readonly string[];
+  readonly own: string;
+  readonly details?: string;
+};
 
 /** What a reload brings back: the answers so far and the question the person was on. */
 type Progress = { readonly step: number; readonly answers: readonly Answer[] };
 
 const SavedProgress = type({
   step: "number.integer >= 0",
-  answers: type({ chosen: "string[]", own: "string" }).array(),
+  answers: type({
+    chosen: "string[]",
+    own: "string",
+    "details?": "string",
+  }).array(),
 });
 
 // Saved progress fits only the questions it was saved for.
@@ -167,14 +179,31 @@ function chosenOf(question: Question, answer: Answer): readonly string[] {
   return !question.multiple && answer.own.trim() !== "" ? [] : answer.chosen;
 }
 
-/** The answer as it is sent: the options that count, then the person's own words. */
+/** The answer as it is sent: the options that count, then the person's own words, then details. */
 export function answerLabels(question: Question, answer: Answer): string[] {
   const chosen = chosenOf(question, answer);
   const labels = question.options
     .filter((option) => chosen.includes(option.label))
     .map((option) => option.label);
-  const own = answer.own.trim();
-  return own === "" ? labels : [...labels, own];
+  return [labels, answer.own.trim(), answer.details?.trim() ?? ""]
+    .flat()
+    .filter((label) => label !== "");
+}
+
+/**
+ * Words sent from the prompt box as this question's answer: details beside a pick, else the
+ * person's own answer where the question takes one; undefined where it takes neither.
+ */
+export function withWords(
+  question: Question,
+  answer: Answer,
+  words: string,
+): Answer | undefined {
+  if (chosenOf(question, answer).length > 0)
+    return { ...answer, details: words };
+  if (question.custom || question.options.length === 0)
+    return { chosen: [], own: words };
+  return undefined;
 }
 
 /** Option `index` picked: the only choice on a pick-one question, toggled on a pick-any one. */
@@ -562,6 +591,11 @@ function OpenCard({
       ? undefined
       : text.addDetails(picked.map(shownLabel).join(", ")),
   );
+  usePromptSend(
+    boxed && question !== undefined && !blocked && !sending
+      ? (words) => takeWords(words)
+      : undefined,
+  );
   useEffect(() => {
     // While the card is inert its options take no focus; this runs again once it opens.
     if (
@@ -620,6 +654,14 @@ function OpenCard({
     if (last) send(current);
     else go(step + 1);
   };
+  // Send in the prompt box carries what it holds with the pick, then moves on as Continue does.
+  function takeWords(words: string): boolean {
+    if (question === undefined) return false;
+    const current = withWords(question, answer, words);
+    if (current === undefined) return false;
+    next(current);
+    return true;
+  }
   // A pick-one question moves on once picked, except the last: only the person sends. In the prompt
   // box a pick only selects, so the person can add details before Continue.
   const choose = (index: number) => {
