@@ -944,3 +944,175 @@ export const DocumentPageNarrowDark: Story = {
   ...DocumentPageNarrow,
   globals: { ...DocumentPageNarrow.globals, mode: "dark" },
 };
+
+// The person's comments on the brief: two on passages the page shows, one on a passage a later
+// version rewrote.
+const briefComments: NonNullable<WrittenDocumentViewProps["comments"]> = {
+  drafts: [
+    {
+      id: "texts",
+      quote: "Counter staff who answer the phone mid-shift",
+      comment:
+        "Some regulars text their order to the counter. Count texts too?",
+    },
+    {
+      id: "allergy",
+      quote: "Flag allergies and dietary needs",
+      comment: "Should the cake label show the allergy as well?",
+    },
+    {
+      id: "rewritten",
+      quote: "Small bakeries take cake orders by phone and lose some of them.",
+      comment: "Is losing orders the real problem, or forgetting them?",
+    },
+  ],
+  onSave: fn(),
+  onDelete: fn(),
+};
+
+const commentsDock = {
+  ...composer,
+  comments: 3,
+  onSendComments: fn(),
+  commentsBlocked: null,
+  commentsSending: false,
+};
+
+/** Comments wait to be sent: the box counts them in its typing row, and the count sends them. */
+export const CommentsWaiting: Story = {
+  args: { ...withDocuments, dock: commentsDock },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    const token = canvas.getByRole("button", {
+      name: wording.promptBox.sendComments(3),
+    });
+    await expect(token).toHaveTextContent(wording.promptBox.comments(3));
+    await userEvent.click(token);
+    if (args.dock.kind === "composer")
+      await expect(args.dock.onSendComments).toHaveBeenCalledOnce();
+  },
+};
+
+/** Comments on the page: each card level with its passage, one whose passage changed at the top. */
+export const CommentsOnPage: Story = {
+  args: {
+    ...ProjectOpen.args,
+    ...pageOf({ comments: briefComments }),
+    dock: commentsDock,
+  },
+};
+
+export const CommentsOnPageDark: Story = {
+  ...CommentsOnPage,
+  globals: { mode: "dark" },
+};
+
+/** Selecting a passage opens a card to write about it, the passage marked while it is written. */
+export const CommentWriting: Story = {
+  args: { ...CommentsOnPage.args },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const passage = await canvas.findByText(/^Every order is in one list/);
+    const range = document.createRange();
+    range.selectNodeContents(passage);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    passage.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    await waitFor(() =>
+      expect(
+        canvasElement.querySelector(
+          '[data-slot="comment-card"][data-state="writing"]',
+        ),
+      ).not.toBeNull(),
+    );
+  },
+};
+
+export const CommentWritingDark: Story = {
+  ...CommentWriting,
+  globals: { mode: "dark" },
+};
+
+/** While the coordinator's question is open, the comments wait and the box says what comes first. */
+export const CommentsWaitOnQuestion: Story = {
+  args: {
+    ...QuestionsOpen.args,
+    dock: {
+      ...commentsDock,
+      placeholder: wording.questions.composerPlaceholder,
+      commentsBlocked: wording.promptBox.commentsAfterQuestion,
+    },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(
+      canvas.getByRole("button", { name: wording.promptBox.sendComments(3) }),
+    ).toHaveAttribute("aria-disabled", "true");
+    await expect(
+      canvas.getByText(wording.promptBox.commentsAfterQuestion),
+    ).toBeVisible();
+  },
+};
+
+/** While an approval is open, the comments wait until it is decided. */
+export const CommentsWaitOnApproval: Story = {
+  args: {
+    ...ApprovalWaiting.args,
+    dock: {
+      ...commentsDock,
+      placeholder: wording.approval.composerPlaceholder,
+      commentsBlocked: wording.promptBox.commentsAfterApproval,
+    },
+  },
+};
+
+export const CommentsWaitOnApprovalDark: Story = {
+  ...CommentsWaitOnApproval,
+  globals: { mode: "dark" },
+};
+
+/** The comments on their way, the half-typed message left in the box. */
+export const CommentsSending: Story = {
+  args: {
+    ...withDocuments,
+    dock: {
+      ...commentsDock,
+      text: "Also take orders by",
+      commentsSending: true,
+    },
+  },
+};
+
+/** Sending failed: the comments are all still there, and the count sends them again. */
+export const CommentsSendFailed: Story = {
+  args: {
+    ...withDocuments,
+    dock: {
+      ...commentsDock,
+      sendFault: "That message was not sent.",
+    },
+  },
+};
+
+/** On a narrow room the count stays in the typing row. */
+export const CommentsWaitingNarrow: Story = {
+  args: { ...CommentsWaiting.args },
+  ...narrow,
+};
+
+export const CommentsWaitingNarrowDark: Story = {
+  ...CommentsWaitingNarrow,
+  globals: { mode: "dark" },
+};
+
+/** At phone width the passages keep their underlines and open their cards from them. */
+export const CommentsOnPageNarrow: Story = {
+  ...DocumentPageNarrow,
+  args: { ...CommentsOnPage.args },
+};
+
+export const CommentsOnPageNarrowDark: Story = {
+  ...CommentsOnPageNarrow,
+  globals: { ...DocumentPageNarrow.globals, mode: "dark" },
+};
