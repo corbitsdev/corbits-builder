@@ -40,6 +40,16 @@
     .top {
     min-height: 3.75rem;
   }
+
+  .room:has(
+      > [data-slot="project-sidebar"]:is(:not([data-open]), [data-drawer])
+    )
+    .page
+    [data-slot="document-page"]
+    > [data-slot="pane-bar"] {
+    top: 3.625rem;
+    margin-top: 3.625rem;
+  }
 }
 
 .conversationPane {
@@ -234,6 +244,10 @@
 /* The project view, or the plugin sheet on a narrow room, fills the canvas edge to edge, the prompt
    box at its foot. */
 .page {
+  /* A written page lies on the canvas's grey, a step darker than the sidebar's, as in the design.
+     Dark keeps its black backdrop. */
+  --wb-frame: var(--muted);
+
   position: absolute;
   inset: 0;
   z-index: 10;
@@ -284,4 +298,8 @@
   height: auto;
   min-height: 0;
   border-inline-start: 0;
+}
+
+:global(.dark) .page {
+  --wb-frame: unset;
 }
