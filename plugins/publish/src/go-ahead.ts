@@ -20,3 +20,15 @@ export const PublishGoAhead = type({
   plan: "string > 0",
   at: "string.date.iso",
 });
+
+// The project value for the person's latest ask to publish or to take the app down: a press in the
+// Publish tab, or a go-ahead given on publish confirm or publish take-down. The hub's clock dates
+// it. The tab shows the work under way from it until the coordinator takes it up.
+export const PUBLISH_ASKED = "publish.asked";
+
+export const PublishAsked = type({
+  "+": "reject",
+  kind: "'publish' | 'takeDown'",
+  at: "string.date.iso",
+});
+export type PublishAsked = typeof PublishAsked.infer;

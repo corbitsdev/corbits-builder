@@ -129,6 +129,7 @@
         "@corbits-builder/client": "workspace:*",
         "@corbits-builder/plugin": "workspace:*",
         "@corbits-builder/plugin-ui": "workspace:*",
+        "@corbits-builder/publish-contract": "workspace:*",
         "@corbits-builder/schemas": "workspace:*",
         "@corbits/react-ui": "0.5.1",
         "@corbits/slidedeck": "workspace:*",
@@ -361,6 +362,7 @@
         "@corbits-builder/publish-contract": "workspace:*",
         "@corbits/react-ui": "0.5.1",
         "arktype": "catalog:",
+        "lucide-react": "0.545.0",
         "react": "19.3.0",
       },
       "devDependencies": {

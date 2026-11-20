@@ -92,6 +92,9 @@ function hub(project: {
     projectState: async () => empty,
     list: async () => ({ artifacts: project.artifacts, preferences: {} }),
     stepRuns: async () => project.runs ?? [],
+    runs: async () => [],
+    coordinatorTurn: async () => ({ working: false, since: undefined }),
+    managesProject: async () => true,
   } as unknown as ReturnType<typeof createArtifactService>;
   const plans = {
     authorizeAction: async () => {},

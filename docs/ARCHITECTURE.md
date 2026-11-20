@@ -310,7 +310,10 @@ A value is declared once, so its words and type never disagree, and any action
 may read it. The hub supplies the values an action reads: a screen gets them as
 props, and a run gets them as a labelled block in its assignment, so the
 coordinator never has to find or pass what the project already stores. A person
-saves a value by answering a screen. A run saves only the values its action
+saves a value by answering a screen, or by pressing a button on a screen a plugin
+shows on its own, which runs one of that plugin's tasks: the Publish tab clears
+`publish.keep` and `publish.holding`, and with them a `publish.release` the
+person says is gone. A run saves only the values its action
 lists under `writes`, with `report_values`, and the hub checks the name and the
 type. A value that names a style token, as the designer's fonts and colours do,
 lives in the filed design's `styles.css` once there is a design, and in the
@@ -434,10 +437,10 @@ The specialists installed today:
 - The project plugin (`plugins/project`) has two screens and no agent: one
   hands the person's approvals to Builder or takes them back, and one shows
   what they must set up outside Builder.
-- The publish plugin (`plugins/publish`) has three screens and no agent: one
-  asks where to publish when more than one place is installed, one asks the
-  person's go-ahead before each publish, and one asks it before the app is
-  taken down. It declares the values every place shares (`publish.release`,
+- The publish plugin (`plugins/publish`) has no agent. Its Publish tab shows
+  where the app is published, and three screens ask in the conversation: where
+  to publish when more than one place is installed, the person's go-ahead
+  before each publish, and before the app is taken down. It declares the values every target shares (`publish.release`,
   `publish.plan`, `publish.keep`, `publish.holding`, `publish.take-down`).
 - The Cloudflare plugin (`plugins/cloudflare`) has checks only: whether the app
   is ready for Cloudflare Workers, and whether it is routed to a domain.
@@ -474,14 +477,16 @@ changes what gets built, in which case it asks.
 
 Publishing puts the saved app where people can open it. Every target it publishes to
 is a plugin in the `publish` group, so the host names none. When the person
-asks to publish, the coordinator finds the ready-made plans in the group, opens `publish choose` when more than one is
+presses Publish in the Publish tab, or asks in their own words, the coordinator
+finds the ready-made plans in the group, opens `publish choose` when more than one is
 installed, and follows the chosen plan: the target's `ready` check, `publish
 confirm` for the go-ahead, then the target's `publish` action. That action
 pauses on its key screen while a key its agent's tools use is missing
 ([DEV.md](https://github.com/corbitsdev/corbits-builder/blob/main/docs/DEV.md#the-folder-and-the-manifest)). The target's tools do the
 work in fixed steps and record `publish.release`. Its `live` check turns that
 record into the fact that ends the plan, `published:<target>`, which lapses when
-a newer version is saved.
+a newer version is saved. The Publish tab works out its state from these
+records alone.
 
 `publish choose` lists each plan by its package's `description`: what the
 person gets, what it costs and who bills. `publish confirm` shows, before the
@@ -504,8 +509,9 @@ first. The check guides the coordinator and gates nothing: no target's `publish`
 `agreed:publish`, since a go-ahead that cannot name the version the person
 agreed to is the coordinator's sign not to ask again, not a gate.
 
-Taking the app down works the same way. The person asks, and the coordinator
-opens `publish take-down` with the plan whose target `publish.holding` or `publish.release`
+Taking the app down works the same way. The person presses Take it down in the
+Publish tab, or asks in their own words, and the coordinator opens `publish
+take-down` with the plan whose target `publish.holding` or `publish.release`
 names. The screen shows, in the take-down action's own words (its definition's
 `says.removes`), what goes and what becomes of what people entered, with the
 address people open and, for something held, where it is and what it costs.
@@ -553,10 +559,67 @@ A new target implements this contract:
   take-down screen may make this one true. `recordedFor`
   in `@corbits-builder/publish-contract` decides which release and holding a
   take-down covers, and `takeDownStands` whether the go-ahead still stands for
-  them; the check, the screens and the target's own tools all read them through
-  those. Each target's take-down tool checks it again for
+  them; the check, the screens, the target's own tools and the Publish tab all
+  read them through those. Each target's take-down tool checks it again for
   itself through `takeDownAgreed` before it acts and answers `not_agreed`, so
   "Keep it" pressed after the coordinator started the removal is seen.
+
+The Publish tab is the publish plugin's own screen, `publish published`, which
+the room shows as a tab of the project view, with where publishing stands
+beside the plan. The hub works out its state each time the room reads the
+plan, from the project's records alone, never from what the page remembers or
+an agent wrote. The rows that decide it are in the comment on `publishState`
+in `plugins/publish/src/published/state.ts`, and the first row that matches
+wins. Its buttons run the plugin's tasks. Publish, Publish changes, Carry on
+publishing, Try again and Take it down run `publish ask`, which records the
+press in `publish.asked`, dated by the hub, and tells the coordinator what the
+person asked for. A go-ahead on `publish confirm` or `publish take-down` records
+it too, and "Keep it" there withdraws it.
+
+A publish or a take-down is a chain of hand-offs (a press, the coordinator's
+turn, a screen, an answer, a check, a run, its report), and between links
+nothing may be at work and nothing asked. So a press shows the work under way
+until a publishing run starts after it or a turn of the coordinator ends after
+it, and the project is busy while anything is at work on it, and for 20 seconds
+after work last moved on: a run of any plugin on it ended, or the person asked.
+That window and the keep link's deadline are the only rules read from the
+clock, which is the hub's, and the screen says when the clock alone next
+changes it, so the room reads it again then. Once the window passes with
+nothing at work the tab reads what the records say.
+
+The release is behind once the saved app is a newer version than the one it
+records and no publishing run has started since it went out: a newer version
+was saved, which is not a publish under way. A release recorded for its target
+makes its `live` check pass, so the plan reaches its end with no step left to
+the coordinator. A release to another target, or a take-down that clears it,
+drops the fact with no failed step, since an app published elsewhere or taken
+down on purpose has not failed. A check never run has read nothing, so the
+coordinator still runs the first publish's `live` step. The check re-runs by
+itself once it has a record
+([DEV.md](https://github.com/corbitsdev/corbits-builder/blob/main/docs/DEV.md#one-action)).
+
+While `publish.keep` is set, the way to keep the app shows over whichever state
+applies. The keep link works like a password, so the room never saves a shown
+screen's state in the browser. While `publish.holding` is set, every state
+shows one more line, a fact beside the state's own rather than a notice:
+"Hosted on DigitalOcean · $6 a month" under the address and its date once
+published, or "Hosting on DigitalOcean since" its date before, with "billed
+there" for a target that does not say its price. Its menu holds "I already
+removed it from DigitalOcean…" for hosting the person removed themselves, which
+asks a second time in the menu, then runs `publish gone`, which clears the
+holding and any release its target recorded.
+
+The tab offers a quiet "Take it down", apart from its main button, while a
+release or a holding is recorded and a publish plan's `takeDown` names its
+target (a holding's target wins over a release's). It is not offered while
+work is under way, while a question is open, or after a failed take-down,
+whose own "Try again" asks for the take-down again. Its menu holds "I already
+removed it myself…" for an app the person removed where it went, such as by
+cancelling the server, which no take-down can reach. It asks a second time in
+the menu, then clears the release and the go-ahead to take down. Nor is it
+offered while a keep link is recorded and nothing is held, since no take-down
+can reach an app the person has not kept yet. The question it leads to is
+where they decide.
 
 ### Hub-made server keys
 

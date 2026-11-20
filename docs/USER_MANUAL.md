@@ -382,7 +382,97 @@ Try it, then describe any change in the conversation. The coordinator sends it
 to the coder. Each change is made by a fresh coder starting from the saved
 code, once the one before it has finished.
 
-## 8. Download your work
+## 8. Publish your app
+
+Once the project has a saved app, **Publish** appears beside the plan. It opens
+the **Publish** tab, which shows where your app is published and lets you
+publish it. Press **Publish**; Builder asks you only what it needs, in the
+conversation:
+
+- **Where**: when more than one place is installed, choose one and **Continue**.
+  **Your own server** puts the app on a Debian or Ubuntu server you already
+  rent, billed by your hosting provider. **DigitalOcean** has Builder set up a
+  server for you in your own DigitalOcean account, from $6 a month, billed by
+  DigitalOcean. Both are reached at the server's IP address, which is not a
+  secure (https) address yet, so do not use the app for passwords or payments
+  there. **Cloudflare** puts it at a secure address of its own, free to start
+  and with no account needed.
+- **Your server**: **Connect your server** shows a key to paste where your
+  hosting provider asks for an SSH key when you create the server, and asks for
+  the server's IP address. **Connect** checks that the server lets Builder in
+  with the key; if it does not yet, add the key at your hosting provider and
+  try again. The key stays the same until the server is connected or you
+  choose **Make a new key**.
+- **Publish to DigitalOcean**: choose the server's size, each shown with what it
+  costs a month (the smallest, 1 GB, is enough for most apps), and the place it
+  runs, nearest the people who'll use your app. **Sign in** then opens
+  DigitalOcean in a new tab: sign in there, pick the team that pays, and come
+  back. DigitalOcean bills that team for the server every month, on your
+  DigitalOcean bill, until you take the app down. If DigitalOcean's price
+  changed since, or you signed in with another team, Builder makes nothing and
+  shows this screen again with the real price.
+- **Your Cloudflare account**: choose **Publish without an account** and accept
+  Cloudflare's terms, or **Use my Cloudflare account** and paste a token from
+  your Cloudflare dashboard.
+- **The go-ahead**: each time you ask to publish, Builder asks once and waits
+  for **Publish**, or **Publish changes** once the app is out. The first time it
+  says where the app goes; for changes, only that people will see the version
+  you saved last. If a step needs you on the way, such as connecting a server or
+  choosing a new one, Builder carries on afterwards without asking again. On
+  DigitalOcean the server is made after this, which takes a few minutes.
+
+The tab then shows **Your app is published** with its address and **Open**.
+After you save a newer version it shows **You have changes to publish**.
+
+An app published without a Cloudflare account must be kept within about an
+hour. **Keep your app** shows the time left: choose **Keep my app**, sign in to
+Cloudflare or create a free account, then choose **I kept it**. Share the
+address once you have kept the app. If the time passes, say **I kept it** or
+**I didn't keep it**; Cloudflare removes an app that was not kept. To publish
+changes to a kept app, add a token for that account on the Publish to
+Cloudflare screen.
+
+### Taking your app down
+
+Under the published app, the **Publish** tab offers **Take it down**, or you
+can ask in your own words. Nothing is taken down yet: Builder first shows
+**Take your app down?**, with what goes, the address people open now, and
+whether what people entered in the app is kept or deleted. Choose **Take it
+down** to go ahead, or **Keep it**. While it works the tab says **Taking it
+down…**; if it cannot finish, it says why and offers **Try again**. If you
+already removed the app yourself, such as by cancelling the server, open the
+menu beside it, choose **I already removed it myself…**, then **Yes, it's
+gone**, and Builder stops showing the app as published. Once the app is down,
+the tab looks as it did before your first publish.
+
+It goes differently at each place:
+
+- **Your own server**: what people entered is kept, so publishing again brings
+  it back. The server stays yours, and keeps costing what your hosting provider
+  charges, until you cancel it there.
+- **Cloudflare**: what people entered is kept, so publishing again brings it
+  back. Without a saved token, **Take your app down from Cloudflare** asks for
+  one for the account the app is in. An app published without a Cloudflare
+  account and never kept needs nothing: Cloudflare removes it once the time to
+  keep it passes, and the screen says when, or that it already has.
+- **DigitalOcean**: taking the app down deletes the server Builder made, with
+  everything on it, including what people entered, and DigitalOcean stops
+  charging for it. Publishing again has you choose a server again and starts
+  on a new, empty one. If your DigitalOcean sign-in has lapsed, Builder asks
+  you to sign in again first; if it still cannot delete the server, it tells
+  you the server's name so you can delete it in your DigitalOcean account
+  yourself. If you deleted the server at DigitalOcean yourself, Builder
+  forgets it the next time it looks, and publishing again has you choose a new
+  one.
+
+When Builder set up something for your app that costs money, such as a server
+it rented for you, the tab shows where it is hosted and what it costs, such as
+**Hosted on DigitalOcean · $6 a month**, under the address, until it is taken
+down. If you removed it yourself, or closed your account there, open the menu
+beside that line, choose **I already removed it from DigitalOcean…**, then
+**Yes, it's gone from DigitalOcean**, and Builder stops showing it.
+
+## 9. Download your work
 
 - **The code**: in **Live Preview**, choose **Download the code** for a zip of
   it. It works during the build too and says which version you got. **Share the
@@ -411,7 +501,7 @@ out left out, and you can keep any of them. Choose **Import**. The coordinator
 reads what was imported, asks you what you want to do and what the code cannot
 tell it, and has only the documents written that the work you ask for needs.
 
-## 9. Manage projects
+## 10. Manage projects
 
 ### The projects list
 
@@ -453,7 +543,7 @@ If a provider stops answering or refuses its key during work, the coordinator
 stops and you see "The coordinator stopped before it replied." Check the
 provider's status in **Settings → Providers**, then send your message again.
 
-## 10. Troubleshooting
+## 11. Troubleshooting
 
 - **"Builder is loading…" for a long time**: Builder cannot reach its server
   yet. It keeps retrying. Check that the server is running.

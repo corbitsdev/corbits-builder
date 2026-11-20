@@ -12,6 +12,7 @@
     "@corbits-builder/publish-contract": "workspace:*",
     "@corbits/react-ui": "0.5.1",
     "arktype": "catalog:",
+    "lucide-react": "0.545.0",
     "react": "19.3.0"
   },
   "devDependencies": {
@@ -50,6 +51,10 @@
       "publish.take-down": {
         "about": "The person's go-ahead to take down what a publish target published or holds, as { \"target\": the plugin that published or holds it, \"release\": the at of the release they were shown, \"holding\": the since of the holding they were shown, each as an ISO time and left out when there was none }; null when they chose to keep it or gave their go-ahead to publish again. Only the publish plugin's screens set it.",
         "type": "json"
+      },
+      "publish.asked": {
+        "about": "The person's latest ask to publish the app or take it down, from the Publish tab or a go-ahead on publish confirm or publish take-down, as { \"kind\": \"publish\" or \"takeDown\", \"at\": when, as an ISO time }; null once they chose to keep the app on publish take-down. Only the publish plugin writes it.",
+        "type": "json"
       }
     },
     "actions": {
@@ -72,7 +77,11 @@
           "agreed:publish"
         ],
         "skip": "never"
-      }
+      },
+      "published": {},
+      "ask": {},
+      "kept": {},
+      "gone": {}
     },
     "facts": {
       "agreed:publish": "the person's go-ahead to publish by the chosen plan stands: they gave it on publish confirm and the publish it allows has not gone out yet"

@@ -180,6 +180,7 @@ jobs:
         plugin-optional-credential.test.ts
         plugin-sign-in.test.ts
         run-server-key.test.ts
+        publish-tab.test.ts
     steps:
       - if: env.RUN == 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
