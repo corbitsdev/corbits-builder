@@ -548,9 +548,15 @@ export function useApp(): AppScreen {
           openProjectSummary?.title ?? wording.shell.untitledProject,
         ...(openProjectSummary === null
           ? {}
-          : { listedArchived: openProjectSummary.archivedAt !== null }),
+          : {
+              listedArchived: openProjectSummary.archivedAt !== null,
+              menuProject: openProjectSummary,
+            }),
         onChanged: refresh,
+        onProjectError: reportProjectError,
         onOpenSettings: openSettings,
+        onAllProjects: () => navigate("library"),
+        onNewProject: () => navigate("projects"),
         ...(openingMessage !== undefined ? { openingMessage } : {}),
       },
     };

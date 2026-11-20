@@ -4,6 +4,8 @@ import { fn } from "storybook/test";
 import { wording } from "../../config.ts";
 import { AppView } from "../../App.view.tsx";
 import app from "../../App.stories.tsx";
+import { isDocumentKind } from "@corbits-builder/schemas/artifact";
+import type { PlanView } from "@corbits-builder/schemas/project";
 import type { ArtifactPaneProps } from "./artifact-pane.tsx";
 import documentPane, {
   AppAndManual as appAndManual,
@@ -13,10 +15,13 @@ import documentPane, {
 } from "./artifact-pane.stories.tsx";
 import nextStep, { YourTurn as yourTurn } from "./next-step.stories.tsx";
 import { NextStepLineView } from "./next-step.view.tsx";
+import { planning } from "./project-outline.fixtures.ts";
+import { projectOutline, type OutlineAppState } from "./project-outline.ts";
 import { LIVE_TAB } from "./tab-follow.ts";
 import {
   RoomView,
   type RoomComposer,
+  type RoomContent,
   type RoomViewProps,
 } from "./room.view.tsx";
 import thread, {
@@ -26,12 +31,20 @@ import thread, {
 } from "./transcript.stories.tsx";
 
 // Holds what the room asks its host to keep: the words being typed, whether the project view is
-// open, and the document it reads.
+// open, the document it reads, the tab it shows and whether the sidebar is out.
 function Room(args: RoomViewProps) {
-  const { dock, documentPane: pane } = args;
+  const { dock, documentPane: pane, sidebar } = args;
   const [text, setText] = useState(dock.kind === "composer" ? dock.text : "");
   const [projectOpen, setProjectOpen] = useState(args.layout.projectOpen);
   const [selectedId, setSelectedId] = useState(pane.selectedId);
+  const [openTab, setOpenTab] = useState(pane.openTab ?? null);
+  const [shown, setShown] = useState<string | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(sidebar.open);
+  const open = (tab: string) => {
+    setOpenTab({ value: tab });
+    setProjectOpen(true);
+  };
+  const onScreen = projectOpen ? shown : null;
   return (
     <div style={{ height: "100vh", display: "flex", flexDirection: "column" }}>
       <RoomView
@@ -46,8 +59,29 @@ function Room(args: RoomViewProps) {
             ? { ...dock, text, onTextChange: setText }
             : dock
         }
+        sidebar={{
+          ...sidebar,
+          open: sidebarOpen,
+          selectedFile: onScreen === LIVE_TAB ? null : onScreen,
+          appOpen: onScreen === LIVE_TAB,
+          onToggleSidebar: () => setSidebarOpen(!sidebarOpen),
+          onOpenFile: (id) => {
+            // A design not filed yet opens what is being drawn under it.
+            const drawing = sidebar.files.find(
+              (file) => file.id === id && file.state === "drawing",
+            );
+            open(drawing?.parts[0]?.id ?? id);
+            sidebar.onOpenFile(id);
+          },
+          onOpenApp: () => {
+            open(LIVE_TAB);
+            sidebar.onOpenApp();
+          },
+        }}
         documentPane={{
           ...pane,
+          openTab,
+          onShownChange: setShown,
           selectedId,
           state: selectedId === null ? undefined : pane.state,
           onSelect: setSelectedId,
@@ -55,6 +89,50 @@ function Room(args: RoomViewProps) {
       />
     </div>
   );
+}
+
+// The sidebar as the room's model would hand it over for what the project view shows.
+function sidebarOf(
+  pane: Partial<ArtifactPaneProps>,
+  plan: PlanView["steps"] = planning.plan,
+  app?: OutlineAppState,
+): RoomContent["sidebar"] {
+  const outline = projectOutline({
+    plan,
+    documents: (pane.documents ?? []).map((item) => ({
+      ...item,
+      written: isDocumentKind(item.id),
+    })),
+    draft: (pane.draft ?? null) !== null,
+    concepts: (pane.concepts ?? []).map((concept) => ({
+      label: concept.label,
+      drawn: concept.content !== undefined,
+    })),
+    manual: (pane.manual ?? null) !== null,
+    app: { shown: (pane.liveApp ?? null) !== null, state: app },
+  });
+  return {
+    project: "Bakery orders",
+    open: true,
+    plan: outline.plan,
+    files: outline.files,
+    selectedFile: null,
+    app: outline.app,
+    appOpen: false,
+    onToggleSidebar: fn(),
+    onOpenFile: fn(),
+    onPrintFile: fn(),
+    onRemoveFile: fn(),
+    onAskFirst: fn(),
+    onDecline: fn(),
+    onOpenApp: fn(),
+    onProjectSettings: fn(),
+    onSecrets: fn(),
+    onAllProjects: fn(),
+    onNewProject: fn(),
+    onWorkspaceSettings: fn(),
+    onAccount: fn(),
+  };
 }
 
 const composer: RoomComposer & { kind: "composer" } = {
@@ -83,10 +161,11 @@ const composer: RoomComposer & { kind: "composer" } = {
   sendLabel: null,
 };
 
-// One of the pane's own stories as the room takes it: what the pane shows, and its parts.
+// One of the pane's own stories as the room takes it: what the pane shows, its parts, and the
+// sidebar that lists them.
 function paneOf(story: Partial<ArtifactPaneProps> = {}) {
   const pane = { ...documentPane.args, ...story };
-  return { documentPane: pane, paneParts: pane };
+  return { documentPane: pane, paneParts: pane, sidebar: sidebarOf(pane) };
 }
 
 const layout: RoomViewProps["layout"] = {
@@ -115,12 +194,9 @@ const meta = {
       empty: null,
     },
     dock: composer,
-    plan: [],
-    onDeclineStep: async () => {},
-    onGoAheadStep: async () => {},
-    onAskFirstStep: async () => {},
     ...paneOf(),
     tabStatus: [],
+    sidebar: sidebarOf({}, []),
     paneRef: createRef(),
     nextStep: <NextStepLineView {...nextStep.args} />,
     chatScreens: null,

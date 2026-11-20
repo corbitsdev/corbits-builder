@@ -3,7 +3,7 @@
  * open, and what the pane shows of it: the running app, why it is not running, or the Builder's
  * first app taking shape.
  */
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { queryOptions, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { InFlightRun, LiveApp } from "@corbits-builder/schemas/artifact";
 import { readProjectRunStates } from "../../api/activity.ts";
 import {
@@ -103,11 +103,9 @@ function notRunning(
   };
 }
 
-export function useLiveApp({
-  projectId,
-  builder,
-}: LiveAppProps): Omit<LiveAppViewProps, "builderSetup"> {
-  const app = useQuery({
+/** How the hub runs the app, read more often while it is not yet running; shared by whoever shows it. */
+export const liveAppQuery = (projectId: string) =>
+  queryOptions({
     queryKey: keys.liveApp.of(projectId),
     queryFn: ({ signal }) => readLiveApp(projectId, signal),
     refetchInterval: (query) =>
@@ -115,6 +113,12 @@ export function useLiveApp({
     refetchOnWindowFocus: false,
     retry: false,
   });
+
+export function useLiveApp({
+  projectId,
+  builder,
+}: LiveAppProps): Omit<LiveAppViewProps, "builderSetup"> {
+  const app = useQuery(liveAppQuery(projectId));
   const data = app.data;
   // The Builder's working copy of the plan's acceptance checklist, read from its workspace: the
   // filed plan is approved by its hash, so the ticks never become a version of it.

@@ -29,6 +29,9 @@ function room(queryClient: QueryClient): string {
         listedArchived
         onChanged={() => {}}
         onOpenSettings={() => {}}
+        onAllProjects={() => {}}
+        onNewProject={() => {}}
+        onProjectError={() => {}}
       />
     </QueryClientProvider>,
   );
@@ -77,6 +80,9 @@ describe("project room", () => {
             projectTitle={id}
             onChanged={() => {}}
             onOpenSettings={() => {}}
+            onAllProjects={() => {}}
+            onNewProject={() => {}}
+            onProjectError={() => {}}
           />
         </QueryClientProvider>,
       );
@@ -144,6 +150,9 @@ describe("project room", () => {
           projectTitle="Weather"
           onChanged={() => {}}
           onOpenSettings={() => {}}
+          onAllProjects={() => {}}
+          onNewProject={() => {}}
+          onProjectError={() => {}}
         />
       </QueryClientProvider>,
     );
@@ -187,6 +196,9 @@ describe("project room", () => {
           projectTitle="Weather"
           onChanged={() => {}}
           onOpenSettings={() => {}}
+          onAllProjects={() => {}}
+          onNewProject={() => {}}
+          onProjectError={() => {}}
         />
       </QueryClientProvider>,
     );

@@ -619,38 +619,10 @@ export const wording = {
     openTab: (tab: string) => `Open ${tab}`,
     /** Takes the person from the project view back to the conversation. */
     closeProject: "Back to the conversation",
-    /** The plan beside the conversation: its heading, the button that shows and hides it, and its parts. */
+    /** A plan step's settings, in its row's menu in the project sidebar. */
     plan: {
-      title: "Plan",
-      show: "Show the plan",
-      hide: "Hide the plan",
-      resize: "Resize the plan",
-      steps: "Plan steps",
-      optional: "optional",
-      approvalRequired: "needs your approval",
-      approvalOffered: "asks for your approval",
-      /** A step's switches and button, each named with the step it changes. */
-      skip: "Skip",
-      goAhead: "Go ahead",
       askFirst: "Ask me first",
-      forStep: (control: string, step: string) => `${control}: ${step}`,
       notChanged: "That step could not be changed.",
-      /** How far along the plan is, beside its button. */
-      progress: (done: number, total: number) =>
-        `${String(done)}/${String(total)}`,
-      /** The plan button's name: how far along the plan is, and a step that wants a look. */
-      progressLabel: (
-        done: number,
-        total: number,
-        alert: "failed" | "needs_you" | null,
-      ) =>
-        [
-          `Plan: ${String(done)} of ${String(total)} steps done`,
-          alert === "failed" ? "a step failed" : undefined,
-          alert === "needs_you" ? "a step needs you" : undefined,
-        ]
-          .filter((part) => part !== undefined)
-          .join(", "),
     },
   },
   /** The composer's placeholder when no approval is open. An open approval keeps approval.composerPlaceholder. */
