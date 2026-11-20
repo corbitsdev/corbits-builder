@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { createRef, useState } from "react";
+import { createRef, useState, type ReactNode } from "react";
 import { expect, fn, userEvent, within } from "storybook/test";
 import { wording } from "../../config.ts";
 import { AppView } from "../../App.view.tsx";
@@ -16,7 +16,11 @@ import documentPane, {
 } from "./artifact-pane.stories.tsx";
 import { planning } from "./project-outline.fixtures.ts";
 import { projectOutline, type OutlineAppState } from "./project-outline.ts";
+import designer from "@plugins/designer/package.json";
+import pickColours from "@plugins/designer/src/pick-colours/definition.ts";
+import PickColoursView from "@plugins/designer/src/pick-colours/view.tsx";
 import { question } from "./prompt-box.fixtures.ts";
+import { ScreenStory, storyScreen } from "./screen-story.tsx";
 import { LIVE_TAB } from "./tab-follow.ts";
 import {
   RoomView,
@@ -238,6 +242,50 @@ export const CoordinatorThinking: Story = {
   },
 };
 
+/** A specialist is at work: the pill says what it does, and Stop, red, stands where Send was. */
+export const SpecialistWorking: Story = {
+  args: {
+    dock: {
+      ...composer,
+      working: true,
+      status: { state: "working", label: "Writing the Problem brief" },
+    },
+  },
+};
+
+/** A newer version is filed: the pill says so, and its button opens it. */
+export const NewVersionReady: Story = {
+  args: {
+    ...withDocuments,
+    dock: {
+      ...composer,
+      status: {
+        state: "ready",
+        label: wording.promptBox.status.ready("Problem brief", 2),
+        action: wording.promptBox.status.open,
+        onAction: fn(),
+      },
+    },
+  },
+};
+
+/** Work failed since the person last wrote: the pill says what, and offers to ask again. */
+export const WorkFailed: Story = {
+  args: {
+    dock: {
+      ...composer,
+      status: {
+        state: "failed",
+        label: wording.promptBox.status.didNotFinish(
+          "Writing the Problem brief",
+        ),
+        action: wording.promptBox.status.tryAgain,
+        onAction: fn(),
+      },
+    },
+  },
+};
+
 /** A tool asks before it runs: the ask waits in the prompt box, Yes where Send stands. */
 export const ApprovalWaiting: Story = {
   args: {
@@ -273,6 +321,22 @@ export const QuestionsOpen: Story = {
       question,
       disabled: false,
       onAnswer: fn(() => Promise.resolve(true)),
+    },
+  },
+};
+
+/** A step the person asked to be consulted on waits for their go-ahead in the prompt box. */
+export const StepGoAhead: Story = {
+  args: {
+    dock: {
+      ...composer,
+      placeholder: wording.promptBox.waiting.stepPlaceholder,
+    },
+    waiting: {
+      kind: "step",
+      title: "Build the app",
+      busy: false,
+      onGoAhead: fn(),
     },
   },
 };
@@ -602,4 +666,103 @@ export const NarrowDrawerOpensFile: Story = {
     ).toBeInTheDocument();
     await expect(brief).toHaveAttribute("aria-current", "page");
   },
+};
+
+const pickColoursScreen = storyScreen(
+  "@corbits-builder/designer pick-colours",
+  designer.builder.actions["pick-colours"],
+  { screen: pickColours, view: PickColoursView, data: undefined },
+);
+
+/**
+ * A plugin's screen waits: on a wide window the plugin space stands beside the conversation without
+ * taking focus, the box names the screen with Open, and the screen's forward action stands where
+ * Send is.
+ */
+export const ScreenWaiting: Story = {
+  args: {
+    waiting: { kind: "screen", title: "Pick colours" },
+    space: { key: "screen:story", title: "Pick colours" },
+    pluginSpace: (
+      <ScreenStory
+        screen={pickColoursScreen}
+        state="open"
+        input={{ proposed: { primary: "#1d4ed8" } }}
+        project={{
+          "look.color-primary": "#c2410c",
+          "look.color-background": "#ffffff",
+        }}
+      />
+    ),
+  },
+};
+
+/** The plugin space beside the open project view, as beside the conversation. */
+export const ScreenWaitingProjectOpen: Story = {
+  args: {
+    ...ScreenWaiting.args,
+    ...withDocuments,
+    layout: { ...withDocuments.layout, projectOpen: true },
+  },
+};
+
+// A room narrower than the plugin space's column needs, as on a phone or a split window.
+const narrow = {
+  decorators: [
+    (Story: () => ReactNode) => (
+      <div style={{ width: 420, margin: "0 auto" }}>
+        <Story />
+      </div>
+    ),
+  ],
+};
+
+/** On a narrow room the space waits closed: the box names the screen, and Open brings it up. */
+export const ScreenWaitingNarrow: Story = { ...ScreenWaiting, ...narrow };
+
+/** Open lays the screen over the main area as a sheet, the prompt box beneath and Close above. */
+export const ScreenSheetNarrow: Story = {
+  ...ScreenWaitingNarrow,
+  play: async ({ canvas, userEvent }) => {
+    await userEvent.click(
+      await canvas.findByRole("button", {
+        name: wording.promptBox.waiting.openScreen,
+      }),
+    );
+    await expect(
+      await canvas.findByRole("heading", { name: "Pick colours" }),
+    ).toHaveFocus();
+  },
+};
+
+export const QuestionsOpenNarrow: Story = { ...QuestionsOpen, ...narrow };
+
+export const DarkQuestionsOpen: Story = {
+  ...QuestionsOpen,
+  globals: { mode: "dark" },
+};
+
+export const DarkApprovalWaiting: Story = {
+  ...ApprovalWaiting,
+  globals: { mode: "dark" },
+};
+
+export const DarkStepGoAhead: Story = {
+  ...StepGoAhead,
+  globals: { mode: "dark" },
+};
+
+export const DarkSpecialistWorking: Story = {
+  ...SpecialistWorking,
+  globals: { mode: "dark" },
+};
+
+export const DarkScreenWaiting: Story = {
+  ...ScreenWaiting,
+  globals: { mode: "dark" },
+};
+
+export const DarkScreenSheetNarrow: Story = {
+  ...ScreenSheetNarrow,
+  globals: { mode: "dark" },
 };
