@@ -32,3 +32,14 @@
   font-size: 0.875rem;
   white-space: nowrap;
 }
+
+/* A screen's main action moves the work forward, so it is the proceed green wherever it stands.
+   The library's Button names its variant only in its classes. */
+.buttons [class~="bg-primary"] {
+  background: var(--wb-proceed);
+  color: var(--wb-proceed-foreground);
+}
+
+.buttons [class~="bg-primary"]:hover {
+  background: color-mix(in oklab, var(--wb-proceed) 85%, var(--wb-foreground));
+}
