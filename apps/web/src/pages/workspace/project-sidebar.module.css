@@ -38,8 +38,7 @@
   width: var(--width);
   height: 100%;
   /* Below the project's name, which floats over the panel's top. */
-  padding: 54px var(--space-2) 10px;
-  overflow-y: auto;
+  padding-block-start: 54px;
   background: var(--card);
   transition: visibility 0s;
 }
@@ -135,11 +134,15 @@
   white-space: nowrap;
 }
 
+/* The rows scroll below the project's name, never under it. */
 .body {
   display: flex;
   flex: 1;
   flex-direction: column;
   gap: var(--space-4);
+  min-height: 0;
+  padding: 0 var(--space-2) 10px;
+  overflow-y: auto;
 }
 
 .group {
