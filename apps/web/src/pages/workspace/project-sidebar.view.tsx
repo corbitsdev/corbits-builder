@@ -1,7 +1,7 @@
 /**
  * An open project's sidebar: the project's name, which opens and closes it, then three groups. This
- * project holds the plan's steps and the project's files, as one tree, then its settings and
- * secrets; Projects leads out to the other projects; Workspace to the workspace's settings and the
+ * project holds the plan's steps and the project's files, as one tree, the app's state, then its
+ * settings and secrets; Projects leads out to the other projects; Workspace to the workspace's settings and the
  * person's account. Closed, only the project's name stays. Where the room is narrow it is a drawer
  * over the page.
  */
@@ -25,6 +25,7 @@ import {
   Trash2,
 } from "lucide-react";
 import {
+  Button,
   SidebarItem,
   StatusDot,
   TypingIndicator,
@@ -101,6 +102,14 @@ export type SidebarFile = SidebarFileRow & {
   parts: readonly SidebarFileRow[];
 };
 
+/** How the project's app stands, as the Live row says it. */
+export type SidebarAppState =
+  | "not_built"
+  | "starting"
+  | "running"
+  | "stopped"
+  | "failed";
+
 export type ProjectSidebarViewProps = {
   project: string;
   /** Closed, only the project's name shows, to open it again. */
@@ -111,12 +120,16 @@ export type ProjectSidebarViewProps = {
   files: readonly SidebarFile[];
   /** The file or part on the page; its row is marked. */
   selectedFile: string | null;
+  app: SidebarAppState;
+  /** The app is on the page; the Live row is marked. */
+  appOpen: boolean;
   onToggleSidebar: () => void;
   onOpenFile: (fileId: string) => void;
   onPrintFile: (fileId: string) => void;
   onRemoveFile: (fileId: string) => void;
   onAskFirst: (stepId: string, askFirst: boolean) => void;
   onDecline: (stepId: string, declined: boolean) => void;
+  onOpenApp: () => void;
   onProjectSettings: () => void;
   onSecrets: () => void;
   onAllProjects: () => void;
@@ -132,12 +145,15 @@ export function ProjectSidebarView({
   plan,
   files,
   selectedFile,
+  app,
+  appOpen,
   onToggleSidebar,
   onOpenFile,
   onPrintFile,
   onRemoveFile,
   onAskFirst,
   onDecline,
+  onOpenApp,
   onProjectSettings,
   onSecrets,
   onAllProjects,
@@ -205,6 +221,7 @@ export function ProjectSidebarView({
                 onAskFirst={onAskFirst}
                 onDecline={onDecline}
               />
+              <Live app={app} open={appOpen} onOpen={onOpenApp} />
               <ul className={styles.links}>
                 <Link onClick={onProjectSettings}>{words.projectSettings}</Link>
                 <Link onClick={onSecrets}>{wording.settings.tab.secrets}</Link>
@@ -241,6 +258,34 @@ function Group({ label, children }: { label: string; children: ReactNode }) {
       </h2>
       {children}
     </section>
+  );
+}
+
+/**
+ * The app's state, and Open app once there is an app to open. Its words change as the app starts,
+ * runs or stops, so they are read out as they change.
+ */
+function Live({
+  app,
+  open,
+  onOpen,
+}: {
+  app: SidebarAppState;
+  open: boolean;
+  onOpen: () => void;
+}) {
+  return (
+    <div className={styles.live} data-current={open ? "" : undefined}>
+      <span className={styles.liveName}>{words.live}</span>
+      <span className={styles.note} data-state={app} aria-live="polite">
+        {words.appState[app]}
+      </span>
+      {app === "not_built" ? null : (
+        <Button type="button" variant="outline" size="sm" onClick={onOpen}>
+          {words.openApp}
+        </Button>
+      )}
+    </div>
   );
 }
 

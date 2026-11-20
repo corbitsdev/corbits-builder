@@ -482,6 +482,16 @@ export const wording = {
     removeFromProject: "Remove from project…",
     files: "Files",
     noFiles: "None yet",
+    live: "Live",
+    /** How the project's app stands, beside Live. */
+    appState: {
+      not_built: "Not built",
+      starting: "Starting…",
+      running: "Running",
+      stopped: "Stopped",
+      failed: "Could not start",
+    },
+    openApp: "Open app",
     /** Read after a file's name where its mark says more than the name does. */
     fileState: {
       needs_you: "needs you",

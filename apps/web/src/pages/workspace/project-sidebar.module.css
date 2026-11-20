@@ -386,3 +386,36 @@
 .tick[data-checked] {
   visibility: visible;
 }
+
+/* Live stands level with Plan and Files: the same height, size and colour. */
+.live {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 2.25rem;
+  padding: 0 var(--space-1) 0 var(--space-2);
+  color: var(--wb-muted-foreground);
+  font-size: var(--text-sm);
+  line-height: var(--text-sm--line-height);
+}
+
+.liveName {
+  flex: none;
+}
+
+.live[data-current] .liveName {
+  color: var(--wb-foreground);
+  font-weight: 500;
+}
+
+/* The state reads as plainly as a file that wants a look when the app is up or could not start. */
+.live > .note:is([data-state="running"], [data-state="failed"]) {
+  color: var(--wb-foreground);
+}
+
+/* Small enough to sit in the row without making it taller than its neighbours. */
+.live > [data-slot="button"] {
+  height: 1.75rem;
+  padding-inline: var(--space-2);
+  font-size: var(--wb-text-control);
+}

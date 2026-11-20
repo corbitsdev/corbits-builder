@@ -118,22 +118,30 @@ const building = onePart([
   step("manual", "Write the user manual", "running"),
 ]);
 
-// Holds what the page would: the file on the page and whether the sidebar is out, so a story can
-// be clicked through.
+// Holds what the page would: the file or app on the page and whether the sidebar is out, so a
+// story can be clicked through.
 function Clickable(args: ProjectSidebarViewProps) {
   const [selected, setSelected] = useState(args.selectedFile);
+  const [appOpen, setAppOpen] = useState(args.appOpen);
   const [open, setOpen] = useState(args.open);
   return (
     <ProjectSidebarView
       {...args}
       selectedFile={selected}
+      appOpen={appOpen}
       open={open}
+      onOpenApp={() => {
+        setSelected(null);
+        setAppOpen(true);
+        args.onOpenApp();
+      }}
       onToggleSidebar={() => {
         setOpen(!open);
         args.onToggleSidebar();
       }}
       onOpenFile={(fileId) => {
         setSelected(fileId);
+        setAppOpen(false);
         args.onOpenFile(fileId);
       }}
     />
@@ -176,12 +184,15 @@ const meta = {
     plan: planning,
     files: planningFiles,
     selectedFile: "problem_brief",
+    app: "not_built",
+    appOpen: false,
     onToggleSidebar: fn(),
     onOpenFile: fn(),
     onPrintFile: fn(),
     onRemoveFile: fn(),
     onAskFirst: fn(),
     onDecline: fn(),
+    onOpenApp: fn(),
     onProjectSettings: fn(),
     onSecrets: fn(),
     onAllProjects: fn(),
@@ -209,7 +220,8 @@ const buildingArgs = {
   plan: building,
   files: buildingFiles,
   selectedFile: "build_plan",
-};
+  app: "running",
+} satisfies Partial<ProjectSidebarViewProps>;
 
 /**
  * While building: under the design, its mockup, its draft and its concepts, one still being drawn;
@@ -222,7 +234,46 @@ export const BuildingDark: Story = {
   globals: { mode: "dark" },
 };
 
-/** A new project: no steps and no files yet. */
+/** The app is starting: Live says so, and Open app shows it starting. */
+export const AppStarting: Story = {
+  args: { ...buildingArgs, app: "starting" },
+};
+
+/**
+ * The app is running and on the page: Live is marked as the open file would be. Open app puts it
+ * on the page from wherever the person is.
+ */
+export const AppOpen: Story = {
+  args: { ...buildingArgs, selectedFile: null, appOpen: true },
+};
+
+/** Nothing runs the app right now; opening it starts it again. */
+export const AppStopped: Story = { args: { ...buildingArgs, app: "stopped" } };
+
+/** The app could not start; opening it shows why. */
+export const AppFailed: Story = { args: { ...buildingArgs, app: "failed" } };
+
+export const AppFailedDark: Story = {
+  args: { ...buildingArgs, app: "failed" },
+  globals: { mode: "dark" },
+};
+
+/** Open app puts the app on the page and marks Live; no file stays marked. */
+export const OpenApp: Story = {
+  args: buildingArgs,
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(
+      canvas.getByRole("button", { name: wording.projectShell.openApp }),
+    );
+    await expect(args.onOpenApp).toHaveBeenCalled();
+    await expect(
+      canvas.getByRole("treeitem", { name: tab["build_plan"] ?? "" }),
+    ).not.toHaveAttribute("aria-current");
+  },
+};
+
+/** A new project: no steps and no files yet, and no app. */
 export const NewProject: Story = {
   args: { plan: [], files: [], selectedFile: null },
 };
