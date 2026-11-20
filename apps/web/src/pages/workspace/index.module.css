@@ -286,6 +286,16 @@
   bottom: calc(var(--space-3) + 2.5rem);
 }
 
+/* The chat's handle sits on the box's top edge in the same place, lower than the pill. */
+.page:has(
+    > [data-slot="composer"]
+      [data-slot="chat-sheet"][data-state="closed"]
+      [data-slot="pull-handle"]
+  )
+  :is([data-slot="pane-bar"][data-floating], [data-slot="pane-bar-handle"]) {
+  bottom: calc(var(--space-3) * 2);
+}
+
 /* The pane is a side panel by make, which a narrow container lays over everything; over the room
    it takes the page above the prompt box at every width. */
 .page > [data-slot="artifact-pane"] {

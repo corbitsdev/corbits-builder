@@ -353,12 +353,20 @@ export function RoomView({
       answersShell={shell.answers}
     />
   );
+  // Taken full screen, the chat names what it hides for the way back: the plugin's screen in the
+  // sheet, or the file or app the project view shows, as the sidebar names it.
+  const hidden = dockInSheet
+    ? (space?.title ?? null)
+    : sidebar.appOpen
+      ? wording.projectShell.live
+      : fileName(sidebar.files, sidebar.selectedFile);
   const roomDock = (
     <RoomDockView
       dock={dock}
       ports={ports}
       waiting={card}
       chat={chat}
+      chatStart={hidden === null ? undefined : { returnTo: { title: hidden } }}
       answersShell={shell.answers}
     />
   );
@@ -472,6 +480,16 @@ export function RoomView({
       {shell.reply}
     </StageView>
   );
+}
+
+/** A sidebar file's name, or one of its parts' such as a design's mockup; null with none chosen. */
+function fileName(
+  files: ProjectSidebarViewProps["files"],
+  id: string | null,
+): string | null {
+  if (id === null) return null;
+  const rows = files.flatMap((file) => [file, ...file.parts]);
+  return rows.find((row) => row.id === id)?.name ?? null;
 }
 
 /** What waits on the person as the card the prompt box holds; a screen's card opens the space. */
@@ -867,9 +885,15 @@ function RoomComposerView({
         ) : undefined
       }
       // Always the sheet, even with nothing to pull up, so the box is never remounted (and never
-      // loses the cursor) when work starts and the pill appears.
+      // loses the cursor) when work starts and the pill appears. Putting the chat back returns the
+      // cursor to the words, where the person left them.
       around={(inner) => (
-        <ChatSheet {...chatStart} status={status} box={inner}>
+        <ChatSheet
+          {...chatStart}
+          status={status}
+          box={inner}
+          putBackTo={inputRef}
+        >
           {chat}
         </ChatSheet>
       )}
