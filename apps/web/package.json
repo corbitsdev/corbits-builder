@@ -6,9 +6,6 @@
   "license": "SEE LICENSE IN ../../LICENSE.md",
   "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
   "type": "module",
-  "exports": {
-    "./environment": "./environment.ts"
-  },
   "scripts": {
     "dev": "bun run --parallel css-types:watch serve",
     "serve": "vite",

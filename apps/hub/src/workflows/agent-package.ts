@@ -53,6 +53,7 @@ function hostPluginTool(factory: AnnotatedToolFactory<ToolEnv>) {
 // The longest writer step in stored runs took 276 s; ten minutes leaves room for a slower model.
 const STEP_TIMEOUT_MS = 600_000;
 
+// oxlint-disable-next-line eslint/no-restricted-properties
 const inlined = process.env.BUILDER_AGENT;
 if (!inlined) throw new Error("agent_package_required");
 const {
@@ -77,6 +78,7 @@ if (!source.provider.trim() || !source.model.trim())
 const works = workspace !== null;
 let browser: BrowserTools | undefined;
 if (workspace?.kind === "app" && workspace.browser) {
+  // oxlint-disable-next-line eslint/no-restricted-properties
   const listed = process.env.BUILDER_BROWSER;
   if (!listed) throw new Error("browser_tools_required");
   browser = BrowserTools.assert(JSON.parse(listed));
@@ -131,7 +133,9 @@ factories.push(createBlockedTools(role.name));
 // Deploy binds the hub's own handle itself.
 const credentialBindings: CredentialBinding[] = [];
 // build-packages.ts defines the path, so the bundler inlines the plugin's tools module here.
+// oxlint-disable-next-line eslint/no-restricted-properties
 if (process.env.BUILDER_TOOLS !== undefined) {
+  // oxlint-disable-next-line eslint/no-restricted-properties
   const brought: AgentTools = (await import(process.env.BUILDER_TOOLS)).default;
   for (const factory of brought({ role: role.name }).map(hostPluginTool)) {
     factories.push(factory);

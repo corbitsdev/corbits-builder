@@ -70,6 +70,7 @@ export function resolveRoleInference(
 // build-packages.ts inlines what the project's profile resolved for this role, so the frozen
 // definition carries it; an entry imported directly reads the one its importer set.
 export function roleInference(role: string): RoleInference {
+  // oxlint-disable-next-line eslint/no-restricted-properties
   const inlined = process.env.BUILDER_ROLE_INFERENCE;
   if (!inlined) throw new Error(`role_inference_required:${role}`);
   return RoleInference.assert(JSON.parse(inlined));

@@ -18,3 +18,12 @@ export const readGoogleEmulatorEnvironment = reader(
     GOOGLE_CLIENT_SECRET: "string = 'GOCSPX-dev-emulate-not-a-secret'",
   }),
 );
+
+/**
+ * `bun run dev:stop`: the ports a shell sets for `bun run dev`. Like `bun run dev`, it skips a
+ * value that is not a port and uses the env files' value instead, so these are read as plain
+ * strings.
+ */
+export const readDevStopEnvironment = reader(
+  type({ "+": "delete", "PORT?": "string", "UI_PORT?": "string" }),
+);

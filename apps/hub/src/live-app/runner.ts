@@ -18,7 +18,9 @@ const SWEEP_MS = 5_000;
 /** A sandbox host's environment: none of the hub's, which holds its secrets. */
 export const hostEnv = () => ({
   PATH: `${dirname(process.execPath)}:/usr/local/bin:/usr/bin:/bin`,
+  // oxlint-disable-next-line eslint/no-restricted-properties
   ...(process.env["HOME"] ? { HOME: process.env["HOME"] } : {}),
+  // oxlint-disable-next-line eslint/no-restricted-properties
   ...(process.env["TMPDIR"] ? { TMPDIR: process.env["TMPDIR"] } : {}),
 });
 

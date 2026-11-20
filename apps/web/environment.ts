@@ -2,7 +2,7 @@ import { origin, port, reader } from "@corbits-builder/environment";
 import { type } from "arktype";
 
 // The interface's dev server environment, read by vite.config.ts.
-export const webSchema = type({
+const webSchema = type({
   "+": "delete",
   UI_PORT: port.default("5173"),
   // The hub the dev server proxies /api to.

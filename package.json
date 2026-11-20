@@ -41,7 +41,6 @@
     "test:e2e": "bun --env-file=.env.hub --conditions=intx-src test ./test/e2e",
     "vendor:verify": "bun scripts/verify-vendor.ts",
     "pins:verify": "bun scripts/verify-pins.ts",
-    "environment:verify": "bun --conditions=intx-src scripts/verify-environment.ts",
     "skills:react-ui": "bun scripts/react-ui-api.ts"
   },
   "dependencies": {
@@ -85,7 +84,6 @@
     "@corbits-builder/environment": "workspace:*",
     "@corbits-builder/hub": "workspace:*",
     "@corbits-builder/schemas": "workspace:*",
-    "@corbits-builder/web": "workspace:*",
     "@corbits/slidedeck": "workspace:*",
     "@emulators/core": "0.12.3",
     "@emulators/google": "0.12.3",

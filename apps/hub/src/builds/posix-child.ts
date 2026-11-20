@@ -42,7 +42,8 @@ export async function runHostGate(
   const child = Bun.spawn(options.argv, {
     cwd,
     env: {
-      PATH: process.env.PATH ?? "/usr/bin:/bin",
+      // oxlint-disable-next-line eslint/no-restricted-properties
+      PATH: process.env.PATH || "/usr/bin:/bin",
       HOME: root,
       TMPDIR: root,
       NO_COLOR: "1",

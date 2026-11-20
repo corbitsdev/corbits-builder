@@ -356,7 +356,7 @@ const hubSettings = (env: HubVariables) => {
 };
 
 /** The hub server's environment: every variable it reads, and what is built from several. */
-export const hubSchema = type({ "+": "delete", ...hubVariables })
+const hubSchema = type({ "+": "delete", ...hubVariables })
   .narrow(hubRules)
   .pipe((env) => ({ ...env, ...hubSettings(env) }));
 export const readHubEnvironment = reader(hubSchema);
@@ -364,7 +364,7 @@ export type HubEnvironment = ReturnType<typeof readHubEnvironment>;
 export type PluginHint = HubEnvironment["PLUGIN_HINT"];
 
 /** `bun run db:migrate`'s environment: the database alone, so a migration needs no hub secrets. */
-export const migrationSchema = type({
+const migrationSchema = type({
   "+": "delete",
   ...databaseVariables,
   ...migrationVariables,
@@ -393,7 +393,7 @@ const bootstrapVariables = {
  * `bun run auth:bootstrap`'s environment: it migrates, starts the hub and signs in its setup
  * account, so it reads all three.
  */
-export const setupSchema = type({
+const setupSchema = type({
   "+": "delete",
   ...hubVariables,
   ...migrationVariables,
