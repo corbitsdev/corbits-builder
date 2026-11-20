@@ -1942,7 +1942,6 @@ export function useRoom({
           : {}),
         onSelect: chooseDocument,
         onSeen: markDocumentSeen,
-        onRemove: removeAttachment,
         onReadVersion: async (version) => {
           if (selected === null) throw new Error("No artifact is selected.");
           const { content, filedAt, approaches } = await readArtifact(

@@ -49,7 +49,7 @@ function ready(title: string, content: string): DeliverableState {
 }
 
 describe("empty project room", () => {
-  test("a rejected document is not a tab, and a real document still renders", () => {
+  test("a rejected document is not listed, and a real document still renders", () => {
     const rejected = documentReadFailure(
       new ProductApiError(
         new Response("", { status: 400, statusText: "Bad Request" }),
@@ -96,7 +96,6 @@ describe("empty project room", () => {
         {...parts}
       />,
     );
-    expect(html).toContain('role="tab"');
     expect(html).toContain("Weather design");
     expect(html).toContain("The page.");
     expect(html).not.toContain("Weather App Problem Brief");
@@ -126,7 +125,6 @@ describe("empty project room", () => {
         {...parts}
       />,
     );
-    expect(html).toContain("Weather design");
     expect(html).toContain("The project could not be reached. Try again.");
     expect(html).toContain(`>${wording.action.retry}<`);
     expect(html).not.toContain("Service Unavailable");

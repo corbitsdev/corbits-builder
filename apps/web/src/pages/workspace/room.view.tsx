@@ -331,7 +331,7 @@ export function RoomView({
             </div>
           </section>
           {projectReady ? (
-            // Kept while closed, so its tabs, previews and drafts keep their place.
+            // Kept while closed, so its panes, previews and drafts keep their place.
             <div
               className={styles.page}
               data-slot="room-project"
