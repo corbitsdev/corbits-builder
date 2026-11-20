@@ -24,7 +24,6 @@ const fixtures = await readPluginFolder(
 );
 const catalog = await loadCatalog([...installed, ...fixtures], HOST);
 
-// The tester fixture with one of its definitions replaced.
 function tester(path: string, definition: unknown): Found {
   const found = fixtures.find(({ folder }) => folder === "tester");
   if (!found) throw new Error("the tester fixture is missing");
@@ -38,7 +37,6 @@ function tester(path: string, definition: unknown): Found {
   };
 }
 
-// A signed-in person on the tenant.
 const signedIn: MiddlewareHandler<TenantEnv> = async (c, next) => {
   const at = new Date();
   c.set("tenant", {
@@ -65,7 +63,6 @@ const signedIn: MiddlewareHandler<TenantEnv> = async (c, next) => {
 
 const empty = { styles: undefined, stored: {}, materials: [] };
 
-// The plan routes on the real plugins, with the project's records and writes held in memory.
 function hub(project: {
   artifacts: { kind: string; version: number }[];
   steps?: StoredPlanStep[];
@@ -218,7 +215,6 @@ test("the route refuses an action whose requires do not hold, adds it once they 
   expect(finished.added).toMatchObject([{ goAhead: ["same"] }]);
 });
 
-// Runs the tester's note task from the given catalog, keeping what it saves and tells.
 async function runNote(on: typeof catalog) {
   const task = on.tasks.find(
     ({ plugin, action }) => plugin === "tester" && action === "note",

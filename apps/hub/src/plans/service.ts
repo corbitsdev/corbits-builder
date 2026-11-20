@@ -217,7 +217,6 @@ export function createPlanService(rawDB: DB["db"]) {
       });
     },
 
-    // Only someone who may change the project runs a plugin's action from its screen.
     async authorizeAction(actor: Actor, projectId: string) {
       await authorizeProject(rawDB, actor, projectId, "manage");
     },

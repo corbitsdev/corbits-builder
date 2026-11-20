@@ -41,7 +41,6 @@ export const stepAskFirstNote = (title: string, askFirst: boolean) =>
     ? `${HUB_NOTE_LEAD}The person asked to be consulted before the plan step "${title}" starts.\n\nDo not start it until they give the go-ahead on the plan.`
     : `${HUB_NOTE_LEAD}The person no longer wants to be consulted before the plan step "${title}" starts.\n\nStart it when the plan reaches it.`;
 
-// Why an action the person ran from its screen did not run, for the person.
 export const actionUnmetText = (needs: string) =>
   `This can't run yet. It needs ${needs}.`;
 
@@ -49,7 +48,6 @@ export const actionUnmetText = (needs: string) =>
 export const STEP_NOT_ASK_FIRST_TEXT =
   "This step was not set to ask you first, so it needs no go-ahead.";
 
-// The hub's notes to the coordinator once the person ran a plugin's action from its screen.
 export const taskNote = (says: string, action: string, note: string) =>
   `${HUB_NOTE_LEAD}${says}\n\nThey ran ${action} from its screen.\n\n${note}`;
 export const workflowAddedNote = (title: string, action: string) =>

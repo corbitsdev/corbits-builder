@@ -28,7 +28,6 @@ const statusOf = (
   summary: step.summary,
 });
 
-/** The project as a screen's state and a task read it: its values, facts and plan. */
 export function projectRead(
   catalog: Catalog,
   state: ProjectState,
@@ -46,7 +45,6 @@ export function projectRead(
   };
 }
 
-/** Each screen to show now, in its place, with what its state says it draws. */
 export const shownScreens = (
   catalog: Catalog,
   project: ProjectRead,
@@ -65,7 +63,6 @@ export const shownScreens = (
       : [{ plugin, action, render, state: drawn }];
   });
 
-/** Runs a person's task on the project and saves the values it returns, each one it writes; tells its note, when it returns one. */
 export async function runTask(
   c: Context<TenantEnv>,
   projectId: string,

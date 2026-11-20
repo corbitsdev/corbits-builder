@@ -46,7 +46,6 @@ export function mountPlanRoutes(
   nativeFetch?: (request: Request) => Promise<Response>,
   checks?: Checks,
 ) {
-  // The project's stored state, read once, and the catalog as the project sees it.
   const projectView = async (current: Actor, projectId: string) => {
     const state = await artifacts.projectState(current, projectId);
     const catalog = await projectCatalog(async (names) =>
