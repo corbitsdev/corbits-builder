@@ -57,7 +57,7 @@ import {
   writeStoredPreference,
 } from "../../stored-preference.ts";
 import { printDocument } from "./print-document.ts";
-import { DRAFT_TAB, LIVE_TAB } from "./tab-follow.ts";
+import { DRAFT_TAB, LIVE_TAB, MANUAL_TAB, MOCKUP_TAB } from "./tab-follow.ts";
 import { useTabStrip } from "./tab-strip.ts";
 import type { ApproachChoice } from "./approach-choice.ts";
 import type { PluginTab } from "./plugin-screens.tsx";
@@ -84,7 +84,6 @@ const TAB_PREFIX = "workspace-document";
 // No pane carries this value, so the body shows none while no tab is selected yet.
 const NO_TAB = "";
 const draftIds = panelTabIds(TAB_PREFIX, DRAFT_TAB);
-const MANUAL_TAB = "user-manual";
 const manualIds = panelTabIds(TAB_PREFIX, MANUAL_TAB);
 // The tabs that are not filed documents: open while what they show is there.
 const isSideOnly = (id: string) =>
@@ -111,8 +110,6 @@ function selectTab(input: {
     return MOCKUP_TAB;
   return input.selectedId;
 }
-// The filed design is one document read as two tabs: its plan under the design's kind, its mockup here.
-const MOCKUP_TAB = "design-mockup";
 
 /**
  * What the pane shows when nothing is chosen: the live app once the build has started, else the

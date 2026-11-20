@@ -12,6 +12,12 @@ export const LIVE_TAB = "live-app";
 /** The live designer's unfiled mockup's tab, which the room opens to watch it take shape. */
 export const DRAFT_TAB = "design-draft";
 
+/** The filed design's mockup, the second of the two tabs the design is read as. */
+export const MOCKUP_TAB = "design-mockup";
+
+/** The app's user manual, once the coder has written it. */
+export const MANUAL_TAB = "user-manual";
+
 export type FollowDocument = {
   readonly id: string;
   readonly title: string;
