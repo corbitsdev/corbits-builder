@@ -531,6 +531,7 @@ bun run typecheck
 bun run test          # unit and integration tests, plugins included
 bun run pins:verify   # pinned dependency versions
 bun run vendor:verify # vendored Interchange matches its manifest
+bun run environment:verify # example env files match the schemas
 bun run test:e2e      # end-to-end tests against an isolated Postgres
 ```
 
@@ -596,7 +597,8 @@ the UI dev server's in `apps/web/environment.ts`, the Google emulator's in
 `scripts/environment.ts`. A process that finds anything wrong stops and lists
 every variable to fix, never their values. A new variable goes in its schema
 and in `.env.hub.example` or `.env.web.example`, as a set line when required
-and otherwise commented; `bun run environment:verify` fails until they agree.
+and otherwise commented or set to a value that works locally;
+`bun run environment:verify` fails until they agree.
 `bun run lint` refuses any other `.env` read.
 
 ## Migrations
