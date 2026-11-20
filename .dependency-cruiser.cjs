@@ -34,6 +34,23 @@ module.exports = {
       to: { path: "^packages/plugin-host/" },
     },
     {
+      name: "environment-read-in-environment-ts",
+      comment:
+        "Each process holds every variable it reads in one environment.ts, so only those files read through the environment package.",
+      severity: "error",
+      from: {
+        pathNot: [
+          "(^|/)environment\\.ts$",
+          "^packages/environment/",
+          "\\.test\\.tsx?$",
+        ],
+      },
+      to: {
+        path: "^packages/environment/src/",
+        dependencyTypesNot: ["type-only"],
+      },
+    },
+    {
       name: "environment-not-in-browser",
       comment:
         "The environment package reads process.env, so neither the interface's browser code nor a package it bundles imports it; apps/web/environment.ts and vite.config.ts run in Node and may.",
