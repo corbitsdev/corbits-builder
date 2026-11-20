@@ -11,6 +11,12 @@ import { grant } from "@intx/db/schema";
 import { APP_VERSION_HEADER } from "@corbits-builder/schemas/app-files";
 import { startInProcessHub } from "../support/in-process-hub.ts";
 
+// Read when the hub spawns a build's command host.
+process.env["BUILDER_TOOL_REPLAY"] = join(
+  import.meta.dir,
+  "../../fixtures/tools/app-build",
+);
+
 let hub: Awaited<ReturnType<typeof startInProcessHub>>;
 
 beforeAll(async () => {
@@ -61,7 +67,12 @@ const production = (install: string, build: string) => ({
   },
 });
 
-const SOURCE = { "package.json": "{}", "src/page.txt": "page" };
+// Replay runs no build, so the saved app already holds what the build would leave.
+const SOURCE = {
+  "package.json": "{}",
+  "src/page.txt": "page",
+  "dist/index.html": "page\n",
+};
 
 const builtPaths = async (response: Response) => {
   const zip = await JSZip.loadAsync(await response.arrayBuffer());
@@ -155,6 +166,9 @@ async function starterFiles() {
       continue;
     files[relative(root, full)] = await readFile(full, "utf8");
   }
+  // Replay runs no build, so the saved app already holds the client the build would leave.
+  files["client/dist/index.html"] = "<!doctype html>\n";
+  files["client/dist/assets/index.js"] = "export {};\n";
   return files;
 }
 
