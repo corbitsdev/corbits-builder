@@ -286,6 +286,37 @@
   bottom: calc(var(--space-3) + 2.5rem);
 }
 
+/* A written page runs on under the prompt box, which floats at its foot over a fade into the page's
+   backdrop, so the last lines read clearly as they scroll beneath it. Anything else the project view
+   shows keeps the box below it, clear of its own foot. Full screen, the chat is the page instead. */
+.footFade {
+  display: none;
+}
+
+.page:has(
+    > [data-slot="artifact-pane"]
+      [data-slot="panel-pane"][data-state="active"]
+      [data-slot="document-page"]
+  ):not(
+    :has(> [data-slot="composer"] > [data-slot="chat-sheet"][data-state="full"])
+  )
+  > .footFade {
+  display: contents;
+}
+
+.page:has(
+    > [data-slot="artifact-pane"]
+      [data-slot="panel-pane"][data-state="active"]
+      [data-slot="document-page"]
+  ):not(
+    :has(> [data-slot="composer"] > [data-slot="chat-sheet"][data-state="full"])
+  )
+  > [data-slot="composer"] {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+}
+
 /* The pane is a side panel by make, which a narrow container lays over everything; over the room
    it takes the page above the prompt box at every width. */
 .page > [data-slot="artifact-pane"] {

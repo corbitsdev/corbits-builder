@@ -54,6 +54,7 @@ import {
 import { InBox, useBoxPorts, type BoxPorts } from "./box-ports.tsx";
 import { ScreenCard, StepCard } from "./box-cards.tsx";
 import { DocumentDecision, PackageDecision } from "./document-decision.tsx";
+import { FootFade } from "./foot-fade.tsx";
 import { PluginSpace } from "./plugin-space.tsx";
 import { QuestionsCard } from "./questions-card.tsx";
 import type { DocumentApproval } from "./transcript.tsx";
@@ -454,6 +455,10 @@ export function RoomView({
                 paneRef={paneRef}
                 open={projectOpen}
               />
+              {/* Shown only under a box floating over a written page, which runs on beneath it. */}
+              <div className={styles.footFade}>
+                <FootFade />
+              </div>
               {dockInProject ? roomDock : null}
             </div>
           ) : null}
