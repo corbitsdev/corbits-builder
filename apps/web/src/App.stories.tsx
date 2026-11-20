@@ -47,6 +47,7 @@ const meta = {
   parameters: { layout: "fullscreen" },
   args: {
     current: "newProject",
+    roomOpen: false,
     rail: {
       collapsed: false,
       onToggleCollapsed: fn(),
@@ -99,6 +100,14 @@ export const ProjectOpen: Story = {
       ],
     },
   },
+};
+
+/**
+ * A project's room on the page draws its own sidebar where the rail would be, so the rail steps
+ * aside and the canvas is only the ground the room stands on.
+ */
+export const RoomOpen: Story = {
+  args: { current: "project", roomOpen: true },
 };
 
 export const Library: Story = { args: { current: "library" } };
