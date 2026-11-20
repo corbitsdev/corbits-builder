@@ -180,6 +180,23 @@ export const Narrow: Story = {
   ],
 };
 
+/** Focus on the handle from the keyboard: its ring is blue, as every ring by the box is. */
+export const HandleFocused: Story = {
+  play: async ({ canvasElement }) => {
+    const handle = canvasElement.querySelector<HTMLElement>(
+      '[data-slot="pull-handle"]',
+    );
+    // A simulated Tab moves focus without the ring a real one shows, so ask for the ring.
+    handle?.focus({ focusVisible: true });
+    await expect(handle).toHaveFocus();
+  },
+};
+
+export const DarkHandleFocused: Story = {
+  ...HandleFocused,
+  globals: { mode: "dark" },
+};
+
 export const DarkOpen: Story = {
   args: { ...whileWorking, chatStart: { defaultState: "open" } },
   globals: { mode: "dark" },
