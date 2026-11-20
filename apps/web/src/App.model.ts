@@ -562,10 +562,12 @@ export function useApp(): AppScreen {
     };
   };
 
+  const shown = page();
   return {
     screen: "shell",
     view: {
       current: PLACES[view],
+      roomOpen: shown?.name === "project",
       rail: {
         collapsed: sidebar.collapsed,
         onToggleCollapsed: sidebar.toggle,
@@ -606,6 +608,6 @@ export function useApp(): AppScreen {
     },
     menuOf,
     onOpenWorkspace: switchWorkspace,
-    page: page(),
+    page: shown,
   };
 }

@@ -315,6 +315,24 @@
   background: var(--wb-pane);
 }
 
+/* In a project's room the room draws its own sidebar and page, so the canvas is only the ground
+   they stand on. */
+.app[data-room] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.app[data-room] > .canvas {
+  grid-column: 1;
+  margin: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: var(--card);
+}
+
+.app[data-room] .canvasBody {
+  background: transparent;
+}
+
 /* Everything beside the rail. Scrolls, except where a surface fills instead. */
 .canvasBody {
   flex: 1;
@@ -386,7 +404,7 @@
 /* Phone widths: the rail stays an icon column, and opening it lays the full
    rail over the workspace instead of squeezing it. */
 @media (max-width: 640px) {
-  .app {
+  .app:not([data-room]) {
     grid-template-columns: 3.5rem minmax(0, 1fr);
   }
 
