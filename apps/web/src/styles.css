@@ -75,6 +75,10 @@
   --wb-destructive: var(--destructive);
   --wb-font-ui: var(--font-sans);
   --wb-font-mono: var(--font-mono);
+  /* Controls and supporting text (DESIGN.md), between the library's
+     --text-xs and --text-sm; named the way Tailwind names those. */
+  --wb-text-control: 0.8125rem;
+  --wb-text-control--line-height: calc(18 / 13);
   /* mock.css pins 10px / 6px. The library derives md/lg from --radius:
      0.5rem, so md is 8px and rounded-md on the composer fights the mock. */
   --radius: 6px;
