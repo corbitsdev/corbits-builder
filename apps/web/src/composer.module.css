@@ -53,7 +53,6 @@
   min-height: 0;
   max-height: 50vh;
   overflow: hidden auto;
-  border-bottom: 1px solid var(--wb-border);
   border-radius: calc(var(--radius-xl) - 1px) calc(var(--radius-xl) - 1px) 0 0;
 }
 
