@@ -1,9 +1,9 @@
 /**
- * An open project's sidebar: the project's name, which opens and closes it, then three groups. This
- * project holds the plan's steps and the project's files, as one tree, the app's state, then its
- * settings and secrets; Projects leads out to the other projects; Workspace to the workspace's settings and the
- * person's account. Closed, only the project's name stays. Where the room is narrow it is a drawer
- * over the page.
+ * An open project's sidebar: the project's name, which opens and closes it, then what the project
+ * holds: the plan's steps and the project's files, as one tree, and the app's state. Kept at the
+ * bottom, smaller and greyer, are the links that leave it: the project's settings and secrets, the
+ * other projects, and the workspace's settings and the person's account. Closed, only the project's
+ * name stays. Where the room is narrow it is a drawer over the page.
  */
 import {
   useEffect,
@@ -16,13 +16,20 @@ import {
   type ReactNode,
 } from "react";
 import {
+  Building2,
   Check,
   ChevronRight,
+  CircleUser,
   Ellipsis,
+  Folder,
+  Lock,
   PanelLeftClose,
   PanelLeftOpen,
+  Plus,
   Printer,
+  Settings,
   Trash2,
+  type LucideIcon,
 } from "lucide-react";
 import {
   Button,
@@ -209,38 +216,44 @@ export function ProjectSidebarView({
       <div className={styles.room}>
         <div id={bodyId} className={styles.panel} inert={!open}>
           <div className={styles.body}>
-            <Group label={words.groups.thisProject}>
-              <ProjectTree
-                label={project}
-                plan={plan}
-                files={files}
-                selectedFile={selectedFile}
-                onOpenFile={onOpenFile}
-                onPrintFile={onPrintFile}
-                onRemoveFile={onRemoveFile}
-                onAskFirst={onAskFirst}
-                onDecline={onDecline}
-              />
-              <Live app={app} open={appOpen} onOpen={onOpenApp} />
-              <ul className={styles.links}>
-                <Link onClick={onProjectSettings}>{words.projectSettings}</Link>
-                <Link onClick={onSecrets}>{wording.settings.tab.secrets}</Link>
-              </ul>
-            </Group>
-            <Group label={words.groups.projects}>
-              <ul className={styles.links}>
-                <Link onClick={onAllProjects}>{words.allProjects}</Link>
-                <Link onClick={onNewProject}>{wording.shell.newProject}</Link>
-              </ul>
-            </Group>
-            <Group label={words.groups.workspace}>
-              <ul className={styles.links}>
-                <Link onClick={onWorkspaceSettings}>
+            <ProjectTree
+              label={project}
+              plan={plan}
+              files={files}
+              selectedFile={selectedFile}
+              onOpenFile={onOpenFile}
+              onPrintFile={onPrintFile}
+              onRemoveFile={onRemoveFile}
+              onAskFirst={onAskFirst}
+              onDecline={onDecline}
+            />
+            <Live app={app} open={appOpen} onOpen={onOpenApp} />
+            <div className={styles.utilities}>
+              <Links label={words.groups.thisProject}>
+                <Link icon={Settings} onClick={onProjectSettings}>
+                  {words.projectSettings}
+                </Link>
+                <Link icon={Lock} onClick={onSecrets}>
+                  {wording.settings.tab.secrets}
+                </Link>
+              </Links>
+              <Links label={words.groups.projects}>
+                <Link icon={Folder} onClick={onAllProjects}>
+                  {words.allProjects}
+                </Link>
+                <Link icon={Plus} onClick={onNewProject}>
+                  {wording.shell.newProject}
+                </Link>
+              </Links>
+              <Links label={words.groups.workspace}>
+                <Link icon={Building2} onClick={onWorkspaceSettings}>
                   {words.workspaceSettings}
                 </Link>
-                <Link onClick={onAccount}>{words.account}</Link>
-              </ul>
-            </Group>
+                <Link icon={CircleUser} onClick={onAccount}>
+                  {words.account}
+                </Link>
+              </Links>
+            </div>
           </div>
         </div>
       </div>
@@ -248,16 +261,12 @@ export function ProjectSidebarView({
   );
 }
 
-/** One of the sidebar's three groups, named by a small heading. */
-function Group({ label, children }: { label: string; children: ReactNode }) {
-  const headingId = `project-sidebar-group-${useId()}`;
+/** A few links that go together at the sidebar's foot, named for a screen reader. */
+function Links({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <section className={styles.group} aria-labelledby={headingId}>
-      <h2 id={headingId} className={styles.groupLabel}>
-        {label}
-      </h2>
+    <ul className={styles.links} aria-label={label}>
       {children}
-    </section>
+    </ul>
   );
 }
 
@@ -290,14 +299,20 @@ function Live({
 }
 
 function Link({
+  icon: Icon,
   onClick,
   children,
 }: {
+  icon: LucideIcon;
   onClick: () => void;
   children: ReactNode;
 }) {
   return (
-    <SidebarItem asChild>
+    <SidebarItem
+      asChild
+      className={styles.link}
+      icon={<Icon aria-hidden="true" />}
+    >
       <button type="button" onClick={onClick}>
         {children}
       </button>
