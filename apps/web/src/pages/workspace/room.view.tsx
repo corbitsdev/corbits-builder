@@ -5,6 +5,7 @@
  */
 import {
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type ReactNode,
@@ -202,12 +203,13 @@ export function RoomView({
   const roomRef = useRef<HTMLDivElement>(null);
   const [narrow, setNarrow] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  useEffect(() => {
+  // Measured before the first paint too, so a phone never draws the wide room first.
+  useLayoutEffect(() => {
     const room = roomRef.current;
     if (room === null) return;
-    const observer = new ResizeObserver(() =>
-      setNarrow(room.clientWidth < NARROW_ROOM_PX),
-    );
+    const measure = () => setNarrow(room.clientWidth < NARROW_ROOM_PX);
+    measure();
+    const observer = new ResizeObserver(measure);
     observer.observe(room);
     return () => observer.disconnect();
   }, []);
