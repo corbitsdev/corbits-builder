@@ -5,7 +5,9 @@ import { join } from "node:path";
 import { and, eq, sql } from "drizzle-orm";
 import { createDB } from "@intx/db";
 import {
+  grant,
   principal,
+  user,
   workflowDefinition,
   workflowRun,
   workflowRunLaunchSpec,
@@ -120,6 +122,46 @@ export async function startInProcessHub(settings: Record<string, string> = {}) {
         person: { tenantId, principalId: person!.id },
         path: `/api/tenants/${tenantId}/projects/${projectId}`,
       };
+    },
+
+    // Another person in the project's tenant, holding only the project grants named, and the
+    // credentials that call as them.
+    async seedMember(
+      person: { tenantId: string },
+      projectId: string,
+      actions: readonly ("read" | "manage")[],
+    ) {
+      const email = `e2e-member-${randomUUID()}@example.invalid`;
+      const memberCookie = await signUpSessionCookie(
+        (request) => app.fetch(request),
+        origin,
+        email,
+        randomBytes(16).toString("hex"),
+        "In-process e2e member",
+      );
+      const [signedUp] = await handle.db
+        .select({ id: user.id })
+        .from(user)
+        .where(eq(user.email, email));
+      const principalId = randomUUID();
+      await handle.db.insert(principal).values({
+        id: principalId,
+        tenantId: person.tenantId,
+        kind: "user",
+        refId: signedUp!.id,
+        status: "active",
+      });
+      for (const action of actions)
+        await handle.db.insert(grant).values({
+          id: randomUUID(),
+          tenantId: person.tenantId,
+          principalId,
+          resource: `sb-project:${projectId}`,
+          action,
+          effect: "allow",
+          origin: "system",
+        });
+      return { cookie: memberCookie };
     },
 
     // A run of the role in the project under its own workflow principal, deployed by the person:

@@ -425,16 +425,59 @@ const isSecure = (url: URL) =>
   url.protocol === "https:" ||
   (url.protocol === "http:" && LOCAL_HOSTS.has(url.hostname));
 
-// A secret a plugin's tools use, by how it is sent, and the plugin's screen action that shows its
-// form. An http credential names the origin it may be sent to and how it is sent: a bearer token
-// through Interchange's http provider, or a named header through its http-header provider. An ssh
-// credential names no origin, because the server is its own: the person gives its address with the
-// key, and Interchange's ssh provider runs commands on that one server only. A provisioned ssh
-// credential is made by the hub for the plugin's own actions that say they provision it, never
-// typed by a person, so it has no form. notNeededWhile names a project value that, while it is set,
-// lets the plugin's actions start without the key, for a plugin with a way to work that needs none;
-// its tools then find the key missing and take that way. A provisioned credential has none: only the
-// plugin's own runs make it, so nothing the person sets stands in for it.
+// An address a sign-in sends the person or a code to. It has no user, query or fragment: those
+// could carry a secret or change where the request lands, and the hub adds its own query.
+const SignInAddress = type("string.url").narrow((address, ctx) => {
+  const url = new URL(address);
+  return (
+    (isSecure(url) &&
+      url.username === "" &&
+      url.password === "" &&
+      !/[?#]/.test(address)) ||
+    ctx.mustBe(
+      "an https address with no user, query or fragment, such as https://example.com/oauth/token",
+    )
+  );
+});
+
+// Where in the provider's token answer a field sits, as dot-separated keys, such as info.team_name.
+const AnswerPath = type(/^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*$/).describe(
+  "dot-separated keys of the token answer, such as info.team_name",
+);
+
+// How the person signs in at the provider instead of pasting a key. The hub gets a client id by
+// registering once at client.register. The token the sign-in gets is sent as a bearer token, like a
+// pasted key. account says where the token answer names the account or team that signed in, so the
+// person sees what they connected. The hub knows no provider's answer, so the manifest says where
+// to look.
+const SignIn = type({
+  "+": "reject",
+  authorize: SignInAddress,
+  token: SignInAddress,
+  "revoke?": SignInAddress,
+  scopes: type("string > 0").array(),
+  client: { "+": "reject", register: SignInAddress },
+  "account?": { "+": "reject", name: AnswerPath, "id?": AnswerPath },
+});
+export type SignIn = typeof SignIn.infer;
+
+// A secret a plugin's tools use, declared by how it is sent, with the plugin's screen action that
+// shows its form.
+//
+// An http credential names the origin it may be sent to and how it is sent: as a bearer token
+// through Interchange's http provider, or in a named header through its http-header provider. A
+// bearer credential with signIn can also be had by signing in, and its form may still take a pasted
+// key. Only a bearer credential signs in, because a sign-in's token is sent as a bearer token.
+//
+// An ssh credential names no origin: the person gives the server's address with the key, and
+// Interchange's ssh provider runs commands on that one server only. The hub makes a provisioned ssh
+// credential for the plugin's actions that say they provision it. No person types it, so it has no
+// form.
+//
+// notNeededWhile names a project value that lets the plugin's actions start without the key while
+// it is set, for a plugin that has a way to work without one. Its tools then find the key missing
+// and take that way. A provisioned credential has no notNeededWhile: only the plugin's runs make
+// it, so nothing the person sets can replace it.
 const HttpOrigin = type("string.url").narrow((origin, ctx) => {
   const url = new URL(origin);
   return (
@@ -447,6 +490,7 @@ const HttpCredentialDeclaration = type({
   about: "string > 0",
   origin: HttpOrigin,
   sends: "'bearer'",
+  "signIn?": SignIn,
   screen: "string > 0",
   "notNeededWhile?": "string > 0",
 }).or({

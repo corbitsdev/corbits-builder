@@ -165,6 +165,36 @@ it opens that screen first, unless the value `notNeededWhile` names is set, as
 for a plugin that can also work without a key: its tools find the key unbound
 and work that way.
 
+A bearer credential may add `signIn`, so the person can sign in at the provider
+instead of pasting a key. Its `authorize`, `token` and, when the provider has
+one, `revoke` are the provider's addresses, `scopes` is what is asked for, and
+`client: { "register": ... }` is where the hub registers once for a client id.
+Each address is https with no user, query or fragment. The optional `account`
+says where the provider's token answer names who signed in, as dot-separated
+keys: `{ "name": "info.team_name", "id": "info.team_uuid" }` for an answer with
+`info: { team_name, team_uuid }`. The hub stores those two as text beside the
+token, so the person sees which account is connected; never point `name` at an
+email. The screen may still take a pasted key: it draws `SignInForm` from
+`@corbits-builder/plugin-ui/sign-in-form` beside `CredentialForm`, passing the
+credential's name, its declaration and the project's tenant. Its button opens
+the provider's page in a new tab, waits for the hub to save the sign-in, then
+calls `onSaved`. Once a sign-in is saved the form shows the account, with
+"Sign in again" and "Disconnect", and an optional `warning` line above
+Disconnect, such as what still costs money there. A sign-in is saved in the
+project only. The hub's `HUB_PUBLIC_URL` must be where the person's browser
+reaches the hub, because the provider sends them back there.
+
+A tool calling with a signed-in credential passes `signedIn: {}` to
+`workflowHttpJson`. A 401 is then retried after about 2, 5 and 10 seconds, in
+case the token was renewed just as the tool called, and then thrown as
+`CredentialRefused` (its `refusalCode` is `try_again`); the tool answers it
+with one of its own fixed codes. Without `signedIn`, a 401 is thrown at once,
+as for a refused pasted key. `workflowHttpJson` also takes `method` (GET, POST,
+PUT or DELETE), never follows a redirect, answers `undefined` for a 2xx with no
+body, and puts a provider's own `message` for a refusal on the error's `words`,
+as one short printable line kept out of its `message`, so a provider client
+needs no fetch of its own.
+
 An ssh credential that says `"provisioned": true` instead of `screen` is made by
 the hub for the plugin's own actions; no person types it. An action that lists
 it in `provisions` starts without it. Any other action of the plugin whose

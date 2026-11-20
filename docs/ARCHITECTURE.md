@@ -506,6 +506,46 @@ rotate the host key after binding, because a failure between restarting the
 server's SSH and saving the new fingerprint would lock Builder out of a server
 the person pays for.
 
+### Signing in at a provider
+
+A place whose account key declares `signIn` lets the person sign in at the
+provider instead of pasting the key (`apps/hub/src/credentials/sign-ins.ts`).
+The hub registers itself once at the provider as a public client, per public
+address and credential name, and keeps the client id in `sb_sign_in_client`.
+A sign-in starts only in a project's tenant, never a workspace's, so a token
+that can spend money is held for one project. The hub makes the PKCE pair and
+state and answers with the provider's authorize address, which the person opens
+in a new tab. The provider sends that tab back to `/api/oauth/callback` below
+`HUB_PUBLIC_URL`. The hub exchanges the code only when that request carries the
+Builder session of the person who started the sign-in; in any other browser the
+sign-in fails and nothing is exchanged. Otherwise someone could start a sign-in
+in their own project, send the provider's address to another person, and
+receive that person's account. The token is saved as the plugin's tenant-owned
+`oauth_token` credential in the project, under the workspace's `http` provider
+for the declared origin, as a pasted key is. It keeps its id when the person
+signs in again, and it replaces a pasted key of that name. Its metadata holds
+strings only: the provider key the refresher matches and, where the manifest's
+`account` says the token answer names them, the account and its id; never an
+email.
+
+Every address a code, a token or the person is sent to comes from the
+installed manifest. The hub's one refresher (`credentials/refresher.ts`), which
+also renews model logins, renews a signed-in credential with the manifest's
+token address and the hub's own client id. It never reads them from the
+credential row, whose metadata anyone who may manage the credential can change.
+It renews no row that names a provider the hub did not register, nor a sign-in
+whose credential's name is not the provider it names. A renewed token is pushed
+to every running run in the tenant or below it that was given the credential,
+since a specialist's run keeps the credentials it started with. A tool that
+opts in retries a 401 once that is done
+([DEV.md](https://github.com/corbitsdev/corbits-builder/blob/main/docs/DEV.md#the-folder-and-the-manifest)). When the provider refuses to renew a token, the credential is marked `error`,
+which the plugin's screen and Settings show as signed out. Disconnecting
+revokes the refresh token and then the access token at the provider's `revoke`
+address, each in its own form request with the access token as a bearer token,
+then revokes the credential here. When the provider does not confirm, the
+credential is still revoked here and the person is told the provider may still
+hold the grant.
+
 ## Documents and versions
 
 A document has a kind, a title and a sequence of versions. Each version has

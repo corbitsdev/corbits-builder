@@ -1,0 +1,20 @@
+/* The account the sign-in connected, as the provider names it. */
+.account {
+  margin: 0;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.link {
+  align-self: flex-start;
+  color: var(--wb-foreground);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* Its buttons wrap, where the other forms' stay on one line. */
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}

@@ -288,6 +288,13 @@
       "when": 1794999899450,
       "tag": "0040_server_key",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1795001121440,
+      "tag": "0041_sign_in_client",
+      "breakpoints": true
     }
   ]
 }

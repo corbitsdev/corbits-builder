@@ -1129,6 +1129,13 @@ export const wording = {
     revoke: "Revoke…",
     confirmRevoke: "Yes, revoke it",
     confirmRevokeServer: `Yes, revoke it: ${productName} can no longer reach its server`,
+    disconnect: "Disconnect…",
+    confirmDisconnect: "Yes, sign out at the provider",
+    signedInAs: (account: string) => `Signed in as ${account}`,
+    signedOut:
+      "Signed out at the provider: sign in again where the plugin asks",
+    providerMayHold:
+      "Disconnected. The provider may still hold the sign-in: remove it in your account there.",
     save: "Save",
     saving: "Saving…",
     cancel: "Cancel",

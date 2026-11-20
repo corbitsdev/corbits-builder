@@ -77,6 +77,9 @@ const DEFAULT_BASE_URLS: Record<string, string> = {
   ...LOGIN_BASE_URLS,
 };
 
+const pluginSignInsPath = (tenantId: string) =>
+  `${tenantPath(tenantId)}/plugin-sign-ins`;
+
 function uniqueSuffix(): string {
   return crypto.randomUUID().replaceAll("-", "").slice(0, 12);
 }
@@ -116,7 +119,11 @@ export function buildCredentialsMethods(
   deps: ClientDeps,
 ): Pick<
   ProductApiClient,
-  "addModelCredential" | "startModelLogin" | "modelLogin" | "finishModelLogin"
+  | "addModelCredential"
+  | "startModelLogin"
+  | "modelLogin"
+  | "finishModelLogin"
+  | "disconnectPluginSignIn"
 > {
   const { request } = deps;
   // Reuse one native provider row per plugin so repeated additions do not multiply provider
@@ -214,6 +221,11 @@ export function buildCredentialsMethods(
       if (typeof created?.id !== "string")
         throw new Error("invalid_model_provider_response");
       return { id: created.id };
+    },
+    disconnectPluginSignIn(tenantId, name, signal) {
+      return request(`${pluginSignInsPath(tenantId)}/disconnect`, signal, {
+        credential: name,
+      });
     },
     async addModelCredential(tenantId, input, signal) {
       const root = tenantPath(tenantId);

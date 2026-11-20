@@ -1,15 +1,17 @@
 /**
- * The one place the hub itself writes a plugin's credential: the provider and credential rows,
- * both named `plugin.<name>`, that a person's form writes through Interchange's routes, so a run
- * binds what the hub wrote exactly as it binds what a person saved. Interchange has no route a run
- * may use to have a credential made for it; this writes its tables directly, as the install root's
- * seeded provider keys do.
+ * Where the hub writes a plugin's credential itself. It writes the same provider and credential
+ * rows, both named `plugin.<name>`, that a person's form writes through Interchange's routes, so a
+ * run binds what the hub wrote exactly as it binds what a person saved. Interchange has no route
+ * for a run to have a credential made for it, and none that saves the tokens of a sign-in the hub
+ * finished. So this writes Interchange's tables directly, as the install root's seeded provider
+ * keys do. No other hub code writes a plugin credential.
  */
 import { and, eq } from "drizzle-orm";
 import type { DB } from "@intx/db";
 import { credential, grant, provider } from "@intx/db/schema";
 import { generateId } from "@intx/hub-common";
 import { credentialAad, type CredentialCipher } from "@intx/types";
+import type { BaseTokens } from "@corbits/oauth-core";
 import { credentialProvider } from "@corbits-builder/plugin";
 
 export type Transaction = Parameters<Parameters<DB["db"]["transaction"]>[0]>[0];
@@ -19,6 +21,9 @@ export type ProviderShape = { plugin: string; apiBaseUrl: string };
 
 /** Interchange's plugin a server key is sent through. */
 export const SSH_PLUGIN = "ssh";
+
+/** Interchange's plugin a bearer token is sent through. */
+export const BEARER_PLUGIN = "http";
 
 /**
  * The credential `tenantId` itself has under a plugin credential's name, without its secret.
@@ -32,6 +37,7 @@ export async function heldPluginCredential(
   const [held] = await db
     .select({
       id: credential.id,
+      type: credential.type,
       status: credential.status,
       metadata: credential.metadata,
       providerId: credential.providerId,
@@ -180,4 +186,72 @@ export async function dropPluginCredential(
         eq(provider.plugin, SSH_PLUGIN),
       ),
     );
+}
+
+/**
+ * Saves a sign-in's tokens as the active tenant-owned oauth_token credential `tenantId` has under
+ * `name`, under the workspace's provider of that name, as for a pasted key. An existing sign-in
+ * with that name keeps its id, so runs that have it are pushed the new tokens. An existing pasted
+ * key is deleted for the new credential, and its id is returned so the caller can remove it from
+ * running runs once this commits. The tokens are sealed the way Interchange seals a credential's
+ * secrets, so the refresher and runs read them like any other oauth_token's.
+ */
+export async function holdSignedInCredential(
+  tx: Transaction,
+  cipher: CredentialCipher,
+  held: {
+    tenantId: string;
+    workspaceTenantId: string;
+    name: string;
+    origin: string;
+    tokens: BaseTokens;
+    scopes: readonly string[];
+    metadata: Record<string, string>;
+  },
+): Promise<{ id: string; replaced?: string }> {
+  const providerId = await syncProvider(tx, held.workspaceTenantId, held.name, {
+    plugin: BEARER_PLUGIN,
+    apiBaseUrl: held.origin,
+  });
+  const existing = await heldPluginCredential(tx, held.tenantId, held.name);
+  const kept = existing?.type === "oauth_token" ? existing : undefined;
+  if (existing && !kept)
+    await dropPluginCredential(tx, held.tenantId, existing.id);
+  const id = kept?.id ?? generateId("credential");
+  const sealed = {
+    providerId,
+    principalId: null,
+    type: "oauth_token" as const,
+    secret: await cipher.encrypt(
+      held.tokens.access,
+      credentialAad(id, "secret"),
+    ),
+    refreshSecret:
+      held.tokens.refresh === undefined
+        ? null
+        : await cipher.encrypt(
+            held.tokens.refresh,
+            credentialAad(id, "refreshSecret"),
+          ),
+    scopes: [...held.scopes],
+    expiresAt:
+      held.tokens.expiresAt === undefined
+        ? null
+        : new Date(held.tokens.expiresAt),
+    status: "active" as const,
+    metadata: held.metadata,
+  };
+  if (kept)
+    await tx
+      .update(credential)
+      .set({ ...sealed, updatedAt: new Date() })
+      .where(eq(credential.id, id));
+  else
+    await tx.insert(credential).values({
+      id,
+      tenantId: held.tenantId,
+      name: credentialProvider(held.name),
+      ...sealed,
+    });
+  return existing && !kept ? { id, replaced: existing.id } : { id };
 }
