@@ -22,6 +22,14 @@ import PickColoursView from "@plugins/designer/src/pick-colours/view.tsx";
 import { question } from "./prompt-box.fixtures.ts";
 import { ScreenStory, storyScreen } from "./screen-story.tsx";
 import { LIVE_TAB } from "./tab-follow.ts";
+import writtenDocument, {
+  Comparing as comparingVersions,
+  OlderVersion as olderVersion,
+} from "./written-document.stories.tsx";
+import {
+  WrittenDocumentView,
+  type WrittenDocumentViewProps,
+} from "./written-document.view.tsx";
 import {
   RoomView,
   type RoomComposer,
@@ -764,4 +772,50 @@ export const DarkScreenWaiting: Story = {
 export const DarkScreenSheetNarrow: Story = {
   ...ScreenSheetNarrow,
   globals: { mode: "dark" },
+};
+
+// A written document's page as the open project view shows it, in one of the page's own states.
+const pageOf = (args: Partial<WrittenDocumentViewProps>) =>
+  paneOf({
+    writtenDocument: () => (
+      <WrittenDocumentView {...writtenDocument.args} {...args} />
+    ),
+  });
+
+/** An older version read from the page's menu, with the note that the plan names the newest. */
+export const DocumentPageOlderVersion: Story = {
+  args: { ...ProjectOpen.args, ...pageOf({ ...olderVersion.args }) },
+};
+
+/** The page set against the version before it, its changes tracked inline. */
+export const DocumentPageComparing: Story = {
+  args: { ...ProjectOpen.args, ...pageOf({ ...comparingVersions.args }) },
+};
+
+/** The document is still being read: the open view's one loading line, with no page yet. */
+export const DocumentPageLoading: Story = {
+  args: { ...ProjectOpen.args, ...paneOf(loadingDocument.args) },
+};
+
+/** The document could not be read: the open view's error line with Try again, with no page. */
+export const DocumentPageFailed: Story = {
+  args: { ...ProjectOpen.args, ...paneOf(failedDocument.args) },
+};
+
+/** At phone width the contents give way and the page takes the view's width. */
+export const DocumentPageNarrow: Story = {
+  args: { ...ProjectOpen.args },
+  globals: { viewport: { value: "mobile1" } },
+  decorators: [
+    (Story) => (
+      <div style={{ width: 375, height: "100vh", margin: "0 auto" }}>
+        <Story />
+      </div>
+    ),
+  ],
+};
+
+export const DocumentPageNarrowDark: Story = {
+  ...DocumentPageNarrow,
+  globals: { ...DocumentPageNarrow.globals, mode: "dark" },
 };
