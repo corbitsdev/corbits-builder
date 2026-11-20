@@ -14,7 +14,6 @@ import { DesignPreviewView, type DesignPart } from "./design-preview.view.tsx";
 import { ComparisonView } from "./comparison-view.tsx";
 import { DevicePreview, type PreviewDevice } from "./device-preview.tsx";
 import type { RetainedVersion } from "./document-versions.ts";
-import { PassageQuotes } from "./passage-note.tsx";
 import type { PassageQuote } from "./passage-quote.ts";
 import { versionGroup } from "./version-menu.tsx";
 import { useVersionReading } from "./version-reading.ts";
@@ -35,7 +34,10 @@ import {
 import type { ApproachesMeta } from "@corbits-builder/schemas/approaches";
 import type { ApproachChoice } from "./approach-choice.ts";
 import type { TweakPanelProps } from "./mockup-tweaks.view.tsx";
-import type { DocumentPageProps } from "./document-page.model.ts";
+import type {
+  DocumentComments,
+  DocumentPageProps,
+} from "./document-page.model.ts";
 import { Fault, InlineNote } from "../../components.jsx";
 import styles from "./deliverable-block.module.css";
 
@@ -150,8 +152,11 @@ export function DeliverableBody({
   approvalRounds,
   tweakPanel,
   writtenDocument,
+  comments,
 }: DeliverableSlots & {
   state: DeliverableState | undefined;
+  /** The project's comment drafts and this document's place among them, for a written page. */
+  comments?: DocumentComments | undefined;
   /** Approving the document being read; absent where it cannot be approved here. */
   approval?: DocumentApprovalControl | undefined;
   designPart?: DesignPart;
@@ -201,7 +206,7 @@ export function DeliverableBody({
           requestedVersion,
           approval,
           approachChoice,
-          onAddToPrompt,
+          comments,
         })}
       </Fragment>
     );
@@ -411,8 +416,6 @@ function ReadyDocument({
       </p>
     );
   };
-  const add = onAddToPrompt === undefined ? {} : { onAdd: onAddToPrompt };
-
   const notes = (
     <VersionNotes
       viewing={viewing}
@@ -451,9 +454,13 @@ function ReadyDocument({
   return (
     <div className={styles.body} data-slot="deliverable-body">
       {renderDocumentHeader()}
-      {kind === "approval_package" ? (
-        <PassageQuotes title={title} version={viewing} {...add}>
-          {approvalRounds({
+      <div
+        className={styles.reading}
+        data-slot="document-reading"
+        data-fill={fill ? "" : undefined}
+      >
+        {kind === "approval_package" ? (
+          approvalRounds({
             packageVersion: viewing,
             packageContent: body,
             packageVersions: document.versions.map((item) => item.version),
@@ -463,14 +470,14 @@ function ReadyDocument({
             onOpenSource,
             onAddToPrompt,
             onDeliverMessage,
-          })}
-        </PassageQuotes>
-      ) : (
-        <PassageQuotes title={title} version={viewing} fill={fill} {...add}>
-          {readingView()}
-          {comparison}
-        </PassageQuotes>
-      )}
+          })
+        ) : (
+          <>
+            {readingView()}
+            {comparison}
+          </>
+        )}
+      </div>
       {visual ? null : (
         <PaneBar label={wording.documentBar} groups={barGroups} floating />
       )}
