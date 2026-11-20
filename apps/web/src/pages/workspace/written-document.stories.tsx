@@ -70,6 +70,13 @@ const versions = (viewing: number, pending = false): PaneBarGroup =>
     onComparePrevious: fn(),
   });
 
+/** Comments can be written, none yet. */
+const noComments = {
+  drafts: [],
+  onSave: fn(),
+  onDelete: fn(),
+} satisfies WrittenDocumentViewProps["comments"];
+
 const notes = {
   viewing: 2,
   newest: 2,
@@ -91,7 +98,7 @@ const meta = {
     groups: [approve, versions(2), download],
     notes,
     body: { kind: "text", source: BRIEF },
-    quote: { title: "Problem brief", version: 2, onAdd: fn() },
+    comments: noComments,
   },
   decorators: [
     (Story) => (
@@ -138,7 +145,7 @@ export const OlderVersion: Story = {
     groups: [versions(1), download],
     notes: { ...notes, viewing: 1 },
     body: { kind: "text", source: BRIEF_V1 },
-    quote: { title: "Problem brief", version: 1, onAdd: fn() },
+    comments: noComments,
   },
 };
 
@@ -217,7 +224,7 @@ export const Approaches: Story = {
         onChoose: fn(async () => null),
       },
     },
-    quote: { title: "Approaches", version: 2, onAdd: fn() },
+    comments: noComments,
   },
 };
 
@@ -233,7 +240,7 @@ export const UserManualPage: Story = {
       source: splitLeadingHeading(SAMPLE_MANUAL.markdown).body,
       images: new Map(Object.entries(SAMPLE_MANUAL.pictures)),
     },
-    quote: undefined,
+    comments: undefined,
   },
 };
 

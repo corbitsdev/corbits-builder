@@ -4,7 +4,7 @@
  * the person and room-status.ts for what one line says is happening, and hands the box, the pill
  * and the space their props. The room's model only puts it together with the rest.
  */
-import { useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { skipToken, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type { ProjectArtifact } from "@corbits-builder/client";
@@ -18,6 +18,19 @@ import type { PlanView, ShownScreen } from "@corbits-builder/schemas/project";
 import { goAheadPlanStep } from "../../api/artifacts.ts";
 import { keys } from "../../queries/keys.ts";
 import { wording } from "../../config.ts";
+import { useUnsent } from "../../unsent.ts";
+import {
+  afterSent,
+  commentsMessage,
+  commentsSend,
+  deleteDraft,
+  draftsKey,
+  readDrafts,
+  saveDraft,
+  storedDrafts,
+  type CommentDraft,
+} from "./comments.ts";
+import type { ProjectComments } from "./document-page.model.ts";
 import {
   dispatchStatus,
   type Dispatch,
@@ -329,5 +342,92 @@ export function usePromptBox(room: PromptBoxRoom): PromptBox {
     restarts: sendWarning(waiting),
     working: working.length > 0,
     onStop: stop,
+  };
+}
+
+/** What the room knows that the comment drafts and their sending need. */
+export type CommentsRoom = {
+  projectId: string;
+  archived: boolean;
+  /** The coordinator's question is open, so a message would answer it. */
+  question: boolean;
+  /** An approval is open, so a message would decline it. */
+  approval: boolean;
+  /** A message or an answer is on its way. */
+  sending: boolean;
+  /** Re-reads the hub for an open approval just before the comments go. */
+  approvalOpenNow: () => Promise<boolean>;
+  /** Sends one ordinary message as the person; resolves whether it went. */
+  mail: (message: string) => Promise<boolean>;
+};
+
+/** The comment row in the prompt box: how many wait, and sending them. */
+export type BoxComments = {
+  count: number;
+  /** Why they cannot be sent now, naming what to deal with first; null while they can. */
+  blocked: string | null;
+  sending: boolean;
+  onSend: () => void;
+};
+
+/**
+ * The person's comment drafts on the project's documents, kept in this tab beside the unsent
+ * message, and the box's row that sends them all as one message.
+ */
+export function useCommentDrafts(room: CommentsRoom): {
+  comments: ProjectComments | undefined;
+  box: BoxComments | null;
+} {
+  const [stored, setStored] = useUnsent(draftsKey(room.projectId));
+  const drafts = useMemo(() => readDrafts(stored), [stored]);
+  const [going, setGoing] = useState(false);
+  const change = useCallback(
+    (next: (drafts: CommentDraft[]) => CommentDraft[]) =>
+      setStored((was) => storedDrafts(next(readDrafts(was))) ?? ""),
+    [setStored],
+  );
+  const send = commentsSend({
+    drafts,
+    sending: room.sending || going,
+    question: room.question,
+    approval: room.approval,
+  });
+
+  const sendAll = async () => {
+    if (send.state !== "ready") return;
+    const outgoing = drafts;
+    setGoing(true);
+    try {
+      // An approval raised since the room last read would take the message as its decline.
+      if (await room.approvalOpenNow()) return;
+      if (await room.mail(commentsMessage(outgoing)))
+        change((now) => afterSent(now, outgoing));
+    } finally {
+      setGoing(false);
+    }
+  };
+
+  if (room.archived) return { comments: undefined, box: null };
+  const words = wording.promptBox;
+  return {
+    comments: {
+      drafts,
+      onSave: (draft) => change((now) => saveDraft(now, draft)),
+      onDelete: (id) => change((now) => deleteDraft(now, id)),
+    },
+    box:
+      send.state === "none"
+        ? null
+        : {
+            count: drafts.length,
+            blocked:
+              send.state !== "blocked"
+                ? null
+                : send.by === "question"
+                  ? words.commentsAfterQuestion
+                  : words.commentsAfterApproval,
+            sending: send.state === "sending",
+            onSend: () => void sendAll(),
+          },
   };
 }

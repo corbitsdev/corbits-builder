@@ -30,6 +30,7 @@ import {
 import type { UserManual } from "@corbits-builder/schemas/artifact";
 import type { PreviewDevice } from "./device-preview.tsx";
 import type { PassageQuote } from "./passage-quote.ts";
+import type { ProjectComments } from "./document-page.model.ts";
 import {
   readStoredPreference,
   writeStoredPreference,
@@ -227,7 +228,10 @@ export type ArtifactPaneContent = {
   onSeen: (id: string) => void;
   onRetry?: (() => void) | undefined;
   onReadVersion?: (version: number) => Promise<ReadVersion>;
+  /** Puts a package reviewer's feedback into the message. */
   onAddToPrompt?: (passage: PassageQuote) => void;
+  /** The person's comment drafts on the project's written documents. */
+  comments?: ProjectComments | undefined;
   onDeliverMessage?: ((message: string) => Promise<boolean | void>) | undefined;
   /** The person's pick of a filed approach, and how to make it; choosing is absent on an archived project. */
   approachChoice?: ApproachChoice;
@@ -269,6 +273,7 @@ export function ArtifactPane({
   onRetry,
   onReadVersion,
   onAddToPrompt,
+  comments,
   onDeliverMessage,
   approachChoice,
   onApprove,
@@ -480,6 +485,9 @@ export function ArtifactPane({
                       : {})}
                     {...(current && onAddToPrompt !== undefined
                       ? { onAddToPrompt }
+                      : {})}
+                    {...(current && comments !== undefined
+                      ? { comments: { ...comments, document: item.id } }
                       : {})}
                     {...(current && onDeliverMessage !== undefined
                       ? { onDeliverMessage }

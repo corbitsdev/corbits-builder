@@ -1,6 +1,6 @@
 /**
  * What a written document's page does: read the version the person picks, compare it with the one
- * before, approve it, download it and quote from it. The room's read of the document and the
+ * before, approve it, download it and comment on its passages. The room's read of the document and the
  * versions the hub keeps become the page's title, running header, bar and text, so the view sees
  * none of the hub's shapes.
  */
@@ -8,7 +8,8 @@ import { wording } from "../../config.ts";
 import type { ApproachChoice } from "./approach-choice.ts";
 import { useApproveGroup } from "./approve-group.ts";
 import type { DocumentApprovalControl } from "./deliverable-block.tsx";
-import type { PassageQuote } from "./passage-quote.ts";
+import { documentDrafts, type CommentDraft } from "./comments.ts";
+import type { PageComments } from "./page-comments.tsx";
 import {
   documentFile,
   fileStem,
@@ -32,15 +33,62 @@ export type DocumentPageProps = VersionReadingInput & {
   approval?: DocumentApprovalControl | undefined;
   /** The person's pick of a filed approach, and how to make it. */
   approachChoice?: ApproachChoice | undefined;
-  onAddToPrompt?: ((passage: PassageQuote) => void) | undefined;
+  /** The project's comment drafts, and this document's place among them; absent where it takes none. */
+  comments?: DocumentComments | undefined;
 };
+
+/** The comment drafts of the project the document is in, which the room keeps. */
+export type ProjectComments = {
+  drafts: readonly CommentDraft[];
+  onSave: (draft: CommentDraft) => void;
+  onDelete: (id: string) => void;
+};
+
+export type DocumentComments = ProjectComments & {
+  /** The document, by the room's id for it, which stays the same across its versions. */
+  document: string;
+};
+
+const newDraftId = () =>
+  `comment:${String(Date.now())}:${Math.random().toString(36).slice(2, 8)}`;
+
+/**
+ * The page's comments: this document's drafts, and saving one. A new comment names the version
+ * read; an edit keeps the document and version its passage was quoted from.
+ */
+export function pageComments(
+  comments: DocumentComments,
+  reading: { title: string; version: number },
+  newId: () => string = newDraftId,
+): PageComments {
+  const drafts = documentDrafts(comments.drafts, comments.document);
+  return {
+    drafts,
+    onSave: ({ id, quote, comment }) => {
+      const was = drafts.find((draft) => draft.id === id);
+      comments.onSave(
+        was === undefined
+          ? {
+              id: newId(),
+              document: comments.document,
+              title: reading.title,
+              version: reading.version,
+              quote,
+              comment,
+            }
+          : { ...was, comment },
+      );
+    },
+    onDelete: comments.onDelete,
+  };
+}
 
 export function useDocumentPage({
   project,
   name,
   approval,
   approachChoice,
-  onAddToPrompt,
+  comments,
   ...reading
 }: DocumentPageProps): WrittenDocumentViewProps {
   const { document, changesOpen } = reading;
@@ -121,9 +169,9 @@ export function useDocumentPage({
                   onChoose: choose,
                 },
         },
-    quote:
-      onAddToPrompt === undefined
+    comments:
+      comments === undefined
         ? undefined
-        : { title: filed, version: viewing, onAdd: onAddToPrompt },
+        : pageComments(comments, { title: filed, version: viewing }),
   };
 }

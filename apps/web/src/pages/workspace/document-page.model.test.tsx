@@ -2,7 +2,13 @@ import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { wording } from "../../config.ts";
 import type { LoadedDeliverable } from "./deliverable-block.tsx";
-import type { DocumentPageProps } from "./document-page.model.ts";
+import {
+  briefPhone,
+  briefSaturday,
+  projectDrafts,
+} from "./comments.fixtures.ts";
+import type { CommentDraft } from "./comments.ts";
+import { pageComments, type DocumentPageProps } from "./document-page.model.ts";
 import { WrittenDocument } from "./written-document.tsx";
 
 const brief: LoadedDeliverable = {
@@ -118,11 +124,51 @@ describe("a written document's page", () => {
       "<del>Cake</del><ins>Bakery</ins> orders brief",
     );
   });
+});
 
-  test("offers quoting only where a passage can be added to the message", () => {
-    expect(page()).not.toContain('data-slot="passage-notes"');
-    expect(page({ onAddToPrompt: () => {} })).toContain(
-      'data-slot="passage-notes"',
-    );
+describe("a written document's comments", () => {
+  const comments = (saved: CommentDraft[] = []) => ({
+    document: "problem_brief",
+    drafts: projectDrafts,
+    onSave: (draft: CommentDraft) => saved.push(draft),
+    onDelete: () => {},
+  });
+
+  test("are this document's drafts only", () => {
+    expect(
+      pageComments(comments(), { title: "Problem brief", version: 2 }).drafts,
+    ).toEqual([briefPhone, briefSaturday]);
+  });
+
+  test("a new comment names the document and the version read", () => {
+    const saved: CommentDraft[] = [];
+    pageComments(
+      comments(saved),
+      { title: "Problem brief", version: 3 },
+      () => "draft-new",
+    ).onSave({ id: null, quote: "Saturdays", comment: "Which hours?" });
+    expect(saved).toEqual([
+      {
+        id: "draft-new",
+        document: "problem_brief",
+        title: "Problem brief",
+        version: 3,
+        quote: "Saturdays",
+        comment: "Which hours?",
+      },
+    ]);
+  });
+
+  test("an edit keeps the version its passage was quoted from", () => {
+    const saved: CommentDraft[] = [];
+    pageComments(comments(saved), {
+      title: "Problem brief",
+      version: 3,
+    }).onSave({
+      id: briefPhone.id,
+      quote: briefPhone.quote,
+      comment: "Texts too.",
+    });
+    expect(saved).toEqual([{ ...briefPhone, comment: "Texts too." }]);
   });
 });

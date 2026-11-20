@@ -53,7 +53,7 @@ import {
 import { toast } from "sonner";
 import { sendMessage } from "../../api/conversation.ts";
 import { inTab, pluginTabs, type SpaceScreenProps } from "./plugin-screens.tsx";
-import { usePromptBox } from "./prompt-box.model.ts";
+import { useCommentDrafts, usePromptBox } from "./prompt-box.model.ts";
 import { subscribeWorkflowRun } from "../../api/run-stream.ts";
 import {
   runStepsQuery,
@@ -1269,6 +1269,19 @@ export function useRoom({
         deliverMail(body, clearComposer, declineWith(approvalId)),
     });
   };
+  // Comments go as an ordinary message, so they wait while a question or approval would take it.
+  const commentDrafts = useCommentDrafts({
+    projectId,
+    archived,
+    question: openQuestion !== undefined,
+    approval: openApproval !== undefined,
+    sending: sending || approvalBusy,
+    approvalOpenNow: async () =>
+      (await readPendingApprovals())?.some(
+        (approval) => approval.packages === undefined,
+      ) ?? false,
+    mail: (message) => deliverMail(message),
+  });
   const sendFiles = async () => {
     if (sending) return false;
     const currentApprovals = await readPendingApprovals();
@@ -1833,6 +1846,14 @@ export function useRoom({
       onReply: (reply) => void deliver(reply),
       sendLabel:
         stagedItems === null ? null : wording.questions.sendBack(stagedItems),
+      ...(commentDrafts.box === null
+        ? {}
+        : {
+            comments: commentDrafts.box.count,
+            commentsBlocked: commentDrafts.box.blocked,
+            commentsSending: commentDrafts.box.sending,
+            onSendComments: commentDrafts.box.onSend,
+          }),
     };
   };
   const paneDocuments = paneDeliverables.map((item) =>
@@ -1939,6 +1960,7 @@ export function useRoom({
           ? {}
           : {
               onAddToPrompt: addToPrompt,
+              comments: commentDrafts.comments,
               onDeliverMessage: (message: string) => deliver(message),
               onApprove: approveRead,
             }),

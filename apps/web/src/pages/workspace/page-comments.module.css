@@ -1,0 +1,21 @@
+/* A comment whose passage is not on the version shown carries its quote above it. */
+.away {
+  display: flex;
+  width: 16rem;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.quote {
+  display: -webkit-box;
+  margin: 0;
+  padding-inline-start: var(--space-2);
+  border-inline-start: 2px solid var(--wb-border-strong);
+  overflow: hidden;
+  color: var(--wb-muted-foreground);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+}

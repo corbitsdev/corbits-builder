@@ -1,17 +1,17 @@
 /**
  * A written document in the reading pane: a brief, constraints, approaches, requirements, a build
  * plan or the app's manual, read as a printed page with its sections beside it. The page's bar
- * carries the version, the page count, the zoom and the download; a passage pointed at on the page
- * can be quoted into the person's message.
+ * carries the version, the page count, the zoom and the download; a passage selected on the page
+ * can carry a comment in the margin, kept as a draft until the person sends their comments.
  */
 import type { ApproachesMeta } from "@corbits-builder/schemas/approaches";
 import { DocumentView } from "@corbits-builder/plugin-ui/markdown";
+import { useRef } from "react";
 import { ApproachesComparison } from "./approaches-comparison.tsx";
 import { ComparisonView } from "./comparison-view.tsx";
 import { DocumentPage } from "./document-page.tsx";
 import type { PaneBarGroup } from "./pane-bar.tsx";
-import { PassageQuotes } from "./passage-note.tsx";
-import type { PassageQuote } from "./passage-quote.ts";
+import { usePageComments, type PageComments } from "./page-comments.tsx";
 import { VersionNotes, type VersionNotesProps } from "./version-notes.tsx";
 
 /** What the page reads: the version's text, or that version set against an earlier one. */
@@ -53,14 +53,8 @@ export type WrittenDocumentViewProps = {
   /** Lines about the version being read; absent for a document without versions. */
   notes?: VersionNotesProps | undefined;
   body: WrittenBody;
-  /** Quoting a passage into the message, naming the document and the version read. */
-  quote?:
-    | {
-        title: string;
-        version: number;
-        onAdd: (passage: PassageQuote) => void;
-      }
-    | undefined;
+  /** The person's comments on this document; absent where it takes none. */
+  comments?: PageComments | undefined;
 };
 
 export function WrittenDocumentView({
@@ -70,8 +64,14 @@ export function WrittenDocumentView({
   groups,
   notes,
   body,
-  quote,
+  comments,
 }: WrittenDocumentViewProps) {
+  const textRef = useRef<HTMLDivElement>(null);
+  // A comparison reads two versions at once, so nothing on it is commented.
+  const page = usePageComments(
+    body.kind === "text" ? comments : undefined,
+    textRef,
+  );
   const text =
     body.kind === "comparison" ? (
       <ComparisonView
@@ -91,10 +91,12 @@ export function WrittenDocumentView({
             onChoose={body.approaches.onChoose}
           />
         )}
-        <DocumentView
-          source={body.source}
-          {...(body.images === undefined ? {} : { images: body.images })}
-        />
+        <div ref={textRef} {...page.select}>
+          <DocumentView
+            source={body.source}
+            {...(body.images === undefined ? {} : { images: body.images })}
+          />
+        </div>
       </>
     );
   return (
@@ -104,18 +106,10 @@ export function WrittenDocumentView({
       meta={meta}
       groups={groups}
       notes={notes === undefined ? undefined : <VersionNotes {...notes} />}
+      passages={page.passages}
+      margin={page.margin}
     >
-      {quote === undefined ? (
-        text
-      ) : (
-        <PassageQuotes
-          title={quote.title}
-          version={quote.version}
-          onAdd={quote.onAdd}
-        >
-          {text}
-        </PassageQuotes>
-      )}
+      {text}
     </DocumentPage>
   );
 }
