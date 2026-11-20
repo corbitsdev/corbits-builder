@@ -2,6 +2,8 @@ import {
   chmod,
   mkdir,
   mkdtemp,
+  readdir,
+  readFile,
   realpath,
   rm,
   symlink,
@@ -17,8 +19,9 @@ import {
 import { type } from "arktype";
 import { getLogger } from "@intx/log";
 import { hasCode } from "@intx/types/has-code";
-import type { ToolCall, ToolResult } from "@intx/types/runtime";
+import { ToolResult, type ToolCall } from "@intx/types/runtime";
 import { errorCode, requestErrorMetadata } from "../request-error.ts";
+import { CHECK_VERDICT } from "./check-detail.ts";
 import type { buildPackageLayout } from "./package-layout.ts";
 import { BROWSER_ARGS } from "./browser.ts";
 import { CODER_REGISTRY_HOSTS } from "../config/packages.ts";
@@ -439,6 +442,67 @@ export async function toolchainReadPaths(
   return reads;
 }
 
+// The build tests' hub answers shell lines and commands from recordings instead of running them.
+const Recording = type({
+  "+": "reject",
+  shell: "string > 0",
+  result: ToolResult,
+}).or({
+  "+": "reject",
+  command: "string > 0",
+  exitCode: "number.integer | null",
+  output: "string",
+});
+const CHECKS = /\bcheck-(?:stack|app)\b/;
+
+/**
+ * The recordings in the folder by the line each answers, checked as they are read: a check's must
+ * carry the verdict line the hub reads, and a line recorded twice is refused. A line with no
+ * recording throws, so nothing falls back to running it.
+ */
+async function readReplay(folder: string) {
+  const shells = new Map<string, ToolResult>();
+  const commands = new Map<
+    string,
+    { exitCode: number | null; output: string }
+  >();
+  for (const name of await readdir(folder)) {
+    if (!name.endsWith(".json")) continue;
+    const recorded = Recording.assert(
+      JSON.parse(await readFile(join(folder, name), "utf8")),
+    );
+    const line = "shell" in recorded ? recorded.shell : recorded.command;
+    const output =
+      "shell" in recorded ? String(recorded.result.content) : recorded.output;
+    if (CHECKS.test(line) && !CHECK_VERDICT.test(output))
+      throw new BuildExecutionError(
+        `tool_replay_invalid: ${name} records a check without its verdict`,
+      );
+    if (shells.has(line) || commands.has(line))
+      throw new BuildExecutionError(`tool_replay_invalid: ${line} twice`);
+    if ("shell" in recorded) shells.set(line, recorded.result);
+    else
+      commands.set(line, {
+        exitCode: recorded.exitCode,
+        output: recorded.output,
+      });
+  }
+  const recordingOf = <T>(answers: Map<string, T>, line: string) => {
+    const answer = answers.get(line);
+    if (answer === undefined)
+      throw new BuildExecutionError(`tool_replay_unrecorded: ${line}`);
+    return answer;
+  };
+  return {
+    shell: (call: ToolCall): ToolResult => ({
+      ...recordingOf(shells, String(call.arguments["command"])),
+      callId: call.id,
+    }),
+    command: (name: string, args: readonly string[]) =>
+      recordingOf(commands, [name, ...args].join(" ")),
+  };
+}
+
 export async function createPosixBuildExecutor(
   workspace: string,
   limits: BuildExecutionPolicy,
@@ -476,6 +540,11 @@ export async function createPosixBuildExecutor(
   let stage = "workspace";
   try {
     const cwd = await realpath(workspace);
+    // Inlined into the agent packages by build-packages.ts; passed to the command host in its env.
+    // oxlint-disable-next-line eslint/no-restricted-properties
+    const replayFolder = process.env.BUILDER_TOOL_REPLAY;
+    const replay =
+      replayFolder === undefined ? undefined : await readReplay(replayFolder);
     stage = "dependencies";
     const protectedPaths = [
       layout.assetDirectory,
@@ -1100,6 +1169,8 @@ export async function createPosixBuildExecutor(
       policy,
       version: SANDBOX_RUNTIME_VERSION,
       run(call: ToolCall, signal: AbortSignal): Promise<ToolResult> {
+        if (replay && call.name === "run_shell")
+          return Promise.resolve(replay.shell(call));
         if (
           call.name === "__sb_host_gate" &&
           (!trustedGate || call.id !== trustedGate.nonce)
@@ -1124,6 +1195,7 @@ export async function createPosixBuildExecutor(
         if (options.commands?.[name] === undefined)
           throw new BuildExecutionError(`unknown_command: ${name}`);
         signal.throwIfAborted();
+        if (replay) return replay.command(name, args);
         const child = Bun.spawn(
           [
             "/bin/sh",

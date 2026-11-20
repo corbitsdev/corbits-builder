@@ -33,6 +33,7 @@ import {
 } from "./posix-sandbox.ts";
 import { browserTools } from "./browser.ts";
 import {
+  CHECK_VERDICT,
   DONE_CHECKS_TOOL,
   DoneChecksCall,
   type CheckDetail,
@@ -215,7 +216,6 @@ const VERSION_CLOSE_MS = 15_000;
 // command runs it (timeout, env, a wrapper or a pipe); a command that only names the check, such as
 // grep -rn check-stack, prints none.
 export const FINISH_CHECK = "check-stack";
-const CHECK_VERDICT = /^check (?:passed|failed):/m;
 const CHECK_PASSED = /^check passed: every command in CHECKS\.txt succeeded/m;
 
 /**

@@ -32,9 +32,20 @@ async function runHost(
   ask: CommandAsk,
   signal: AbortSignal | undefined,
 ): Promise<CommandReport> {
+  // The folder of recorded tool results the build tests' sandbox answers from (posix-sandbox.ts).
+  // oxlint-disable-next-line eslint/no-restricted-properties
+  const replay = process.env.BUILDER_TOOL_REPLAY;
   const child = Bun.spawn(
     [process.execPath, ...process.execArgv, HOST, workspace],
-    { env: hostEnv(), stdin: "pipe", stdout: "pipe", stderr: "pipe" },
+    {
+      env:
+        replay === undefined
+          ? hostEnv()
+          : { ...hostEnv(), BUILDER_TOOL_REPLAY: replay },
+      stdin: "pipe",
+      stdout: "pipe",
+      stderr: "pipe",
+    },
   );
   let stopped = false;
   let kill: ReturnType<typeof setTimeout> | undefined;

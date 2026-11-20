@@ -8,6 +8,7 @@ import {
   refused,
   results,
   say,
+  TOOL_RECORDINGS,
   turn,
   user,
   withLongerCheck,
@@ -15,6 +16,9 @@ import {
   type ScriptedProject,
   type Turn,
 } from "../support/scripted-project.ts";
+
+// Read when the hub builds its agent packages and when it spawns a check's command host.
+process.env["BUILDER_TOOL_REPLAY"] = TOOL_RECORDINGS;
 
 const IDEA =
   "I want a weather app where the whole screen animates to match the live weather.";

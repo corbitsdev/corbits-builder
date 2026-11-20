@@ -57,6 +57,9 @@ export async function buildWorkflowPackages(
     (built) => "agent" in built && hasBrowser(built.agent),
   );
   const browser = browses ? JSON.stringify(await browserCatalog()) : undefined;
+  // The folder of recorded tool results the build tests' sandbox answers from (posix-sandbox.ts).
+  // oxlint-disable-next-line eslint/no-restricted-properties
+  const replay = process.env.BUILDER_TOOL_REPLAY;
   const manifest = [];
   for (const built of PACKAGES) {
     const { name, role, entry } = built;
@@ -66,6 +69,9 @@ export async function buildWorkflowPackages(
       "process.env.BUILDER_ROLE_INFERENCE": JSON.stringify(
         JSON.stringify(resolved),
       ),
+      // A workflow's child process gets none of the hub's environment.
+      "process.env.BUILDER_TOOL_REPLAY":
+        replay === undefined ? "undefined" : JSON.stringify(replay),
     };
     if ("agent" in built) {
       define["process.env.BUILDER_AGENT"] = JSON.stringify(

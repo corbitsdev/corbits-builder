@@ -27,6 +27,8 @@ import {
 } from "./recorded-model.ts";
 
 const FIXTURE_DIR = join(import.meta.dir, "..", "..", "fixtures", "pipeline");
+/** Recorded results of the weather project's shell lines and checks, for BUILDER_TOOL_REPLAY. */
+export const TOOL_RECORDINGS = join(FIXTURE_DIR, "tools");
 const DEADLINE_MS = 180_000;
 const POLL_MS = 500;
 const NonEmptyString = type("string > 0");

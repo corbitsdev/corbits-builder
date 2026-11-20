@@ -11,6 +11,9 @@ const CheckDetail = type({
 });
 export type CheckDetail = typeof CheckDetail.infer;
 
+// A check's verdict heads a line of its output, however the command runs it.
+export const CHECK_VERDICT = /^check (?:passed|failed):/m;
+
 /** The detail a check tool records, or undefined for any other result. */
 export function readCheckDetail(detail: unknown): CheckDetail | undefined {
   const parsed = CheckDetail(detail);
