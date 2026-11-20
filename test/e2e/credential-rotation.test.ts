@@ -63,25 +63,14 @@ test("a running coordinator uses a rotated provider key on its next model call",
     const coordinatorRunId = type("string > 0").assert(
       listing.coordinatorRunId,
     );
-    const until = async <T>(
-      what: string,
-      seconds: number,
-      check: () => Promise<T | undefined>,
-    ) => {
-      const deadline = performance.now() + seconds * 1000;
-      while (performance.now() < deadline) {
-        const found = await check();
-        if (found !== undefined) return found;
-        await Bun.sleep(500);
-      }
-      throw new Error(`Timed out after ${seconds}s waiting for ${what}`);
-    };
     const callFor = (text: string) =>
-      until(`a model call carrying ${text}`, 120, async () =>
-        model.calls.find((c) => c.lastUser.includes(text)),
-      );
-    const before = await callFor(first);
-    expect(before.authorization).toStartWith("Bearer sk-fake-e2e-secret-");
+      model.calls.find((c) => c.lastUser.includes(text));
+    const firstDeadline = performance.now() + 60_000;
+    while (!callFor(first) && performance.now() < firstDeadline)
+      await Bun.sleep(500);
+    expect(callFor(first)?.authorization).toStartWith(
+      "Bearer sk-fake-e2e-secret-",
+    );
 
     const [credential] = await hub.db
       .select({ id: credentialTable.id })
@@ -111,16 +100,25 @@ test("a running coordinator uses a rotated provider key on its next model call",
 
     // The hub pushes the rotation without awaiting it, so keep messaging the coordinator until a
     // model call carries the new key.
-    let sent = 0;
-    await until("a model call with the rotated key", 60, async () => {
-      sent += 1;
+    const deadline = performance.now() + 60_000;
+    let rotatedKeyUsed = false;
+    for (
+      let sent = 1;
+      !rotatedKeyUsed && performance.now() < deadline;
+      sent++
+    ) {
       const text = `Message ${sent} after the rotation.`;
       await client.sendMessage(listing.tenantId, coordinatorRunId, {
         content: text,
       });
-      const call = await callFor(text);
-      return call.authorization === `Bearer ${rotated}` ? call : undefined;
-    });
+      while (!callFor(text) && performance.now() < deadline)
+        await Bun.sleep(500);
+      rotatedKeyUsed = callFor(text)?.authorization === `Bearer ${rotated}`;
+    }
+    if (!rotatedKeyUsed)
+      throw new Error(
+        "Timed out after 60s waiting for a model call with the rotated key",
+      );
   } finally {
     await hub.close();
     await model.stop();
