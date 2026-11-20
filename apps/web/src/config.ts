@@ -1128,7 +1128,12 @@ export const wording = {
     backKeys: "Previous question (←)",
     nextKeys: "Next question (Enter or →)",
     sendKeys: "Send your answers (Enter)",
-    composerPlaceholder: "Or reply in your own words…",
+    /** The prompt box under a question nothing is picked for yet: the person's own words answer it. */
+    composerPlaceholder: "Or type your own answer…",
+    /** The prompt box once an option is picked: words sent now go with it. */
+    addDetails: (picked: string) => `Add details for ${picked}…`,
+    /** The tag on the option the coordinator recommends. */
+    recommended: "Recommended",
     send: "Send answers",
     sending: "Sending…",
     /** Closes an open question without choosing; the reply is what the settled card then shows. */

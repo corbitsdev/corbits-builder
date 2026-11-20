@@ -8,6 +8,7 @@ import {
   answerLabels,
   enterAnswer,
   keyIntent,
+  withWords,
 } from "./questions-card.tsx";
 
 const originalStorage = Object.getOwnPropertyDescriptor(
@@ -166,6 +167,26 @@ describe("questions card", () => {
     expect(html).toContain("What must the first version do?");
     expect(html).toContain(text.more(1));
     expect(html).toContain(`>${text.next}<`);
+  });
+
+  test("in the prompt box nothing starts picked, the recommendation is a tag and the box takes own words", () => {
+    const html = renderToStaticMarkup(
+      <QuestionsCard
+        question={{ at: 0, signalName: "call-1", asked: ask, status: "open" }}
+        disabled={false}
+        onAnswer={send}
+        place="box"
+      />,
+    );
+    expect(html).toContain(">Who is it for?</h3>");
+    expect(html).toContain(text.position(1, 3));
+    // No Back on the first question, and nothing picked, so no Continue either.
+    expect(html).not.toContain(`aria-label="${text.back}"`);
+    expect(html).not.toContain('checked=""');
+    expect(html).not.toContain(`>${text.next}<`);
+    expect(html).toContain(`Small teams<span`);
+    expect(html).toContain(`>${text.recommended}<`);
+    expect(html).not.toContain(`placeholder="${text.other}"`);
   });
 
   test("a single question shows no position and its button sends", () => {
@@ -368,4 +389,35 @@ test("a refusal sent outside the card is shown by the card from the shared quest
     </QuestionOutcomes>,
   );
   expect(html).toContain(text.answerFault.refused);
+});
+
+describe("words sent from the prompt box", () => {
+  const [audience, firstVersion, devices] = ask.questions;
+
+  test("after a pick they are details that go with it, not in place of it", () => {
+    const answer = withWords(
+      audience!,
+      { chosen: ["Just me"], own: "" },
+      "Mostly at weekends",
+    );
+    expect(answer).toEqual({
+      chosen: ["Just me"],
+      own: "",
+      details: "Mostly at weekends",
+    });
+    expect(answerLabels(audience!, answer!)).toEqual([
+      "Just me",
+      "Mostly at weekends",
+    ]);
+  });
+
+  test("with nothing picked they are the person's own answer where the question takes one", () => {
+    expect(
+      withWords(firstVersion!, { chosen: [], own: "" }, "Share lists"),
+    ).toEqual({ chosen: [], own: "Share lists" });
+    // A question with options and no own answer leaves the words to the conversation.
+    expect(
+      withWords(devices!, { chosen: [], own: "" }, "On a tablet"),
+    ).toBeUndefined();
+  });
 });
