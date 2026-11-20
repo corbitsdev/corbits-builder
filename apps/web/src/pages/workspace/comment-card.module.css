@@ -1,5 +1,4 @@
-/* One box, as in a document editor's margin: the comment, and a line beneath it only when its
-   step has something to say. */
+/* One box, as in a document editor's margin, holding the comment. */
 .card {
   position: relative;
   display: flex;
@@ -38,10 +37,6 @@
   color: var(--wb-foreground);
   overflow-wrap: anywhere;
   white-space: pre-wrap;
-}
-
-.card:is([data-state="making"], [data-state="changed"]) .comment {
-  color: var(--wb-muted-foreground);
 }
 
 /* Edit and delete sit over the box's corner rather than on a row of their own. */
@@ -87,33 +82,6 @@
 .save svg {
   width: 14px;
   height: 14px;
-}
-
-.status {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 24px;
-  margin: 0;
-  font-size: 0.8125rem;
-  line-height: 16px;
-  color: var(--wb-muted-foreground);
-}
-
-/* The indicator pads its dots; pulled back so they start where the comment's words do. */
-.status > [role="status"] {
-  margin-inline-start: calc(-1 * var(--space-1));
-}
-
-.changed {
-  flex: 1;
-  min-width: 0;
-  color: var(--wb-okay);
-}
-
-.status .iconButton {
-  margin-inline-end: -6px;
-  color: var(--wb-foreground);
 }
 
 .writing {

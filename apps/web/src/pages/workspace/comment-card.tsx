@@ -1,10 +1,9 @@
 /**
  * A comment beside the passage it is about, in the margin or opened from the passage on its own.
- * Comments collect until the person sends them with their next message; then each card shows its
- * own progress, and a tick clears it once the person has seen the change.
+ * A saved comment is a draft: it can be edited or deleted until the person sends it.
  */
-import { TypingIndicator, Button as UiButton } from "@corbits/react-ui";
-import { ArrowUp, Check, Pencil, Trash2 } from "lucide-react";
+import { Button as UiButton } from "@corbits/react-ui";
+import { ArrowUp, Pencil, Trash2 } from "lucide-react";
 import {
   useEffect,
   useLayoutEffect,
@@ -19,7 +18,7 @@ import styles from "./comment-card.module.css";
 
 const text = wording.comments;
 
-export type CommentState = "writing" | "saved" | "making" | "changed";
+export type CommentState = "writing" | "saved";
 
 /** Enter saves and Escape cancels; Shift+Enter, and Enter that ends an IME composition, add a line. */
 export function commentKey(event: {
@@ -69,7 +68,6 @@ function leave(card: HTMLElement | null, then: (() => void) | undefined) {
 export function CommentCard({
   state,
   comment,
-  version,
   paired = false,
   saving = false,
   saveFailed = false,
@@ -77,13 +75,10 @@ export function CommentCard({
   onCancel,
   onEdit,
   onDelete,
-  onResolve,
 }: {
   state: CommentState;
   /** While writing, what the field starts with. */
   comment: string;
-  /** The version that has the change. */
-  version?: number;
   /** Its passage is pointed at or its card is in hand. */
   paired?: boolean;
   saving?: boolean;
@@ -92,7 +87,6 @@ export function CommentCard({
   onCancel?: () => void;
   onEdit?: () => void;
   onDelete?: () => void;
-  onResolve?: () => void;
 }) {
   const cardRef = useRef<HTMLElement>(null);
   const wasWriting = useRef(state === "writing");
@@ -107,7 +101,7 @@ export function CommentCard({
   }, [state]);
 
   // Every comment here is the person's own, so the card carries no name or avatar: the box is the
-  // comment, and only its step adds a line beneath it.
+  // comment.
   return (
     <article
       ref={cardRef}
@@ -140,26 +134,6 @@ export function CommentCard({
             <Trash2 aria-hidden="true" />
           </IconButton>
         </span>
-      ) : null}
-      {state === "making" ? (
-        <div className={styles.status}>
-          <TypingIndicator label={text.making} />
-          {/* The indicator announces the words; this is them on screen. */}
-          <span aria-hidden="true">{text.making}</span>
-        </div>
-      ) : null}
-      {state === "changed" ? (
-        <p className={styles.status}>
-          <span className={styles.changed}>
-            {version === undefined ? text.changed : text.changedIn(version)}
-          </span>
-          <IconButton
-            label={text.resolve}
-            onClick={() => leave(cardRef.current, onResolve)}
-          >
-            <Check aria-hidden="true" />
-          </IconButton>
-        </p>
       ) : null}
     </article>
   );

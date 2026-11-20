@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
-import { expect, fn, waitFor } from "storybook/test";
+import { expect, fn } from "storybook/test";
 import { Button } from "../../components.tsx";
 import { wording } from "../../config.ts";
 import { CommentCard, type CommentState } from "./comment-card.tsx";
@@ -13,12 +13,10 @@ const meta = {
   args: {
     state: "saved",
     comment: "Mention text and walk-in orders too",
-    version: 3,
     onSave: fn(),
     onCancel: fn(),
     onEdit: fn(),
     onDelete: fn(),
-    onResolve: fn(),
   },
 } satisfies Meta<typeof CommentCard>;
 
@@ -31,14 +29,8 @@ export const Writing: Story = { args: { state: "writing" } };
 /** A new comment starts empty, and its send waits for words. */
 export const WritingEmpty: Story = { args: { state: "writing", comment: "" } };
 
-/** Waits for the others; nothing is sent yet. */
+/** A draft that waits for the others; it can be edited or deleted until it is sent. */
 export const Saved: Story = {};
-
-/** The change is being made: moving dots on the line beneath, the words in grey. */
-export const BeingMade: Story = { args: { state: "making" } };
-
-/** Names the version that has the change; the tick clears it. */
-export const Changed: Story = { args: { state: "changed" } };
 
 /** A long comment wraps inside the card. */
 export const LongComment: Story = {
@@ -99,19 +91,6 @@ export const KeyboardFocus: Story = {
   },
 };
 
-/** The tick on a changed comment, reached by keyboard. */
-export const ResolveFocus: Story = {
-  args: { state: "changed" },
-  play: async ({ args, canvas, userEvent }) => {
-    await userEvent.tab();
-    const resolve = canvas.getByRole("button", { name: text.resolve });
-    await expect(resolve).toHaveFocus();
-    await userEvent.keyboard("{Enter}");
-    // The card fades out before it hands over.
-    await waitFor(() => expect(args.onResolve).toHaveBeenCalled());
-  },
-};
-
 /** Write, save, edit and delete in one card. */
 export const Interactive: Story = {
   render: function Render(args) {
@@ -140,7 +119,7 @@ export const Interactive: Story = {
 
 /** Every state beside the next, as the board lays them out. */
 export const AllStates: Story = {
-  render: ({ version = 3, ...args }) => (
+  render: (args) => (
     <div
       style={{
         display: "grid",
@@ -152,9 +131,6 @@ export const AllStates: Story = {
       <CommentCard {...args} state="writing" />
       <CommentCard {...args} state="saved" />
       <CommentCard {...args} state="saved" paired />
-      <CommentCard {...args} state="making" />
-      <CommentCard {...args} state="changed" version={version} />
-      <CommentCard {...args} state="changed" />
     </div>
   ),
 };
