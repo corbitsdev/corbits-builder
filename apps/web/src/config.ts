@@ -651,7 +651,7 @@ export const wording = {
     /** The box's card for what waits on the person, where no card of its own says it. */
     waiting: {
       /** A step the person asked to be consulted on, held until they say go ahead. */
-      step: (title: string) => `Go ahead with ${title.toLowerCase()}?`,
+      step: (title: string) => `Go ahead with “${title}”?`,
       stepDetail: "You asked to be asked first.",
       goAhead: "Yes, go ahead",
       /** A plugin's screen waiting in the plugin space. */
