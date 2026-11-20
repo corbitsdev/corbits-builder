@@ -329,12 +329,12 @@ button[aria-disabled="true"] {
   --input: var(--border-strong);
 }
 /* --- Sidebar width ----------------------------------------------------------
-   The rail's default is a fifth of a laptop window; the conversation needs
-   it more than the two labels do. An open project's sidebar takes the same
-   width, so moving between them does not shift the page. In rem, as the
-   library sizes its own rail, so it grows with the reader's text size. */
+   The project sidebar's width in the design, wide enough for a project's name
+   beside its mark. The app's rail takes the same width, so moving between them
+   does not shift the page. In rem, as the library sizes its own rail, so it
+   grows with the reader's text size. */
 :root {
-  --rail-width: 12.75rem;
+  --rail-width: 16.25rem;
 }
 
 [data-slot="sidebar"]:not([data-collapsed="true"]) {
