@@ -1,0 +1,43 @@
+/* Laid out like the box's other waiting cards: the ask on top, a quiet line under it. */
+.card {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-4) var(--space-4) 14px;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.ask {
+  flex: 1 1 0;
+  min-width: 0;
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  line-height: 20px;
+  overflow-wrap: anywhere;
+}
+
+.detail {
+  margin: 0;
+  color: var(--wb-muted-foreground);
+  font-size: var(--text-sm);
+  line-height: 20px;
+}
+
+/* The pill shape of the row's buttons; a way to the screen, not the step forward. */
+.open {
+  flex: none;
+  height: 32px;
+  padding-inline: 14px;
+  border-radius: 9999px;
+}
+
+.answers {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}

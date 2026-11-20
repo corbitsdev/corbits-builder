@@ -654,6 +654,23 @@ export const wording = {
       appFailed: "The app did not start",
       open: "Open",
     },
+    /** The box's card for what waits on the person, where no card of its own says it. */
+    waiting: {
+      /** A step the person asked to be consulted on, held until they say go ahead. */
+      step: (title: string) => `Go ahead with “${title}”?`,
+      stepDetail: "You asked to be asked first.",
+      goAhead: "Yes, go ahead",
+      /** A plugin's screen waiting in the plugin space. */
+      screen: (title: string) => `${title} is waiting for you`,
+      openScreen: "Open",
+      /** The placeholder while a step waits: words sent instead go to the coordinator. */
+      stepPlaceholder: "Or say what to do instead…",
+    },
+    /** The space beside the main area where plugin screens open. */
+    space: {
+      label: "Waiting for you",
+      close: "Close",
+    },
     /** The token in the typing row while comments on a document wait to be made. */
     comments: (count: number) =>
       count === 1 ? "1 comment" : `${String(count)} comments`,
