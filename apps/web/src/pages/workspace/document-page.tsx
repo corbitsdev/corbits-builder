@@ -33,10 +33,15 @@ export type PassageState = "selected";
 /** A passage something is said about, by the words it quotes from the page. */
 export type MarginPassage = { id: string; quote: string; state?: PassageState };
 
-/** Where a passage sits: its top, from the top of the margin, and the section it is in. */
+/**
+ * Where a passage sits: its top, from the top of the margin, and the section it is in. A passage
+ * whose words are not on the page, such as one a later version rewrote, sits at the top of the
+ * margin in no section.
+ */
 export type PassagePlace = MarginPassage & {
   top: number;
   section: string | null;
+  found: boolean;
 };
 
 /** How the document's writing stands, while it is not yet filed whole. */
@@ -310,14 +315,24 @@ export function DocumentPage({
     );
     const origin = column?.getBoundingClientRect().top ?? 0;
     const find = quoteFinder(paper);
-    const found = passages.flatMap((passage) => {
-      const range = find(passage.quote);
-      if (range === null) return [];
-      const top = range.getBoundingClientRect().top;
-      const section =
-        headings.findLast((heading) => heading.top <= top)?.id ?? null;
-      return [{ range, place: { ...passage, top: top - origin, section } }];
-    });
+    const found = passages
+      .flatMap((passage) => {
+        const range = find(passage.quote);
+        if (range === null) return [];
+        const top = range.getBoundingClientRect().top;
+        const section =
+          headings.findLast((heading) => heading.top <= top)?.id ?? null;
+        return [
+          {
+            range,
+            place: { ...passage, top: top - origin, section, found: true },
+          },
+        ];
+      })
+      .sort((a, b) => a.place.top - b.place.top);
+    const missing = passages
+      .filter((passage) => !found.some((hit) => hit.place.id === passage.id))
+      .map((passage) => ({ ...passage, top: 0, section: null, found: false }));
     paint(
       paper,
       found.map((hit) => ({
@@ -326,18 +341,21 @@ export function DocumentPage({
       })),
     );
     ranges.current = new Map(found.map((hit) => [hit.place.id, hit.range]));
+    // Passages not on the page head the margin, above those level with their lines.
+    const now = [...missing, ...found.map((hit) => hit.place)];
     setPlaces((was) =>
       same(
         was,
-        found.map((hit) => hit.place),
+        now,
         (a, b) =>
           a.id === b.id &&
           a.state === b.state &&
           a.top === b.top &&
-          a.section === b.section,
+          a.section === b.section &&
+          a.found === b.found,
       )
         ? was
-        : found.map((hit) => hit.place),
+        : now,
     );
     setRoomy(
       column === null || column.clientWidth - MARGIN_INSET >= CARD_WIDTH,
@@ -399,6 +417,30 @@ export function DocumentPage({
   const narrow = margin !== undefined && !roomy;
   const inMargin = margin !== undefined && !narrow;
 
+  // Without room beside the page, a passage just selected to write about opens its card from its
+  // line at once, since there is no margin for it to appear in. Each opens once, so closing it
+  // leaves it closed until its underline is pressed.
+  const opened = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    // A card whose passage is gone, such as one just saved under a new name, closes with it.
+    setCard((was) =>
+      was === null || places.some((place) => place.id === was.place.id)
+        ? was
+        : null,
+    );
+    const writing = places.find((place) => place.state === "selected");
+    if (!narrow || writing === undefined) {
+      opened.current = writing?.id ?? null;
+      return;
+    }
+    if (opened.current === writing.id) return;
+    opened.current = writing.id;
+    const line = ranges.current.get(writing.id)?.getClientRects()[0];
+    if (line === undefined) return;
+    cardTrigger.current = null;
+    setCard({ place: writing, line });
+  }, [places, narrow, cardTrigger]);
+
   // Items too close to fit level with their passages stack below one another, in page order.
   // Every height is read before any top is written, so placing them costs one layout. An item
   // that grows, such as a comment opened to reply, moves the ones below it.
@@ -409,7 +451,7 @@ export function DocumentPage({
       const heights = items.map((item) => item?.offsetHeight ?? 0);
       let floor = -Infinity;
       places.forEach((place, index) => {
-        const top = Math.max(place.top - MARGIN_LEAD, floor);
+        const top = Math.max(place.found ? place.top - MARGIN_LEAD : 0, floor);
         const item = items[index];
         if (item !== null && item !== undefined)
           item.style.top = `${String(top)}px`;
@@ -458,8 +500,10 @@ export function DocumentPage({
   };
 
   const openFromKeys = (place: PassagePlace, button: HTMLButtonElement) => {
-    const line = ranges.current.get(place.id)?.getClientRects()[0];
-    if (line === undefined) return;
+    // A passage not on the page opens its card from its mark.
+    const line =
+      ranges.current.get(place.id)?.getClientRects()[0] ??
+      button.getBoundingClientRect();
     cardTrigger.current = button;
     setCard({ place, line });
   };

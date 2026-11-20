@@ -99,7 +99,9 @@ const STATES: readonly (MarginPassage & { note: string })[] = COMMENTED.map(
  * drawn elsewhere; this only shows where the page places them.
  */
 function MarginStandIn({ place }: { place: PassagePlace }) {
-  const note = STATES.find((item) => item.id === place.id)?.note;
+  const note =
+    STATES.find((item) => item.id === place.id)?.note ??
+    `Not on this page: “${place.quote}”`;
   return (
     <div
       style={{
@@ -177,6 +179,20 @@ export const Filed: Story = {};
 
 /** A passage in each state its comment can be in: saved, and selected while it is written. */
 export const PassageStates: Story = { args: { passages: STATES } };
+
+/** A passage a later version rewrote heads the margin, above the one still on the page. */
+export const PassageNotOnPage: Story = {
+  args: {
+    passages: [
+      ...COMMENTED.slice(0, 1),
+      {
+        id: "rewritten",
+        quote:
+          "Small bakeries take cake orders by phone and lose some of them.",
+      },
+    ],
+  },
+};
 
 export const PassageStatesDark: Story = {
   args: { passages: STATES },
