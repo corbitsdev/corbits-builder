@@ -10,7 +10,8 @@ import { ApproachesComparison } from "./approaches-comparison.tsx";
 import { ComparisonView } from "./comparison-view.tsx";
 import { DocumentPage } from "./document-page.tsx";
 import type { PaneBarGroup } from "./pane-bar.tsx";
-import { PassageQuotes, type PassageQuote } from "./passage-note.tsx";
+import { PassageQuotes } from "./passage-note.tsx";
+import type { PassageQuote } from "./passage-quote.ts";
 import { VersionNotes, type VersionNotesProps } from "./version-notes.tsx";
 
 /** What the page reads: the version's text, or that version set against an earlier one. */

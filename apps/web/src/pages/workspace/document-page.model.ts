@@ -8,7 +8,7 @@ import { wording } from "../../config.ts";
 import type { ApproachChoice } from "./approach-choice.ts";
 import { useApproveGroup } from "./approve-group.ts";
 import type { DocumentApprovalControl } from "./deliverable-block.tsx";
-import type { PassageQuote } from "./passage-note.tsx";
+import type { PassageQuote } from "./passage-quote.ts";
 import {
   documentFile,
   fileStem,
