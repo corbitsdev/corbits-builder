@@ -7,15 +7,7 @@ import {
   type Ref,
 } from "react";
 import { wording } from "../../config.ts";
-import {
-  Panel,
-  PanelActions,
-  PanelClose,
-  PanelContent,
-  PanelHeader,
-  PanelPane,
-  panelTabIds,
-} from "@corbits/react-ui";
+import { Panel, PanelContent, PanelPane, panelTabIds } from "@corbits/react-ui";
 import styles from "./artifact-pane.module.css";
 import {
   DeliverableBody,
@@ -228,8 +220,6 @@ export type ArtifactPaneProps = ArtifactPaneContent &
     paneRef?: Ref<HTMLElement>;
     /** The pane is in view; a closed one waits hidden, so nothing in it is being read. */
     open: boolean;
-    /** Closes the pane, back to the conversation it opened over. */
-    onClose: () => void;
   };
 
 /**
@@ -254,7 +244,6 @@ export function ArtifactPane({
   onSeen,
   paneRef,
   open,
-  onClose,
   onRetry,
   onReadVersion,
   onAddToPrompt,
@@ -420,15 +409,6 @@ export function ArtifactPane({
       data-slot="artifact-pane"
       aria-label="Documents"
     >
-      <PanelHeader>
-        <PanelActions>
-          <PanelClose
-            label={wording.conversation.closeProject}
-            title={wording.conversation.closeProject}
-            onClick={onClose}
-          />
-        </PanelActions>
-      </PanelHeader>
       {!outputs && openId === null ? (
         <div className={styles.content}>
           <div className={styles.empty}>

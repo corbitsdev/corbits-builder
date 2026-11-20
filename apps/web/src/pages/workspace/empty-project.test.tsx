@@ -92,7 +92,6 @@ describe("empty project room", () => {
         onSelect={() => {}}
         onSeen={() => {}}
         open
-        onClose={() => {}}
         {...parts}
       />,
     );
@@ -120,7 +119,6 @@ describe("empty project room", () => {
         onSelect={() => {}}
         onSeen={() => {}}
         open
-        onClose={() => {}}
         onRetry={() => {}}
         {...parts}
       />,
