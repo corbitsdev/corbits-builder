@@ -203,8 +203,20 @@ export const QuestionOwnAnswer: Story = {
   beforeEach: questionAt(1),
 };
 
-/** The writer's screen for approving documents, with its own actions. */
-export const ApproveDocuments: Story = { args: { waiting: "documents" } };
+/**
+ * Approving a document: what is asked, the document's summary in a line, the document as a chip
+ * that opens it, and Approve where Send stands.
+ */
+export const ApproveDocuments: Story = {
+  args: {
+    dock: {
+      ...composer,
+      placeholder:
+        approveDefinition.describe?.says?.reply ?? composer.placeholder,
+    },
+    waiting: "documents",
+  },
+};
 
 /**
  * A tool asks before it runs: what would run in a block beneath the ask, Not yet beside it, and

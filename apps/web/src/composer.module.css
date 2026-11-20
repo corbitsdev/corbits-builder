@@ -66,6 +66,22 @@
   background: none;
 }
 
+/* A screen in the box keeps the box's inset, and its heading reads at the size of the words. */
+.panel [data-gate-kind] {
+  padding: var(--space-4) var(--space-4) 14px;
+}
+
+.panel [data-gate-kind] > h3 {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.panel [data-gate-kind] > h3 + div {
+  margin-top: 10px;
+}
+
 /* The question's rail runs on into the typing row, so no rule parts them. */
 .panel:has([data-place="box"]) {
   border-bottom: 0;

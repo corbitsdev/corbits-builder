@@ -4,11 +4,15 @@
  * reads the same whether it is put to them for approval or simply handed back finished.
  */
 import { Button } from "@corbits/react-ui";
+import { ExternalLink, FileText } from "lucide-react";
 import { Markdown } from "./markdown.tsx";
 import styles from "./document-block.module.css";
 
 export const documentBlockText = {
   version: (version: number) => `v${String(version)}`,
+  /** The version as a chip spells it out beside the title. */
+  versionLong: (version: number) => `Version ${String(version)}`,
+  openShort: "Open",
   open: "Read the full document",
   // Several blocks can share a card, so each link's name says which document it opens.
   openNamed: (title: string) => `Read the full document: ${title}`,
@@ -59,5 +63,42 @@ export function DocumentBlock({
         {documentBlockText.open}
       </Button>
     </div>
+  );
+}
+
+export type DocumentChipProps = Omit<DocumentBlockProps, "summary">;
+
+/**
+ * A filed document in one line, for when the card around it already says what is asked: its title
+ * and version, and the whole chip opens it. It never repeats the question.
+ */
+export function DocumentChip({
+  kind,
+  title,
+  version,
+  note,
+  onOpen,
+}: DocumentChipProps) {
+  return (
+    <button
+      type="button"
+      className={styles.chip}
+      data-slot="document-chip"
+      aria-label={documentBlockText.openNamed(title)}
+      onClick={() => onOpen(kind)}
+    >
+      <span className={styles.chipFile} aria-hidden="true">
+        <FileText />
+      </span>
+      <span className={styles.chipTitle}>{title}</span>
+      <span className={styles.chipMeta}>
+        {documentBlockText.versionLong(version)}
+        {note === undefined ? null : ` · ${note}`}
+      </span>
+      <span className={styles.chipOpen} aria-hidden="true">
+        {documentBlockText.openShort}
+        <ExternalLink />
+      </span>
+    </button>
   );
 }
