@@ -1049,6 +1049,16 @@ export const wording = {
     always: (line: string) => `${line} · from now on`,
   },
   passage: { addToPrompt: "Add to prompt" },
+  /** A comment left beside a passage, kept as a draft until the person sends it. */
+  comments: {
+    /** The comment field's label. */
+    field: "Comment",
+    placeholder: "Add a comment",
+    save: "Save comment",
+    edit: "Edit comment",
+    remove: "Delete comment",
+    saveFailed: "Your comment was not saved. Try again.",
+  },
   documentBar: "Document controls",
   printDocument: "Save as PDF or print",
   removeAttachment: {
