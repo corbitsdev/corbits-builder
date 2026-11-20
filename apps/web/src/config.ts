@@ -635,6 +635,26 @@ export const wording = {
       open: "Open",
       seeChanges: "See what changed",
     },
+    /** The pill's one line, and its button, as room-status.ts picks them. */
+    status: {
+      sending: "Sending your message",
+      thinking: "Thinking…",
+      /** One piece of work, and how many more go on beside it. */
+      andMore: (doing: string, more: number) =>
+        `${doing} and ${String(more)} more`,
+      didNotFinish: (doing: string) => `${doing} did not finish`,
+      stepFailed: (step: string) => `${step} did not finish`,
+      /** The hub has no retry, so the button asks for one, and says so. */
+      tryAgain: "Ask to try again",
+      tryAgainMessage: "That did not finish. Please try again.",
+      ready: (title: string, version: number) =>
+        version > 1
+          ? `${title} version ${String(version)} is ready`
+          : `${title} is ready`,
+      appRunning: "The app is running",
+      appFailed: "The app did not start",
+      open: "Open",
+    },
     /** The token in the typing row while comments on a document wait to be made. */
     comments: (count: number) =>
       count === 1 ? "1 comment" : `${String(count)} comments`,
