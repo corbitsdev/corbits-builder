@@ -286,6 +286,16 @@
   bottom: calc(var(--space-3) + 2.5rem);
 }
 
+/* The chat's handle sits on the box's top edge in the same place, lower than the pill. */
+.page:has(
+    > [data-slot="composer"]
+      [data-slot="chat-sheet"][data-state="closed"]
+      [data-slot="pull-handle"]
+  )
+  :is([data-slot="pane-bar"][data-floating], [data-slot="pane-bar-handle"]) {
+  bottom: calc(var(--space-3) * 2);
+}
+
 /* A written page runs on under the prompt box, which floats at its foot over a fade into the page's
    backdrop, so the last lines read clearly as they scroll beneath it. Anything else the project view
    shows keeps the box below it, clear of its own foot. Full screen, the chat is the page instead. */
