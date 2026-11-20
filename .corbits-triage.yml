@@ -133,6 +133,12 @@ rules:
                   any:
                     - has: { stopBy: end, kind: throw_statement }
                     - has: { stopBy: end, kind: identifier, pattern: $E }
+                    - has:
+                        {
+                          stopBy: end,
+                          kind: shorthand_property_identifier,
+                          pattern: $E,
+                        }
       - id: interchange-by-path
         language: typescript
         message: Reaches vendored Interchange source by path; import the @intx/* package.
@@ -279,17 +285,6 @@ actions:
         linkedIssue: false
         author:
           - group: outside
-    - do: request-changes
-      when:
-        linkedIssue: true
-        author:
-          - group: outside
-    - do: request-changes
-      when:
-        author:
-          - maintainers
-          - bots
-          - group: approved
   unsure:
     - do: comment
       target:
