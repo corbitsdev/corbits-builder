@@ -14,7 +14,10 @@ import { createAgentRepoStore, createAssetService } from "@intx/hub-sessions";
 import { createEnvKeyCredentialCipher, generateKeyPair } from "@intx/crypto";
 import { hexDecode } from "@intx/types";
 import { createHubRuntime } from "@corbits-builder/hub/app";
-import { readDatabaseConfig } from "@corbits-builder/hub/environment";
+import {
+  readHubEnvironment,
+  readMigrationEnvironment,
+} from "@corbits-builder/hub/environment";
 import { migrateDatabase } from "@corbits-builder/hub/migrate";
 import { installForTenant } from "@corbits-builder/hub/workflows/install-for-tenant";
 import {
@@ -109,8 +112,8 @@ test("ChatGPT and xAI logins are providers a profile binds roles to, and install
   }) as typeof fetch;
   let runtime: Awaited<ReturnType<typeof createHubRuntime>> | undefined;
   try {
-    await migrateDatabase(environment);
-    runtime = await createHubRuntime(environment);
+    await migrateDatabase(readMigrationEnvironment(environment));
+    runtime = await createHubRuntime(readHubEnvironment(environment));
     const responses: string[] = [];
     const call = async (path: string, init: RequestInit = {}) => {
       const response = await runtime!.app.fetch(
@@ -312,7 +315,7 @@ test("ChatGPT and xAI logins are providers a profile binds roles to, and install
     // The install a project start runs: each role pins an offering serving its bound source.
     // Starting a real project would launch its coordinator's sidecar, so the project's settings
     // row is the one create_project writes: the creator's choice, frozen.
-    const handle = createDB(readDatabaseConfig(environment));
+    const handle = createDB(readHubEnvironment(environment).database);
     try {
       const actor = { tenantId, principalId };
       const projectId = `p-${randomUUID().replaceAll("-", "")}`;

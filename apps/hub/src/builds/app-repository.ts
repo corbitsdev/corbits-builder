@@ -25,6 +25,7 @@ import type { RuntimeCapabilities } from "@intx/types/runtime-capabilities";
 import { ApprovedPackages } from "@corbits-builder/schemas/package-install";
 import { INPUTS_DIRECTORY } from "../config/inputs.ts";
 import { errorCode, requestErrorMetadata } from "../request-error.ts";
+import { readWorkflowChildEnvironment } from "../workflows/environment.ts";
 import { excludedFile as excludedSnapshotFile } from "./app-snapshot.ts";
 import { linkOrGone, workspaceHoldsApp } from "./app-workspace.ts";
 import {
@@ -228,8 +229,10 @@ export async function readApprovedPackages(
  * substrate-factory.ts createStepStorageSigner); the coder's tools run in that child.
  */
 export async function signWithSidecarKey(payload: string) {
-  const publicKey = process.env["SIDECAR_SIGNING_PUBLIC_KEY"];
-  const privateKey = process.env["SIDECAR_SIGNING_PRIVATE_KEY"];
+  const {
+    SIDECAR_SIGNING_PUBLIC_KEY: publicKey,
+    SIDECAR_SIGNING_PRIVATE_KEY: privateKey,
+  } = readWorkflowChildEnvironment();
   if (!publicKey || !privateKey)
     throw new Error(
       "sidecar_signing_key_missing: SIDECAR_SIGNING_* is not set in this process",

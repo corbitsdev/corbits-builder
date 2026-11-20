@@ -27,6 +27,8 @@ Give each secret `.env.hub` marks its own random value, for example from
 changing the encryption keys makes stored provider keys unreadable. Every other
 setting is optional and described in
 [.env.hub.example](https://github.com/corbitsdev/corbits-builder/blob/main/.env.hub.example).
+When a setting is missing or wrong, Builder stops at startup and lists every
+variable to fix, without their values.
 
 Behind a proxy or on a public domain, set `BETTER_AUTH_BASE_URL` to the URL
 people open, and `HUB_PUBLIC_URL`, `HUB_API_ORIGIN` and `UI_PUBLIC_URL` when
@@ -46,12 +48,11 @@ them read those folders and never write them, and name their programs by full
 path. Builder refuses a folder that holds its data folder or sits inside it.
 None is listed by default.
 
-`PLUGIN_HINT`, which `.env.hub.example` does not list, has the hub add a note
-to each message naming the plugin screens its words suggest, so the
-coordinator finds a picker it might otherwise not look for: `triggers` matches
-each plugin's trigger words, `fields` its handle, groups, `when`, examples and
-descriptions, and `off` (the default) adds nothing. Any other value stops
-startup.
+`PLUGIN_HINT` has the hub add a note to each message naming the plugin screens
+its words suggest, so the coordinator finds a picker it might otherwise not
+look for: `triggers` matches each plugin's trigger words, `fields` its handle,
+groups, `when`, examples and descriptions, and `off` (the default) adds
+nothing. Any other value stops startup.
 
 `BUILDER_VERSION` picks the published images
 (`ghcr.io/corbitsdev/corbits-builder-hub` and `-sidecar`): `rc` (default, the

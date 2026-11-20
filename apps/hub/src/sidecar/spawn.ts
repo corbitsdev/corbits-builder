@@ -8,13 +8,14 @@ import type {
 type ChildProcessEnv = { PATH?: string; HOME?: string; TMPDIR?: string };
 
 export function childProcessEnv(
-  env: Record<string, string | undefined>,
+  // oxlint-disable-next-line eslint/no-restricted-properties
+  env: Record<string, string | undefined> = process.env,
 ): ChildProcessEnv {
   const { PATH, HOME, TMPDIR } = env;
   return {
-    ...(PATH !== undefined && { PATH }),
-    ...(HOME !== undefined && { HOME }),
-    ...(TMPDIR !== undefined && { TMPDIR }),
+    ...(PATH && { PATH }),
+    ...(HOME && { HOME }),
+    ...(TMPDIR && { TMPDIR }),
   };
 }
 

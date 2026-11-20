@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, readlinkSync, realpathSync } from "node:fs";
 import { basename, dirname, resolve } from "node:path";
+import { readDevStopEnvironment } from "./environment.ts";
 
 // Stops every process of this app on this machine: hubs, migrations, UI dev
 // servers and the sidecars, live-app hosts and build tools they spawned, from
@@ -402,7 +403,7 @@ async function main() {
   };
   const checkout = resolve(import.meta.dir, "..");
   const needed = neededPorts(
-    process.env,
+    readDevStopEnvironment(),
     readDotenv(resolve(checkout, ".env.hub")),
     readDotenv(resolve(checkout, ".env.web")),
   );

@@ -42,6 +42,7 @@
         "@anthropic-ai/sandbox-runtime": "0.0.81",
         "@corbits-builder/client": "workspace:*",
         "@corbits-builder/coordinator": "workspace:*",
+        "@corbits-builder/environment": "workspace:*",
         "@corbits-builder/hub": "workspace:*",
         "@corbits-builder/schemas": "workspace:*",
         "@corbits/slidedeck": "workspace:*",
@@ -63,6 +64,7 @@
       "dependencies": {
         "@anthropic-ai/sandbox-runtime": "0.0.81",
         "@corbits-builder/coordinator": "workspace:*",
+        "@corbits-builder/environment": "workspace:*",
         "@corbits-builder/plugin": "workspace:*",
         "@corbits-builder/plugin-host": "workspace:*",
         "@corbits-builder/schemas": "workspace:*",
@@ -144,6 +146,7 @@
         "sonner": "2.0.8",
       },
       "devDependencies": {
+        "@corbits-builder/environment": "workspace:*",
         "@storybook/react-vite": "11.0.0-beta.0",
         "@types/react": "19.3.0",
         "@types/react-dom": "19.3.0",
@@ -164,6 +167,13 @@
       "dependencies": {
         "@corbits-builder/schemas": "workspace:*",
         "@intx/types": "workspace:*",
+      },
+    },
+    "packages/environment": {
+      "name": "@corbits-builder/environment",
+      "version": "0.1.0-rc.3",
+      "dependencies": {
+        "arktype": "catalog:",
       },
     },
     "packages/pdf": {
@@ -883,6 +893,8 @@
     "@corbits-builder/designer": ["@corbits-builder/designer@workspace:plugins/designer"],
 
     "@corbits-builder/desktop-app-skills": ["@corbits-builder/desktop-app-skills@workspace:plugins/desktop-app-skills"],
+
+    "@corbits-builder/environment": ["@corbits-builder/environment@workspace:packages/environment"],
 
     "@corbits-builder/hub": ["@corbits-builder/hub@workspace:apps/hub"],
 

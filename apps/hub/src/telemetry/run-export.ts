@@ -17,7 +17,11 @@ import {
   ATTR_SERVICE_VERSION,
 } from "@opentelemetry/semantic-conventions";
 import { getLogger } from "@intx/log";
-import { createProductConfig } from "../config/index.ts";
+import {
+  createProductConfig,
+  type ProductConfigEnvironment,
+} from "../config/index.ts";
+import type { HubEnvironment } from "../environment.ts";
 import type { FinishedSpan } from "./run-spans.ts";
 
 const log = getLogger(["corbits-builder", "telemetry"]);
@@ -31,7 +35,15 @@ const hexId = (length: 16 | 32, ...parts: string[]) =>
     .slice(0, length);
 
 export function createRunExport(
-  environment: Readonly<Record<string, string | undefined>>,
+  environment: Partial<
+    Pick<
+      HubEnvironment,
+      | "OTEL_EXPORTER_OTLP_ENDPOINT"
+      | "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"
+      | "OTEL_SERVICE_NAME"
+    >
+  > &
+    ProductConfigEnvironment,
   exporter?: SpanExporter,
 ) {
   if (

@@ -26,19 +26,13 @@ import {
   type WorkflowHistoryReceiveTracker,
 } from "@intx/hub-sessions";
 import {
-  LifecycleDuration,
   parseAdapterManifestEnv,
-  lifecycleDurationMs,
   type CredentialCipher,
   type ResolvedWorkflowLifecyclePolicy,
 } from "@intx/types";
 import { getLogger } from "@intx/log";
-import {
-  connectDocker,
-  createDockerSidecarProvisioner,
-  defaultDockerLimits,
-} from "./docker.ts";
-import { positiveInteger } from "../environment.ts";
+import { connectDocker, createDockerSidecarProvisioner } from "./docker.ts";
+import type { HubEnvironment } from "../environment.ts";
 import { errorCode, requestErrorMetadata } from "../request-error.ts";
 import { localSidecarDataRoot } from "../sidecar/data-root.ts";
 import { createHostCapacity } from "../sidecar/host-capacity.ts";
@@ -76,7 +70,25 @@ export async function createWorkflowServices(options: {
   historyReceives: WorkflowHistoryReceiveTracker;
   cipher: CredentialCipher;
   principalKeyStore: PrincipalKeyStore;
-  environment: Record<string, string | undefined>;
+  environment: Pick<
+    HubEnvironment,
+    | "CREDENTIAL_ENCRYPTION_KEY"
+    | "HUB_DATA_DIR"
+    | "SIDECAR_ADAPTER_MANIFEST"
+    | "SIDECAR_LOCAL_MAX_ACTIVE"
+    | "SIDECAR_IMAGE"
+    | "SIDECAR_DOCKER_HOST"
+    | "SIDECAR_DOCKER_HUB_ID"
+    | "SIDECAR_HUB_WS_URL"
+    | "SIDECAR_MEMORY_BYTES"
+    | "SIDECAR_PIDS"
+    | "SIDECAR_NANO_CPUS"
+    | "WORKFLOW_DEFAULT_MAX_LIFETIME"
+    | "WORKFLOW_DEFAULT_MAX_DISCONNECTED"
+    | "WORKFLOW_DEFAULT_RETENTION_COMPLETED"
+    | "WORKFLOW_DEFAULT_RETENTION_FAILED"
+    | "WORKFLOW_DEFAULT_RETENTION_CANCELLED"
+  >;
   publicURL: URL;
   hubId: string;
 }) {
@@ -89,7 +101,7 @@ export async function createWorkflowServices(options: {
     options.publicURL,
   ).href.replace(/^http/, "ws");
   const adapterManifest = parseAdapterManifestEnv(
-    environment["SIDECAR_ADAPTER_MANIFEST"],
+    environment.SIDECAR_ADAPTER_MANIFEST,
   ) ?? [
     {
       provider: "openai-responses",
@@ -119,24 +131,17 @@ export async function createWorkflowServices(options: {
       export: "createXaiResponsesAdapter",
     },
   ];
-  const credentialEncryptionKey = environment["CREDENTIAL_ENCRYPTION_KEY"];
-  if (!credentialEncryptionKey)
-    throw new Error("CREDENTIAL_ENCRYPTION_KEY is required");
-  const maxActiveDeployments = positiveInteger(
-    environment,
-    "SIDECAR_LOCAL_MAX_ACTIVE",
-    32,
-  );
-  const dataRoot = localSidecarDataRoot(
-    environment["HUB_DATA_DIR"] ?? "data/hub",
-  );
+  const maxActiveDeployments = environment.SIDECAR_LOCAL_MAX_ACTIVE;
+  const dataRoot = localSidecarDataRoot(environment.HUB_DATA_DIR);
   const local = createLocalProcessSidecarProvisioner({
     dataRoot,
     spawnSidecar: createSpawnLocalSidecar({
       interchangeDir: INTERCHANGE_DIR,
-      credentialEncryptionKey,
+      credentialEncryptionKey: environment.CREDENTIAL_ENCRYPTION_KEY,
       maxActiveDeployments,
-      processEnv: childProcessEnv(environment),
+      // A sidecar finds binaries and scratch space with these. Nothing else from the hub's
+      // environment, which has its secrets, is passed on.
+      processEnv: childProcessEnv(),
     }),
     stopStaleSidecar: stopStaleLocalSidecar,
     manifests: createLocalSidecarManifestStore({
@@ -152,11 +157,9 @@ export async function createWorkflowServices(options: {
     log: sidecarLog,
   });
   const provisioners: SidecarProvisioner[] = [local.provisioner];
-  const imageName = environment["SIDECAR_IMAGE"];
+  const imageName = environment.SIDECAR_IMAGE;
   if (imageName) {
-    const engine = connectDocker(
-      environment["SIDECAR_DOCKER_HOST"] ?? "unix:///var/run/docker.sock",
-    );
+    const engine = connectDocker(environment.SIDECAR_DOCKER_HOST);
     const daemon = Daemon.assert(await engine.request("GET", "/info"));
     const image = Image.assert(
       await engine.request(
@@ -167,29 +170,17 @@ export async function createWorkflowServices(options: {
     provisioners.push(
       createDockerSidecarProvisioner({
         engine,
-        hubId: environment["SIDECAR_DOCKER_HUB_ID"] ?? options.hubId,
+        hubId: environment.SIDECAR_DOCKER_HUB_ID ?? options.hubId,
         daemonId: daemon.ID,
         image: image.Id,
         adapterManifest,
         limits: {
-          memoryBytes: positiveInteger(
-            environment,
-            "SIDECAR_MEMORY_BYTES",
-            defaultDockerLimits.memoryBytes,
-          ),
-          pids: positiveInteger(
-            environment,
-            "SIDECAR_PIDS",
-            defaultDockerLimits.pids,
-          ),
-          nanoCpus: positiveInteger(
-            environment,
-            "SIDECAR_NANO_CPUS",
-            defaultDockerLimits.nanoCpus,
-          ),
+          memoryBytes: environment.SIDECAR_MEMORY_BYTES,
+          pids: environment.SIDECAR_PIDS,
+          nanoCpus: environment.SIDECAR_NANO_CPUS,
         },
-        ...(environment["SIDECAR_HUB_WS_URL"]
-          ? { hubWebSocketUrl: environment["SIDECAR_HUB_WS_URL"] }
+        ...(environment.SIDECAR_HUB_WS_URL
+          ? { hubWebSocketUrl: environment.SIDECAR_HUB_WS_URL }
           : {}),
       }),
     );
@@ -202,26 +193,15 @@ export async function createWorkflowServices(options: {
       maxDeployments: maxActiveDeployments,
     }),
   });
-  const duration = (key: string, fallback: string) =>
-    LifecycleDuration.assert(environment[key] ?? fallback);
   const defaultLifecyclePolicy: ResolvedWorkflowLifecyclePolicy = {
-    maxLifetime: duration("WORKFLOW_DEFAULT_MAX_LIFETIME", "7d"),
-    maxDisconnected: duration("WORKFLOW_DEFAULT_MAX_DISCONNECTED", "15m"),
-    // A designer whose design check did not pass leaves its drawing only in its run's folder, which
-    // is deleted when the slot is freed, so a completed run keeps it long enough for the next pass.
+    maxLifetime: environment.WORKFLOW_DEFAULT_MAX_LIFETIME,
+    maxDisconnected: environment.WORKFLOW_DEFAULT_MAX_DISCONNECTED,
     capacityRetention: {
-      completed: duration("WORKFLOW_DEFAULT_RETENTION_COMPLETED", "15m"),
-      failed: duration("WORKFLOW_DEFAULT_RETENTION_FAILED", "24h"),
-      cancelled: duration("WORKFLOW_DEFAULT_RETENTION_CANCELLED", "1h"),
+      completed: environment.WORKFLOW_DEFAULT_RETENTION_COMPLETED,
+      failed: environment.WORKFLOW_DEFAULT_RETENTION_FAILED,
+      cancelled: environment.WORKFLOW_DEFAULT_RETENTION_CANCELLED,
     },
   };
-  if (
-    !lifecycleDurationMs(defaultLifecyclePolicy.maxLifetime) ||
-    !lifecycleDurationMs(defaultLifecyclePolicy.maxDisconnected)
-  )
-    throw new Error(
-      "Workflow lifetime and disconnect windows must be positive",
-    );
   const allocation = createWorkflowAllocationService({
     db,
     deploymentPlugins: plugins,

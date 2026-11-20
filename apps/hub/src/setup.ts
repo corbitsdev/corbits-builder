@@ -1,19 +1,18 @@
 import { migrateDatabase } from "./migrate.ts";
 import { createHubRuntime } from "./app.ts";
-import { bootstrapPrincipal, readBootstrapOptions } from "./bootstrap.ts";
+import { bootstrapPrincipal } from "./bootstrap.ts";
+import { readSetupEnvironment, type SetupEnvironment } from "./environment.ts";
 import { getLogger } from "@intx/log";
 import { setupHubLogging } from "./logging.ts";
 import { requestErrorMetadata } from "./request-error.ts";
 
-export async function runSetup() {
-  // Validate the operator's explicit bootstrap identity before changing the DB.
-  const options = readBootstrapOptions(process.env);
-  await setupHubLogging();
-  await migrateDatabase();
-  const runtime = await createHubRuntime();
+export async function runSetup(environment: SetupEnvironment) {
+  await setupHubLogging(environment);
+  await migrateDatabase(environment);
+  const runtime = await createHubRuntime(environment);
   try {
     // Setup goes through the authenticated app routes as any HTTP client would.
-    return await bootstrapPrincipal(options, async (url, init) =>
+    return await bootstrapPrincipal(environment.bootstrap, async (url, init) =>
       runtime.app.fetch(new Request(url.toString(), init)),
     );
   } finally {
@@ -22,8 +21,10 @@ export async function runSetup() {
 }
 
 if (import.meta.main) {
+  // The operator's explicit bootstrap identity is checked with the rest before the DB changes.
+  const environment = readSetupEnvironment();
   try {
-    await runSetup();
+    await runSetup(environment);
     console.log(
       JSON.stringify({
         setupReady: true,

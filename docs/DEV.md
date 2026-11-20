@@ -587,6 +587,18 @@ installation instead.
 | `bun run vendor:verify`   | Checks `vendor/interchange` matches its pinned upstream commit.                                                                                                                          |
 | `bun run skills:react-ui` | Regenerates the designer's `@corbits/react-ui` API reference.                                                                                                                            |
 
+## Environment variables
+
+Each process reads its environment once, at its entry point, through one
+ArkType schema in its `environment.ts`: the hub's in
+`apps/hub/src/environment.ts` (the server, `db:migrate` and `auth:bootstrap`),
+the UI dev server's in `apps/web/environment.ts`, the Google emulator's in
+`scripts/environment.ts`. A process that finds anything wrong stops and lists
+every variable to fix, never their values. A new variable goes in its schema
+and in `.env.hub.example` or `.env.web.example`, as a set line when required
+and otherwise commented; `bun run environment:verify` fails until they agree.
+`bun run lint` refuses any other `.env` read.
+
 ## Migrations
 
 A change to the hub's schema ships as one migration. Edit

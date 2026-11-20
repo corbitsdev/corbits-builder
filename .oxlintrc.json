@@ -15,6 +15,19 @@
     "typescript/prefer-nullish-coalescing": "error",
     "unicorn/require-module-specifiers": "error",
     "import/no-cycle": "error",
+    // Any `.env` read: process.env, Bun.env, import.meta.env (Bun's alias), through globalThis or
+    // destructured. `key.env` names a variable in config/install-root.ts and install-root.ts, and a
+    // Hono handler's `c.env` is its server, not the environment. This one entry stands in for a
+    // custom lint plugin or ast-grep rule; an object named `key` or `c`, or an alias, gets past it,
+    // and that is accepted.
+    "eslint/no-restricted-properties": [
+      "error",
+      {
+        "property": "env",
+        "allowObjects": ["key", "c"],
+        "message": "Read the environment through the hub's environment.ts, which validates it."
+      }
+    ],
     "eslint/complexity": [
       "error",
       {
@@ -49,6 +62,36 @@
     ]
   },
   "overrides": [
+    // The environment package, the only code that reads the environment, and tests, which set and
+    // restore it.
+    {
+      "files": [
+        "packages/environment/src/**",
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "test/**"
+      ],
+      "rules": {
+        "eslint/no-restricted-properties": "off"
+      }
+    },
+    // Not Builder's processes. The starter is the template a generated app grows from. The app
+    // checks are compiled alone from their source text in a project's sandbox, where no workspace
+    // package resolves. Both run with the project's environment.
+    {
+      "files": ["plugins/coder/starter/**", "packages/app-checks/check/**"],
+      "rules": {
+        "eslint/no-restricted-properties": "off"
+      }
+    },
+    // The interface's only reader of Vite's build mode, which browser code cannot get from the
+    // environment package.
+    {
+      "files": ["apps/web/src/build-mode.ts"],
+      "rules": {
+        "eslint/no-restricted-properties": "off"
+      }
+    },
     {
       "files": [
         "apps/hub/src/auth/agent-token-bridge.ts",

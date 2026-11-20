@@ -1,265 +1,421 @@
 import { isAbsolute } from "node:path";
 import type { DBConfig } from "@intx/db";
-import { type } from "arktype";
+import { LifecycleDuration, lifecycleDurationMs } from "@intx/types";
+import { getLogLevels } from "@logtape/logtape";
+import { list, origin, port, reader } from "@corbits-builder/environment";
+import { type, type Traversal } from "arktype";
+import type { BootstrapOptions } from "./bootstrap.ts";
+import { defaultDockerLimits } from "./provisioning/docker.ts";
 
-export type Environment = Record<string, string | undefined>;
+// Every variable the hub's own code reads, in the hub server, `bun run db:migrate` and
+// `bun run auth:bootstrap`. Each of those entry points reads its environment once and passes what
+// it gets down. Each rule describes what it expects in words and never puts the refused value in
+// its error, because the value can be a secret.
 
-export function required(env: Environment, name: string): string {
-  const value = env[name];
-  if (value === undefined || value.trim() === "") {
-    throw new Error(`Missing required environment variable: ${name}`);
-  }
-  return value;
-}
+/** A variable that must hold something other than whitespace. */
+const filled = type(/\S/).describe("non-blank");
 
-function port(value: string | undefined, fallback: number): number {
-  const parsed = value === undefined ? fallback : Number(value);
-  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65535) {
-    throw new Error("Port must be an integer between 1 and 65535");
-  }
-  return parsed;
-}
+/** Text with surrounding whitespace trimmed; blank text counts as unset. */
+const trimmed = type("string").pipe(
+  (value): string | undefined => value.trim() || undefined,
+);
 
-export function readDatabaseConfig(env: Environment): DBConfig {
-  const schema = env["PG_SCHEMA"];
-  if (schema !== undefined && schema !== "public") {
-    throw new Error(
-      "This journaled composition supports the public schema only",
-    );
-  }
-  const connectionURL = env["DATABASE_URL"];
-  if (connectionURL) {
-    const url = new URL(connectionURL);
-    if (!["postgres:", "postgresql:"].includes(url.protocol)) {
-      throw new Error("DATABASE_URL must be a Postgres connection URL");
-    }
-    const database = decodeURIComponent(url.pathname.slice(1));
-    if (!url.hostname || !url.username || !database)
-      throw new Error("DATABASE_URL requires host, user and database");
-    const sslMode = url.searchParams.get("sslmode");
-    return {
-      host: url.hostname,
-      port: port(url.port || undefined, 5432),
-      user: decodeURIComponent(url.username),
-      password: decodeURIComponent(url.password),
-      database,
-      ssl: sslMode !== null ? sslMode !== "disable" : env["DB_SSL"] === "true",
-      schema: "public",
-    };
-  }
+/** An on/off switch: "true" or "false", with `fallback` when unset or empty. */
+const flag = (fallback: boolean) =>
+  type("string")
+    .pipe((value, ctx) => {
+      if (value === "") return fallback;
+      if (value === "true" || value === "false") return value === "true";
+      return ctx.error("true or false");
+    })
+    .default("");
+
+/** A whole number above zero, as Number reads it. */
+const positiveInteger = type("string").pipe((value, ctx) => {
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0
+    ? parsed
+    : ctx.error("a positive integer");
+});
+
+/** A 256-bit key as 64 hexadecimal characters. */
+const hexKey = type(/^[a-f\d]{64}$/i).describe("64 hexadecimal characters");
+
+/** `value` as a URL, when it parses with one of `protocols` and has no username or password. */
+const parseURL = (value: string, protocols: readonly string[]) => {
+  const url = URL.parse(value);
+  return url &&
+    protocols.includes(url.protocol) &&
+    !url.username &&
+    !url.password
+    ? url
+    : undefined;
+};
+
+const httpURL = type("string").pipe((value, ctx) =>
+  parseURL(value, ["http:", "https:"])
+    ? value
+    : ctx.error("an HTTP(S) URL without credentials"),
+);
+
+// Empty reads as unset, so the DB_* variables apply.
+const postgresURL = type("string").pipe((value, ctx) => {
+  if (value === "") return undefined;
+  const url = URL.parse(value);
+  const database = url && decodeURIComponent(url.pathname.slice(1));
+  const portNumber = Number(url?.port || 5432);
+  if (
+    !url ||
+    !["postgres:", "postgresql:"].includes(url.protocol) ||
+    !url.hostname ||
+    !url.username ||
+    !database ||
+    portNumber < 1
+  )
+    return ctx.error("a Postgres connection URL with host, user and database");
   return {
-    host: required(env, "DB_HOST"),
-    port: port(env["DB_PORT"], 5432),
-    user: required(env, "DB_USER"),
-    password: required(env, "DB_PASSWORD"),
-    database: required(env, "DB_NAME"),
-    ssl: env["DB_SSL"] === "true",
-    schema: "public",
+    host: url.hostname,
+    port: portNumber,
+    user: decodeURIComponent(url.username),
+    password: decodeURIComponent(url.password),
+    database,
+    sslMode: url.searchParams.get("sslmode"),
   };
-}
+});
+type DatabaseURL = NonNullable<typeof postgresURL.infer>;
 
-export function readMigrationDatabaseConfig(env: Environment): DBConfig {
-  return readDatabaseConfig({
-    ...env,
-    ...(!env["MIGRATION_DATABASE_URL"]
-      ? {}
-      : { DATABASE_URL: env["MIGRATION_DATABASE_URL"] }),
-  });
-}
+// Local development only: a loopback Google OAuth emulator stands in for real Google credentials,
+// so the sign-in flow can be tried without them. Boot refuses a non-loopback address, because it
+// would turn a development shortcut into an identity source for a deployment that nobody vetted.
+const loopbackOrigin = trimmed.pipe((value, ctx) => {
+  if (value === undefined) return undefined;
+  const url = parseURL(value, ["http:", "https:"]);
+  return url &&
+    ["localhost", "127.0.0.1", "[::1]", "::1"].includes(url.hostname)
+    ? url.origin
+    : ctx.error(
+        "a loopback HTTP(S) URL without credentials (development emulation only)",
+      );
+});
 
-// Entries are exact addresses or `@domain`; the sign-in hooks hold sessions to
-// this list. An allowlist needs a way to prove an address: Google (real or
-// locally emulated) or email.
-function readAllowedEmails(env: Environment): string[] | undefined {
-  const raw = env["AUTH_ALLOWED_EMAILS"];
-  if (raw === undefined) return undefined;
-  const allowedEmails = raw
-    .split(",")
-    .map((entry) => entry.trim().toLowerCase())
-    .filter(Boolean);
-  if (allowedEmails.length === 0)
-    throw new Error("AUTH_ALLOWED_EMAILS lists no address or @domain");
-  if (
-    env["GOOGLE_CLIENT_ID"] === undefined &&
-    env["GOOGLE_EMULATE_URL"] === undefined &&
-    !env["SMTP_URL"]?.trim()
-  )
-    throw new Error(
-      "AUTH_ALLOWED_EMAILS requires Google sign-in (GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET, or GOOGLE_EMULATE_URL locally) or email (SMTP_URL)",
-    );
-  return allowedEmails;
-}
-
-// Local development only: a loopback Google OAuth emulator stands in for real
-// Google credentials so the sign-in flow is exercisable without them. A
-// non-loopback address would turn a dev convenience into a deployment
-// identity source nobody vetted, so boot refuses it.
-export function readGoogleEmulateBaseUrl(env: Environment): string | undefined {
-  const raw = env["GOOGLE_EMULATE_URL"];
-  if (raw === undefined || raw.trim() === "") return undefined;
-  const url = new URL(raw);
-  const loopback = ["localhost", "127.0.0.1", "[::1]", "::1"].includes(
-    url.hostname,
-  );
-  if (
-    !["http:", "https:"].includes(url.protocol) ||
-    !loopback ||
-    url.username ||
-    url.password
-  )
-    throw new Error(
-      "GOOGLE_EMULATE_URL must be a loopback HTTP(S) URL without credentials (development emulation only)",
-    );
-  return url.origin;
-}
-
-function assertBareOrigin(name: string, url: URL): void {
-  if (
-    !["http:", "https:"].includes(url.protocol) ||
-    url.username ||
-    url.password ||
-    url.pathname !== "/" ||
-    url.search ||
-    url.hash
-  )
-    throw new Error(
-      `${name} must be an HTTP(S) origin without credentials, path, query or fragment`,
-    );
-}
-
-export function readBaseURL(env: Environment): string {
-  return (
-    env["BETTER_AUTH_BASE_URL"] ?? `http://localhost:${port(env["PORT"], 8000)}`
-  );
-}
-
-// Measured starts take seconds (3.6 s cold on a fresh install, 15 s worst over 115 dev
-// starts), so a minute leaves margin and a failed start reaches the person soon. Slow
-// machines raise it, but a failed start must still arrive before the web's 5-minute
-// request ceiling.
-export function readCoordinatorStartTimeoutMs(env: Environment): number {
-  const value = positiveInteger(env, "COORDINATOR_START_TIMEOUT_MS", 60_000);
-  if (value >= 300_000)
-    throw new Error("COORDINATOR_START_TIMEOUT_MS must be under 300000");
-  return value;
-}
-
-const PluginHint = type("'off' | 'triggers' | 'fields'");
-export type PluginHint = typeof PluginHint.infer;
-
-// Whether, and by which search, the hub notes likely plugins under the person's message to the coordinator.
-export function readPluginHint(env: Environment): PluginHint {
-  const hint = PluginHint(env["PLUGIN_HINT"] ?? "off");
-  if (hint instanceof type.errors)
-    throw new Error("PLUGIN_HINT must be off, triggers or fields");
-  return hint;
-}
-
-export function positiveInteger(
-  env: Environment,
-  name: string,
-  absent: number,
-): number {
-  const raw = env[name];
-  const value = raw === undefined ? absent : Number(raw);
-  if (!Number.isSafeInteger(value) || value <= 0)
-    throw new Error(`${name} must be a positive safe integer`);
-  return value;
-}
-
-/**
- * The ports the live-app proxy serves projects' apps on, as "4100-4119", or undefined to take any
- * free port. A deployment that publishes ports, such as Compose, needs the range known in advance.
- */
-export function readLiveAppPorts(
-  env: Environment,
-): { from: number; to: number } | undefined {
-  const raw = env["LIVE_APP_PORTS"]?.trim();
-  if (raw === undefined || raw === "") return undefined;
-  const match = /^(\d{1,5})-(\d{1,5})$/.exec(raw);
+// A deployment that publishes ports, such as Compose, needs to know the live-app port range in
+// advance. Without a range, the live app uses any free port.
+const portRange = trimmed.pipe((value, ctx) => {
+  if (value === undefined) return undefined;
+  const match = /^(\d{1,5})-(\d{1,5})$/.exec(value);
   const from = Number(match?.[1]);
   const to = Number(match?.[2]);
-  if (!match || from < 1 || to > 65535 || from > to)
-    throw new Error("LIVE_APP_PORTS must be a port range such as 4100-4119");
-  return { from, to };
-}
+  return match && from >= 1 && to <= 65535 && from <= to
+    ? { from, to }
+    : ctx.error("a port range such as 4100-4119");
+});
+
+const absolutePaths = trimmed.pipe((value, ctx) => {
+  const paths = value?.split(":") ?? [];
+  return paths.every((path) => isAbsolute(path))
+    ? paths
+    : ctx.error('absolute paths separated by ":"');
+});
+
+const smtpURL = trimmed.pipe((value, ctx) => {
+  if (value === undefined) return undefined;
+  // A mail URL includes its login, so credentials are allowed here.
+  const url = URL.parse(value);
+  return url &&
+    ["smtp:", "smtps:"].includes(url.protocol) &&
+    url.hostname &&
+    !/\s/.test(value)
+    ? value
+    : ctx.error("an smtp:// or smtps:// URL");
+});
+
+const oneLine = trimmed.pipe((value, ctx) =>
+  value !== undefined && ["\r", "\n", "\0"].some((c) => value.includes(c))
+    ? ctx.error("one line")
+    : value,
+);
+
+const positiveDuration = LifecycleDuration.narrow(
+  (value, ctx) => lifecycleDurationMs(value) > 0 || ctx.mustBe("positive"),
+);
+
+const databaseVariables = {
+  // DATABASE_URL replaces the DB_* variables when set.
+  "DATABASE_URL?": postgresURL,
+  "DB_HOST?": "string",
+  DB_PORT: port.default("5432"),
+  "DB_USER?": "string",
+  "DB_PASSWORD?": "string",
+  "DB_NAME?": "string",
+  DB_SSL: flag(false),
+  // Migrations and queries name the public schema, so no other is accepted.
+  "PG_SCHEMA?": "'public'",
+} as const;
+
+const DatabaseVariables = type(databaseVariables);
+type DatabaseVariables = typeof DatabaseVariables.infer;
+
+// A broken rule across variables, reported on the variable to change.
+const reject = (ctx: Traversal, variable: string, expected: string) =>
+  ctx.reject({ path: [variable], expected });
+
+const databaseRules = (
+  env: DatabaseVariables,
+  connectionURL: DatabaseURL | undefined,
+  ctx: Traversal,
+) => {
+  if (connectionURL) return;
+  for (const name of ["DB_HOST", "DB_USER", "DB_PASSWORD", "DB_NAME"] as const)
+    if (!env[name]?.trim()) reject(ctx, name, "set when DATABASE_URL is not");
+};
+
+const databaseConfig = (
+  env: DatabaseVariables,
+  connectionURL: DatabaseURL | undefined,
+): DBConfig =>
+  connectionURL
+    ? {
+        host: connectionURL.host,
+        port: connectionURL.port,
+        user: connectionURL.user,
+        password: connectionURL.password,
+        database: connectionURL.database,
+        ssl:
+          connectionURL.sslMode !== null
+            ? connectionURL.sslMode !== "disable"
+            : env.DB_SSL,
+        schema: "public",
+      }
+    : {
+        host: env.DB_HOST!,
+        port: env.DB_PORT,
+        user: env.DB_USER!,
+        password: env.DB_PASSWORD!,
+        database: env.DB_NAME!,
+        ssl: env.DB_SSL,
+        schema: "public",
+      };
+
+const migrationVariables = {
+  // Separate credentials for migrations, such as the schema owner's.
+  "MIGRATION_DATABASE_URL?": postgresURL,
+} as const;
+
+const MigrationVariables = type({
+  ...databaseVariables,
+  ...migrationVariables,
+});
+type MigrationVariables = typeof MigrationVariables.infer;
+
+const migrationURL = (env: MigrationVariables) =>
+  env.MIGRATION_DATABASE_URL ?? env.DATABASE_URL;
+
+const hubVariables = {
+  ...databaseVariables,
+  // Surrounding whitespace adds nothing to a secret, so it does not count toward its length.
+  BETTER_AUTH_SECRET: type("string").narrow(
+    (value, ctx) =>
+      value.trim().length >= 32 ||
+      ctx.mustBe("at least 32 characters, not counting surrounding whitespace"),
+  ),
+  CREDENTIAL_ENCRYPTION_KEY: hexKey,
+  PRINCIPAL_KEY_ENCRYPTION_KEY: hexKey,
+  HOST: "string = '127.0.0.1'",
+  PORT: port.default("8000"),
+  HUB_DATA_DIR: "string = 'data/hub'",
+  "HUB_WEB_DIR?": "string",
+  // The address people sign in at; http://localhost:$PORT unless set.
+  "BETTER_AUTH_BASE_URL?": httpURL,
+  "HUB_PUBLIC_URL?": httpURL,
+  "HUB_API_ORIGIN?": origin,
+  // The origin that serves the human UI, same as the hub's unless set. A deployment hosting the UI
+  // elsewhere declares it so auth callback URLs are trusted deliberately, never by pattern.
+  "UI_PUBLIC_URL?": origin,
+  "LIVE_APP_PORTS?": portRange,
+  // Folders beyond the system's own that every build sandbox reads but never writes.
+  SANDBOX_TOOLCHAIN_PATHS: absolutePaths.default(""),
+  "GOOGLE_CLIENT_ID?": "string",
+  "GOOGLE_CLIENT_SECRET?": "string",
+  "GOOGLE_EMULATE_URL?": loopbackOrigin,
+  // Exact addresses or `@domain`; the sign-in hooks hold sessions to this list.
+  "AUTH_ALLOWED_EMAILS?": list.pipe((entries, ctx) =>
+    entries.length === 0
+      ? ctx.error("at least one address or @domain")
+      : entries.map((entry) => entry.toLowerCase()),
+  ),
+  "SMTP_URL?": smtpURL,
+  "EMAIL_FROM?": oneLine,
+  // Measured starts take seconds (3.6 s cold on a fresh install, 15 s worst over 115 dev starts),
+  // so a minute leaves margin and a failed start reaches the person soon. Slow machines raise it,
+  // but a failed start must still arrive before the web's 5-minute request ceiling.
+  COORDINATOR_START_TIMEOUT_MS: positiveInteger
+    .narrow((value, ctx) => value < 300_000 || ctx.mustBe("under 300000"))
+    .default("60000"),
+  // Whether, and by which search, the hub notes likely plugins under the person's message to the
+  // coordinator.
+  PLUGIN_HINT: "'off' | 'triggers' | 'fields' = 'off'",
+  // The server's provider keys, shared with every workspace unless SERVER_PROVIDER_KEYS is false.
+  SERVER_PROVIDER_KEYS: flag(true),
+  "ANTHROPIC_API_KEY?": trimmed,
+  "OPENAI_API_KEY?": trimmed,
+  "GEMINI_API_KEY?": trimmed,
+  "XAI_API_KEY?": trimmed,
+  // Providers whose keys the server cannot use; setting one is reported, not used.
+  "OPENCODE_API_KEY?": trimmed,
+  "ZAI_API_KEY?": trimmed,
+  PRODUCT_CONFIGURED_NAMING: flag(false),
+  "PRODUCT_NAME?": trimmed,
+  "PRODUCT_HELLO_WORDING?": trimmed,
+  LOG_LEVEL: type.enumerated(...getLogLevels()).default("info"),
+  // Builder reads these to decide whether to export logs and traces. The OpenTelemetry exporters
+  // also read them, along with the pass-through variables below.
+  "OTEL_EXPORTER_OTLP_ENDPOINT?": "string",
+  "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT?": "string",
+  "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT?": "string",
+  "OTEL_SERVICE_NAME?": "string",
+  OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT: flag(false),
+  // Interchange parses the manifest; the hub only passes it through.
+  "SIDECAR_ADAPTER_MANIFEST?": "string",
+  SIDECAR_LOCAL_MAX_ACTIVE: positiveInteger.default("32"),
+  "SIDECAR_IMAGE?": "string",
+  SIDECAR_DOCKER_HOST: "string = 'unix:///var/run/docker.sock'",
+  "SIDECAR_DOCKER_HUB_ID?": "string",
+  "SIDECAR_HUB_WS_URL?": "string",
+  SIDECAR_MEMORY_BYTES: positiveInteger.default(
+    String(defaultDockerLimits.memoryBytes),
+  ),
+  SIDECAR_PIDS: positiveInteger.default(String(defaultDockerLimits.pids)),
+  SIDECAR_NANO_CPUS: positiveInteger.default(
+    String(defaultDockerLimits.nanoCpus),
+  ),
+  WORKFLOW_DEFAULT_MAX_LIFETIME: positiveDuration.default("7d"),
+  WORKFLOW_DEFAULT_MAX_DISCONNECTED: positiveDuration.default("15m"),
+  // When a designer's design check does not pass, its drawing exists only in its run's folder,
+  // which is deleted when the slot is freed. Keeping a completed run this long leaves the drawing
+  // there for the next pass.
+  WORKFLOW_DEFAULT_RETENTION_COMPLETED: LifecycleDuration.default("15m"),
+  WORKFLOW_DEFAULT_RETENTION_FAILED: LifecycleDuration.default("24h"),
+  WORKFLOW_DEFAULT_RETENTION_CANCELLED: LifecycleDuration.default("1h"),
+} as const;
+
+const HubVariables = type(hubVariables);
+type HubVariables = typeof HubVariables.infer;
+
+// Two variables that work only together: either both are set or neither is.
+const together = <env>(
+  env: env,
+  first: keyof env & string,
+  second: keyof env & string,
+  ctx: Traversal,
+) => {
+  if ((env[first] === undefined) === (env[second] === undefined)) return;
+  if (env[first] === undefined) reject(ctx, first, `set, since ${second} is`);
+  else reject(ctx, second, `set, since ${first} is`);
+};
+
+const hubRules = (env: HubVariables, ctx: Traversal) => {
+  databaseRules(env, env.DATABASE_URL, ctx);
+  if (
+    env.CREDENTIAL_ENCRYPTION_KEY.toLowerCase() ===
+    env.PRINCIPAL_KEY_ENCRYPTION_KEY.toLowerCase()
+  )
+    reject(
+      ctx,
+      "PRINCIPAL_KEY_ENCRYPTION_KEY",
+      "different from CREDENTIAL_ENCRYPTION_KEY",
+    );
+  together(env, "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", ctx);
+  // An allowlist needs a way to prove an address: Google (real or locally emulated) or email.
+  if (
+    env.AUTH_ALLOWED_EMAILS !== undefined &&
+    env.GOOGLE_CLIENT_ID === undefined &&
+    env.GOOGLE_EMULATE_URL === undefined &&
+    env.SMTP_URL === undefined
+  )
+    reject(
+      ctx,
+      "AUTH_ALLOWED_EMAILS",
+      "set only with Google sign-in (GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET, or GOOGLE_EMULATE_URL locally) or email (SMTP_URL)",
+    );
+  together(env, "SMTP_URL", "EMAIL_FROM", ctx);
+  return !ctx.hasError();
+};
+
+const hubSettings = (env: HubVariables) => {
+  const baseURL = env.BETTER_AUTH_BASE_URL ?? `http://localhost:${env.PORT}`;
+  const baseOrigin = new URL(baseURL).origin;
+  return {
+    database: databaseConfig(env, env.DATABASE_URL),
+    baseURL,
+    // The hub address people reach: the base URL, unless HUB_PUBLIC_URL is set for a proxy.
+    publicURL: new URL(env.HUB_PUBLIC_URL ?? baseURL),
+    // Where sidecars call the hub's API.
+    hubApiOrigin: env.HUB_API_ORIGIN ?? baseOrigin,
+    uiOrigin: env.UI_PUBLIC_URL ?? baseOrigin,
+  };
+};
+
+/** The hub server's environment: every variable it reads, and what is built from several. */
+const hubSchema = type({ "+": "delete", ...hubVariables })
+  .narrow(hubRules)
+  .pipe((env) => ({ ...env, ...hubSettings(env) }));
+export const readHubEnvironment = reader(hubSchema);
+export type HubEnvironment = ReturnType<typeof readHubEnvironment>;
+export type PluginHint = HubEnvironment["PLUGIN_HINT"];
+
+/** `bun run db:migrate`'s environment: the database alone, so a migration needs no hub secrets. */
+const migrationSchema = type({
+  "+": "delete",
+  ...databaseVariables,
+  ...migrationVariables,
+})
+  .narrow((env, ctx) => {
+    databaseRules(env, migrationURL(env), ctx);
+    return !ctx.hasError();
+  })
+  .pipe((env) => ({
+    ...env,
+    migrationDatabase: databaseConfig(env, migrationURL(env)),
+  }));
+export const readMigrationEnvironment = reader(migrationSchema);
+export type MigrationEnvironment = ReturnType<typeof readMigrationEnvironment>;
+
+const bootstrapVariables = {
+  // A dedicated machine account, never a person's browser session.
+  BOOTSTRAP_EMAIL: filled,
+  BOOTSTRAP_PASSWORD: filled,
+  "BOOTSTRAP_NAME?": "string",
+  BOOTSTRAP_TENANT_SLUG: filled,
+  "BOOTSTRAP_TENANT_NAME?": "string",
+} as const;
 
 /**
- * Folders beyond the system's own that every build sandbox reads but never writes, such as a
- * toolchain under /opt/homebrew or /Applications/Xcode.app, as absolute paths separated by ":";
- * none unless set.
+ * `bun run auth:bootstrap`'s environment: it migrates, starts the hub and signs in its setup
+ * account, so it reads all three.
  */
-export function readToolchainPaths(env: Environment): string[] {
-  const raw = env["SANDBOX_TOOLCHAIN_PATHS"]?.trim();
-  if (raw === undefined || raw === "") return [];
-  return raw.split(":").map((path) => {
-    if (!isAbsolute(path))
-      throw new Error(
-        `SANDBOX_TOOLCHAIN_PATHS must list absolute paths separated by ":": ${path}`,
-      );
-    return path;
+const setupSchema = type({
+  "+": "delete",
+  ...hubVariables,
+  ...migrationVariables,
+  ...bootstrapVariables,
+})
+  .narrow(hubRules)
+  .pipe((env) => {
+    const settings = hubSettings(env);
+    const bootstrap: BootstrapOptions = {
+      baseURL: settings.baseURL,
+      email: env.BOOTSTRAP_EMAIL,
+      password: env.BOOTSTRAP_PASSWORD,
+      name: env.BOOTSTRAP_NAME ?? env.BOOTSTRAP_EMAIL,
+      tenantSlug: env.BOOTSTRAP_TENANT_SLUG,
+      tenantName: env.BOOTSTRAP_TENANT_NAME ?? env.BOOTSTRAP_TENANT_SLUG,
+    };
+    return {
+      ...env,
+      ...settings,
+      migrationDatabase: databaseConfig(env, migrationURL(env)),
+      bootstrap,
+    };
   });
-}
-
-export function readHubEnvironment(env: Environment) {
-  const credentialKey = required(env, "CREDENTIAL_ENCRYPTION_KEY");
-  const principalKey = required(env, "PRINCIPAL_KEY_ENCRYPTION_KEY");
-  for (const [name, key] of [
-    ["CREDENTIAL_ENCRYPTION_KEY", credentialKey],
-    ["PRINCIPAL_KEY_ENCRYPTION_KEY", principalKey],
-  ] as const) {
-    if (!/^[a-f\d]{64}$/i.test(key)) {
-      throw new Error(`${name} must contain exactly 64 hexadecimal characters`);
-    }
-  }
-  if (credentialKey.toLowerCase() === principalKey.toLowerCase()) {
-    throw new Error(
-      "Credential and principal encryption keys must be distinct",
-    );
-  }
-  if (required(env, "BETTER_AUTH_SECRET").length < 32) {
-    throw new Error("BETTER_AUTH_SECRET must contain at least 32 characters");
-  }
-  const authBaseURL = readBaseURL(env);
-  const baseURL = new URL(authBaseURL);
-  if (
-    !["http:", "https:"].includes(baseURL.protocol) ||
-    baseURL.username ||
-    baseURL.password
-  ) {
-    throw new Error(
-      "BETTER_AUTH_BASE_URL must be an HTTP(S) URL without credentials",
-    );
-  }
-  const hubApiOrigin = new URL(env["HUB_API_ORIGIN"] ?? baseURL.origin);
-  if (
-    (env["GOOGLE_CLIENT_ID"] === undefined) !==
-    (env["GOOGLE_CLIENT_SECRET"] === undefined)
-  ) {
-    throw new Error(
-      "GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be set together",
-    );
-  }
-  // The origin that serves the human UI. It defaults to the hub's API origin
-  // (same-origin serving); a deployment hosting the UI elsewhere must declare
-  // it so auth callback URLs are trusted deliberately, never by pattern.
-  const uiOrigin = new URL(env["UI_PUBLIC_URL"] ?? baseURL.origin);
-  assertBareOrigin("UI_PUBLIC_URL", uiOrigin);
-  assertBareOrigin("HUB_API_ORIGIN", hubApiOrigin);
-  const dataDir = env["HUB_DATA_DIR"] ?? "data/hub";
-  return {
-    database: readDatabaseConfig(env),
-    credentialKey,
-    principalKey,
-    hostname: env["HOST"] ?? "127.0.0.1",
-    port: port(env["PORT"], 8000),
-    dataDir,
-    webDir: env["HUB_WEB_DIR"],
-    baseURL: authBaseURL,
-    hubApiOrigin: hubApiOrigin.origin,
-    uiOrigin: uiOrigin.origin,
-    allowedEmails: readAllowedEmails(env),
-    liveAppPorts: readLiveAppPorts(env),
-    toolchainPaths: readToolchainPaths(env),
-  };
-}
+export const readSetupEnvironment = reader(setupSchema);
+export type SetupEnvironment = ReturnType<typeof readSetupEnvironment>;
