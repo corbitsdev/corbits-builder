@@ -160,25 +160,20 @@ describe("conversation transcript", () => {
     expect(prevented).toEqual(["Enter", " "]);
   });
 
-  test("Not yet denies the approval and then takes the person to the composer", () => {
-    const calls: string[] = [];
-    const thread = RoomThread({
+  test("an approval still open waits in the prompt box; the thread keeps it once decided", () => {
+    const ask = {
+      approvalId: "appr-1",
+      toolName: "run_shell",
+      subject: "bun run build",
+    };
+    const open = RoomThread({ standing, turns: [], approvals: [ask] });
+    expect(findElement(open, DocumentDecision)).toBeNull();
+    const decided = RoomThread({
       standing,
       turns: [],
-      approvals: [
-        {
-          approvalId: "appr-1",
-          toolName: "run_shell",
-          subject: "bun run build",
-        },
-      ],
-      onDecide: (decision) =>
-        calls.push(`${decision.approvalId}:${decision.choice}`),
-      onRequestChanges: () => calls.push("composer"),
+      approvals: [{ ...ask, outcome: { status: "approved", scope: "once" } }],
     });
-    const card = findElement(thread, DocumentDecision);
-    (card?.props["onNo"] as (() => void) | undefined)?.();
-    expect(calls).toEqual(["appr-1:no", "composer"]);
+    expect(findElement(decided, DocumentDecision)).not.toBeNull();
   });
 
   test("a coordinator held on an approval or a question is waiting, not thinking", () => {
@@ -536,9 +531,9 @@ describe("conversation transcript", () => {
             approvalId: "appr-1",
             toolName: "run_shell",
             at: 3,
+            outcome: { status: "approved", scope: "once" },
           },
         ]}
-        onDecide={() => {}}
       />,
     );
     expect(html.split(`>${wording.speaker.coordinator}<`)).toHaveLength(3);

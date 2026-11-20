@@ -1222,11 +1222,6 @@ export const wording = {
     screenUnavailable:
       "This question cannot be shown here. Answer it in your own words below.",
     screenLoading: "Loading…",
-    /** In the conversation while a screen placed over the room is open but closed for now. */
-    pageScreenOpen: "Waiting for your review.",
-    pageScreenReopen: "Open",
-    /** On a screen placed over the room, back to the conversation without answering. */
-    pageScreenClose: "Back to the conversation",
     /** Beside Send, and its name, while a screen's decision has items to send back, such as "2 comments". */
     sendBack: (items: string) => `Send feedback · ${items}`,
     /** What the prompt box asks meanwhile. */

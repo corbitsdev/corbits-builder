@@ -10,8 +10,9 @@
   background: var(--card);
 }
 
-/* The page beside the sidebar, which the project view and a screen cover. Its own stacking
-   context, so what covers it stays under the sidebar's drawer. */
+/* The page beside the sidebar: the conversation, the project view over it and the plugin sheet
+   over both; the plugin space's column stands beside it. Its own stacking context, so what covers
+   it stays under the sidebar's drawer. */
 .main {
   position: relative;
   isolation: isolate;
@@ -135,7 +136,7 @@
   padding: var(--space-2) var(--space-4) var(--space-4);
 }
 
-/* The chat taken full screen stands in for the project view or page it was pulled up over; that
+/* The chat taken full screen stands in for the project view or sheet it was pulled up over; that
    stays mounted, only hidden. */
 .page:has(
     > [data-slot="composer"] > [data-slot="chat-sheet"][data-state="full"]
@@ -211,7 +212,8 @@
   padding-bottom: var(--space-2);
 }
 
-/* A screen placed on the page, or the project view, covers the room, the prompt box at its foot. */
+/* The project view, or the plugin sheet on a narrow room, covers the main area, the prompt box at
+   its foot. */
 .page {
   position: absolute;
   inset: 0;
@@ -244,13 +246,6 @@
   .page {
     transition: none;
   }
-}
-
-.pageScreen {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-height: 0;
 }
 
 .page > [data-slot="composer"] {

@@ -14,10 +14,9 @@ import documentPane, {
   Loading as loadingDocument,
   ReadError as failedDocument,
 } from "./artifact-pane.stories.tsx";
-import nextStep, { YourTurn as yourTurn } from "./next-step.stories.tsx";
-import { NextStepLineView } from "./next-step.view.tsx";
 import { planning } from "./project-outline.fixtures.ts";
 import { projectOutline, type OutlineAppState } from "./project-outline.ts";
+import { question } from "./prompt-box.fixtures.ts";
 import { LIVE_TAB } from "./tab-follow.ts";
 import {
   RoomView,
@@ -26,8 +25,6 @@ import {
   type RoomViewProps,
 } from "./room.view.tsx";
 import thread, {
-  AskingForApproval as askingForApproval,
-  AskingQuestions as askingQuestions,
   Thinking as coordinatorThinking,
 } from "./transcript.stories.tsx";
 
@@ -161,6 +158,8 @@ const composer: RoomComposer & { kind: "composer" } = {
   suggestedReplies: [],
   onReply: fn(),
   sendLabel: null,
+  status: null,
+  onStop: fn(),
 };
 
 // One of the pane's own stories as the room takes it: what the pane shows, its parts, and the
@@ -174,7 +173,6 @@ const layout: RoomViewProps["layout"] = {
   projectReady: false,
   projectOpen: false,
   onProjectOpenChange: fn(),
-  pageOpen: false,
 };
 
 // The room once the first documents are filed: the conversation still fills the room, and the
@@ -200,9 +198,9 @@ const meta = {
     tabStatus: [],
     sidebar: sidebarOf({}, []),
     paneRef: createRef(),
-    nextStep: <NextStepLineView {...nextStep.args} />,
-    chatScreens: null,
-    page: null,
+    waiting: null,
+    space: null,
+    pluginSpace: null,
   },
   render: (args) => <Room {...args} />,
 } satisfies Meta<typeof RoomView>;
@@ -220,7 +218,6 @@ export const NewProject: Story = {
       thread: { ...thread.args, turns: [] },
       empty: "new",
     },
-    nextStep: null,
   },
 };
 
@@ -233,35 +230,49 @@ export const CoordinatorThinking: Story = {
       ...conversation,
       thread: { ...thread.args, ...coordinatorThinking.args },
     },
-    dock: { ...composer, working: true },
+    // The coordinator's own turn cannot be stopped, so Send stays while the pill says it thinks.
+    dock: {
+      ...composer,
+      status: { state: "working", label: wording.promptBox.status.thinking },
+    },
   },
 };
 
-/** The coordinator asks for a yes on a document, which opens from the ask. */
+/** A tool asks before it runs: the ask waits in the prompt box, Yes where Send stands. */
 export const ApprovalWaiting: Story = {
   args: {
     ...withDocuments,
-    conversation: {
-      ...conversation,
-      thread: { ...thread.args, ...askingForApproval.args },
-    },
     dock: {
       ...composer,
       placeholder: wording.approval.composerPlaceholder,
     },
-    nextStep: <NextStepLineView {...nextStep.args} {...yourTurn.args} />,
+    waiting: {
+      kind: "approval",
+      approval: {
+        approvalId: "approval-1",
+        toolName: "run_shell",
+        subject: "bun run build",
+      },
+      disabled: false,
+      error: null,
+      typedYes: null,
+      onDecide: fn(),
+    },
   },
 };
 
+/** The coordinator's question waits in the prompt box; the person's own words answer it too. */
 export const QuestionsOpen: Story = {
   args: {
-    conversation: {
-      ...conversation,
-      thread: { ...thread.args, ...askingQuestions.args },
-    },
     dock: {
       ...composer,
       placeholder: wording.questions.composerPlaceholder,
+    },
+    waiting: {
+      kind: "question",
+      question,
+      disabled: false,
+      onAnswer: fn(() => Promise.resolve(true)),
     },
   },
 };
@@ -331,7 +342,6 @@ export const NoProvider: Story = {
       empty: "new",
     },
     dock: { ...composer, needsProvider: true },
-    nextStep: null,
   },
 };
 
@@ -355,7 +365,6 @@ export const Starting: Story = {
       thread: { ...thread.args, turns: [] },
     },
     dock: { kind: "starting" },
-    nextStep: null,
   },
 };
 
@@ -370,7 +379,6 @@ export const StartFailed: Story = {
       message: wording.message.coordinatorNotStarted,
       onRetry: fn(),
     },
-    nextStep: null,
   },
 };
 
@@ -385,7 +393,6 @@ export const Archived: Story = {
       fault: null,
       onRestore: fn(),
     },
-    nextStep: null,
   },
 };
 
@@ -412,7 +419,6 @@ export const ArchivedRestoring: Story = {
       fault: null,
       onRestore: fn(),
     },
-    nextStep: null,
   },
 };
 

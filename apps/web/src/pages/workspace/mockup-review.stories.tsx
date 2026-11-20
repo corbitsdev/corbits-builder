@@ -28,8 +28,7 @@ const screen = storyScreen(
   },
 );
 
-// Placed on the page: the room covers the conversation with it, and the conversation keeps a card
-// that opens it again.
+// In the plugin space beside the room's main area.
 const meta = {
   title: "Screens/Plugins/MockupReview",
   component: ScreenStory,
@@ -37,7 +36,6 @@ const meta = {
   args: {
     screen,
     state: "open",
-    placed: "page",
     input: { note: "The second round, with the order list tightened." },
     project: {},
     draft: { comments: [comment] },
@@ -77,15 +75,15 @@ export const Refused: Story = {
   },
 };
 export const Answered: Story = {
-  args: { state: "answered", placed: "conversation" },
+  args: { state: "answered" },
 };
 export const Replied: Story = {
-  args: { state: "replied", placed: "conversation" },
+  args: { state: "replied" },
 };
 export const Closed: Story = {
-  args: { state: "closed", placed: "conversation" },
+  args: { state: "closed" },
 };
 /** This interface has no view for the screen. */
 export const NotInstalled: Story = {
-  args: { state: "missing", placed: "conversation" },
+  args: { state: "missing" },
 };

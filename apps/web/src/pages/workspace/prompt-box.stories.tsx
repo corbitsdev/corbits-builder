@@ -1,9 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState, type ReactNode } from "react";
 import { expect, fn, userEvent, waitFor, within } from "storybook/test";
-import writer from "@plugins/writer/package.json";
-import approveDefinition from "@plugins/writer/src/approve/definition.ts";
-import ApproveView from "@plugins/writer/src/approve/view.tsx";
 import { wording } from "../../config.ts";
 import { DocumentDecision } from "./document-decision.tsx";
 import {
@@ -14,18 +11,8 @@ import {
 } from "./prompt-box.fixtures.ts";
 import { QuestionsCard } from "./questions-card.tsx";
 import { RoomDockView } from "./room.view.tsx";
-import { ScreenStory, storyScreen } from "./screen-story.tsx";
 
-const approveDocuments = storyScreen(
-  "@corbits-builder/writer approve",
-  writer.builder.actions["approve"],
-  { screen: approveDefinition, view: ApproveView, data: undefined },
-);
-
-/**
- * What waits on the person, each the very card the conversation shows it in: the box only frames
- * it.
- */
+/** What waits on the person, one card at a time: the box only frames it. */
 const waits = {
   question: () => (
     <QuestionsCard
@@ -33,14 +20,6 @@ const waits = {
       question={question}
       disabled={false}
       onAnswer={fn(() => Promise.resolve(true))}
-    />
-  ),
-  documents: () => (
-    <ScreenStory
-      screen={approveDocuments}
-      state="open"
-      input={{ kinds: ["build_plan"] }}
-      project={{}}
     />
   ),
   tool: () => (
@@ -253,29 +232,6 @@ export const QuestionOwnAnswer: Story = {
 };
 
 /**
- * Approving a document: what is asked, the document's summary in a line, the document as a chip
- * that opens it, and Approve where Send stands.
- */
-const approving = {
-  dock: {
-    ...composer,
-    placeholder:
-      approveDefinition.describe?.says?.reply ?? composer.placeholder,
-  },
-  waiting: "documents",
-} satisfies Args;
-
-export const ApproveDocuments: Story = { args: approving };
-
-/** Typing says what should change instead: Send, blue, takes Approve's place. */
-export const ApproveDocumentsTyping: Story = {
-  args: {
-    ...approving,
-    dock: { ...approving.dock, text: "Move the launch to the second Saturday" },
-  },
-};
-
-/**
  * A tool asks before it runs: what would run in a block beneath the ask, Not yet beside it, and
  * Yes where Send stands.
  */
@@ -359,11 +315,6 @@ export const DarkSending: Story = {
 
 export const DarkQuestionPicked: Story = {
   ...QuestionPicked,
-  globals: { mode: "dark" },
-};
-
-export const DarkApproveDocuments: Story = {
-  ...ApproveDocuments,
   globals: { mode: "dark" },
 };
 
