@@ -7,14 +7,13 @@ import type {
   ProjectWorker,
 } from "@corbits-builder/schemas/project-status";
 import { wording } from "../../config.ts";
-import { roleLabel } from "./roles.ts";
 
 const copy = wording.composer;
 
-function passAlongRole(working: readonly ProjectWorker[]): string | undefined {
-  return (
-    working.find((item) => item.state === "working")?.role ??
-    working.find((item) => item.state === "starting")?.role
+/** Work is under way: the box asks for a reply and never names who is doing the work. */
+function underWay(working: readonly ProjectWorker[]): boolean {
+  return working.some(
+    (item) => item.state === "working" || item.state === "starting",
   );
 }
 
@@ -34,8 +33,7 @@ export function composerPlaceholder(input: {
     return input.screenReply ?? wording.questions.composerPlaceholder;
   const status = input.status;
   if (status === undefined) return copy.reply;
-  const role = passAlongRole(status.working);
-  if (role !== undefined) return copy.passAlong(roleLabel(role).toLowerCase());
+  if (underWay(status.working)) return copy.reply;
   if (status.app.state === "running") return copy.change;
   if (status.app.state === "failed" || status.failedSpecialist !== undefined)
     return copy.fix;
