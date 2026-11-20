@@ -59,18 +59,55 @@
   font-size: 0.75rem;
 }
 
-/* Waiting in the prompt box: the ask, with the box's own inset; its answers stand where Send is. */
+/* Waiting in the prompt box: the ask with Not yet beside it, then what would run; its yes stands
+   where Send is. */
 .inBox {
   display: grid;
   gap: var(--space-3);
-  padding: 0.875rem;
+  padding: var(--space-4) var(--space-4) 14px;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
 }
 
 .ask {
+  flex: 1 1 0;
+  min-width: 0;
   margin: 0;
-  font-size: 0.875rem;
+  font-size: var(--text-sm);
   font-weight: 600;
+  line-height: 20px;
   overflow-wrap: anywhere;
+}
+
+/* Quiet beside the ask: the pill shape of the row's buttons, the muted ink of a way out. */
+.notYet {
+  flex: none;
+  height: 32px;
+  padding-inline: 14px;
+  border-radius: 9999px;
+  color: var(--wb-muted-foreground);
+}
+
+.command {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-radius: 8px;
+  background: var(--wb-muted);
+  color: var(--wb-foreground);
+  font-family: var(--wb-font-mono);
+  font-size: 13px;
+  line-height: 20px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.command::before {
+  content: "$ " / "";
+  color: var(--wb-muted-foreground);
 }
 
 .error {

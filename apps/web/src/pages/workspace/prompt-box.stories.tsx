@@ -206,8 +206,28 @@ export const QuestionOwnAnswer: Story = {
 /** The writer's screen for approving documents, with its own actions. */
 export const ApproveDocuments: Story = { args: { waiting: "documents" } };
 
-/** A tool asks before it runs, as the approval the conversation shows. */
-export const ToolApproval: Story = { args: { waiting: "tool" } };
+/**
+ * A tool asks before it runs: what would run in a block beneath the ask, Not yet beside it, and
+ * Yes where Send stands.
+ */
+export const ToolApproval: Story = {
+  args: {
+    dock: { ...composer, placeholder: wording.approval.composerPlaceholder },
+    waiting: "tool",
+  },
+};
+
+/** Typing says what to do instead: Send, blue, takes Yes's place. */
+export const ToolApprovalTyping: Story = {
+  args: {
+    dock: {
+      ...composer,
+      placeholder: wording.approval.composerPlaceholder,
+      text: "Run the tests first",
+    },
+    waiting: "tool",
+  },
+};
 
 /** Sending would change a document work already started from; the person says so twice. */
 export const ChangingEarlierDocument: Story = {

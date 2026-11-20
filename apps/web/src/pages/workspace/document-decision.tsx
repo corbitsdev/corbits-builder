@@ -53,34 +53,49 @@ export function DocumentDecision({
   place?: "conversation" | "box";
 }) {
   const slot = useContext(ActionsSlot);
-  // Waiting in the prompt box, the ask is one line and its two answers stand where Send is. The
-  // library's card keeps its buttons inside it, so the box draws the ask itself.
+  // Waiting in the prompt box, the ask heads the card with Not yet beside it, what would run sits
+  // beneath, and Yes stands where Send is. The library's card keeps its buttons inside it, so the
+  // box draws the ask itself. The host cannot tell a command from another tool's first argument,
+  // so whatever names what would run is shown as a command.
   if (place === "box" && approval.outcome === undefined) {
-    const buttons = (
+    const ask =
+      approval.subject === undefined
+        ? approvalQuestion(approval.toolName)
+        : text.run;
+    const yes = (
       <div className={styles.answers} inert={disabled}>
-        <Button type="button" size="sm" variant="outline" onClick={onNo}>
-          {text.notYet}
-        </Button>
         <Button type="button" size="sm" onClick={onYes}>
           {text.approve}
         </Button>
       </div>
     );
     return (
-      <section
-        className={styles.inBox}
-        aria-label={approvalQuestion(approval.toolName, approval.subject)}
-      >
-        <p className={styles.ask}>
-          {approvalQuestion(approval.toolName, approval.subject)}
-        </p>
+      <section className={styles.inBox} aria-label={ask}>
+        <header className={styles.head}>
+          <p className={styles.ask}>{ask}</p>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className={styles.notYet}
+            disabled={disabled}
+            onClick={onNo}
+          >
+            {text.notYet}
+          </Button>
+        </header>
+        {approval.subject === undefined ? null : (
+          <pre className={styles.command}>
+            <code>{approval.subject}</code>
+          </pre>
+        )}
         {countdown}
         {error === undefined ? null : (
           <p className={styles.error} role="alert">
             {error}
           </p>
         )}
-        {slot === null ? buttons : slot(buttons)}
+        {slot === null ? yes : slot(yes)}
       </section>
     );
   }
