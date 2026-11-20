@@ -661,6 +661,14 @@ export const wording = {
     making: "What are you making…",
     reply: "What do you want to say…",
   },
+  /** The prompt box, the status pill above it, and the chat that pulls up around it. */
+  promptBox: {
+    /** What the pill offers, after the line saying what is happening. */
+    pill: {
+      open: "Open",
+      seeChanges: "See what changed",
+    },
+  },
   speaker: {
     coder: "Coder",
     coordinator: "Coordinator",
