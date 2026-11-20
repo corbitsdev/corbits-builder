@@ -56,7 +56,10 @@ export async function buildWorkflowPackages(
   const browses = PACKAGES.some(
     (built) => "agent" in built && hasBrowser(built.agent),
   );
+  const phases = { catalog: 0, build: 0, import: 0, pack: 0 };
+  let mark = performance.now();
   const browser = browses ? JSON.stringify(await browserCatalog()) : undefined;
+  phases.catalog += performance.now() - mark;
   // The folder of recorded tool results the build tests' sandbox answers from (posix-sandbox.ts).
   // oxlint-disable-next-line eslint/no-restricted-properties
   const replay = process.env.BUILDER_TOOL_REPLAY;
@@ -84,6 +87,7 @@ export async function buildWorkflowPackages(
     }
     if ("agent" in built && hasBrowser(built.agent))
       define["process.env.BUILDER_BROWSER"] = JSON.stringify(browser);
+    mark = performance.now();
     const result = await Bun.build({
       define,
       entrypoints: [entry],
@@ -102,6 +106,7 @@ export async function buildWorkflowPackages(
             : ""),
       );
     const bundle = await result.outputs[0]!.text();
+    phases.build += performance.now() - mark;
     const version = contentVersion(base, bundle);
     const staging = await mkdtemp(join(tmpdir(), "sb-workflow-package-"));
     const packageName = nativePackageName(name);
@@ -111,7 +116,9 @@ export async function buildWorkflowPackages(
       const builtEntry = join(staging, "package", "dist", "workflow.mjs");
       await writeFile(builtEntry, bundle);
       // Inference is chosen by the declared role, but a run is known by its agent's tags.
+      mark = performance.now();
       const definition = await import(pathToFileURL(builtEntry).href);
+      phases.import += performance.now() - mark;
       const tagged = workflowStep(
         { projection: projectLiveToInert(definition.default) },
         CATALOG,
@@ -133,6 +140,7 @@ export async function buildWorkflowPackages(
           },
         }),
       );
+      mark = performance.now();
       const tar = Bun.spawn(
         ["tar", "-czf", join(output, filename), "-C", staging, "package"],
         {
@@ -140,8 +148,9 @@ export async function buildWorkflowPackages(
           stderr: "pipe",
         },
       );
-      if ((await tar.exited) !== 0)
-        throw new Error("workflow_package_archive_failed");
+      const tarExit = await tar.exited;
+      phases.pack += performance.now() - mark;
+      if (tarExit !== 0) throw new Error("workflow_package_archive_failed");
       manifest.push({
         assetName: "sb-" + name + "-packages",
         filename,
@@ -157,6 +166,11 @@ export async function buildWorkflowPackages(
   await writeFile(
     join(output, "manifest.json"),
     JSON.stringify(manifest, null, 2) + "\n",
+  );
+  console.warn(
+    `[timing] package phases ${Object.entries(phases)
+      .map(([k, v]) => `${k}=${Math.round(v)}ms`)
+      .join(" ")}`,
   );
   return manifest;
 }
