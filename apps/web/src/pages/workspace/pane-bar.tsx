@@ -226,6 +226,7 @@ export function PaneBar({
         variant="ghost"
         size="icon"
         className={styles.handle}
+        data-slot="pane-bar-handle"
         aria-label={wording.paneBar.show}
         title={wording.paneBar.show}
         onClick={() => writeStoredPreference(FLOATING_KEY, "shown")}
