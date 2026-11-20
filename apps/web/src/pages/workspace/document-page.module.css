@@ -10,7 +10,8 @@
   overscroll-behavior: contain;
   background: var(--wb-frame);
   container-type: inline-size;
-  --sheet-width: 640px;
+  /* As wide as the conversation's turns, so the page and the chat read at one measure. */
+  --sheet-width: 768px;
   /* A section opened from the contents stops clear of the bar: the 18px above it and its 32px.
      The heading's own scroll margin adds the gap below. */
   scroll-padding-top: 50px;
@@ -43,7 +44,9 @@
   margin-top: 18px;
 }
 
-/* The page sits on the midline; contents and margin share what is left either side. */
+/* The page sits on the midline; contents and margin share what is left either side, the contents
+   against the page's left edge as the margin's cards are against its right, not out at the
+   canvas's. */
 .layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
@@ -52,10 +55,13 @@
 
 .side {
   grid-column: 1;
+  justify-self: end;
+  box-sizing: border-box;
+  max-width: 100%;
   position: sticky;
   top: 64px;
   align-self: start;
-  padding: var(--space-4) var(--space-4) 0 var(--space-6);
+  padding: var(--space-4) var(--space-8) 0 var(--space-4);
 }
 
 .column {
@@ -233,8 +239,8 @@
   text-decoration-color: var(--wb-okay);
 }
 
-/* Without room for both columns beside the page, the contents give way to the page. */
-@container (width < 1180px) {
+/* Without room for the contents beside the page, they give way to it. */
+@container (width < 1120px) {
   .side {
     display: none;
   }
