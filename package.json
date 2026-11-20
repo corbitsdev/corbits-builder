@@ -41,6 +41,7 @@
     "test:e2e": "bun --env-file=.env.hub --conditions=intx-src test ./test/e2e",
     "vendor:verify": "bun scripts/verify-vendor.ts",
     "pins:verify": "bun scripts/verify-pins.ts",
+    "environment:verify": "bun --conditions=intx-src scripts/verify-environment.ts",
     "skills:react-ui": "bun scripts/react-ui-api.ts"
   },
   "dependencies": {

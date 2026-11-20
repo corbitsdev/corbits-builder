@@ -8,7 +8,10 @@ import { createDB, listVisibleOfferings } from "@intx/db";
 import { createAgentRepoStore, createAssetService } from "@intx/hub-sessions";
 import { generateKeyPair } from "@intx/crypto";
 import { createHubRuntime } from "@corbits-builder/hub/app";
-import { readDatabaseConfig } from "@corbits-builder/hub/environment";
+import {
+  readHubEnvironment,
+  readMigrationEnvironment,
+} from "@corbits-builder/hub/environment";
 import { migrateDatabase } from "@corbits-builder/hub/migrate";
 import { installForTenant } from "@corbits-builder/hub/workflows/install-for-tenant";
 import { defaultSettings } from "@corbits-builder/hub/settings/policy";
@@ -93,8 +96,8 @@ test("custom providers install on their API, keep each key on its origin, and re
     onnotice: () => undefined,
   });
   try {
-    await migrateDatabase(environment);
-    runtime = await createHubRuntime(environment);
+    await migrateDatabase(readMigrationEnvironment(environment));
+    runtime = await createHubRuntime(readHubEnvironment(environment));
     const app = runtime.app;
     const responses: string[] = [];
     const signUp = await app.fetch(
@@ -254,7 +257,7 @@ test("custom providers install on their API, keep each key on its origin, and re
 
     // The install a project start runs, on the project settings row create_project writes. A
     // second install finds the first current and leaves the workspace config as it was.
-    const handle = createDB(readDatabaseConfig(environment));
+    const handle = createDB(readHubEnvironment(environment).database);
     const projectId = `p-${randomUUID().replaceAll("-", "")}`;
     try {
       const [principal] =

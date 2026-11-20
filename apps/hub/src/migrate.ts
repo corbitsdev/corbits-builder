@@ -5,8 +5,8 @@ import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import {
-  readMigrationDatabaseConfig,
-  type Environment,
+  readMigrationEnvironment,
+  type MigrationEnvironment,
 } from "./environment.ts";
 import { migrateProductDatabase } from "./db/migrate.ts";
 import { errorCode } from "./request-error.ts";
@@ -16,9 +16,9 @@ const migrationsFolder = fileURLToPath(
 );
 
 export async function migrateDatabase(
-  env: Environment = process.env,
+  environment: Pick<MigrationEnvironment, "migrationDatabase">,
 ): Promise<void> {
-  const config = readMigrationDatabaseConfig(env);
+  const config = environment.migrationDatabase;
   const client = postgres({
     ...config,
     max: 1,
@@ -37,8 +37,9 @@ export async function migrateDatabase(
 }
 
 if (import.meta.main) {
+  const environment = readMigrationEnvironment();
   try {
-    await migrateDatabase();
+    await migrateDatabase(environment);
     console.log(JSON.stringify({ migrationsApplied: true }));
   } catch (error) {
     // The message can carry the database URL; the code, such as a SQLSTATE, cannot.

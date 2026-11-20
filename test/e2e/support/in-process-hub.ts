@@ -12,6 +12,10 @@ import {
 } from "@intx/db/schema";
 import { workflowRunRepoIdForAddress } from "@intx/hub-sessions";
 import { createHubRuntime } from "@corbits-builder/hub/app";
+import {
+  readHubEnvironment,
+  readMigrationEnvironment,
+} from "@corbits-builder/hub/environment";
 import { migrateDatabase } from "@corbits-builder/hub/migrate";
 import { createTestDatabase, signUpSessionCookie } from "./hub.ts";
 
@@ -48,8 +52,8 @@ export async function startInProcessHub() {
   };
   let cookie: string;
   try {
-    await migrateDatabase(environment);
-    runtime = await createHubRuntime(environment);
+    await migrateDatabase(readMigrationEnvironment(environment));
+    runtime = await createHubRuntime(readHubEnvironment(environment));
     const app = runtime.app;
     cookie = await signUpSessionCookie(
       (request) => app.fetch(request),

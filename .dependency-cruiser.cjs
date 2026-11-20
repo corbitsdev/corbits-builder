@@ -34,6 +34,23 @@ module.exports = {
       to: { path: "^packages/plugin-host/" },
     },
     {
+      name: "hub-environment-read-by-entry-points",
+      comment:
+        "The hub's entry points read the environment once and pass it down; any other module takes the settings it needs as arguments, so it imports only the environment's types.",
+      severity: "error",
+      from: {
+        path: "^apps/hub/src/",
+        pathNot: [
+          "^apps/hub/src/(server|migrate|setup)\\.ts$",
+          "\\.test\\.ts$",
+        ],
+      },
+      to: {
+        path: "^apps/hub/src/environment\\.ts$",
+        dependencyTypesNot: ["type-only"],
+      },
+    },
+    {
       name: "packages-stay-below-apps-and-plugins",
       comment:
         "Packages are shared building blocks, so they must not depend on the apps or plugins that use them.",

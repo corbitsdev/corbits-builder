@@ -51,6 +51,7 @@ jobs:
               - "scripts/**"
               - "vendor/**"
               - ".oxlintrc.json"
+              - ".env.*.example"
             typecheck:
               - *shared
               - "apps/**"
@@ -123,6 +124,8 @@ jobs:
         run: bun run lint
       - if: env.RUN == 'true'
         run: bun run boundaries
+      - if: env.RUN == 'true'
+        run: bun run environment:verify
 
   typecheck:
     needs: changes

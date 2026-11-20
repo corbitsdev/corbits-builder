@@ -2,16 +2,24 @@ import {
   configure,
   getConsoleSink,
   getJsonLinesFormatter,
-  getLogLevels,
-  isLogLevel,
-  type LogLevel,
   type Sink,
 } from "@logtape/logtape";
 import { getOpenTelemetrySink } from "@logtape/otel";
-import { createProductConfig } from "./config/index.ts";
+import {
+  createProductConfig,
+  type ProductConfigEnvironment,
+} from "./config/index.ts";
+import type { HubEnvironment } from "./environment.ts";
 import { requestContext } from "./middleware/correlation.ts";
 
-type LoggingEnvironment = Readonly<Record<string, string | undefined>>;
+type LoggingEnvironment = Pick<
+  HubEnvironment,
+  | "LOG_LEVEL"
+  | "OTEL_EXPORTER_OTLP_ENDPOINT"
+  | "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT"
+  | "OTEL_SERVICE_NAME"
+> &
+  ProductConfigEnvironment;
 
 const sinkFactories: Record<
   string,
@@ -39,17 +47,8 @@ function createSinks(environment: LoggingEnvironment): Record<string, Sink> {
   );
 }
 
-function readLogLevel(environment: LoggingEnvironment): LogLevel {
-  const level = environment.LOG_LEVEL ?? "info";
-  if (!isLogLevel(level))
-    throw new Error(`LOG_LEVEL must be one of ${getLogLevels().join(", ")}.`);
-  return level;
-}
-
-export async function setupHubLogging(
-  environment: LoggingEnvironment = process.env,
-) {
-  const lowestLevel = readLogLevel(environment);
+export async function setupHubLogging(environment: LoggingEnvironment) {
+  const lowestLevel = environment.LOG_LEVEL;
   const sinks = createSinks(environment);
   await configure({
     reset: true,

@@ -8,7 +8,7 @@ import type {
 type ChildProcessEnv = { PATH?: string; HOME?: string; TMPDIR?: string };
 
 export function childProcessEnv(
-  env: Record<string, string | undefined>,
+  env: Record<string, string | undefined> = process.env,
 ): ChildProcessEnv {
   const { PATH, HOME, TMPDIR } = env;
   return {

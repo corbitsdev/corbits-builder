@@ -15,6 +15,17 @@
     "typescript/prefer-nullish-coalescing": "error",
     "unicorn/require-module-specifiers": "error",
     "import/no-cycle": "error",
+    // Any `.env` read: process.env, Bun.env, import.meta.env (Bun's alias), through globalThis or
+    // destructured. `key.env` names a variable in config/install-root.ts and install-root.ts, and a
+    // Hono handler's `c.env` is its server, not the environment.
+    "eslint/no-restricted-properties": [
+      "error",
+      {
+        "property": "env",
+        "allowObjects": ["key", "c"],
+        "message": "Read the environment through the hub's environment.ts, which validates it."
+      }
+    ],
     "eslint/complexity": [
       "error",
       {
@@ -49,6 +60,41 @@
     ]
   },
   "overrides": [
+    // Each environment.ts, the only code that reads the environment, and tests, which set and
+    // restore it.
+    {
+      "files": [
+        "**/environment.ts",
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "test/**"
+      ],
+      "rules": {
+        "eslint/no-restricted-properties": "off"
+      }
+    },
+    // Not configuration. The starter and the app checks run with a generated app's environment.
+    // Build constants: build-packages.ts has Bun.build's define replace the BUILDER_* reads in
+    // agent-package.ts and role-inference.ts. A child process gets PATH, HOME or TMPDIR as is. The
+    // workflow child reads the signing key Interchange's sidecar hands it. `bun run dev:stop` reads
+    // the shell's ports as plain text, and the interface reads Vite's build mode.
+    {
+      "files": [
+        "plugins/coder/starter/**",
+        "packages/app-checks/check/**",
+        "apps/hub/src/workflows/agent-package.ts",
+        "apps/hub/src/workflows/role-inference.ts",
+        "apps/hub/src/builds/posix-child.ts",
+        "apps/hub/src/live-app/runner.ts",
+        "apps/hub/src/sidecar/spawn.ts",
+        "apps/hub/src/builds/app-repository.ts",
+        "apps/web/src/main.tsx",
+        "scripts/dev-stop.ts"
+      ],
+      "rules": {
+        "eslint/no-restricted-properties": "off"
+      }
+    },
     {
       "files": [
         "apps/hub/src/auth/agent-token-bridge.ts",

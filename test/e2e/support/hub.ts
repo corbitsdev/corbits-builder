@@ -8,6 +8,10 @@ import {
   type ProductApiClient,
 } from "@corbits-builder/client";
 import { createHubRuntime } from "@corbits-builder/hub/app";
+import {
+  readHubEnvironment,
+  readMigrationEnvironment,
+} from "@corbits-builder/hub/environment";
 import { migrateDatabase } from "@corbits-builder/hub/migrate";
 import type { RecordedModelServer } from "./recorded-model.ts";
 
@@ -188,7 +192,7 @@ export async function startTestHub(
   let server: ReturnType<typeof Bun.serve> | undefined;
 
   const boot = async () => {
-    runtime = await createHubRuntime(hubEnv);
+    runtime = await createHubRuntime(readHubEnvironment(hubEnv));
     server = Bun.serve({
       hostname: runtime.hostname,
       port: runtime.port,
@@ -205,7 +209,7 @@ export async function startTestHub(
   };
 
   try {
-    await migrateDatabase(hubEnv);
+    await migrateDatabase(readMigrationEnvironment(hubEnv));
     await boot();
 
     const cookie = await signUpSessionCookie(

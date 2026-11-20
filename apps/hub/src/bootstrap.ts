@@ -1,5 +1,3 @@
-import { readBaseURL, required, type Environment } from "./environment.ts";
-
 export type BootstrapOptions = {
   baseURL: string;
   email: string;
@@ -23,18 +21,6 @@ type PrincipalSummary = {
 
 function record(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-export function readBootstrapOptions(env: Environment): BootstrapOptions {
-  return {
-    baseURL: readBaseURL(env),
-    email: required(env, "BOOTSTRAP_EMAIL"),
-    password: required(env, "BOOTSTRAP_PASSWORD"),
-    name: env["BOOTSTRAP_NAME"] ?? required(env, "BOOTSTRAP_EMAIL"),
-    tenantSlug: required(env, "BOOTSTRAP_TENANT_SLUG"),
-    tenantName:
-      env["BOOTSTRAP_TENANT_NAME"] ?? required(env, "BOOTSTRAP_TENANT_SLUG"),
-  };
 }
 
 function endpoint(baseURL: string, path: string): URL {
