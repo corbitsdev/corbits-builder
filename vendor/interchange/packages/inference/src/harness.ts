@@ -381,16 +381,12 @@ async function* runSingleAttempt(
   const armInactivity = () => {
     cancelInactivity?.();
     cancelInactivity = scheduler.setTimeout(() => {
-      if (timeoutReason === null) {
-        timeoutReason = "inactivity";
-      }
+      timeoutReason = "inactivity";
       timeoutAbort.abort();
     }, inactivityTimeoutMs);
   };
   const cancelTotal = scheduler.setTimeout(() => {
-    if (timeoutReason === null) {
-      timeoutReason = "total";
-    }
+    timeoutReason = "total";
     timeoutAbort.abort();
   }, totalTimeoutMs);
   // Per-timer cancellers are idempotent (the production scheduler's
@@ -570,7 +566,7 @@ async function* runSingleAttempt(
       // adapters without the predicate keep their `[DONE]`/close behavior
       // byte-for-byte, and the predicate is never consulted for them.
       let stoppedEarly = false;
-      for await (const sseData of parseSSE(responseBody, fetchSignal)) {
+      for await (const sseData of parseSSE(responseBody)) {
         // Reset inactivity timer — we just got something from the wire.
         armInactivity();
         yield adapter.parseResponse(sseData);
