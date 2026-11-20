@@ -45,13 +45,6 @@
   border-radius: var(--radius-xl);
   background: var(--wb-card);
   box-shadow: var(--wb-shadow);
-  transition: border-color var(--duration-micro);
-}
-
-/* The box is the page's one action, so its edge takes the action colour
-   while it has focus. */
-.box:focus-within {
-  border-color: var(--wb-primary);
 }
 
 .panel {
@@ -101,24 +94,50 @@
   flex-basis: auto;
 }
 
-/* The box's main action is filled like Send, whichever card it comes from. The library's Button
-   names its variant only in its classes. */
-.box [data-slot="button"][class~="bg-primary"] {
-  background: var(--wb-foreground);
-  color: var(--wb-background);
+/* The card's one action stands where Send would, so Send gives way while it does. */
+.box
+  [data-slot="composer-actions"]:not([hidden], :empty)
+  ~ :is([data-slot="prompt-input-submit"], [data-slot="send-label"]) {
+  display: none;
+}
+
+/* A card's action moves the work forward, whichever card it comes from, so it is the proceed
+   green, pill-shaped like Send. The library's Button names its variant only in its classes. */
+.box [data-slot="composer-actions"] [data-slot="button"] {
+  height: 32px;
+  padding-inline: 14px;
+  border-radius: 9999px;
+  font-size: var(--text-sm);
+  transition: scale var(--duration-micro) var(--ease-out);
+}
+
+.box [data-slot="composer-actions"] [data-slot="button"][class~="bg-primary"] {
+  background: var(--wb-proceed);
+  color: var(--wb-proceed-foreground);
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .box [data-slot="button"][class~="bg-primary"]:hover {
-    background: color-mix(in oklab, var(--wb-foreground) 75%, transparent);
+  .box
+    [data-slot="composer-actions"]
+    [data-slot="button"][class~="bg-primary"]:hover {
+    background: color-mix(
+      in oklab,
+      var(--wb-proceed) 85%,
+      var(--wb-foreground)
+    );
   }
 }
 
-/* The library's prompt input: the typing row, one line tall until the words
-   need more. Its border is the box's. */
+.box [data-slot="composer-actions"] [data-slot="button"]:active {
+  scale: 0.96;
+}
+
+/* The library's prompt input: the typing row, attach first and the one action last, one line tall
+   until the words need more, when they grow upward and the controls keep the bottom line. Its
+   border is the box's. */
 .box [data-slot="prompt-input"] {
   display: flex;
-  flex-flow: row wrap;
+  flex-flow: row nowrap;
   align-items: flex-end;
   gap: var(--space-1);
   min-width: 0;
@@ -127,11 +146,11 @@
   border: 0;
   border-radius: 0 0 var(--radius-xl) var(--radius-xl);
   background: transparent;
-  padding: var(--space-2) var(--space-2) var(--space-2) 14px;
+  padding: var(--space-2);
   box-shadow: none;
 }
 
-/* The box's edge is the focus mark; the form's own ring would double it. */
+/* The box keeps its plain edge with the cursor in it; the caret says where the words go. */
 .box [data-slot="prompt-input"]:focus-within {
   outline: none;
 }
@@ -149,13 +168,11 @@
   padding-inline: 0;
 }
 
-/* The words share a line with the controls only while they fit on it. The
-   textarea is content-sized, so an `auto` basis is the width of its longest
-   line: once that no longer fits beside the controls they wrap beneath, and
-   the words take the box's whole width instead of a column beside them. */
 .box [data-slot="prompt-input"] > div:has(> textarea) {
-  flex: 1 1 auto;
+  flex: 1 1 0;
+  min-width: 0;
   align-self: stretch;
+  padding-inline-start: var(--space-1);
 }
 
 .box [data-slot="prompt-input"] textarea {
@@ -177,16 +194,38 @@
 
 .box [data-slot="prompt-input"] [data-slot="prompt-input-toolbar"] {
   flex: none;
-  /* At the end of its line, whether or not the words share it, and never
-     wider than the box. */
-  margin-left: auto;
-  max-width: 100%;
   gap: var(--space-1);
   padding: 0;
 }
 
-/* Attach: quiet until hovered, so the row leads with the words. Dictation's
-   microphone draws itself the same way in a toolbar. */
+/* Attach leads the row: round, on a muted fill, a plus rather than a paperclip. */
+.box [data-slot="prompt-input"] > [data-attach] {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  min-height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--wb-muted);
+  color: var(--wb-foreground);
+  transition:
+    background-color var(--duration-micro),
+    scale var(--duration-micro) var(--ease-out);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .box [data-slot="prompt-input"] > [data-attach]:hover {
+    background: color-mix(in oklab, var(--wb-foreground) 10%, var(--wb-muted));
+  }
+}
+
+.box [data-slot="prompt-input"] > [data-attach]:active {
+  scale: 0.96;
+}
+
+/* The microphone: quiet until hovered, so the row leads with the words. */
 .box [data-slot="prompt-input-toolbar"] [data-slot="prompt-input-button"] {
   width: 32px;
   height: 32px;
@@ -208,8 +247,9 @@
   }
 }
 
-/* Send: muted until there is something to send, dark once there is, and Stop
-   while work runs. */
+/* Send: muted until there is something to send, the action blue once there is, and Stop, in red,
+   while work runs. While a message is on its way it waits muted, with no spinner: the pill says
+   it is sending. */
 .box [data-slot="prompt-input"] [data-slot="prompt-input-submit"] {
   display: grid;
   place-items: center;
@@ -221,8 +261,8 @@
   padding: 0;
   border: 0;
   border-radius: 50%;
-  background: var(--wb-foreground);
-  color: var(--wb-background);
+  background: var(--wb-action);
+  color: var(--wb-action-foreground);
   box-shadow: none;
   opacity: 1;
   transition:
@@ -237,6 +277,11 @@
   color: var(--wb-muted-foreground);
 }
 
+.box [data-slot="prompt-input-submit"][data-status="streaming"] {
+  background: var(--wb-destructive);
+  color: var(--destructive-foreground);
+}
+
 .box [data-slot="prompt-input-submit"][data-status="streaming"] > svg {
   width: 10px;
   height: 10px;
@@ -247,8 +292,18 @@
     [data-slot="prompt-input-submit"]:not([aria-disabled]):hover:not(
       :disabled
     ) {
-    background: color-mix(in oklab, var(--wb-foreground) 75%, transparent);
-    color: var(--wb-background);
+    background: color-mix(in oklab, var(--wb-action) 85%, var(--wb-foreground));
+  }
+
+  .box
+    [data-slot="prompt-input-submit"][data-status="streaming"]:hover:not(
+      :disabled
+    ) {
+    background: color-mix(
+      in oklab,
+      var(--wb-destructive) 85%,
+      var(--wb-foreground)
+    );
   }
 }
 
@@ -257,9 +312,9 @@
   scale: 0.96;
 }
 
-.box [data-slot="prompt-input-submit"]:focus-visible {
-  outline: none;
-  box-shadow:
-    0 0 0 2px var(--wb-background),
-    0 0 0 4px var(--wb-ring);
+/* Focus inside the box is marked in the action blue, never the brand orange. */
+.box :is(button, [role="radio"], [role="checkbox"]):focus-visible {
+  outline: 2px solid var(--wb-action);
+  outline-offset: 2px;
+  box-shadow: none;
 }

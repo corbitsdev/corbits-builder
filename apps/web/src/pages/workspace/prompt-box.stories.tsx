@@ -16,8 +16,6 @@ import { QuestionsCard } from "./questions-card.tsx";
 import { RoomDockView } from "./room.view.tsx";
 import { ScreenStory, storyScreen } from "./screen-story.tsx";
 
-const pill = wording.promptBox.pill;
-
 const approveDocuments = storyScreen(
   "@corbits-builder/writer approve",
   writer.builder.actions["approve"],
@@ -109,7 +107,7 @@ type Story = StoryObj<typeof meta>;
 
 const typed = "Make the summary shorter and say who it is for";
 
-/** Nothing typed, with the project's next step as the placeholder. */
+/** Nothing typed: Send waits, muted, with the project's next step as the placeholder. */
 export const Resting: Story = {
   args: {
     dock: {
@@ -119,7 +117,7 @@ export const Resting: Story = {
   },
 };
 
-/** The box has the cursor, so its edge takes the action colour. */
+/** Words typed: Send turns the action blue. The box keeps its plain edge with the cursor in it. */
 export const Typing: Story = {
   args: { dock: { ...composer, text: typed } },
   play: async ({ canvasElement }) => {
@@ -127,12 +125,19 @@ export const Typing: Story = {
   },
 };
 
-/** The message is on its way, so nothing more can be sent until it lands. */
+/** The message is on its way: the box and its words stay, only Send waits, and the pill says so. */
 export const Sending: Story = {
-  args: { dock: { ...composer, text: typed, busy: true } },
+  args: {
+    dock: {
+      ...composer,
+      text: typed,
+      busy: true,
+      status: { state: "working", label: "Sending your message" },
+    },
+  },
 };
 
-/** Work runs: Stop stands where Send was, and the pill above says what is happening. */
+/** Work runs: Stop, in red, stands where Send was, and the pill above says what is happening. */
 export const Working: Story = { args: { dock: working } };
 
 /** Typing while work runs brings Send back; Enter sends as usual. */
@@ -167,19 +172,9 @@ export const ChangingEarlierDocument: Story = {
   },
 };
 
-/** Comments wait to be made: Send makes them, with or without words. */
+/** Comments wait to be made: they ride in the row as a token, and Send makes them, with or without words. */
 export const CommentsWaiting: Story = {
-  args: {
-    dock: {
-      ...composer,
-      status: {
-        state: "commentsWaiting",
-        label: "3 comments on Problem brief",
-        action: pill.sendComments,
-        onAction: fn(),
-      },
-    },
-  },
+  args: { dock: { ...composer, comments: 3 } },
 };
 
 /** Long words wrap under the controls and the box grows, up to a point, then scrolls. */

@@ -665,9 +665,13 @@ export const wording = {
     /** What the pill offers, after the line saying what is happening. */
     pill: {
       open: "Open",
-      sendComments: "Send to make them",
       seeChanges: "See what changed",
     },
+    /** The token in the typing row while comments on a document wait to be made. */
+    comments: (count: number) =>
+      count === 1 ? "1 comment" : `${String(count)} comments`,
+    /** The placeholder beside that token: Send makes the comments, with or without words. */
+    commentsPlaceholder: "Add a message…",
     /** The handle on the top edge of the box, and the pill while it stands in for it. */
     handle: {
       label: "Show the chat",

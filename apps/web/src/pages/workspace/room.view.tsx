@@ -12,7 +12,13 @@ import {
   type RefObject,
 } from "react";
 import { createPortal } from "react-dom";
-import { FolderOpen, Paperclip, Sparkles, TriangleAlert } from "lucide-react";
+import {
+  FolderOpen,
+  MessageSquare,
+  Plus,
+  Sparkles,
+  TriangleAlert,
+} from "lucide-react";
 import {
   Attachment,
   type AttachmentItem,
@@ -106,8 +112,10 @@ export type RoomComposer = {
   onReply: (reply: string) => void;
   /** What Send says, beside it and as its name, while an open screen has feedback to send with nothing typed. */
   sendLabel: string | null;
-  /** What is happening, in the pill above the box; null or absent while nothing is. Comments waiting to be made let Send go with nothing typed. */
+  /** What is happening, in the pill above the box; null or absent while nothing is. */
   status?: StatusPillContent | null;
+  /** Comments on a document waiting to be made, as a token in the typing row; Send makes them, with or without words. */
+  comments?: number;
   /** Stops the work in progress; Stop stands in for Send while the box is empty. */
   onStop?: () => void;
 };
@@ -518,6 +526,7 @@ function RoomComposerView({
   onReply,
   sendLabel,
   status = null,
+  comments = 0,
   onStop,
   waiting,
   chat,
@@ -533,7 +542,7 @@ function RoomComposerView({
   const { files } = attachments;
   const accept = needsProvider ? null : attachments.accept;
   // Files can be attached while the hub offers kinds it reads, the provider is set and nothing is
-  // mid-send; the drop zone, the paperclip and a paste all follow this.
+  // mid-send; the drop zone, the attach button and a paste all follow this.
   const attaching = accept !== null && !busy;
   const typed = text.trim() !== "" || files.length > 0;
   const send = () => {
@@ -564,10 +573,9 @@ function RoomComposerView({
             value={text}
             onValueChange={onTextChange}
             onSubmit={send}
-            canSubmit={
-              typed || sendLabel !== null || status?.state === "commentsWaiting"
-            }
-            status={busy ? "submitted" : stopping ? "streaming" : "ready"}
+            // While a message is on its way only Send waits: the box and its words stay as they are.
+            canSubmit={!busy && (typed || sendLabel !== null || comments > 0)}
+            status={stopping ? "streaming" : "ready"}
             disabled={disabled || needsProvider}
           >
             {files.length === 0 ? null : (
@@ -589,6 +597,37 @@ function RoomComposerView({
                 </Attachments>
               </PromptInputFloat>
             )}
+            {/* Attach leads the row; what is sent with the words follows it, then the words. */}
+            {accept === null ? null : (
+              <>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  hidden
+                  accept={accept}
+                  onChange={(event) => {
+                    if (event.target.files !== null)
+                      attachments.onAdd(event.target.files);
+                    event.target.value = "";
+                  }}
+                />
+                <PromptInputButton
+                  data-attach=""
+                  aria-label={wording.attach.add}
+                  title={wording.attach.add}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <Plus size={16} aria-hidden="true" />
+                </PromptInputButton>
+              </>
+            )}
+            {comments > 0 ? (
+              <span className={styles.commentsToken}>
+                <MessageSquare size={12} aria-hidden="true" />
+                {wording.promptBox.comments(comments)}
+              </span>
+            ) : null}
             <PromptInputTextarea
               ref={inputRef}
               // A picture on the clipboard attaches like a chosen file, while attaching is
@@ -601,33 +640,14 @@ function RoomComposerView({
                 attachments.onAdd(pasted);
               }}
               placeholder={
-                needsProvider ? wording.conversation.enableAiFirst : placeholder
+                needsProvider
+                  ? wording.conversation.enableAiFirst
+                  : comments > 0
+                    ? wording.promptBox.commentsPlaceholder
+                    : placeholder
               }
             />
             <PromptInputToolbar>
-              {accept === null ? null : (
-                <>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    multiple
-                    hidden
-                    accept={accept}
-                    onChange={(event) => {
-                      if (event.target.files !== null)
-                        attachments.onAdd(event.target.files);
-                      event.target.value = "";
-                    }}
-                  />
-                  <PromptInputButton
-                    aria-label={wording.attach.add}
-                    title={wording.attach.add}
-                    onClick={() => fileInputRef.current?.click()}
-                  >
-                    <Paperclip size={16} aria-hidden="true" />
-                  </PromptInputButton>
-                </>
-              )}
               {needsProvider ? null : mic}
               {needsProvider ? (
                 <UiButton
@@ -655,8 +675,9 @@ function RoomComposerView({
                 </div>
               ) : (
                 <>
-                  {/* Kept while the person types, only hidden, so the buttons in it keep their
-                      place and focus. */}
+                  {/* The row's one action: the waiting card's, while it offers one and nothing is
+                      typed, else Send. Kept while the person types, only hidden, so the buttons in
+                      it keep their place and focus. */}
                   {waitingActions ? (
                     <div
                       ref={setActionsAt}
@@ -664,20 +685,20 @@ function RoomComposerView({
                       hidden={typed}
                     />
                   ) : null}
-                  {waitingActions && !typed ? null : (
-                    <>
-                      {sendLabel === null ? null : (
-                        <span className={styles.sendLabel} aria-hidden="true">
-                          {sendLabel}
-                        </span>
-                      )}
-                      <PromptInputSubmit
-                        {...(stopping ? { onStop } : {})}
-                        aria-label={sendLabel ?? undefined}
-                        aria-busy={busy || undefined}
-                      />
-                    </>
+                  {sendLabel === null ? null : (
+                    <span
+                      className={styles.sendLabel}
+                      data-slot="send-label"
+                      aria-hidden="true"
+                    >
+                      {sendLabel}
+                    </span>
                   )}
+                  <PromptInputSubmit
+                    {...(stopping ? { onStop } : {})}
+                    aria-label={sendLabel ?? undefined}
+                    aria-busy={busy || undefined}
+                  />
                 </>
               )}
             </PromptInputToolbar>

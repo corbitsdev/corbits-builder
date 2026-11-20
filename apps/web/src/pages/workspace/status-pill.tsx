@@ -17,7 +17,6 @@ export type StatusPillState =
   | "running"
   | "failed"
   | "ready"
-  | "commentsWaiting"
   | "commentsWorking"
   | "commentsDone";
 

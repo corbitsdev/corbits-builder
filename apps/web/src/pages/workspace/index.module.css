@@ -197,6 +197,23 @@
   margin-top: 2px;
 }
 
+/* Comments waiting to be made, carried with whatever is typed after them. */
+.commentsToken {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-1);
+  align-self: center;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 6px;
+  background: var(--wb-muted);
+  color: var(--wb-foreground);
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-medium);
+  white-space: nowrap;
+}
+
 /* Says what Send carries while a screen has feedback staged, so the one send control names its load. */
 .sendLabel {
   color: var(--wb-muted-foreground);
