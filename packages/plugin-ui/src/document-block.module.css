@@ -45,7 +45,7 @@
 }
 
 /* One line on the page ground, a quiet file mark at its start and Open at its end. */
-.chip {
+.compact {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -63,16 +63,16 @@
   cursor: pointer;
 }
 
-.chip:hover {
+.compact:hover {
   background: color-mix(in oklab, var(--wb-foreground) 5%, var(--wb-frame));
 }
 
-.chip:focus-visible {
+.compact:focus-visible {
   outline: 2px solid var(--wb-action);
   outline-offset: 2px;
 }
 
-.chipFile {
+.compactFile {
   display: inline-flex;
   flex: none;
   align-items: center;
@@ -85,13 +85,13 @@
   color: var(--wb-foreground);
 }
 
-.chipFile svg,
-.chipOpen svg {
+.compactFile svg,
+.compactOpen svg {
   width: 14px;
   height: 14px;
 }
 
-.chipTitle {
+.compactTitle {
   flex: none;
   max-width: 60%;
   overflow: hidden;
@@ -101,7 +101,7 @@
   text-overflow: ellipsis;
 }
 
-.chipMeta {
+.compactMeta {
   flex: 1 1 0;
   min-width: 0;
   overflow: hidden;
@@ -110,7 +110,7 @@
   text-overflow: ellipsis;
 }
 
-.chipOpen {
+.compactOpen {
   display: inline-flex;
   flex: none;
   align-items: center;

@@ -10,7 +10,7 @@ import styles from "./document-block.module.css";
 
 export const documentBlockText = {
   version: (version: number) => `v${String(version)}`,
-  /** The version as a chip spells it out beside the title. */
+  /** The version as the compact line spells it out beside the title. */
   versionLong: (version: number) => `Version ${String(version)}`,
   openShort: "Open",
   open: "Read the full document",
@@ -25,19 +25,47 @@ export type DocumentBlockProps = {
   version: number;
   /** A quiet word after the version, such as that this version is already approved. */
   note?: string | undefined;
-  /** The document's own `## In short` section, as markdown, when it has one. */
-  summary: string | undefined;
   onOpen: (kind: string) => void;
-};
+} & (
+  | {
+      compact?: false;
+      /** The document's own `## In short` section, as markdown, when it has one. */
+      summary: string | undefined;
+    }
+  /**
+   * One line, for when the card around it already says what is asked: its title and version, and
+   * the whole line opens it. It never repeats the question.
+   */
+  | { compact: true; summary?: never }
+);
 
-export function DocumentBlock({
-  kind,
-  title,
-  version,
-  note,
-  summary,
-  onOpen,
-}: DocumentBlockProps) {
+export function DocumentBlock(props: DocumentBlockProps) {
+  const { kind, title, version, note, onOpen } = props;
+  if (props.compact === true)
+    // Named by what it shows, Open included, so a spoken "Open" or the title reaches it.
+    return (
+      <button
+        type="button"
+        className={styles.compact}
+        data-slot="document-block"
+        data-size="compact"
+        onClick={() => onOpen(kind)}
+      >
+        <span className={styles.compactFile} aria-hidden="true">
+          <FileText />
+        </span>
+        <span className={styles.compactTitle}>{title}</span>
+        <span className={styles.compactMeta}>
+          {documentBlockText.versionLong(version)}
+          {note === undefined ? null : ` · ${note}`}
+        </span>
+        <span className={styles.compactOpen}>
+          {documentBlockText.openShort}
+          <ExternalLink aria-hidden="true" />
+        </span>
+      </button>
+    );
+  const { summary } = props;
   return (
     <div className={styles.block} data-slot="document-block">
       <p className={styles.row}>
@@ -63,42 +91,5 @@ export function DocumentBlock({
         {documentBlockText.open}
       </Button>
     </div>
-  );
-}
-
-export type DocumentChipProps = Omit<DocumentBlockProps, "summary">;
-
-/**
- * A filed document in one line, for when the card around it already says what is asked: its title
- * and version, and the whole chip opens it. It never repeats the question.
- */
-export function DocumentChip({
-  kind,
-  title,
-  version,
-  note,
-  onOpen,
-}: DocumentChipProps) {
-  return (
-    <button
-      type="button"
-      className={styles.chip}
-      data-slot="document-chip"
-      aria-label={documentBlockText.openNamed(title)}
-      onClick={() => onOpen(kind)}
-    >
-      <span className={styles.chipFile} aria-hidden="true">
-        <FileText />
-      </span>
-      <span className={styles.chipTitle}>{title}</span>
-      <span className={styles.chipMeta}>
-        {documentBlockText.versionLong(version)}
-        {note === undefined ? null : ` · ${note}`}
-      </span>
-      <span className={styles.chipOpen} aria-hidden="true">
-        {documentBlockText.openShort}
-        <ExternalLink />
-      </span>
-    </button>
   );
 }

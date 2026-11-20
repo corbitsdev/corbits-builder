@@ -18,7 +18,7 @@
   color: var(--wb-muted-foreground);
 }
 
-/* The document's own summary, held to its first line: the chip opens the rest. */
+/* The document's own summary, held to its first line: the document's own line opens the rest. */
 .summary {
   min-width: 0;
   margin-bottom: 10px;

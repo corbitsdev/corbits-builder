@@ -8,7 +8,7 @@ import type { ScreenViewProps } from "@corbits-builder/plugin-ui/screen";
 import { useEffect, useMemo } from "react";
 import type { Offer } from "@corbits-builder/plugin";
 import {
-  DocumentChip,
+  DocumentBlock,
   documentBlockText,
 } from "@corbits-builder/plugin-ui/document-block";
 import { Markdown } from "@corbits-builder/plugin-ui/markdown";
@@ -153,7 +153,8 @@ export function ApproveDocuments({
       <ul className={styles.documents} data-slot="approve-documents">
         {filed.map((document) => (
           <li key={document.kind}>
-            <DocumentChip
+            <DocumentBlock
+              compact
               kind={document.kind}
               title={document.title}
               version={document.version}
