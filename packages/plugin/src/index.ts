@@ -103,6 +103,7 @@ const AppProduction = type({
   port: PortVariable,
   data: AppFolder.array(),
 });
+export type AppProduction = typeof AppProduction.infer;
 
 // Code a first build can start from. folder is the plugin's folder of files written as the
 // project's first code. run says how its program starts so a person can open it, and production how
