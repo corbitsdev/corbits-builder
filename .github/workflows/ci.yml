@@ -181,11 +181,12 @@ jobs:
       - if: steps.browser.outputs.cache-hit != 'true'
         run: bunx playwright install chromium
       # test/e2e/builds runs in the e2e-builds job, which installs the sandbox libraries a build needs.
-      # --parallel gives each file a fresh module registry, which the tests that install a plugin need.
+      # The tests that install a plugin copy it into the shared plugins folder, and the hub reads that
+      # folder once per module load, so files run one at a time, each in a fresh module registry.
       - run: >-
           bun --conditions=intx-src test ./test/e2e
           --path-ignore-patterns='test/e2e/builds/**'
-          --shard=${{ matrix.shard }}/2 --timings=test/e2e/timings.json --parallel
+          --shard=${{ matrix.shard }}/2 --timings=test/e2e/timings.json --isolate
 
   e2e-builds:
     name: e2e-builds (${{ matrix.file }})
