@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState, type ReactNode } from "react";
 import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 import { wording } from "../../config.ts";
+import { ScreenCard, StepCard } from "./box-cards.tsx";
 import { DocumentDecision } from "./document-decision.tsx";
 import {
   composer,
@@ -22,6 +23,8 @@ const waits = {
       onAnswer={fn(() => Promise.resolve(true))}
     />
   ),
+  step: () => <StepCard title="Build the app" busy={false} onGoAhead={fn()} />,
+  screen: () => <ScreenCard title="Approve documents" onOpen={fn()} />,
   tool: () => (
     <DocumentDecision
       place="box"
@@ -232,6 +235,34 @@ export const QuestionOwnAnswer: Story = {
 };
 
 /**
+ * A step the person asked to be consulted on: the ask heads the box, and Yes, go ahead, green,
+ * stands where Send is.
+ */
+export const StepGoAhead: Story = {
+  args: {
+    dock: {
+      ...composer,
+      placeholder: wording.promptBox.waiting.stepPlaceholder,
+    },
+    waiting: "step",
+  },
+};
+
+/** Typing says what to do instead: Send, blue, takes the go-ahead's place. */
+export const StepGoAheadTyping: Story = {
+  args: {
+    dock: { ...composer, text: "Wait until the menu is final" },
+    waiting: "step",
+  },
+};
+
+/**
+ * A plugin's screen waits in the plugin space: the box names it, with Open to go to it. Its own
+ * forward action reaches the box from the space.
+ */
+export const ScreenWaiting: Story = { args: { waiting: "screen" } };
+
+/**
  * A tool asks before it runs: what would run in a block beneath the ask, Not yet beside it, and
  * Yes where Send stands.
  */
@@ -315,6 +346,16 @@ export const DarkSending: Story = {
 
 export const DarkQuestionPicked: Story = {
   ...QuestionPicked,
+  globals: { mode: "dark" },
+};
+
+export const DarkStepGoAhead: Story = {
+  ...StepGoAhead,
+  globals: { mode: "dark" },
+};
+
+export const DarkScreenWaiting: Story = {
+  ...ScreenWaiting,
   globals: { mode: "dark" },
 };
 
