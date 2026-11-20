@@ -18,6 +18,7 @@ import {
 } from "./room.model.ts";
 import { RoomFault, RoomSkeleton } from "./room-skeleton.tsx";
 import { RoomView } from "./room.view.tsx";
+import { WrittenDocument } from "./written-document.tsx";
 
 /** The room shows its loading or fault state until its first read is in hand. */
 export function StageWorkspace(props: StageWorkspaceProps) {
@@ -55,6 +56,7 @@ function ReadyRoom(props: ReadyRoomProps) {
           tweakPanel: (panel) => (
             <TweakPanel {...panel} design={{ projectId }} />
           ),
+          writtenDocument: (page) => <WrittenDocument {...page} />,
         }}
       />
       <EnableAiDialog {...enableAi} />

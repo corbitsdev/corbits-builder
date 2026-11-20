@@ -9,6 +9,7 @@ import {
 } from "./artifact-pane.tsx";
 import { documentReadFailure, documentsForPane } from "./document-read.ts";
 import type { DeliverableState } from "./deliverable-block.tsx";
+import { WrittenDocument } from "./written-document.tsx";
 
 const sha = "ab".repeat(32);
 
@@ -22,11 +23,12 @@ function filed(id: string, title: string): PaneDocument {
   };
 }
 
-// A written document draws none of the parts that read the hub.
+// A written document draws none of the other parts that read the hub.
 const parts: ArtifactPaneSlots = {
   conceptMockup: () => null,
   approvalRounds: () => null,
   tweakPanel: () => null,
+  writtenDocument: (page) => <WrittenDocument {...page} />,
 };
 
 const brief = filed("problem_brief", "Weather App Problem Brief");

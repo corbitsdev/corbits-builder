@@ -17,6 +17,7 @@ import {
 } from "./deliverable-block.tsx";
 import { TweakPanel } from "./mockup-tweaks.tsx";
 import { LIVE_TAB } from "./tab-follow.ts";
+import { WrittenDocument } from "./written-document.tsx";
 
 const filed = (id: string, title: string, version: number): PaneDocument => ({
   id,
@@ -51,6 +52,7 @@ const parts: ArtifactPaneSlots = {
   tweakPanel: (panel) => (
     <TweakPanel {...panel} design={{ projectId: "project" }} />
   ),
+  writtenDocument: (page) => <WrittenDocument {...page} />,
 };
 function render(selected: PaneDocument | null, state?: DeliverableState) {
   return renderToStaticMarkup(
@@ -104,7 +106,7 @@ describe("persistent artifact pane", () => {
     expect(comparing).toContain("v1 → v2");
     expect(comparing).not.toContain("<select");
   });
-  test("shows the document title once and hides a single retained version", () => {
+  test("heads the page with the document's title once and hides a single retained version", () => {
     if (document.status !== "ready") throw new Error("invalid fixture");
     const title = "Weather App First-Version Problem Brief";
     const html = render(
@@ -126,7 +128,7 @@ describe("persistent artifact pane", () => {
         },
       },
     );
-    expect(html.split(`>${title}<`).length - 1).toBe(1);
+    expect(html.split(`>${title}</h1>`).length - 1).toBe(1);
     expect(html).toContain("The forecast for the weekend.");
     expect(html).not.toContain(">Artifacts<");
     expect(html).not.toContain(">Output<");

@@ -253,6 +253,7 @@ export function ArtifactPane({
   approvalRounds,
   tweakPanel,
   plugins = [],
+  writtenDocument,
 }: ArtifactPaneProps) {
   // A tab that is not a filed document: the design draft or the live app.
   const [side, setSide] = useState<string | null>(null);
@@ -484,6 +485,7 @@ export function ArtifactPane({
                       : {})}
                     approvalRounds={approvalRounds}
                     tweakPanel={tweakPanel}
+                    writtenDocument={writtenDocument}
                   />
                 </PanelPane>
               );
