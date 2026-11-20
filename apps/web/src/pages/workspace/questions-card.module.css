@@ -85,7 +85,7 @@
 }
 
 .mark[data-mark="current"] {
-  border-color: var(--primary-emphasis);
+  border-color: var(--wb-foreground);
 }
 
 .mark[data-mark="current"]::after {
@@ -93,7 +93,7 @@
   width: 0.375rem;
   height: 0.375rem;
   border-radius: 999px;
-  background: var(--primary-emphasis);
+  background: var(--wb-foreground);
 }
 
 .mark[data-mark="folded"] {
@@ -175,7 +175,7 @@
 }
 
 .ruleCount {
-  color: var(--primary-emphasis);
+  color: var(--wb-foreground);
 }
 
 .ruleCount::before {
@@ -204,12 +204,12 @@
 }
 
 .choice:hover {
-  border-color: color-mix(in oklab, var(--primary-emphasis) 35%, var(--border));
+  border-color: color-mix(in oklab, var(--wb-action) 35%, var(--border));
 }
 
 .choice[data-checked] {
-  border-color: var(--primary);
-  background: var(--wb-selected);
+  border-color: var(--wb-action);
+  background: color-mix(in oklab, var(--wb-action) 8%, var(--wb-background));
 }
 
 .choiceText {
@@ -279,9 +279,9 @@
 }
 
 .choice[data-checked] .box {
-  border-color: var(--primary);
-  background: var(--primary);
-  color: var(--primary-foreground);
+  border-color: var(--wb-action);
+  background: var(--wb-action);
+  color: var(--wb-action-foreground);
 }
 
 .own {
@@ -314,8 +314,17 @@
   gap: var(--space-2);
   margin-top: var(--space-3);
   padding-top: var(--space-3);
-  border-top: 1px solid
-    color-mix(in oklab, var(--primary-emphasis) 20%, transparent);
+  border-top: 1px solid var(--wb-border);
+}
+
+/* Continue and Send answers move the work forward, so they are the proceed green. */
+.footer .next {
+  background: var(--wb-proceed);
+  color: var(--wb-proceed-foreground);
+}
+
+.footer .next:hover {
+  background: color-mix(in oklab, var(--wb-proceed) 85%, var(--wb-foreground));
 }
 
 /* Its buttons drawn elsewhere, such as in the prompt box, leave no rule behind. */
