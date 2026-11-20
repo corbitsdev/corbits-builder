@@ -30,7 +30,7 @@ const origin = "http://127.0.0.1:1";
  */
 export async function startInProcessHub(
   settings: Record<string, string> = {},
-  testing?: { toolReplay?: string },
+  testing?: { toolReplay?: string | undefined },
 ) {
   const database = await createTestDatabase();
   const directory = await mkdtemp(join(tmpdir(), "sb-in-process-"));
@@ -59,7 +59,12 @@ export async function startInProcessHub(
   let cookie: string;
   try {
     await migrateDatabase(readMigrationEnvironment(environment));
-    runtime = await createHubRuntime(readHubEnvironment(environment), testing);
+    runtime = await createHubRuntime(
+      readHubEnvironment(environment),
+      testing?.toolReplay === undefined
+        ? undefined
+        : { toolReplay: testing.toolReplay },
+    );
     const app = runtime.app;
     cookie = await signUpSessionCookie(
       (request) => app.fetch(request),

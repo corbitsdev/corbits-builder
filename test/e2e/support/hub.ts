@@ -145,7 +145,7 @@ export async function signUpSessionCookie(
 
 export async function startTestHub(
   recordedModel: Pick<RecordedModelServer, "url">,
-  testing?: { toolReplay?: string },
+  testing?: { toolReplay?: string | undefined },
 ): Promise<TestHubHandle> {
   const database = await createTestDatabase();
   const handle = createDB(database.connection);
@@ -193,7 +193,12 @@ export async function startTestHub(
   let server: ReturnType<typeof Bun.serve> | undefined;
 
   const boot = async () => {
-    runtime = await createHubRuntime(readHubEnvironment(hubEnv), testing);
+    runtime = await createHubRuntime(
+      readHubEnvironment(hubEnv),
+      testing?.toolReplay === undefined
+        ? undefined
+        : { toolReplay: testing.toolReplay },
+    );
     server = Bun.serve({
       hostname: runtime.hostname,
       port: runtime.port,

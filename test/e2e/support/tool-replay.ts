@@ -15,10 +15,13 @@ type ExecutorOptions = Parameters<typeof createPosixBuildExecutor>[3];
 
 /**
  * What a hub's toolReplay is set to for the recordings in folder. The hub imports the value as a
- * module and knows nothing of recordings; the folder rides in the module's query.
+ * module and knows nothing of recordings; the folder rides in the module's query. With
+ * E2E_REAL_TOOLS=1 there is none, and the hub runs the real tools in its sandbox.
  */
 export const toolReplay = (folder: string) =>
-  `${import.meta.path}?recordings=${encodeURIComponent(folder)}`;
+  process.env["E2E_REAL_TOOLS"] === "1"
+    ? undefined
+    : `${import.meta.path}?recordings=${encodeURIComponent(folder)}`;
 
 const Recording = type({
   "+": "reject",
