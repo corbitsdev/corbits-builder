@@ -188,14 +188,40 @@ export const ShownScreen = type({
   action: "string > 0",
   render: ScreenRender,
   state: "unknown",
+  // How many milliseconds after this read the clock alone changes the state, so the reader reads
+  // it again then.
+  "changesIn?": "number > 0",
 });
 export type ShownScreen = typeof ShownScreen.infer;
+// An installed ready-made plan as a screen reads it, in its manifest's words.
+export const ReadyPlanOffer = type({
+  "+": "reject",
+  handle: "string > 0",
+  // What it does, as its package describes it.
+  about: "string > 0",
+  groups: "string[]",
+  // The handles of the plugins its steps name, each once.
+  plugins: "string[]",
+  // The fact that ends it, when it names one.
+  "ends?": "string > 0",
+});
+export type ReadyPlanOffer = typeof ReadyPlanOffer.infer;
+// What the hub prepared for the screen a question opened, as its view draws it.
+export const AskedScreen = type({
+  "+": "reject",
+  signalName: "string > 0",
+  data: "unknown",
+});
+export type AskedScreen = typeof AskedScreen.infer;
 export const PlanView = type({
   "+": "reject",
   steps: PlanViewChild.or(PlanViewGroup).array(),
   updatedAt: "string | null",
   // Only a person's read lists them, since a screen's state may hold what no model may read.
   screens: ShownScreen.array(),
+  // What the hub prepared for the screens of the coordinator's questions, by each question's
+  // signal, for those that prepare from the project; only a person's read lists them too.
+  asked: AskedScreen.array(),
 });
 export type PlanView = typeof PlanView.infer;
 // A saved step may leave its id out; the hub assigns one.

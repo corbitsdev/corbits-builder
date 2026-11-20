@@ -63,6 +63,18 @@ const signedIn: MiddlewareHandler<TenantEnv> = async (c, next) => {
 
 const empty = { styles: undefined, stored: {}, materials: [] };
 
+const read = (stored: Record<string, unknown> = {}) => ({
+  state: { styles: undefined, stored, materials: [] },
+  facts: new Set<string>(),
+  steps: [],
+  now: Date.parse("2026-11-20T10:00:00.000Z"),
+  appVersion: undefined,
+  coordinator: { working: false, since: undefined },
+  runs: [],
+  asking: [],
+  manages: true,
+});
+
 function hub(project: {
   artifacts: { kind: string; version: number }[];
   steps?: StoredPlanStep[];
@@ -93,7 +105,9 @@ function hub(project: {
       added.push({ step, goAhead: told.goAhead });
     },
   } as unknown as ReturnType<typeof createPlanService>;
-  const checks = { latest: async () => [] } as unknown as Checks;
+  const checks = {
+    latest: async () => ({ records: [], appVersion: "v3" }),
+  } as unknown as Checks;
   const conversation = async () =>
     Response.json({ runId: null, events: [], questions: [] });
   mountPlanRoutes(
@@ -115,15 +129,7 @@ function hub(project: {
 
 test("a screen is listed, with its state, only while its state returns one, and one that throws is left out", async () => {
   const shown = (on: typeof catalog, stored: Record<string, unknown>) =>
-    shownScreens(
-      on,
-      projectRead(
-        on,
-        { styles: undefined, stored, materials: [] },
-        new Set(),
-        [],
-      ),
-    );
+    shownScreens(on, projectRead(on, read(stored)));
   expect(
     catalog.actions.some(
       ({ plugin, action }) => plugin === "tester" && action === "notes",
@@ -231,9 +237,9 @@ async function runNote(on: typeof catalog) {
       on,
       {
         task,
-        read: projectRead(on, empty, new Set(), []),
+        read: projectRead(on, read()),
         input: { text: "the contact form" },
-        tell: async (note) => {
+        teller: async () => async (note) => {
           told.push(note);
         },
       },

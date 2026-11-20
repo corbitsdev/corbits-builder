@@ -136,6 +136,7 @@ import { humanFault, humanFaultWithCode, responseCode } from "./human-fault.ts";
 import { suggestedReplies } from "./suggested-replies.ts";
 import { visibleChatText } from "./visible-chat.ts";
 import {
+  keptRoom,
   loadProjectRoom,
   reloadProjectDocument,
   roomDocumentKey,
@@ -462,6 +463,7 @@ export function useRoomGate({
     retry: false,
     staleTime: 0,
     refetchOnWindowFocus: false,
+    meta: { persist: keptRoom },
     queryFn: ({ client }) => loadProjectRoom(projectId, client, !archived),
   });
   const [startFault, setStartFault] = useState<string | null>(null);
@@ -1657,6 +1659,8 @@ export function useRoom({
       runTenantId === undefined || workspaceRead.data === undefined
         ? null
         : { project: runTenantId, workspace: workspaceRead.data },
+    asked: (signalName) =>
+      snapshot.plan.asked.find((each) => each.signalName === signalName)?.data,
   };
   const pluginScreens = pluginSlots({
     screens: archived ? [] : snapshot.plan.screens,
@@ -1672,6 +1676,13 @@ export function useRoom({
       return undefined;
     },
   });
+  // Each read times its own wake, so a screen counting down is read again as its clock says.
+  const { rereadIn } = pluginScreens;
+  useEffect(() => {
+    if (rereadIn === undefined) return;
+    const timer = setTimeout(() => reloadRef.current(), rereadIn);
+    return () => clearTimeout(timer);
+  }, [snapshot, rereadIn]);
   const pageHost = {
     close: () => setClosedPage(pageQuestion?.signalName ?? null),
   };

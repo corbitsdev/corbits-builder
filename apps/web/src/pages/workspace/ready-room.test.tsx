@@ -7,7 +7,7 @@ import {
   QueryClientProvider,
 } from "@tanstack/react-query";
 import { wording } from "../../config.ts";
-import { savedReads } from "../../queries/client.ts";
+import { cachePersister, savedReads } from "../../queries/client.ts";
 import { keys } from "../../queries/keys.ts";
 import { useRolesAtWork } from "./project-activity.ts";
 import { StageWorkspace } from "./index.tsx";
@@ -43,7 +43,7 @@ const emptyRoom: RoomSnapshot = {
     questions: [],
   },
   artifacts: [],
-  plan: { steps: [], updatedAt: null, screens: [] },
+  plan: { steps: [], updatedAt: null, screens: [], asked: [] },
   inFlight: [],
   failed: [],
   documents: {},
@@ -109,6 +109,61 @@ describe("project room", () => {
     const other = opened(reloaded, "project-2");
     expect(other).toContain(wording.message.projectLoading);
     expect(other).not.toContain("Hello from the weather app");
+  });
+
+  test("what the hub worked out for a screen is never saved in the browser", async () => {
+    const visited = client();
+    visited.setQueryData(keys.project.of(projectId), {
+      status: "active",
+      tenantId: "tenant-1",
+    });
+    visited.setQueryData(keys.projectRoom.of(projectId), {
+      ...emptyRoom,
+      plan: {
+        ...emptyRoom.plan,
+        screens: [
+          {
+            plugin: "keeper",
+            action: "kept",
+            render: "plugin-bar",
+            state: { link: "https://keep.example/secret-link" },
+          },
+        ],
+        asked: [
+          {
+            signalName: "signal-1",
+            data: { link: "https://keep.example/secret-link" },
+          },
+        ],
+      },
+    });
+    renderToStaticMarkup(
+      <QueryClientProvider client={visited}>
+        <StageWorkspace
+          projectId={projectId}
+          projectTitle="Weather"
+          onChanged={() => {}}
+          onOpenSettings={() => {}}
+        />
+      </QueryClientProvider>,
+    );
+    const stored = new Map<string, string>();
+    await cachePersister({
+      getItem: (key) => stored.get(key) ?? null,
+      setItem: (key, value: string) => void stored.set(key, value),
+      removeItem: (key) => void stored.delete(key),
+    }).persistClient({
+      timestamp: Date.now(),
+      buster: "",
+      clientState: dehydrate(visited, savedReads),
+    });
+    const [saved = ""] = stored.values();
+    expect(saved).not.toContain("secret-link");
+    const reloaded = client();
+    hydrate(reloaded, JSON.parse(saved).clientState);
+    expect(
+      reloaded.getQueryData<RoomSnapshot>(keys.projectRoom.of(projectId))?.plan,
+    ).toEqual(emptyRoom.plan);
   });
 
   test("every read a room makes names its project, or its project's tenant", () => {

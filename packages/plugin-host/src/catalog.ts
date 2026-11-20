@@ -244,6 +244,9 @@ export type ScreenAction = ActionBase & {
   builder: ScreenActionBuilder;
   render: ScreenRender;
   state?: (project: ProjectRead) => unknown;
+  changesAt?: (project: ProjectRead) => number | undefined;
+  // What the view of a question with this input draws, prepared in the hub.
+  fromProject?: (input: unknown, project: ProjectRead) => unknown;
   // Why this input cannot be shown, or undefined when it can.
   refusal: (input: unknown, project: ProjectValues) => string | undefined;
   // The person's answer checked against the screen's output, with the project values it saves, the
@@ -1061,8 +1064,15 @@ function installScreen(
   const render = ScreenRender(screen.render ?? "inline-chat");
   if (render instanceof type.errors)
     throw new Error(`${name}'s definition render ${render.summary}`);
-  if (screen.state !== undefined && typeof screen.state !== "function")
-    throw new Error(`${name}'s definition state must be a function`);
+  for (const part of ["state", "changesAt", "fromProject"] as const)
+    if (screen[part] !== undefined && typeof screen[part] !== "function")
+      throw new Error(`${name}'s definition ${part} must be a function`);
+  if (screen.changesAt !== undefined && screen.state === undefined)
+    throw new Error(`${name}'s definition changesAt needs a state to change`);
+  if (screen.fromProject !== undefined && screen.state !== undefined)
+    throw new Error(
+      `${name}'s definition fromProject prepares a question, which a screen with a state never asks`,
+    );
   const installed: ScreenAction = {
     kind: "screen",
     plugin: handle,
@@ -1104,6 +1114,11 @@ function installScreen(
     returns: (input) => resolveFacts(returns, input),
   };
   if (screen.state) installed.state = screen.state;
+  if (screen.changesAt) installed.changesAt = screen.changesAt;
+  const { fromProject } = screen;
+  if (fromProject)
+    installed.fromProject = (input, project) =>
+      fromProject(screen.input.assert(input), project);
   return installed;
 }
 

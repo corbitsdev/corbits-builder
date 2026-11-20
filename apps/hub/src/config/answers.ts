@@ -44,6 +44,11 @@ export const stepAskFirstNote = (title: string, askFirst: boolean) =>
 export const actionUnmetText = (needs: string) =>
   `This can't run yet. It needs ${needs}.`;
 
+// Why an action the person ran from a screen did nothing: what it would tell the coordinator has
+// no one to hear it.
+export const COORDINATOR_NOT_RUNNING_TEXT =
+  "Builder isn't running for this project right now, so nothing was done. Try again in a moment.";
+
 // Why a plan step cannot be given a go-ahead, for the person.
 export const STEP_NOT_ASK_FIRST_TEXT =
   "This step was not set to ask you first, so it needs no go-ahead.";

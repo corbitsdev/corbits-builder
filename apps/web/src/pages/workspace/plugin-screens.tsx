@@ -27,10 +27,14 @@ export function pluginSlots(room: PluginScreensRoom) {
     page: ReactElement[];
     chat: ReactElement[];
     tabs: PluginTab[];
-  } = { page: [], chat: [], tabs: [] };
+    // In how many milliseconds the clock alone changes a drawn screen, so the room reads it again.
+    rereadIn: number | undefined;
+  } = { page: [], chat: [], tabs: [], rereadIn: undefined };
   for (const screen of room.screens) {
     const Listed = room.screenOf(screen)?.listed;
     if (Listed === undefined) continue;
+    if (screen.changesIn !== undefined)
+      slots.rereadIn = Math.min(slots.rereadIn ?? Infinity, screen.changesIn);
     const element = (
       <Listed
         key={`${screen.plugin} ${screen.action}`}

@@ -189,6 +189,15 @@ function snapshotFrom(fresh: RoomSnapshot, projectId: string): RoomSnapshot {
   };
 }
 
+/**
+ * What the browser keeps of a room between visits: all of it but what the hub worked out for its
+ * screens, which may hold what works like a password. The room reads them again as it opens.
+ */
+export const keptRoom = (room: RoomSnapshot): RoomSnapshot => ({
+  ...room,
+  plan: { ...room.plan, screens: [], asked: [] },
+});
+
 function publish(
   client: QueryClient,
   projectId: string,

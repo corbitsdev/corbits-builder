@@ -470,6 +470,12 @@ export function createArtifactService(
     return (await authorizeProject(rawDB, actor, projectId, action)).allowed;
   }
 
+  // The project's active coordinator, and what the hub has seen of its turns.
+  async function coordinatorSeen(projectId: string) {
+    const coordinator = await activeCoordinator(rawDB, projectId);
+    return { coordinator, seen: coordinator && tracker?.of(coordinator.runId) };
+  }
+
   const writesCode = (role: Role) => role.writesCode === true;
   const designs = (role: Role) => role.designs === true;
 
@@ -1225,6 +1231,13 @@ export function createArtifactService(
       };
     },
 
+    // Whether the project's coordinator is mid-turn, and when that turn began or its last one ended.
+    async coordinatorTurn(actor: Actor, projectId: string) {
+      await requireProject(actor, projectId, "read");
+      const { seen } = await coordinatorSeen(projectId);
+      return { working: seen?.working === true, since: seen?.since };
+    },
+
     // Any agent is at work only inside a message run; a parked specialist's run stays deployed
     // or running between turns.
     async activity(actor: Actor, projectId: string): Promise<ProjectActivity> {
@@ -1260,8 +1273,7 @@ export function createArtifactService(
         return progress;
       };
       const agents: AgentActivity[] = [];
-      const coordinator = await activeCoordinator(rawDB, projectId);
-      const seen = coordinator && tracker?.of(coordinator.runId);
+      const { coordinator, seen } = await coordinatorSeen(projectId);
       if (coordinator && seen?.working && seen.since)
         agents.push({
           runId: coordinator.runId,

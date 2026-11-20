@@ -217,7 +217,7 @@ export function savedProject({
     preferences: listed.preferences,
     checks: records,
   });
-  return { now, view, records, due, facts };
+  return { now, view, records, due, facts, appVersion };
 }
 type Now = (key: string) => string | number | boolean | null;
 
@@ -645,9 +645,11 @@ export function createChecks(deps: {
       );
     },
 
-    // The latest record of each check of the project, with whether it is still current.
+    // The latest record of each check of the project, with whether it is still current, and the
+    // saved app's version they were read against.
     async latest(actor: Actor, projectId: string) {
-      return (await standing(actor, projectId)).records;
+      const { records, appVersion } = await standing(actor, projectId);
+      return { records, appVersion };
     },
 
     /**
@@ -770,7 +772,8 @@ export function mountCheckRoutes(app: Hono<TenantEnv>, checks: Checks) {
     }),
     async (c) =>
       c.json({
-        checks: await checks.latest(actorOf(c), c.req.param("projectId")),
+        checks: (await checks.latest(actorOf(c), c.req.param("projectId")))
+          .records,
       }),
   );
   app.post(

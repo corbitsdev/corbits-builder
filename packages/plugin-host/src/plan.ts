@@ -1,9 +1,25 @@
 import { isDeepStrictEqual } from "node:util";
 import type { Approval, Fact } from "@corbits-builder/plugin";
-import { isCheckAction, isScreenAction, type Catalog } from "./catalog.ts";
+import type { ReadyPlanOffer } from "@corbits-builder/schemas/project";
+import {
+  isCheckAction,
+  isReadyPlan,
+  isScreenAction,
+  type Catalog,
+} from "./catalog.ts";
 import { gateOf, makersIn, type Run } from "./coordinator.ts";
 import { holds, resolveFacts, unmet } from "./facts.ts";
 import { missingTexts, unfinishedText } from "./text.ts";
+
+/** The ready-made plans a project's catalog installs, in their manifests' words. */
+export const readyPlanOffers = (catalog: Catalog): ReadyPlanOffer[] =>
+  catalog.plugins.filter(isReadyPlan).map(({ builder, description }) => ({
+    handle: builder.handle,
+    about: description === "" ? builder.when : description,
+    groups: builder.groups,
+    plugins: [...new Set(builder.steps.map(({ plugin }) => plugin))],
+    ...(builder.ends === undefined ? {} : { ends: builder.ends }),
+  }));
 
 type Mark = { by: string; at: string };
 

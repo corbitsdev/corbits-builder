@@ -1,6 +1,9 @@
 import { scope, type, type ArkErrors, type Type } from "arktype";
 import { ToolCredentialHandle } from "@intx/types/package-json";
-import { WriterDocumentKind } from "@corbits-builder/schemas/artifact";
+import {
+  WriterDocumentKind,
+  type ProjectRun,
+} from "@corbits-builder/schemas/artifact";
 import {
   AppRun,
   PortVariable,
@@ -8,6 +11,7 @@ import {
 import { Tier } from "@corbits-builder/schemas/models";
 import type {
   PlanStepStateName,
+  ReadyPlanOffer,
   ScreenRender,
 } from "@corbits-builder/schemas/project";
 import { SpecialistInstruction } from "@corbits-builder/schemas/native-specialist";
@@ -789,15 +793,43 @@ export type StepStatus = {
   summary: string | undefined;
 };
 
+// A run the coordinator started for a plugin action, as a screen reads it.
+export type RunRead = {
+  plugin: string;
+  action: string;
+  status: ProjectRun["status"];
+  startedAt: string;
+  endedAt: string | undefined;
+  // Why it stopped, when it was blocked.
+  blocked: string | undefined;
+};
+
 export type ProjectRead = {
   // A project value as stored, null while the project has none.
   value(name: string): unknown;
   facts: ReadonlySet<Fact>;
   plan: readonly StepStatus[];
+  // Each ready-made plan the project's plan holds, with where its steps stand together.
+  planned: readonly { plan: string; state: PlanStepStateName }[];
+  // The hub's time of this read, in milliseconds since the epoch. A state that reads the clock
+  // reads it here, so it depends on nothing but this read.
+  now: number;
+  // The saved app's version as a check reads it; undefined while the project has no app.
+  app: { version: string | undefined };
+  // Whether the coordinator is mid-turn, and when that turn began or its last one ended, as an ISO
+  // time; undefined until the hub has seen it take a turn.
+  coordinator: { working: boolean; since: string | undefined };
+  // The coordinator's runs: those at work, and the ten that ended last.
+  runs: readonly RunRead[];
+  // The screens of the coordinator's open questions.
+  asking: readonly { plugin: string; action: string }[];
+  // The installed ready-made plans that list this group.
+  plans(group: string): readonly ReadyPlanOffer[];
 };
 
 export type TaskDone = {
   saves: readonly { name: string; value: unknown }[];
+  // What the coordinator is told, which a model reads, so it never carries a private value.
   note?: string;
 };
 
@@ -816,6 +848,13 @@ export type Screen<In, Out, Data, Prepared> = {
   render?: ScreenRender;
   // Run in the hub for a screen shown without a question; undefined while it should not show.
   state?: (project: ProjectRead) => Prepared | undefined;
+  // When, in the hub's milliseconds since the epoch, the clock alone next changes what state
+  // returns, such as a countdown's next minute; undefined while nothing it shows waits on the clock.
+  changesAt?: (project: ProjectRead) => number | undefined;
+  // Run in the hub for each question that opens this screen, each time a person reads the plan:
+  // what the view draws, from the question's input and the project as a shown screen's state reads
+  // it. A screen that has it is prepared nowhere else.
+  fromProject?: (input: Type<In>["infer"], project: ProjectRead) => Prepared;
   input: Type<In>;
   output: Type<Out>;
   data?: Type<Data>;

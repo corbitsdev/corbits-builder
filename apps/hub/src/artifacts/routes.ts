@@ -294,7 +294,7 @@ export function mountArtifactRoutes(
       const facts = projectFacts({
         artifacts: listed.artifacts,
         preferences: listed.preferences,
-        checks: await checks.latest(current, projectId),
+        checks: (await checks.latest(current, projectId)).records,
       });
       const handles = await service.projectFollowing(current, projectId);
       return c.json({

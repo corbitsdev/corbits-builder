@@ -14,9 +14,11 @@ import { useLayoutEffect, useState, type ComponentType } from "react";
 import { type Type } from "arktype";
 import {
   ScreenActionBuilder,
+  type ProjectRead,
   type ProjectValues,
   type Screen,
 } from "@corbits-builder/plugin";
+import type { ReadyPlanOffer } from "@corbits-builder/schemas/project";
 import type { QuestionAnswer } from "@corbits-builder/schemas/conversation";
 import { MockupFrame } from "./mockup-frame.tsx";
 import { ClosedQuestions } from "./questions-card.tsx";
@@ -79,6 +81,7 @@ export const storySupplies: HostSupplies = {
   ],
   reply: { drafted: false, stage: () => undefined },
   tenants: { project: "tenant-project", workspace: "tenant-workspace" },
+  asked: () => undefined,
 };
 
 /** One plugin's screen action, hosted as the interface hosts it. */
@@ -103,8 +106,28 @@ export function storyScreen<In, Out, Data, Prepared>(
     label: (input: unknown) =>
       plugin.screen.describe.says?.label(plugin.screen.input.assert(input)) ??
       handle,
+    // What the hub would prepare for a question with this input, for a screen that prepares so.
+    asked: (input: unknown, project: ProjectRead) =>
+      plugin.screen.fromProject?.(plugin.screen.input.assert(input), project),
   };
 }
+
+// The project as the hub reads it for a screen, from the story's values and ready-made plans.
+const storyRead = (
+  values: ProjectValues,
+  plans: (group: string) => readonly ReadyPlanOffer[],
+): ProjectRead => ({
+  value: (name) => values[name] ?? null,
+  facts: new Set(),
+  plan: [],
+  planned: [],
+  now: Date.now(),
+  app: { version: undefined },
+  coordinator: { working: false, since: undefined },
+  runs: [],
+  asking: [],
+  plans,
+});
 
 export function ScreenStory({
   screen,
@@ -114,6 +137,7 @@ export function ScreenStory({
   draft,
   output,
   placed = "conversation",
+  plans = () => [],
 }: {
   screen: ReturnType<typeof storyScreen>;
   state: ScreenState;
@@ -125,6 +149,8 @@ export function ScreenStory({
   output?: Record<string, unknown>;
   /** A screen placed on the page shows a card in the conversation that opens it. */
   placed?: "conversation" | "page";
+  /** The installed ready-made plans a screen that prepares from the project reads. */
+  plans?: (group: string) => readonly ReadyPlanOffer[];
 }) {
   const signalName = `story-${state}-${placed}`;
   const [ready, setReady] = useState(false);
@@ -177,7 +203,10 @@ export function ScreenStory({
         setGiven(answer);
         return Promise.resolve(true);
       }}
-      supplies={storySupplies}
+      supplies={{
+        ...storySupplies,
+        asked: () => screen.asked(input, storyRead(project, plans)),
+      }}
       page={onPage ? { close: () => setOnPage(false) } : undefined}
     />
   );
