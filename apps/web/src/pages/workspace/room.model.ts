@@ -1737,12 +1737,14 @@ export function useRoom({
     paneDeliverables.find((item) => item.kind === shownId) ?? null;
   const selectedState = selected === null ? undefined : documentState(selected);
 
-  // Until the first document is filed, drafted or there is an app, the project view has nothing to show.
+  // Until the first document is filed, drafted, there is an app or a plugin lists a tab, the project
+  // view has nothing to show.
   const nothingYet =
     paneDeliverables.length === 0 &&
     designDraft === null &&
     concepts.length === 0 &&
-    liveApp === null;
+    liveApp === null &&
+    pluginScreens.tabs.length === 0;
   const dock = (): RoomDock => {
     if (archived)
       return {
