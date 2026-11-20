@@ -974,7 +974,11 @@ export const wording = {
     notYet: "Not yet",
     decline: "Decline",
     /** The composer's placeholder while an approval is open: a message declines it, with these words as the reason. */
-    composerPlaceholder: "Say what you'd like changed, or ask a question…",
+    composerPlaceholder: "Or say what to do instead…",
+    /** In the prompt box, the ask to run a shell command; the command shows beneath. */
+    run: "Allow this command to run?",
+    /** Before a command line in the prompt box, as a terminal shows one. */
+    shellPrompt: "$ ",
     /** A whole message that approves the one open card, after a countdown the person can undo. */
     typedYes: {
       affirmations: [
