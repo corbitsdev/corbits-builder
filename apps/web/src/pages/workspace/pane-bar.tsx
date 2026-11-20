@@ -106,17 +106,27 @@ function ActionButton({
   /** In a bar standing up the window's edge, whose menus open beside it rather than above. */
   upright: boolean;
 }) {
-  // Standing up the window's edge, a note with an icon keeps to it, its words in its name and on
-  // hover, so a line of text never widens the strip.
-  const words =
-    action.text === undefined ||
-    (upright && action.note === true && action.icon !== undefined) ? null : (
-      <span>{action.text}</span>
-    );
   if (action.row)
     return (
       <ActionRow label={action.label} actions={action.row} upright={upright} />
     );
+  // Standing up the window's edge, a note with an icon keeps to it so a line of text never widens
+  // the strip; pressing the icon shows its words, so they are never only on hover.
+  if (
+    upright &&
+    action.note === true &&
+    action.icon !== undefined &&
+    action.text !== undefined
+  ) {
+    const { text, note: _note, ...rest } = action;
+    return (
+      <ActionButton
+        action={{ ...rest, menu: <PaneBarTip>{text}</PaneBarTip> }}
+        upright
+      />
+    );
+  }
+  const words = action.text === undefined ? null : <span>{action.text}</span>;
   if (action.note)
     return (
       <span
