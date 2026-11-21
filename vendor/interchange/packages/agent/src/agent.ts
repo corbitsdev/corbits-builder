@@ -748,7 +748,7 @@ export async function createAgent<EnvReq extends BaseEnv>(
         ? { doomLoopThreshold: env.doomLoopThreshold }
         : {}),
       deps,
-      ...(compactors !== undefined ? { compactors: { ...compactors } } : {}),
+      ...(compactors !== undefined ? { compactors } : {}),
     });
 
     sendQueue = createSendQueue<QueuedSend, SendResult>({

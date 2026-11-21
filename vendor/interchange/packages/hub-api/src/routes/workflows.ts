@@ -36,8 +36,6 @@ import {
   type WorkflowDeploymentStatus,
 } from "@intx/types";
 import { type AskedQuestion, runQuestions } from "@intx/types/runtime-core";
-import type { QuestionScreen } from "@intx/types/runtime-core";
-import type { DBExecutor } from "@intx/db";
 import { QuestionAnswer } from "@intx/types/signals";
 import { WorkflowDefinitionSource } from "@intx/types/workflow-sources";
 import {
@@ -231,29 +229,6 @@ async function deploymentAnchorRunExists(
   return row !== undefined;
 }
 
-/**
- * How the signal route takes a screen's output, supplied by the host that
- * parks calls on screens, since only it can read what a screen returns. It
- * runs in the hub, which serves this route, while the check that parks a call
- * runs where the agent runs. `check` refuses an output with refusal text and
- * leaves the question open. `accepted` acts on an output once it is accepted
- * for delivery: inside the transaction that queues it when the deployment
- * dispatches durably, so both commit or neither does, and otherwise after it
- * reaches the sidecar.
- */
-export type ScreenAnswers = {
-  check(
-    screen: QuestionScreen,
-    output: Record<string, unknown>,
-  ): string | undefined;
-  accepted(
-    screen: QuestionScreen,
-    output: Record<string, unknown>,
-    anchorRunId: string,
-    db: DBExecutor,
-  ): Promise<void>;
-};
-
 export type CreateWorkflowRoutesDeps = {
   db: DB["db"];
   principalKeyStore: PrincipalKeyStore;
@@ -269,7 +244,6 @@ export type CreateWorkflowRoutesDeps = {
   authorizeMailSend: MailSendAuthorizer;
   authorizeGrant: AuthorizeGrant;
   requireGrant: RequireGrant;
-  screenAnswers?: ScreenAnswers | undefined;
 };
 
 export function createWorkflowRoutes({
@@ -284,7 +258,6 @@ export function createWorkflowRoutes({
   authorizeMailSend,
   authorizeGrant,
   requireGrant,
-  screenAnswers,
 }: CreateWorkflowRoutesDeps): Hono<TenantEnv> {
   const app = new Hono<TenantEnv>();
   const runReader = createWorkflowRunReader(repoStore);
@@ -721,9 +694,6 @@ export function createWorkflowRoutes({
       // approval co-write and its authorization -- so reject it. Author signals
       // to a workflow use free-form names. The one exception is an open
       // question: it has no approval to bypass, and this is where it is answered.
-      let acceptedScreen:
-        | { screen: QuestionScreen; output: Record<string, unknown> }
-        | undefined;
       if (correlationIdFromSignalName(body.signalName) !== undefined) {
         const asked = await openQuestion(
           anchorRunId,
@@ -771,13 +741,6 @@ export function createWorkflowRoutes({
             "invalid_request",
             "The question asks prompts; answer them by id or with a reply",
           );
-        }
-        if ("output" in answer && "plugin" in asked) {
-          const refusal = screenAnswers?.check(asked, answer.output);
-          if (refusal !== undefined) {
-            return errorResponse(c, "invalid_request", refusal);
-          }
-          acceptedScreen = { screen: asked, output: answer.output };
         }
         const issue =
           "answers" in answer ? answerIssue(asked, answer.answers) : undefined;
@@ -894,14 +857,6 @@ export function createWorkflowRoutes({
               },
               tx,
             );
-            if (acceptedScreen !== undefined) {
-              await screenAnswers?.accepted(
-                acceptedScreen.screen,
-                acceptedScreen.output,
-                anchorRunId,
-                tx,
-              );
-            }
             return "enqueued" as const;
           });
           if (enqueued !== "enqueued") {
@@ -954,14 +909,6 @@ export function createWorkflowRoutes({
           err instanceof Error
             ? err.message
             : "Failed to deliver signal to sidecar",
-        );
-      }
-      if (acceptedScreen !== undefined) {
-        await screenAnswers?.accepted(
-          acceptedScreen.screen,
-          acceptedScreen.output,
-          anchorRunId,
-          db,
         );
       }
 

@@ -50,7 +50,6 @@ import { createGrantRoutes, createEvaluateRoutes } from "./routes/grants";
 import { createRunRoutes } from "./routes/runs";
 import { createMailSendAuthorizer } from "./mail-send-authorization";
 import { createWorkflowRoutes } from "./routes/workflows";
-import type { ScreenAnswers } from "./routes/workflows";
 import { createWorkflowDefinitionRoutes } from "./routes/workflow-definitions";
 import {
   createApprovalRoutes,
@@ -197,8 +196,6 @@ export type MountHubRoutesDeps = {
    * asset surface supply their own cap.
    */
   maxTarballBytes: number;
-  /** Takes a screen's output on the signal route; see `ScreenAnswers`. */
-  screenAnswers?: ScreenAnswers | undefined;
 };
 
 /**
@@ -233,7 +230,6 @@ export function mountHubRoutes(
     repoStore,
     readRunLifecycles,
     maxTarballBytes,
-    screenAnswers,
   } = opts;
   if ((assetService === null) !== (repoStore === null)) {
     throw new Error(
@@ -430,7 +426,6 @@ export function mountHubRoutes(
         authorizeMailSend,
         authorizeGrant,
         requireGrant,
-        screenAnswers,
       }),
     );
   }
