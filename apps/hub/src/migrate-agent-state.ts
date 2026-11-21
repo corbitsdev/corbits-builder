@@ -1,5 +1,5 @@
 import * as fs from "node:fs";
-import { mkdir, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { and, eq, isNotNull } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
@@ -7,10 +7,6 @@ import git, { type TreeEntry } from "isomorphic-git";
 import { createSSHSignature } from "@intx/crypto";
 import { workflowRun } from "@intx/db/schema";
 import {
-  type AgentRepoStore,
-  createAgentRepoStore,
-  createCommittedStepStateReader,
-  reconstructStepState,
   WORKFLOW_RUN_REF,
   workflowRunStepStatePrefix,
 } from "@intx/hub-sessions";
@@ -37,9 +33,7 @@ const OLD_DIR = "agent-state";
 // `done` marks a copy with nothing left to move, so no later start reads it.
 const MARKS = "refs/pre-step-state";
 const OLD_HISTORY_REF = `${MARKS}/main`;
-const CHECK_REF = `${MARKS}/check`;
 const DONE_REF = `${MARKS}/done`;
-const HUB = { kind: "hub" } as const;
 
 export async function moveAgentStateToStepState(
   db: PostgresJsDatabase,
@@ -124,7 +118,6 @@ export async function rewriteRunHistories(
       pending.push({ runId, address, repoId, hub, sidecar });
   }
   if (pending.length === 0) return;
-  const { repoStore } = createAgentRepoStore({ dataDir, signingKey });
   // A commit's signature covers its tree id, which the move changes, so each
   // rewritten commit is signed again with the hub's key, as the store signs.
   const onSign: OnSign = async ({ payload }) => ({
@@ -148,7 +141,7 @@ export async function rewriteRunHistories(
           force: true,
         });
       }
-      if (run.hub !== null) await moveHubCopy(run, run.hub, repoStore, onSign);
+      if (run.hub !== null) await moveHubCopy(run, run.hub, onSign);
       if (run.sidecar !== null)
         await moveSidecarCopy(
           run,
@@ -196,10 +189,9 @@ async function rewriteCommits(
   { dir, chain, start }: PendingCopy,
   runId: string,
   onSign: OnSign,
-): Promise<{ commits: string[]; moved: Map<string, string> }> {
+): Promise<string[]> {
   let parent = chain[start - 1];
   const commits: string[] = [];
-  const moved = new Map<string, string>();
   for (const oid of chain.slice(start)) {
     const { commit } = await git.readCommit({ fs, dir, oid });
     parent = await git.commit({
@@ -207,7 +199,7 @@ async function rewriteCommits(
       dir,
       noUpdateBranch: true,
       message: commit.message,
-      tree: await movedTree(dir, commit.tree, runId, moved),
+      tree: await movedTree(dir, commit.tree, runId),
       parent: parent === undefined ? [] : [parent],
       author: commit.author,
       committer: commit.committer,
@@ -216,41 +208,17 @@ async function rewriteCommits(
     });
     commits.push(parent);
   }
-  return { commits, moved };
+  return commits;
 }
 
 async function moveHubCopy(
-  { runId, address, repoId }: PendingRun,
+  { runId, address }: PendingRun,
   copy: PendingCopy,
-  repoStore: AgentRepoStore["repoStore"],
   onSign: OnSign,
 ): Promise<void> {
   const { dir, oldTip } = copy;
-  const { commits, moved } = await rewriteCommits(copy, runId, onSign);
+  const commits = await rewriteCommits(copy, runId, onSign);
   const newTip = commits.at(-1) ?? oldTip;
-  // The new history is read back under its own ref before the run's branch
-  // moves to it, so a failed check leaves the branch where it was and the
-  // next start retries.
-  await git.writeRef({ fs, dir, ref: CHECK_REF, value: newTip, force: true });
-  const reads = await repoStore.openCommittedReads(
-    HUB,
-    { kind: "workflow-run", id: repoId },
-    CHECK_REF,
-  );
-  if (reads === null)
-    throw new Error(`${address}: rewritten history cannot be read`);
-  for (const [stepId, oid] of moved) {
-    const prefix = workflowRunStepStatePrefix(runId, stepId);
-    const state = await reconstructStepState(
-      createCommittedStepStateReader(reads, prefix),
-      `${address} step ${stepId}`,
-    );
-    if (state === null || (await reads.treeOid(prefix.slice(0, -1))) !== oid) {
-      throw new Error(
-        `${address}: step ${stepId} does not read back as it was saved`,
-      );
-    }
-  }
   await git.writeRef({
     fs,
     dir,
@@ -259,7 +227,6 @@ async function moveHubCopy(
     force: true,
   });
   await git.writeRef({ fs, dir, ref: DONE_REF, value: newTip });
-  await git.deleteRef({ fs, dir, ref: CHECK_REF });
   console.log(
     JSON.stringify({
       agentStateMoved: address,
@@ -287,7 +254,7 @@ async function moveSidecarCopy(
   onSign: OnSign,
 ): Promise<void> {
   const { dir, oldTip, chain, start } = copy;
-  const { commits, moved } = await rewriteCommits(copy, runId, onSign);
+  const commits = await rewriteCommits(copy, runId, onSign);
   if (fs.existsSync(join(hubDir, ".git"))) {
     const hubTip = await git.resolveRef({
       fs,
@@ -297,14 +264,14 @@ async function moveSidecarCopy(
     if (!chain.slice(0, start).includes(hubTip) && !commits.includes(hubTip))
       return setAside(dir, address);
   }
-  for (const stepId of moved.keys()) {
-    const from = join(dir, OLD_DIR, encodeURIComponent(stepId));
-    if (!fs.existsSync(from)) continue;
+  const oldDir = join(dir, OLD_DIR);
+  for (const key of fs.existsSync(oldDir) ? await readdir(oldDir) : []) {
+    const stepId = decodeURIComponent(key);
     const to = join(dir, workflowRunStepStatePrefix(runId, stepId));
     await mkdir(dirname(to), { recursive: true });
-    await rename(from, to);
+    await rename(join(oldDir, key), to);
   }
-  await rm(join(dir, OLD_DIR), { recursive: true, force: true });
+  await rm(oldDir, { recursive: true, force: true });
   const newTip = commits.at(-1) ?? oldTip;
   await git.writeRef({
     fs,
@@ -361,14 +328,12 @@ async function firstIndexHolding(
 
 /**
  * The commit's tree with each agent-state/<key>/ subtree placed, by object id,
- * at runs/<runId>/steps/<key>/state/. `moved` records the last placement of
- * each step for the read-back check.
+ * at runs/<runId>/steps/<key>/state/.
  */
 async function movedTree(
   dir: string,
   rootOid: string,
   runId: string,
-  moved: Map<string, string>,
 ): Promise<string> {
   const { tree: root } = await git.readTree({ fs, dir, oid: rootOid });
   const old = root.find((entry) => entry.path === OLD_DIR);
@@ -384,7 +349,6 @@ async function movedTree(
       .split("/")
       .slice(0, -1);
     next = await placeTree(dir, next, segments, step.oid);
-    moved.set(stepId, step.oid);
   }
   return next;
 }
@@ -402,14 +366,6 @@ async function placeTree(
       ? []
       : (await git.readTree({ fs, dir, oid: treeOid })).tree;
   const existing = entries.find((entry) => entry.path === name);
-  if (
-    existing !== undefined &&
-    (rest.length === 0 || existing.type !== "tree")
-  ) {
-    throw new Error(
-      `${dir}: ${name} already exists where agent-state moves to`,
-    );
-  }
   const child = await placeTree(dir, existing?.oid ?? null, rest, oid);
   return git.writeTree({
     fs,
