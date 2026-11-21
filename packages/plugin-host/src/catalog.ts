@@ -255,7 +255,8 @@ export type ScreenAction = ActionBase & {
   // Why this input cannot be shown, or undefined when it can.
   refusal: (input: unknown, project: ProjectValues) => string | undefined;
   // The person's answer checked against the screen's output, with the project values it saves, the
-  // preferences it sets and what it approves, or the refusal when it does not fit.
+  // preferences it sets, what it approves and the plan steps it cancels, or the refusal when it does
+  // not fit.
   answer: (output: unknown) =>
     | {
         ok: true;
@@ -263,6 +264,7 @@ export type ScreenAction = ActionBase & {
         values: Record<string, Json>;
         preferences: Record<string, string>;
         approves: readonly Shown[];
+        cancels: readonly string[];
       }
     | Refused;
   // The facts an answer to this input may make true.
@@ -1121,6 +1123,7 @@ function installScreen(
           prefers.map(([id, from]) => [id, from(validated.output)]),
         ),
         approves: screen.approves?.(validated.output) ?? [],
+        cancels: screen.cancels?.(validated.output) ?? [],
       };
     },
     returns: (input) => resolveFacts(returns, input),
