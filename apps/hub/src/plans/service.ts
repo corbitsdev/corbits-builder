@@ -14,6 +14,7 @@ import type { ScreenQuestion } from "@corbits-builder/schemas/conversation";
 import type { Catalog } from "@corbits-builder/plugin-host/catalog";
 import {
   planState,
+  protectedSteps,
   type PlanRecords,
   type ProtectedStep,
 } from "@corbits-builder/plugin-host/plan";
@@ -143,20 +144,29 @@ export function createPlanService(
 
     // Replaces the plan with steps already checked against the catalog. Only a person gives a step
     // its go-ahead, cancels it or sets whether it asks first, so a run's save keeps the marks stored
-    // under each step's id, and may not take out or change a step that protectedOf says only the
-    // person may.
+    // under each step's id, and may not take out or change a step that only the person may.
     async savePlan(
       actor: Actor,
       projectId: string,
       steps: readonly PlanStepWrite[],
-      protectedOf: () => Promise<readonly ProtectedStep[]>,
+      catalog: Catalog,
     ): Promise<StoredPlan> {
       await authorizeProject(rawDB, actor, projectId, "manage");
       const [caller] = await rawDB
         .select({ kind: principal.kind })
         .from(principal)
         .where(eq(principal.id, actor.principalId));
-      const kept = caller?.kind === "user" ? [] : await protectedOf();
+      let kept: readonly ProtectedStep[] = [];
+      if (caller?.kind !== "user") {
+        // Only a person reads the conversation, so a run's read has no questions in it.
+        const { recorded, read } = await this.planState(
+          actor,
+          projectId,
+          catalog,
+          [],
+        );
+        kept = protectedSteps(read.steps, recorded);
+      }
       return rawDB.transaction(async (tx) => {
         const before = new Map(
           planActionSteps(await lockedPlan(tx, projectId)).map((step) => [

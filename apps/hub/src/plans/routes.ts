@@ -12,7 +12,6 @@ import {
 import type { Catalog } from "@corbits-builder/plugin-host/catalog";
 import { planRefusal } from "@corbits-builder/plugin-host/coordinator";
 import { resolveFacts, unmet } from "@corbits-builder/plugin-host/facts";
-import { protectedSteps } from "@corbits-builder/plugin-host/plan";
 import { requiresText } from "@corbits-builder/plugin-host/text";
 import { actorOf } from "../projects/authorization.ts";
 import { ProjectError } from "../projects/errors.ts";
@@ -325,10 +324,7 @@ export function mountPlanRoutes(
       const refused = planRefusal(catalog, input.steps);
       if (refused) throw new ProjectError(400, "plan_step_refused", refused);
       return c.json(
-        await service.savePlan(current, projectId, input.steps, async () => {
-          const { recorded, read } = await readPlan(c, projectId, catalog);
-          return protectedSteps(read.steps, recorded);
-        }),
+        await service.savePlan(current, projectId, input.steps, catalog),
       );
     },
   );
