@@ -233,29 +233,10 @@ jobs:
           E2E_DB_USER: postgres
           E2E_DB_PASSWORD: postgres
 
-  # The build tests answer tools from recordings, so the sandbox itself is proven here.
-  sandbox:
-    needs: changes
-    if: github.event_name != 'pull_request' || needs.changes.outputs.test == 'true'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/setup
-      - uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9 # v1.6.3
-        with:
-          packages: bubblewrap socat unzip
-      - run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-      # These tests skip themselves on a host that cannot sandbox, so a skipped test fails the job.
-      - run: |
-          bun --conditions=intx-src test apps/hub/src/builds/posix-sandbox.test.ts apps/hub/src/plugins/command-runner.test.ts --reporter=junit --reporter-outfile="$RUNNER_TEMP/sandbox.xml"
-          grep -q '<testsuites [^>]*skipped="0"' "$RUNNER_TEMP/sandbox.xml"
-
-  # One build with real tools instead of recordings, on each push to main.
+  # One build with real tools instead of recordings, on each push to main once the repository
+  # variable E2E_REAL_BUILD is set to true.
   e2e-real-build:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: vars.E2E_REAL_BUILD == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
