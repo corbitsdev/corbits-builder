@@ -17,7 +17,6 @@ import {
   tenant,
   workflowRun,
   workflowRunLaunchSpec,
-  grant,
 } from "@intx/db/schema";
 import {
   createRequireGrant,
@@ -60,69 +59,9 @@ function declaredStack(values: Readonly<Record<string, unknown>>) {
   return starter && { setup: starter.setup, setupFailed: starter.setupFailed };
 }
 
-// A packaged specialist declares invoker requirements, and the coordinator that
-// deploys it is itself an invoker. The specialist gets copies of the coordinator's
-// delegatable deployer grants, so it resolves against that same authority; mail
-// admission stays with the coordinator.
-async function mirrorDelegatableDeployerGrants(
-  db: ReturnType<typeof createDB>["db"],
-  args: { tenantId: string; runId: string; principalId: string },
-) {
-  const [run] = await db
-    .select({
-      anchorRunId: workflowRun.anchorRunId,
-      principalId: workflowRun.principalId,
-    })
-    .from(workflowRun)
-    .where(
-      and(
-        eq(workflowRun.id, args.runId),
-        eq(workflowRun.tenantId, args.tenantId),
-      ),
-    )
-    .limit(1);
-  if (!run) return;
-  const [parent] = await db
-    .select({ source: workflowRunLaunchSpec.sourceAuthorityPrincipalId })
-    .from(workflowRunLaunchSpec)
-    .where(eq(workflowRunLaunchSpec.anchorRunId, run.anchorRunId ?? args.runId))
-    .limit(1);
-  if (!parent) return;
-  if (parent.source === (run.principalId ?? args.principalId)) return;
-  const held = await createGrantStore(db).collectGrants(
-    parent.source,
-    args.tenantId,
-  );
-  const rows = held.flatMap((item) => {
-    if (item.origin === "invoker" && item.effect === "allow") return [];
-    const id =
-      "mirror-" +
-      new Bun.CryptoHasher("sha256")
-        .update(args.principalId + "\n" + item.id)
-        .digest("hex")
-        .slice(0, 48);
-    return [
-      {
-        id,
-        tenantId: args.tenantId,
-        principalId: args.principalId,
-        resource: item.resource,
-        action: item.action,
-        effect: item.effect,
-        conditions: item.conditions,
-        origin: "system" as const,
-        expiresAt: item.expiresAt,
-      },
-    ];
-  });
-  if (rows.length === 0) return;
-  await db.insert(grant).values(rows).onConflictDoNothing();
-}
-
 const NATIVE_RUN_TOKEN_PREFIX = "itx_run_";
 
-// Native run-token auth owns this route and sets the deployer; the copy above runs first so grant
-// materialization can start the specialist run.
+// Native run-token auth owns this route and sets the deployer.
 function isNativeWorkflowDeploy(method: string, path: string): boolean {
   return (
     method === "POST" &&
@@ -333,11 +272,6 @@ export function createAgentTokenBridge(
             );
             if (outcome === "handed_off") return heldUntilStopped(c);
           }
-          await mirrorDelegatableDeployerGrants(db, {
-            tenantId: deployer.tenantId,
-            runId: deployer.runId,
-            principalId: deployer.id,
-          });
         }
       }
       if (!nativeBearer) recordRefusal("token_unverified");
@@ -525,12 +459,6 @@ export function createAgentTokenBridge(
     return requireGrant(projectResource(binding.projectId), "manage")(
       c,
       async () => {
-        if (deployRoute)
-          await mirrorDelegatableDeployerGrants(db, {
-            tenantId: identity.tenantId,
-            runId: identity.runId!,
-            principalId: resolved.actor.id,
-          });
         authenticated.add(c.req.raw);
         await next();
       },
