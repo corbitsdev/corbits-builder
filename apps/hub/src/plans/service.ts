@@ -159,7 +159,7 @@ export function createPlanService(rawDB: DB["db"]) {
         if (removed)
           throw new ProjectError(409, "protected_plan_step_removed", {
             id: removed.step.id,
-            text: stepProtectedText(removed.step.title, removed.reason),
+            hint: stepProtectedText(removed.step.title, removed.reason),
           });
         const plan = { steps: saved, updatedAt: new Date().toISOString() };
         await writePlan(tx, projectId, plan);
