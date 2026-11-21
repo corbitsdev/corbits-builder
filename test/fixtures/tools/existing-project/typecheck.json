@@ -1,0 +1,7 @@
+{
+  "shell": "bun run typecheck",
+  "result": {
+    "callId": "recorded",
+    "content": "exit code 1\nerror: Script not found \"typecheck\"\n"
+  }
+}

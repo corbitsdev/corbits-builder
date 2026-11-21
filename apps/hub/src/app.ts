@@ -45,6 +45,7 @@ import {
 import { getLogger } from "@intx/log";
 import { hexDecode, hexEncode } from "@intx/types";
 import { createProductConfig } from "./config/index.ts";
+import type { SandboxToolchains } from "@corbits-builder/schemas/installed-workflows";
 import type { HubEnvironment } from "./environment.ts";
 import { loadHubSigningKey } from "./signing-key.ts";
 import { createWorkspaceRoutes } from "./workspaces.ts";
@@ -130,7 +131,10 @@ import { version } from "../package.json";
 
 const log = getLogger(["corbits-builder", "hub"]);
 
-export async function createHubRuntime(env: HubEnvironment) {
+export async function createHubRuntime(
+  env: HubEnvironment,
+  testing?: { toolReplay?: string | undefined },
+) {
   const handle = createDB(env.database);
   let authEmail: ReturnType<typeof createAuthEmail>;
   try {
@@ -452,12 +456,15 @@ export async function createHubRuntime(env: HubEnvironment) {
     app.use(liveAppProxy.refuseAppOrigins);
     app.use(createHubContextMiddleware({ getSession }));
     app.use(gitTokens.middleware);
+    const toolchains: SandboxToolchains = {
+      paths: env.SANDBOX_TOOLCHAIN_PATHS,
+      dataDir: resolve(env.HUB_DATA_DIR),
+    };
+    // oxlint-disable-next-line corbits-builder/no-tool-replay
+    if (testing?.toolReplay) toolchains.replay = testing.toolReplay;
     const coordinatorTokens = createAgentTokenBridge(
       handle.db,
-      {
-        paths: env.SANDBOX_TOOLCHAIN_PATHS,
-        dataDir: resolve(env.HUB_DATA_DIR),
-      },
+      toolchains,
       runTokenStore,
       {
         install: (actor, projectId) =>
@@ -524,10 +531,6 @@ export async function createHubRuntime(env: HubEnvironment) {
       createResolveTenant({ db: handle.db }),
       createDeclineNote({ coordinatorAsk: coordinatorAskReader(handle.db) }),
     );
-    const sandboxToolchains = {
-      paths: env.SANDBOX_TOOLCHAIN_PATHS,
-      dataDir: resolve(env.HUB_DATA_DIR),
-    };
     const savedApps = createArtifactService(
       handle.db,
       createWorkflowRunReader(agentRepoStore.repoStore),
@@ -538,7 +541,7 @@ export async function createHubRuntime(env: HubEnvironment) {
     // hub's own mail route.
     const checks = createChecks({
       db: handle.db,
-      toolchains: sandboxToolchains,
+      toolchains,
       artifacts: savedApps,
       commands,
       fetch: async (request) => app.fetch(request),
@@ -547,7 +550,7 @@ export async function createHubRuntime(env: HubEnvironment) {
       db: handle.db,
       artifacts: savedApps,
       commands,
-      toolchains: sandboxToolchains,
+      toolchains,
     });
     // A coder's push to a project's app repository is how its main gets a new commit: once
     // Interchange's receive-pack has moved the ref, the checks the push made stale re-run.

@@ -8,6 +8,7 @@
   "exports": {
     "./app": "./src/app.ts",
     "./artifacts/service": "./src/artifacts/service.ts",
+    "./builds/posix-sandbox": "./src/builds/posix-sandbox.ts",
     "./credentials/refresher": "./src/credentials/refresher.ts",
     "./credentials/sign-ins": "./src/credentials/sign-ins.ts",
     "./environment": "./src/environment.ts",

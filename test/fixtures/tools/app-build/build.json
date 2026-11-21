@@ -1,0 +1,8 @@
+{
+  "shell": "bun run build",
+  "result": { "callId": "recorded", "content": "" },
+  "writes": {
+    "client/dist/index.html": "<!doctype html>\n",
+    "client/dist/assets/index.js": "export {};\n"
+  }
+}
