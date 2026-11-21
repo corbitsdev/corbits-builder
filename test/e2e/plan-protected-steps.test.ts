@@ -147,3 +147,47 @@ test("once a plan is under way, the coordinator keeps its required unfinished st
   await hub.call("PUT", `${path}/plan`, { steps: [] });
   expect(await storedIds(path)).toEqual([]);
 });
+
+test("once a plan is under way, the coordinator cannot swap a required step's work under its id, though it may retitle it", async () => {
+  const { path, run, finished } = await planned([write, review]);
+  await finished("write");
+  const swapped = {
+    id: review.id,
+    title: review.title,
+    plugin: "writer",
+    action: "write",
+    input: {},
+    askFirst: false,
+  };
+  await expect(
+    hub.call("PUT", `${path}/plan`, { steps: [write, swapped] }, run),
+  ).rejects.toThrow("HTTP 409");
+
+  const retitled = {
+    id: review.id,
+    title: "Read the manual through",
+    plugin: review.plugin,
+    action: review.action,
+    input: review.input,
+    askFirst: false,
+  };
+  await hub.call("PUT", `${path}/plan`, { steps: [write, retitled] }, run);
+  expect(
+    (await hub.json<StoredPlan>(hub.call("GET", `${path}/plan`))).steps,
+  ).toMatchObject([write, retitled]);
+});
+
+test("the coordinator can remove a step the person cancelled, even one they asked to be consulted on", async () => {
+  const consulted = {
+    id: review.id,
+    title: review.title,
+    plugin: review.plugin,
+    action: review.action,
+    input: review.input,
+    askFirst: true,
+    cancelled: { by: "person", at: new Date().toISOString() },
+  };
+  const { path, run } = await planned([write, consulted]);
+  await hub.call("PUT", `${path}/plan`, { steps: [write] }, run);
+  expect(await storedIds(path)).toEqual(["write"]);
+});

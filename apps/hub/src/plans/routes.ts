@@ -16,7 +16,6 @@ import {
   planState,
   protectedSteps,
   type PlanRecords,
-  type ProtectedStep,
 } from "@corbits-builder/plugin-host/plan";
 import { requiresText } from "@corbits-builder/plugin-host/text";
 import { actorOf } from "../projects/authorization.ts";
@@ -343,7 +342,7 @@ export function mountPlanRoutes(
         },
         409: {
           description:
-            "A run's save leaves out a step only the person may take out of the plan; text names the step and says what to do instead",
+            "A run's save leaves out or changes a step only the person may take out of the plan; text names the step and says what to do instead",
         },
       },
     }),
@@ -360,13 +359,11 @@ export function mountPlanRoutes(
       );
       const refused = planRefusal(catalog, input.steps);
       if (refused) throw new ProjectError(400, "plan_step_refused", refused);
-      let kept: ProtectedStep[] = [];
-      if (c.get("principal")?.kind !== "user") {
-        const { recorded, read } = await readPlan(c, projectId, catalog);
-        kept = protectedSteps(read.steps, recorded);
-      }
       return c.json(
-        await service.savePlan(current, projectId, input.steps, kept),
+        await service.savePlan(current, projectId, input.steps, async () => {
+          const { recorded, read } = await readPlan(c, projectId, catalog);
+          return protectedSteps(read.steps, recorded);
+        }),
       );
     },
   );

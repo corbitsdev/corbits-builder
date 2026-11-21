@@ -311,10 +311,13 @@ export function protectedSteps(
     steps.flatMap((step) => ("steps" in step ? [] : [step])),
     ...steps.flatMap((step) => ("steps" in step ? [step.steps] : [])),
   ];
+  const started = (step: PlanStepView) =>
+    step.state === "running" ||
+    (step.state === "needs_you" && step.runId !== undefined);
   return plans.flatMap((plan) => {
     const underway = plan.some(
-      ({ runId, checkId, answered }) =>
-        runId !== undefined || checkId !== undefined || answered !== undefined,
+      (step) =>
+        started(step) || step.state === "done" || step.state === "failed",
     );
     const reasonOf = (step: PlanStepView): ProtectedStep["reason"] | null => {
       if (step.cancelled) return null;
@@ -325,11 +328,7 @@ export function protectedSteps(
       )
         return "approval";
       if (step.state === "done") return "done";
-      if (
-        step.state === "running" ||
-        (step.state === "needs_you" && step.runId !== undefined)
-      )
-        return "started";
+      if (started(step)) return "started";
       if (underway && !step.optional && step.state !== "skipped")
         return "underway";
       return null;

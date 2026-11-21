@@ -1,5 +1,6 @@
 import { isDeepStrictEqual } from "node:util";
 import type { Context } from "hono";
+import { isLiveWorkflowRunStatus } from "@intx/db/schema";
 import type { TenantEnv } from "@intx/hub-api";
 import type { QuestionAnswer } from "@intx/types/signals";
 import { getLogger } from "@intx/log";
@@ -155,24 +156,35 @@ export function createAnswer({
         await plans.answerPlanStep(current, projectId, screen);
         step = "cancelling plan steps";
         if (answered.cancels.length > 0) {
-          const { read } = await readPlan(c, projectId, catalog);
+          const { read, recorded } = await readPlan(c, projectId, catalog);
           const cancelled = read.steps
             .flatMap((each) => ("steps" in each ? each.steps : [each]))
             .filter(
               ({ id, state }) =>
                 answered.cancels.includes(id) && state !== "done",
             );
+          // The jobs stop before the steps are marked, so an answer retried after a failed stop
+          // still finds them.
+          const live = recorded.runs.filter(
+            (run) =>
+              isLiveWorkflowRunStatus(run.status) &&
+              cancelled.some((each) => each.runId === run.runId),
+          );
+          for (const run of live)
+            try {
+              await service.stopRun(current, projectId, run.runId, "person");
+            } catch (error) {
+              // A job that ended since it was read has stopped already.
+              if (
+                !(error instanceof ProjectError && error.code === "run_ended")
+              )
+                throw error;
+            }
           await plans.cancelPlanSteps(
             current,
             projectId,
             cancelled.map(({ id }) => id),
           );
-          for (const { runId, state } of cancelled)
-            if (
-              runId !== undefined &&
-              (state === "running" || state === "needs_you")
-            )
-              await service.stopRun(current, projectId, runId, "person");
         }
       }
       step = "delivering the answer";
