@@ -1,12 +1,9 @@
 import { isDeepStrictEqual } from "node:util";
 import type { Context } from "hono";
-import { droppable } from "@corbits-builder/plugin";
-import { isLiveWorkflowRunStatus } from "@intx/db/schema";
 import type { TenantEnv } from "@intx/hub-api";
 import type { QuestionAnswer } from "@intx/types/signals";
 import { getLogger } from "@intx/log";
 import type { createArtifactService } from "../artifacts/service.ts";
-import type { planReader } from "../plans/routes.ts";
 import type { createPlanService } from "../plans/service.ts";
 import type { createSettingsService } from "../settings/service.ts";
 import type { createValueService } from "../values/service.ts";
@@ -33,14 +30,11 @@ export type AnswerOptions = {
     | "releaseQuestion"
     | "approveShown"
     | "saveStyleTokens"
-    | "runs"
-    | "stopRun"
   >;
   plans: Pick<
     ReturnType<typeof createPlanService>,
     "answerPlanStep" | "cancelPlanSteps"
   >;
-  readPlan: ReturnType<typeof planReader>;
   values: Pick<ReturnType<typeof createValueService>, "saveStoredValues">;
   nativeFetch?: ((request: Request) => Promise<Response>) | undefined;
   settings?:
@@ -51,7 +45,6 @@ export type AnswerOptions = {
 export function createAnswer({
   service,
   plans,
-  readPlan,
   values,
   nativeFetch,
   settings,
@@ -157,37 +150,13 @@ export function createAnswer({
         step = "marking the plan step";
         await plans.answerPlanStep(current, projectId, screen);
         step = "cancelling plan steps";
-        if (answered.cancels.length > 0) {
-          const { read } = await readPlan(c, projectId, catalog);
-          const cancelled = read.steps
-            .flatMap((each) => ("steps" in each ? each.steps : [each]))
-            .filter(
-              ({ id, state }) =>
-                answered.cancels.includes(id) && droppable(state),
-            );
-          // The jobs stop before the steps are marked, so an answer retried after a failed stop
-          // still finds them.
-          const live = (await service.runs(current, projectId)).filter(
-            (run) =>
-              isLiveWorkflowRunStatus(run.status) &&
-              cancelled.some((each) => each.id === run.step),
-          );
-          for (const run of live)
-            try {
-              await service.stopRun(current, projectId, run.runId, "person");
-            } catch (error) {
-              // A job that ended since it was read has stopped already.
-              if (
-                !(error instanceof ProjectError && error.code === "run_ended")
-              )
-                throw error;
-            }
+        if (answered.cancels.length > 0)
           await plans.cancelPlanSteps(
             current,
             projectId,
-            cancelled.map(({ id }) => id),
+            answered.cancels,
+            catalog,
           );
-        }
       }
       step = "delivering the answer";
       await answerQuestionAsCaller(

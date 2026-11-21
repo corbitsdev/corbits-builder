@@ -1,7 +1,8 @@
 import { isDeepStrictEqual } from "node:util";
 import { eq } from "drizzle-orm";
 import type { DB, DBExecutor } from "@intx/db";
-import { principal } from "@intx/db/schema";
+import { isLiveWorkflowRunStatus, principal } from "@intx/db/schema";
+import { droppable } from "@corbits-builder/plugin";
 import {
   type PlanChildWrite,
   type PlanStepWrite,
@@ -89,7 +90,7 @@ export function createPlanService(
   rawDB: DB["db"],
   artifacts: Pick<
     ReturnType<typeof createArtifactService>,
-    "list" | "stepRuns"
+    "list" | "stepRuns" | "runs" | "stopRun"
   >,
   checks?: Checks,
 ) {
@@ -279,12 +280,14 @@ export function createPlanService(
       return plan;
     },
 
-    // The person's answer to a screen cancels the plan steps it names, leaving any it does not hold
-    // and keeping the mark of one already cancelled. Only a person may.
+    // The person's answer to a screen cancels the plan steps it names that may still be dropped and
+    // stops the jobs started for them, leaving any it does not hold and keeping the mark of one
+    // already cancelled. Only a person may.
     async cancelPlanSteps(
       actor: Actor,
       projectId: string,
       stepIds: readonly string[],
+      catalog: Catalog,
     ) {
       await authorizeProject(rawDB, actor, projectId, "manage");
       const [caller] = await rawDB
@@ -293,10 +296,32 @@ export function createPlanService(
         .where(eq(principal.id, actor.principalId));
       if (caller?.kind !== "user")
         throw new ProjectError(403, "only_a_person_cancels");
+      // An open question only turns a ready screen step from not_started to needs_you, since a screen
+      // step never has a run, so none changes which steps may be dropped.
+      const { read } = await this.planState(actor, projectId, catalog, []);
+      const cancelled = read.steps
+        .flatMap((each) => ("steps" in each ? each.steps : [each]))
+        .filter(({ id, state }) => stepIds.includes(id) && droppable(state));
+      // The jobs stop before the steps are marked, so an answer retried after a failed stop still
+      // finds them.
+      const live = (await artifacts.runs(actor, projectId)).filter(
+        (run) =>
+          isLiveWorkflowRunStatus(run.status) &&
+          cancelled.some((each) => each.id === run.step),
+      );
+      for (const run of live)
+        try {
+          await artifacts.stopRun(actor, projectId, run.runId, "person");
+        } catch (error) {
+          // A job that ended since it was read has stopped already.
+          if (!(error instanceof ProjectError && error.code === "run_ended"))
+            throw error;
+        }
       await rawDB.transaction(async (tx) => {
         const plan = await lockedPlan(tx, projectId);
         const named = planActionSteps(plan).filter(
-          (step) => stepIds.includes(step.id) && !step.cancelled,
+          (step) =>
+            cancelled.some(({ id }) => id === step.id) && !step.cancelled,
         );
         if (!plan || named.length === 0) return;
         const at = new Date().toISOString();

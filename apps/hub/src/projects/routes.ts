@@ -6,7 +6,7 @@ import type { AgentActivityTracker } from "../artifacts/activity.ts";
 import { mountProjectAuditRoutes } from "../audit/routes.ts";
 import { mountAnswerRoutes } from "../answers/routes.ts";
 import { createAnswer } from "../answers/answer.ts";
-import { mountPlanRoutes, planReader } from "../plans/routes.ts";
+import { mountPlanRoutes } from "../plans/routes.ts";
 import { createPlanService } from "../plans/service.ts";
 import { mountValueRoutes } from "../values/routes.ts";
 import { createValueService } from "../values/service.ts";
@@ -742,7 +742,6 @@ export function createProjectRoutes(
   const answer = createAnswer({
     service: artifacts,
     plans,
-    readPlan: planReader(plans, nativeFetch),
     values,
     nativeFetch,
     settings,

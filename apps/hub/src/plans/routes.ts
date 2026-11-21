@@ -45,7 +45,7 @@ const ActionRun = type({ "+": "reject", "input?": "Record<string, unknown>" });
 
 // Where each step of the project's plan stands, worked out from what the hub has recorded, with
 // the records and questions it was worked out from.
-export function planReader(
+function planReader(
   service: Pick<ReturnType<typeof createPlanService>, "planState">,
   nativeFetch?: (request: Request) => Promise<Response>,
 ) {
