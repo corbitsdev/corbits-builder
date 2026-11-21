@@ -178,6 +178,7 @@ export async function createWorkflowServices(options: {
         adapterManifest,
         sshAllowPrivateAddresses:
           environment.SIDECAR_SSH_ALLOW_PRIVATE_ADDRESSES,
+        log: sidecarLog,
         limits: {
           memoryBytes: environment.SIDECAR_MEMORY_BYTES,
           pids: environment.SIDECAR_PIDS,
