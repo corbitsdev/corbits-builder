@@ -150,13 +150,24 @@ change follows, whether a person or a coding agent writes it.
 
 ## Releasing
 
-Maintainers bump `version` in the root, `apps/hub`, `apps/web`,
-`packages/client` and `packages/schemas` package.json files, run
-`bun install`, and merge. Once the publish workflow for that commit on main has
-finished, `git tag -s vX.Y.Z && git push origin vX.Y.Z` retags its hub and
-sidecar images as `X.Y.Z` and publishes the GitHub release; a version with a
-`-` suffix, such as `0.1.0-rc.4`, is a pre-release tagged `rc`, and any other,
-0.x included, is `latest`.
+The `version` in the root, `apps/hub`, `apps/web`, `packages/client` and
+`packages/schemas` package.json files is the next release, as plain `X.Y.Z`. To
+start a release, maintainers bump it in all five, run `bun install`, and merge.
+
+Release candidates and releases are tags on main. Once the publish workflow for
+a commit has finished, tagging it retags its hub and sidecar images and
+publishes the GitHub release:
+
+- `git tag -s vX.Y.Z-rc.N && git push origin vX.Y.Z-rc.N` cuts a release
+  candidate, a pre-release on the `rc` channel. N starts at 1 for each version.
+  A fix found on a candidate merges to main and becomes the next candidate.
+- `git tag -s vX.Y.Z && git push origin vX.Y.Z` releases the newest candidate
+  once QA has tried it, on the `latest` channel, 0.x included. Tag the
+  candidate's commit, not a newer main, so the release is exactly what was
+  tried.
+
+The release workflow refuses any other tag, and any tag whose `X.Y.Z` differs
+from the package.json version.
 
 ## Security
 
