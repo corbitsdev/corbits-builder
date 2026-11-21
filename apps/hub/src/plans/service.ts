@@ -10,7 +10,17 @@ import {
   type StoredPlanGroup,
   type StoredPlanStep,
 } from "@corbits-builder/schemas/project";
-import type { ProtectedStep } from "@corbits-builder/plugin-host/plan";
+import type { ScreenQuestion } from "@corbits-builder/schemas/conversation";
+import type { Catalog } from "@corbits-builder/plugin-host/catalog";
+import {
+  planState,
+  type PlanRecords,
+  type ProtectedStep,
+} from "@corbits-builder/plugin-host/plan";
+import type { createArtifactService } from "../artifacts/service.ts";
+import type { Checks } from "../plugins/checks.ts";
+import { personFacts, projectFacts } from "../plugins/facts.ts";
+import { agentDecidesApprovals } from "../config/preferences.ts";
 import { project } from "../db/schema.ts";
 import { activeCoordinator } from "../auth/coordinator-registry.ts";
 import type { Actor } from "../lib/actor.ts";
@@ -74,7 +84,14 @@ async function lockedPlan(tx: DBExecutor, projectId: string) {
 const writePlan = (tx: DBExecutor, projectId: string, plan: StoredPlan) =>
   tx.update(project).set({ plan }).where(eq(project.id, projectId));
 
-export function createPlanService(rawDB: DB["db"]) {
+export function createPlanService(
+  rawDB: DB["db"],
+  artifacts: Pick<
+    ReturnType<typeof createArtifactService>,
+    "list" | "stepRuns"
+  >,
+  checks?: Checks,
+) {
   return {
     // The plan's steps as stored; where each stands is worked out when it is read.
     async projectPlan(
@@ -87,6 +104,41 @@ export function createPlanService(rawDB: DB["db"]) {
         .from(project)
         .where(eq(project.id, projectId));
       return row?.plan ?? { steps: [], updatedAt: null };
+    },
+
+    // Where each step of the project's plan stands, worked out from what the hub has recorded and
+    // the screens open in front of the person, with the records it was worked out from.
+    async planState(
+      actor: Actor,
+      projectId: string,
+      catalog: Catalog,
+      asking: ScreenQuestion["asked"][],
+    ) {
+      const plan = await this.projectPlan(actor, projectId);
+      if (!checks) throw new ProjectError(503, "plan_state_unavailable");
+      const { records, appVersion } = await checks.latest(actor, projectId);
+      const listed = await artifacts.list(actor, projectId);
+      const facts = projectFacts({
+        artifacts: listed.artifacts,
+        preferences: listed.preferences,
+        checks: records,
+      });
+      const recorded: PlanRecords = {
+        facts,
+        personFacts: personFacts(listed.artifacts),
+        asksApprovals: !agentDecidesApprovals(listed.preferences),
+        checks: records,
+        runs: await artifacts.stepRuns(
+          actor,
+          projectId,
+          plan.steps.flatMap((step) =>
+            "steps" in step ? step.steps.map(({ id }) => id) : [step.id],
+          ),
+        ),
+        questions: asking,
+      };
+      const steps = planState(catalog, plan.steps, recorded);
+      return { plan, recorded, read: { facts, steps, appVersion, asking } };
     },
 
     // Replaces the plan with steps already checked against the catalog. Only a person gives a step

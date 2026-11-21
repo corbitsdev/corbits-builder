@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { join } from "node:path";
 import { Hono, type MiddlewareHandler } from "hono";
+import type { DB } from "@intx/db";
 import type { TenantEnv } from "@intx/hub-api";
 import { defineScreen, defineTask } from "@corbits-builder/plugin";
 import { loadCatalog } from "@corbits-builder/plugin-host/catalog";
@@ -16,7 +17,7 @@ import type { Checks } from "../plugins/checks.ts";
 import { projectRead, runTask, shownScreens } from "../plugins/screens.ts";
 import { ProjectError } from "../projects/errors.ts";
 import { mountPlanRoutes } from "./routes.ts";
-import type { createPlanService } from "./service.ts";
+import { createPlanService } from "./service.ts";
 
 const installed = await readPluginFolder(PLUGINS_FOLDER);
 const fixtures = await readPluginFolder(
@@ -96,9 +97,13 @@ function hub(project: {
     coordinatorTurn: async () => ({ working: false, since: undefined }),
     managesProject: async () => true,
   } as unknown as ReturnType<typeof createArtifactService>;
+  const checks = {
+    latest: async () => ({ records: [], appVersion: "v3" }),
+  } as unknown as Checks;
   const plans = {
     authorizeAction: async () => {},
     projectPlan: async () => ({ steps: project.steps ?? [], updatedAt: null }),
+    planState: createPlanService({} as DB["db"], artifacts, checks).planState,
     addPlanStep: async (
       _actor: unknown,
       _project: unknown,
@@ -108,9 +113,6 @@ function hub(project: {
       added.push({ step, goAhead: told.goAhead });
     },
   } as unknown as ReturnType<typeof createPlanService>;
-  const checks = {
-    latest: async () => ({ records: [], appVersion: "v3" }),
-  } as unknown as Checks;
   const conversation = async () =>
     Response.json({ runId: null, events: [], questions: [] });
   mountPlanRoutes(

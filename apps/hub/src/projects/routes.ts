@@ -215,7 +215,7 @@ export function createProjectRoutes(
     liveApps,
     cancelRun,
   );
-  const plans = createPlanService(db);
+  const plans = createPlanService(db, artifacts, checks);
   const values = createValueService(db);
   // A project's coordinator can end (lifetime expiry, failure, archive) while its documents stay.
   // A fresh one takes no turn until mail arrives; the person's next message carries the held
@@ -742,7 +742,7 @@ export function createProjectRoutes(
   const answer = createAnswer({
     service: artifacts,
     plans,
-    readPlan: planReader(plans, artifacts, nativeFetch, checks),
+    readPlan: planReader(plans, nativeFetch),
     values,
     nativeFetch,
     settings,

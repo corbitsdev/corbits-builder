@@ -12,19 +12,13 @@ import {
 import type { Catalog } from "@corbits-builder/plugin-host/catalog";
 import { planRefusal } from "@corbits-builder/plugin-host/coordinator";
 import { resolveFacts, unmet } from "@corbits-builder/plugin-host/facts";
-import {
-  planState,
-  protectedSteps,
-  type PlanRecords,
-} from "@corbits-builder/plugin-host/plan";
+import { protectedSteps } from "@corbits-builder/plugin-host/plan";
 import { requiresText } from "@corbits-builder/plugin-host/text";
 import { actorOf } from "../projects/authorization.ts";
 import { ProjectError } from "../projects/errors.ts";
 import { mailRunAsCaller } from "../mail/caller-mail.ts";
 import { askedQuestions } from "../plugins/question.ts";
 import type { Checks } from "../plugins/checks.ts";
-import { personFacts, projectFacts } from "../plugins/facts.ts";
-import { agentDecidesApprovals } from "../config/preferences.ts";
 import {
   actionUnmetText,
   taskNote,
@@ -53,57 +47,28 @@ const ActionRun = type({ "+": "reject", "input?": "Record<string, unknown>" });
 // Where each step of the project's plan stands, worked out from what the hub has recorded, with
 // the records and questions it was worked out from.
 export function planReader(
-  service: Pick<ReturnType<typeof createPlanService>, "projectPlan">,
-  artifacts: Pick<
-    ReturnType<typeof createArtifactService>,
-    "list" | "stepRuns"
-  >,
+  service: Pick<ReturnType<typeof createPlanService>, "planState">,
   nativeFetch?: (request: Request) => Promise<Response>,
-  checks?: Checks,
 ) {
   return async (c: Context<TenantEnv>, projectId: string, catalog: Catalog) => {
-    const current = actorOf(c);
-    const plan = await service.projectPlan(current, projectId);
-    if (!checks) throw new ProjectError(503, "plan_state_unavailable");
-    const { records, appVersion } = await checks.latest(current, projectId);
-    const listed = await artifacts.list(current, projectId);
     // Only a person reads the conversation; the coordinator, which asks the questions, cannot be
     // reading the plan while one waits on an answer.
     const asked =
       c.get("principal")?.kind === "user"
         ? (await askedQuestions(c, nativeFetch, projectId)).questions
         : [];
-    const facts = projectFacts({
-      artifacts: listed.artifacts,
-      preferences: listed.preferences,
-      checks: records,
-    });
     const asking = asked.flatMap((question) =>
       question.status === "open" && showsScreen(question)
         ? [question.asked]
         : [],
     );
-    const recorded: PlanRecords = {
-      facts,
-      personFacts: personFacts(listed.artifacts),
-      asksApprovals: !agentDecidesApprovals(listed.preferences),
-      checks: records,
-      runs: await artifacts.stepRuns(
-        current,
-        projectId,
-        plan.steps.flatMap((step) =>
-          "steps" in step ? step.steps.map(({ id }) => id) : [step.id],
-        ),
-      ),
-      questions: asking,
-    };
-    const steps = planState(catalog, plan.steps, recorded);
-    return {
-      plan,
-      asked,
-      recorded,
-      read: { facts, steps, appVersion, asking },
-    };
+    const { plan, recorded, read } = await service.planState(
+      actorOf(c),
+      projectId,
+      catalog,
+      asking,
+    );
+    return { plan, asked, recorded, read };
   };
 }
 
@@ -122,7 +87,7 @@ export function mountPlanRoutes(
     );
     return { state, catalog };
   };
-  const readPlan = planReader(service, artifacts, nativeFetch, checks);
+  const readPlan = planReader(service, nativeFetch);
   // What a screen's state or a task reads of the project, as of now.
   const readProject = async (
     current: Actor,
