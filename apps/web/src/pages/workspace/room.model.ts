@@ -44,7 +44,7 @@ import {
   type DispatchRoom,
   type RunEnd,
 } from "./dispatch-card.tsx";
-import { earlierDocumentRole } from "./earlier-document.ts";
+import { earlierDocumentRole, restartedWork } from "./earlier-document.ts";
 import { ProductApiError, type ProjectArtifact } from "@corbits-builder/client";
 import {
   isDocumentKind,
@@ -177,7 +177,7 @@ import type {
   ShownDocument,
 } from "./screen-question.tsx";
 import { inShort } from "@corbits-builder/schemas/in-short";
-import { roleLabel, roleOf, screenWords } from "./roles.ts";
+import { roleOf, screenWords } from "./roles.ts";
 import { screensFor, selectionNames } from "./screens.ts";
 
 // The stream says when the room moved. This read covers what it cannot see,
@@ -689,7 +689,6 @@ export function useRoom({
   const rolesAtWork = useRolesAtWork(projectId);
   // The line above the conversation is preference-gated; the placeholder is not.
   const projectStatus = useProjectNextStep(projectId);
-  const [caution, setCaution] = useState<string | null>(null);
   const [gateDone, setGateDone] = useState(0);
   // The waits that belong to this project, from the open decisions.
   const decisions = useQuery(
@@ -760,7 +759,6 @@ export function useRoom({
     setSendFailed(false);
     setSendFault(null);
     setAwaitingSince(null);
-    setCaution(null);
     setFiles([]);
     setAttachFault(null);
     stepsByAt.current.clear();
@@ -1311,10 +1309,7 @@ export function useRoom({
       deliver: deliverFiles,
     });
   };
-  const sendNow = () => {
-    setCaution(null);
-    void deliver(value, true);
-  };
+  const sendNow = () => void deliver(value, true);
   const restoreToComposer = (message: string) =>
     setValue((current) => (current.trim().length === 0 ? message : current));
   const undoTypedYes = async (message: string) => {
@@ -1334,19 +1329,18 @@ export function useRoom({
     const message = value.trim();
     if (await staged(message.length === 0 ? undefined : message)) setValue("");
   };
-  // A change to a document a specialist is already building from waits for one more yes.
   const send = () => {
     if (stagedSend.current !== null) return void sendStaged(stagedSend.current);
     if (files.length > 0) return void sendFiles();
     if (typedYes.hold(value)) return setValue("");
-    // Without a read of who is at work there is no one to warn about.
-    const role =
-      rolesAtWork === undefined
-        ? undefined
-        : earlierDocumentRole(value, artifacts, rolesAtWork);
-    if (role === undefined || caution === role) return sendNow();
-    setCaution(role);
+    sendNow();
   };
+  // Words that name a document work already builds from say, as they are typed, what sending
+  // restarts; Send still sends at once. Without a read of who is at work there is nothing to say.
+  const restarting =
+    rolesAtWork === undefined || value.trim() === ""
+      ? undefined
+      : earlierDocumentRole(value, artifacts, rolesAtWork);
   // The composer is disabled while the decline saves, so the cursor goes there once it can take it.
   const [changesAsked, setChangesAsked] = useState(false);
   const requestChanges = () => {
@@ -1820,12 +1814,10 @@ export function useRoom({
       },
       sendFault:
         questionFault(outcomes) ?? (sendFailed && sendFault ? sendFault : null),
-      caution: caution === null ? null : roleLabel(caution),
-      onSendAnyway: sendNow,
-      onCancelCaution: () => {
-        setCaution(null);
-        composerRef.current?.focus();
-      },
+      restarts:
+        restarting === undefined
+          ? null
+          : wording.earlierDocument.restarts(restartedWork(restarting)),
       suggestedReplies: replies,
       onReply: (reply) => void deliver(reply),
       sendLabel:

@@ -4,10 +4,19 @@
  * existing approve call; Not yet records a denial and takes the person to the
  * composer to say what to change.
  */
-import type { ReactNode } from "react";
+import { useContext, type ReactNode } from "react";
 import { wording } from "../../config.ts";
-import { ToolApproval, type ToolApprovalDecision } from "@corbits/react-ui";
-import { approvalQuestion, approvalToolPart } from "./collaboration.ts";
+import {
+  Button,
+  ToolApproval,
+  type ToolApprovalDecision,
+} from "@corbits/react-ui";
+import { ActionsSlot } from "@corbits-builder/plugin-ui/screen-actions";
+import {
+  approvalQuestion,
+  approvalToolPart,
+  runsShell,
+} from "./collaboration.ts";
 import type { ApprovalOutcome, DocumentApproval } from "./transcript.tsx";
 import styles from "./document-decision.module.css";
 
@@ -34,6 +43,7 @@ export function DocumentDecision({
   onYes,
   onNo,
   countdown,
+  place = "conversation",
 }: {
   approval: DocumentApproval;
   disabled?: boolean;
@@ -43,7 +53,62 @@ export function DocumentDecision({
   onNo: () => void;
   /** A typed yes about to approve this card. */
   countdown?: ReactNode;
+  /** In the conversation, or inside the prompt box above the words. */
+  place?: "conversation" | "box";
 }) {
+  const slot = useContext(ActionsSlot);
+  // Waiting in the prompt box, the ask heads the card with Not yet beside it, what would run sits
+  // beneath, and Yes stands where Send is. The library's card keeps its buttons inside it, so the
+  // box draws the ask itself. Only a shell run's subject is a command line, so only it reads as
+  // one; any other tool's subject is what it would touch, said plainly under the tool's ask.
+  if (place === "box" && approval.outcome === undefined) {
+    const shell =
+      runsShell(approval.toolName) && approval.subject !== undefined;
+    const ask = shell ? text.run : approvalQuestion(approval.toolName);
+    const yes = (
+      <div className={styles.answers} inert={disabled}>
+        <Button type="button" size="sm" onClick={onYes}>
+          {text.approve}
+        </Button>
+      </div>
+    );
+    return (
+      <section className={styles.inBox} aria-label={ask}>
+        <header className={styles.head}>
+          <p className={styles.ask}>{ask}</p>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className={styles.notYet}
+            disabled={disabled}
+            onClick={onNo}
+          >
+            {text.notYet}
+          </Button>
+        </header>
+        {approval.subject === undefined ? null : shell ? (
+          <pre className={styles.command}>
+            <code>
+              <span className={styles.prompt} aria-hidden>
+                {text.shellPrompt}
+              </span>
+              {approval.subject}
+            </code>
+          </pre>
+        ) : (
+          <p className={styles.subject}>{approval.subject}</p>
+        )}
+        {countdown}
+        {error === undefined ? null : (
+          <p className={styles.error} role="alert">
+            {error}
+          </p>
+        )}
+        {slot === null ? yes : slot(yes)}
+      </section>
+    );
+  }
   const decide = (decision: ToolApprovalDecision) => {
     if (decision.outcome === "rejected") onNo();
     else onYes();

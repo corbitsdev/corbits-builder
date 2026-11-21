@@ -453,6 +453,57 @@ export const wording = {
     noProjectLead:
       "Pick a project from the list. Its outputs open from the conversation.",
   },
+  /** What frames an open project: its name and sidebar top left. */
+  projectShell: {
+    /** The project's name opens and closes its sidebar; the shortcut does the same. */
+    openSidebar: "Open the project sidebar",
+    closeSidebar: "Close the project sidebar",
+    shortcut: { mac: "⌘\\", other: "Ctrl+\\" },
+    sidebar: "Project",
+    groups: {
+      thisProject: "This project",
+      projects: "Projects",
+      workspace: "Workspace",
+    },
+    plan: "Plan",
+    noPlan: "No steps yet",
+    /** Read after a step's name, since its mark alone does not say it. */
+    stepState: {
+      to_do: "to do",
+      running: "running",
+      needs_you: "needs you",
+      done: "done",
+      failed: "failed",
+      declined: "declined",
+    },
+    /** A row's menu: a step's settings, or what can be done with a file. */
+    rowMenu: (name: string) => `More for ${name}`,
+    decline: "Decline",
+    removeFromProject: "Remove from project…",
+    files: "Files",
+    noFiles: "None yet",
+    live: "Live",
+    /** How the project's app stands, beside Live. */
+    appState: {
+      not_built: "Not built",
+      starting: "Starting…",
+      running: "Running",
+      stopped: "Stopped",
+      failed: "Failed",
+    },
+    openApp: "Open app",
+    /** Read after a file's name where its mark says more than the name does. */
+    fileState: {
+      needs_you: "needs you",
+      writing: "being written",
+      drawing: "being drawn",
+      failed: "could not be written",
+    },
+    projectSettings: "Project settings",
+    allProjects: "All projects",
+    workspaceSettings: "Workspace settings",
+    account: "Account",
+  },
   whatsNew: {
     title: "What's new",
     sections: "What's new features",
@@ -604,11 +655,35 @@ export const wording = {
   },
   /** The composer's placeholder when no approval is open. An open approval keeps approval.composerPlaceholder. */
   composer: {
-    passAlong: (role: string) => `Ask the ${role}…`,
     change: "What needs to change…",
     fix: "What needs fixing…",
     making: "What are you making…",
     reply: "What do you want to say…",
+  },
+  /** The prompt box, the status pill above it, and the chat that pulls up around it. */
+  promptBox: {
+    /** What the pill offers, after the line saying what is happening. */
+    pill: {
+      open: "Open",
+      seeChanges: "See what changed",
+    },
+    /** The token in the typing row while comments on a document wait to be made. */
+    comments: (count: number) =>
+      count === 1 ? "1 comment" : `${String(count)} comments`,
+    /** The placeholder beside that token: Send makes the comments, with or without words. */
+    commentsPlaceholder: "Add a message…",
+    /** The handle on the top edge of the box, and the pill while it stands in for it. */
+    handle: {
+      label: "Show the chat",
+      hint: "Drag up or press to show the chat",
+    },
+    chat: {
+      title: "Chat",
+      fullScreen: "Full screen",
+      putBack: "Put the chat back",
+      /** In full screen, the way back to the page the person left, named. */
+      backTo: (page: string) => `Back to ${page}`,
+    },
   },
   speaker: {
     coder: "Coder",
@@ -855,11 +930,20 @@ export const wording = {
     notStopped: "The run could not be stopped.",
     refusedUnknown: "the request failed",
   },
-  /** Before a message changes a document a specialist is building from. */
+  /**
+   * Above the typing row while the words name a document work already builds from. It names the
+   * work, never who does it, and Send still sends at once.
+   */
   earlierDocument: {
-    warning: (specialist: string) =>
-      `The ${specialist} is already working from this. Changing it now may cost more and restart some of their work.`,
-    sendAnyway: "Send anyway",
+    restarts: (work: string) => `Sending this restarts ${work}.`,
+    /** The work, by the kind of thing it files. */
+    work: {
+      design: "the design",
+      app: "the build",
+      approval_package: "the presentation",
+    } as Record<string, string>,
+    /** Work that files something not named above. */
+    someWork: "work that has started",
   },
   /** Files the person attaches to a message, filed as materials the coordinator reads. */
   attach: {
@@ -904,7 +988,11 @@ export const wording = {
     notYet: "Not yet",
     decline: "Decline",
     /** The composer's placeholder while an approval is open: a message declines it, with these words as the reason. */
-    composerPlaceholder: "Say what you'd like changed, or ask a question…",
+    composerPlaceholder: "Or say what to do instead…",
+    /** In the prompt box, the ask to run a shell command; the command shows beneath. */
+    run: "Allow this command to run?",
+    /** Before a command line in the prompt box, as a terminal shows one. */
+    shellPrompt: "$ ",
     /** A whole message that approves the one open card, after a countdown the person can undo. */
     typedYes: {
       affirmations: [
@@ -935,9 +1023,7 @@ export const wording = {
     settledUnnamed: "the request",
     /** An ask by its tool and main argument. */
     tool: (tool: string, subject?: string) =>
-      subject === undefined
-        ? `Let the specialist use ${tool}?`
-        : `Let the specialist use ${tool} on ${subject}?`,
+      subject === undefined ? `Allow ${tool}?` : `Allow ${tool} on ${subject}?`,
     /** A document's name as an earlier-document warning says it. */
     shortName: {
       problem_brief: "brief",
@@ -963,7 +1049,44 @@ export const wording = {
     always: (line: string) => `${line} · from now on`,
   },
   passage: { addToPrompt: "Add to prompt" },
+  /** A comment left beside a passage, kept as a draft until the person sends it. */
+  comments: {
+    /** The comment field's label. */
+    field: "Comment",
+    placeholder: "Add a comment",
+    save: "Save comment",
+    edit: "Edit comment",
+    remove: "Delete comment",
+    saveFailed: "Your comment was not saved. Try again.",
+  },
   documentBar: "Document controls",
+  /** The print-like page a written document is read on, with its contents beside it. */
+  documentViewer: {
+    contents: "Contents",
+    contentsLabel: "Sections of this document",
+    /** A section someone has commented on. */
+    commented: "Has comments",
+    /** The running header's right side, opposite the project: when the document was filed. */
+    filedOn: (filedAt: string) =>
+      new Date(filedAt).toLocaleDateString("en-GB", {
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      }),
+    writing: (version: number) => `Writing · Version ${String(version)}`,
+    stopped: "Writing stopped here",
+    page: (current: number, total: number) =>
+      `Page ${String(current)} of ${String(total)}`,
+    zoom: (percent: number) => `${String(percent)}%`,
+    /** The zoom readout, which sets the page back to its own size. */
+    zoomReset: (percent: number) =>
+      percent === 100 ? "Zoom 100%" : `Zoom ${String(percent)}%, back to 100%`,
+    zoomIn: "Zoom in",
+    zoomOut: "Zoom out",
+    /** Opens what is said about a passage when the margin is too narrow to show it beside. */
+    passageNote: (quote: string) =>
+      `Comment on “${quote.length > 40 ? `${quote.slice(0, 40).trimEnd()}…` : quote}”`,
+  },
   printDocument: "Save as PDF or print",
   removeAttachment: {
     menu: "Remove attachment…",
@@ -1060,7 +1183,12 @@ export const wording = {
     backKeys: "Previous question (←)",
     nextKeys: "Next question (Enter or →)",
     sendKeys: "Send your answers (Enter)",
-    composerPlaceholder: "Or reply in your own words…",
+    /** The prompt box under a question nothing is picked for yet: the person's own words answer it. */
+    composerPlaceholder: "Or type your own answer…",
+    /** The prompt box once an option is picked: words sent now go with it. */
+    addDetails: (picked: string) => `Add details for ${picked}…`,
+    /** The tag on the option the coordinator recommends. */
+    recommended: "Recommended",
     send: "Send answers",
     sending: "Sending…",
     /** Closes an open question without choosing; the reply is what the settled card then shows. */

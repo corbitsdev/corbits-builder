@@ -12,19 +12,24 @@ function pressable(node: ReactNode): Pressable[] {
   return [...own, ...pressable(node.props.children)];
 }
 
+const tideTable = {
+  kind: "tide_table_guide",
+  title: "Harbour tide table guide",
+  version: 2,
+} as const;
+
 test.each([
-  ["with a summary", "- **High water** at dusk."],
-  ["without one", undefined],
-])(
+  ["with a summary", { summary: "- **High water** at dusk." }],
+  ["without one", { summary: undefined }],
+  ["in one line", { compact: true }],
+] as const)(
   "a document %s has exactly one way in, and it opens that document",
-  (_, summary) => {
+  (_, shape) => {
     const opened: string[] = [];
     const controls = pressable(
       DocumentBlock({
-        kind: "tide_table_guide",
-        title: "Harbour tide table guide",
-        version: 2,
-        summary,
+        ...tideTable,
+        ...shape,
         onOpen: (kind) => opened.push(kind),
       }),
     );

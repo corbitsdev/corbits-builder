@@ -36,57 +36,31 @@ function placeholder(input: {
 }
 
 describe("composer placeholder", () => {
-  test("a working role beats a running app, and the first working role is named", () => {
+  test("work under way beats a running app and a failure, and names no one", () => {
     expect(
       placeholder({
         status: standing({
           working: [
             { role: "writer", state: "starting" },
             { role: "reviewer", state: "working" },
-            { role: "designer", state: "working" },
           ],
           app: { state: "running" },
           failedSpecialist: "coder",
         }),
       }),
-    ).toBe("Ask the reviewer…");
+    ).toBe("What do you want to say…");
   });
 
-  test("a starting role is named when nobody is working", () => {
+  test("work that is only starting counts as under way", () => {
     expect(
       placeholder({
+        nothingFiled: true,
         status: standing({
-          working: [
-            { role: "coordinator", state: "unknown" },
-            { role: "writer", state: "starting" },
-            { role: "designer", state: "starting" },
-          ],
-          app: { state: "running" },
+          working: [{ role: "designer", state: "starting" }],
+          app: { state: "failed" },
         }),
       }),
-    ).toBe("Ask the writer…");
-  });
-
-  test("the coder is named in the placeholder", () => {
-    expect(
-      placeholder({
-        status: standing({
-          working: [{ role: "coder", state: "working" }],
-          app: { state: "running" },
-        }),
-      }),
-    ).toBe("Ask the coder…");
-  });
-
-  test("the presenter is named while it is working", () => {
-    expect(
-      placeholder({
-        status: standing({
-          working: [{ role: "presenter", state: "working" }],
-          app: { state: "running" },
-        }),
-      }),
-    ).toBe("Ask the presenter…");
+    ).toBe("What do you want to say…");
   });
 
   test("a running app beats a failure", () => {

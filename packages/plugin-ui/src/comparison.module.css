@@ -37,9 +37,11 @@
   background: var(--wb-card);
 }
 
+/* The pick is marked in ink, never the brand colour, so it reads as chosen rather than as a call
+   to act. */
 .items .item[data-chosen] {
-  border-color: var(--wb-primary);
-  box-shadow: 0 0 0 1px var(--wb-primary);
+  border-color: var(--wb-foreground);
+  box-shadow: 0 0 0 1px var(--wb-foreground);
 }
 
 .pick {
@@ -53,7 +55,7 @@
 
 .pick input {
   margin: 0;
-  accent-color: var(--wb-primary);
+  accent-color: var(--wb-foreground);
 }
 
 .body {
