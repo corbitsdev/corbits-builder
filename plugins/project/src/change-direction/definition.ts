@@ -3,9 +3,9 @@ import { Input, Output } from "./schema.ts";
 
 export const text = {
   title: "Change direction?",
-  stops: "These steps stop:",
+  stops: "These steps are dropped:",
   instead: "Instead:",
-  nothing: "None of these steps is left to stop.",
+  nothing: "Nothing on the plan is left to drop.",
   go: "Change direction",
   keep: "Keep the plan",
   orWrite: "Or write below what you want instead.",
