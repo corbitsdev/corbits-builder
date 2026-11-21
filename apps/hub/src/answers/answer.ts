@@ -1,5 +1,6 @@
 import { isDeepStrictEqual } from "node:util";
 import type { Context } from "hono";
+import { droppable } from "@corbits-builder/plugin";
 import { isLiveWorkflowRunStatus } from "@intx/db/schema";
 import type { TenantEnv } from "@intx/hub-api";
 import type { QuestionAnswer } from "@intx/types/signals";
@@ -162,7 +163,7 @@ export function createAnswer({
             .flatMap((each) => ("steps" in each ? each.steps : [each]))
             .filter(
               ({ id, state }) =>
-                answered.cancels.includes(id) && state !== "done",
+                answered.cancels.includes(id) && droppable(state),
             );
           // The jobs stop before the steps are marked, so an answer retried after a failed stop
           // still finds them.

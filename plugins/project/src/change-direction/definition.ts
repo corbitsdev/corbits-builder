@@ -1,4 +1,4 @@
-import { defineScreen } from "@corbits-builder/plugin";
+import { defineScreen, droppable } from "@corbits-builder/plugin";
 import { Input, Output } from "./schema.ts";
 
 export const text = {
@@ -11,16 +11,13 @@ export const text = {
   orWrite: "Or write below what you want instead.",
 };
 
-// A step that is done stays as the record of the work, and one already cancelled has stopped.
-const STOPPED = new Set(["done", "cancelled"]);
-
 export default defineScreen({
   input: Input,
   output: Output,
   // The steps are named as the plan names them, not as the coordinator put it.
   fromProject: ({ stepIds, instead }, project) => ({
     stops: project.plan.flatMap(({ id, title, state }) =>
-      stepIds.includes(id) && !STOPPED.has(state) ? [{ id, title }] : [],
+      stepIds.includes(id) && droppable(state) ? [{ id, title }] : [],
     ),
     instead,
   }),

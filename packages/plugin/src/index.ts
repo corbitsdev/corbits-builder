@@ -814,6 +814,13 @@ export type StepStatus = {
   summary: string | undefined;
 };
 
+/**
+ * Whether the person's yes can still drop a plan step: one done stays as the record of the work, and
+ * one cancelled is dropped already.
+ */
+export const droppable = (state: PlanStepStateName) =>
+  state !== "done" && state !== "cancelled";
+
 // A run the coordinator started for a plugin action, as a screen reads it.
 export type RunRead = {
   plugin: string;
