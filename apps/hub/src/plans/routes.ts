@@ -43,10 +43,8 @@ import type { createPlanService } from "./service.ts";
 const AskFirst = type({ "+": "reject", askFirst: "boolean" });
 const ActionRun = type({ "+": "reject", "input?": "Record<string, unknown>" });
 
-// Where each step of the project's plan stands, worked out from what the hub has recorded, with
-// the records and questions it was worked out from.
 function planReader(
-  service: Pick<ReturnType<typeof createPlanService>, "planState">,
+  service: Pick<ReturnType<typeof createPlanService>, "readPlan">,
   nativeFetch?: (request: Request) => Promise<Response>,
 ) {
   return async (c: Context<TenantEnv>, projectId: string, catalog: Catalog) => {
@@ -61,7 +59,7 @@ function planReader(
         ? [question.asked]
         : [],
     );
-    const { plan, recorded, read } = await service.planState(
+    const { plan, recorded, read } = await service.readPlan(
       actorOf(c),
       projectId,
       catalog,

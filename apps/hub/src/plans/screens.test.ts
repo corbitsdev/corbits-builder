@@ -103,7 +103,7 @@ function hub(project: {
   const plans = {
     authorizeAction: async () => {},
     projectPlan: async () => ({ steps: project.steps ?? [], updatedAt: null }),
-    planState: createPlanService({} as DB["db"], artifacts, checks).planState,
+    readPlan: createPlanService({} as DB["db"], artifacts, checks).readPlan,
     addPlanStep: async (
       _actor: unknown,
       _project: unknown,

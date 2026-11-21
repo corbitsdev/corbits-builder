@@ -110,7 +110,7 @@ export function createPlanService(
 
     // Where each step of the project's plan stands, worked out from what the hub has recorded and
     // the screens open in front of the person, with the records it was worked out from.
-    async planState(
+    async readPlan(
       actor: Actor,
       projectId: string,
       catalog: Catalog,
@@ -160,7 +160,7 @@ export function createPlanService(
       let kept: readonly ProtectedStep[] = [];
       if (caller?.kind !== "user") {
         // Only a person reads the conversation, so a run's read has no questions in it.
-        const { recorded, read } = await this.planState(
+        const { recorded, read } = await this.readPlan(
           actor,
           projectId,
           catalog,
@@ -296,9 +296,9 @@ export function createPlanService(
         .where(eq(principal.id, actor.principalId));
       if (caller?.kind !== "user")
         throw new ProjectError(403, "only_a_person_cancels");
-      // An open question only turns a ready screen step from not_started to needs_you, since a screen
-      // step never has a run, so none changes which steps may be dropped.
-      const { read } = await this.planState(actor, projectId, catalog, []);
+      // The screens open in front of the person are left out: an open one only shows a step that has
+      // not run as needing them, and that step may be dropped either way.
+      const { read } = await this.readPlan(actor, projectId, catalog, []);
       const cancelled = read.steps
         .flatMap((each) => ("steps" in each ? each.steps : [each]))
         .filter(({ id, state }) => stepIds.includes(id) && droppable(state));
