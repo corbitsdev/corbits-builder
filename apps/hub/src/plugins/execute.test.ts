@@ -338,6 +338,35 @@ test("on build-web-app's steps, coder build waits for the person's go-ahead whil
   );
 });
 
+test("a second plan step for coder build with no approval does not let the build start without the person's go-ahead", async () => {
+  const following = project([
+    filed("product_requirements"),
+    filed("build_plan"),
+  ]);
+  await following.plan({ operation: "add", plan: "build-web-app" });
+  expect((await following.execute(coderBuild)).isError).toBe(true);
+
+  const added = await following.plan({
+    operation: "add",
+    steps: [
+      { title: "Build it now", plugin: "coder", action: "build", input: {} },
+    ],
+  });
+  expect(added.isError).toBeUndefined();
+  const twin = following.state.plan.at(-1)?.id;
+  const unnamed = await following.execute(coderBuild);
+  expect(unnamed.isError).toBe(true);
+  expect(unnamed.content).toContain(
+    'The plan step "Build the app" asks for the person\'s go-ahead first:',
+  );
+  const named = await following.execute({ ...coderBuild, step: twin });
+  expect(named.isError).toBe(true);
+  expect(named.content).toContain(
+    'The plan step "Build the app" asks for the person\'s go-ahead first:',
+  );
+  expect(following.deployed).toEqual([]);
+});
+
 test("designer mockup starts a designer with nothing filed, unless its build-web-app step waits on the requirements being approved", async () => {
   const alone = project([]);
   expect(

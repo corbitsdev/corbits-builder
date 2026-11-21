@@ -168,7 +168,7 @@ export function createAnswer({
           const live = recorded.runs.filter(
             (run) =>
               isLiveWorkflowRunStatus(run.status) &&
-              cancelled.some((each) => each.runId === run.runId),
+              cancelled.some((each) => each.id === run.step),
           );
           for (const run of live)
             try {
