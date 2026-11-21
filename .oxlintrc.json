@@ -4,7 +4,7 @@
   "options": {
     "denyWarnings": true
   },
-  "jsPlugins": ["./scripts/lint-rules.ts"],
+  "jsPlugins": ["./oxlint-plugin.ts"],
   "rules": {
     "corbits-builder/no-tool-replay": "error",
     "eslint/eqeqeq": "error",
