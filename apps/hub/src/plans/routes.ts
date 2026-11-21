@@ -12,7 +12,12 @@ import {
 import type { Catalog } from "@corbits-builder/plugin-host/catalog";
 import { planRefusal } from "@corbits-builder/plugin-host/coordinator";
 import { resolveFacts, unmet } from "@corbits-builder/plugin-host/facts";
-import { planState } from "@corbits-builder/plugin-host/plan";
+import {
+  planState,
+  protectedSteps,
+  type PlanRecords,
+  type ProtectedStep,
+} from "@corbits-builder/plugin-host/plan";
 import { requiresText } from "@corbits-builder/plugin-host/text";
 import { actorOf } from "../projects/authorization.ts";
 import { ProjectError } from "../projects/errors.ts";
@@ -87,7 +92,7 @@ export function mountPlanRoutes(
         ? [question.asked]
         : [],
     );
-    const steps = planState(catalog, plan.steps, {
+    const recorded: PlanRecords = {
       facts,
       personFacts: personFacts(listed.artifacts),
       asksApprovals: !agentDecidesApprovals(listed.preferences),
@@ -100,8 +105,14 @@ export function mountPlanRoutes(
         ),
       ),
       questions: asking,
-    });
-    return { plan, asked, read: { facts, steps, appVersion, asking } };
+    };
+    const steps = planState(catalog, plan.steps, recorded);
+    return {
+      plan,
+      asked,
+      recorded,
+      read: { facts, steps, appVersion, asking },
+    };
   };
   // What a screen's state or a task reads of the project, as of now.
   const readProject = async (
@@ -320,6 +331,10 @@ export function mountPlanRoutes(
           description:
             "A step the catalog refuses; text names the step and says what is wrong and what to do",
         },
+        409: {
+          description:
+            "A run's save leaves out a step only the person may take out of the plan; text names the step and says what to do instead",
+        },
       },
     }),
     async (c) => {
@@ -328,12 +343,21 @@ export function mountPlanRoutes(
         throw new ProjectError(400, "invalid_plan", { issues: input });
       const current = actorOf(c);
       const projectId = c.req.param("projectId");
-      const refused = planRefusal(
-        await catalogOf(artifacts.projectState, current, projectId),
-        input.steps,
+      const catalog = await catalogOf(
+        artifacts.projectState,
+        current,
+        projectId,
       );
+      const refused = planRefusal(catalog, input.steps);
       if (refused) throw new ProjectError(400, "plan_step_refused", refused);
-      return c.json(await service.savePlan(current, projectId, input.steps));
+      let kept: ProtectedStep[] = [];
+      if (c.get("principal")?.kind !== "user") {
+        const { recorded, read } = await readPlan(c, projectId, catalog);
+        kept = protectedSteps(read.steps, recorded);
+      }
+      return c.json(
+        await service.savePlan(current, projectId, input.steps, kept),
+      );
     },
   );
   for (const declined of [true, false])

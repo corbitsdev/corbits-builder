@@ -9,6 +9,7 @@ import {
   type StoredPlanGroup,
   type StoredPlanStep,
 } from "@corbits-builder/schemas/project";
+import type { ProtectedStep } from "@corbits-builder/plugin-host/plan";
 import { project } from "../db/schema.ts";
 import { activeCoordinator } from "../auth/coordinator-registry.ts";
 import type { Actor } from "../lib/actor.ts";
@@ -21,6 +22,7 @@ import {
   stepDeclinedNote,
   stepGoAheadNote,
   stepKeptText,
+  stepProtectedText,
 } from "../config/answers.ts";
 
 // A plan step as stored, under the id it came with or a short new one, with the go-ahead, cancel,
@@ -88,11 +90,12 @@ export function createPlanService(rawDB: DB["db"]) {
 
     // Replaces the plan with steps already checked against the catalog. Only a person gives a step
     // its go-ahead, cancels it or sets whether it asks first, so a run's save keeps the marks stored
-    // under each step's id.
+    // under each step's id. kept are the steps this caller may not leave out.
     async savePlan(
       actor: Actor,
       projectId: string,
       steps: readonly PlanStepWrite[],
+      kept: readonly ProtectedStep[],
     ): Promise<StoredPlan> {
       await authorizeProject(rawDB, actor, projectId, "manage");
       const [caller] = await rawDB
@@ -134,6 +137,12 @@ export function createPlanService(rawDB: DB["db"]) {
           throw new ProjectError(409, "kept_plan_step_removed", {
             id: dropped.id,
             text: stepKeptText(dropped.title, dropped.declined !== undefined),
+          });
+        const removed = kept.find(({ step }) => !ids.includes(step.id));
+        if (removed)
+          throw new ProjectError(409, "protected_plan_step_removed", {
+            id: removed.step.id,
+            text: stepProtectedText(removed.step.title, removed.reason),
           });
         const plan = { steps: saved, updatedAt: new Date().toISOString() };
         await writePlan(tx, projectId, plan);

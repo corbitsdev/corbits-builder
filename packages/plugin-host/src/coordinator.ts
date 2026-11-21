@@ -1192,10 +1192,10 @@ const PLAN_FIELDS = {
     about: "What to do; each answers with the plan as it now stands.",
     choices: {
       show: "The plan.",
-      set: "Replace the plan with steps, a plan of your own; [] empties it. The project then follows no ready-made plan.",
+      set: "Replace the plan with steps, a plan of your own; [] empties it. The project then follows no ready-made plan. Refused while the plan holds a step only the person may take out: one waiting for their approval, one running or done, or a required unfinished step of a plan under way. Use add and remove then.",
       add: "Add steps, or one ready-made plan, at the end, after the step after names or before the step before names.",
       remove:
-        "Take out each step stepIds names, with the steps it holds; taking out a ready-made plan's group stops the project following that plan.",
+        "Take out each step stepIds names, with the steps it holds; taking out a ready-made plan's group stops the project following that plan. A step only the person may take out is refused, and the refusal says what to do instead.",
     },
   },
   steps: {

@@ -290,3 +290,53 @@ export function planState(
     return view;
   });
 }
+
+/** A step only the person may take out of the plan, with why. */
+export type ProtectedStep = {
+  step: PlanStepView;
+  reason: "approval" | "done" | "started" | "underway";
+};
+
+/**
+ * The steps of a plan, as planState worked them out, that only the person may take out of it: one
+ * waiting for their approval, one running or done, and a required unfinished step of a plan under
+ * way. Each group is one plan, and the steps in no group are another. A step the person cancelled is
+ * theirs to drop already.
+ */
+export function protectedSteps(
+  steps: readonly (PlanStepView | PlanGroupView)[],
+  records: Pick<PlanRecords, "facts" | "personFacts" | "asksApprovals">,
+): ProtectedStep[] {
+  const plans = [
+    steps.flatMap((step) => ("steps" in step ? [] : [step])),
+    ...steps.flatMap((step) => ("steps" in step ? [step.steps] : [])),
+  ];
+  return plans.flatMap((plan) => {
+    const underway = plan.some(
+      ({ runId, checkId, answered }) =>
+        runId !== undefined || checkId !== undefined || answered !== undefined,
+    );
+    const reasonOf = (step: PlanStepView): ProtectedStep["reason"] | null => {
+      if (step.cancelled) return null;
+      if (
+        step.approval &&
+        step.state !== "done" &&
+        gateOf(step, records).goAhead.length > 0
+      )
+        return "approval";
+      if (step.state === "done") return "done";
+      if (
+        step.state === "running" ||
+        (step.state === "needs_you" && step.runId !== undefined)
+      )
+        return "started";
+      if (underway && !step.optional && step.state !== "skipped")
+        return "underway";
+      return null;
+    };
+    return plan.flatMap((step) => {
+      const reason = reasonOf(step);
+      return reason === null ? [] : [{ step, reason }];
+    });
+  });
+}
