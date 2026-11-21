@@ -19,13 +19,11 @@ import {
   validateOutput,
   type Decision,
   type Offer,
-  type PageControls,
   type ProjectValues,
   type Screen,
   type ScreenActionBuilder,
 } from "@corbits-builder/plugin";
 import { QuestionAnswer } from "@corbits-builder/schemas/conversation";
-import { Button } from "@corbits/react-ui";
 import {
   ActionsSlot,
   ScreenDecision,
@@ -217,7 +215,6 @@ export type ScreenHostProps = {
   disabled: boolean;
   onAnswer: (answer: QuestionAnswer) => Promise<boolean>;
   host: HostSupplies;
-  page?: PageControls | undefined;
 };
 
 /** One plugin's screen action, by its name such as "designer pick-fonts", typed end to end, behind props every screen shares. */
@@ -254,7 +251,6 @@ export function screenHost<In, Out, Data, Prepared>(
     disabled,
     onAnswer,
     host,
-    page,
   }) {
     const outcome = useQuestionOutcome(signalName);
     const slot = useContext(ActionsSlot);
@@ -379,7 +375,7 @@ export function screenHost<In, Out, Data, Prepared>(
         submit={submit}
         submitting={busy}
         answer={answered?.output}
-        place={page === undefined ? "card" : "page"}
+        place="card"
         fault={
           outcome !== undefined && "fault" in outcome
             ? outcome.fault
@@ -417,10 +413,7 @@ export function screenHost<In, Out, Data, Prepared>(
             outcome !== undefined && "fault" in outcome ? (
               <Fault>{outcome.fault}</Fault>
             ) : null,
-          back:
-            page === undefined
-              ? null
-              : { label: text.pageScreenClose, onBack: page.close },
+          back: null,
         }}
       >
         {/* Buttons drawn elsewhere, such as in the prompt box, leave the screen's inert hold, so
@@ -536,7 +529,6 @@ export type ScreenQuestionProps = {
   disabled: boolean;
   onAnswer: ScreenHostProps["onAnswer"];
   supplies: HostSupplies | undefined;
-  page?: PageControls | undefined;
 };
 
 /** The screen, or a plain notice when it has no view or no project to read. */
@@ -549,7 +541,6 @@ export function ScreenQuestion({
   disabled,
   onAnswer,
   supplies,
-  page,
 }: ScreenQuestionProps) {
   if (answer !== undefined && "reply" in answer)
     return <SettledReply reply={answer.reply} sent={false} />;
@@ -574,19 +565,6 @@ export function ScreenQuestion({
       disabled={disabled}
       onAnswer={onAnswer}
       host={supplies}
-      page={page}
     />
-  );
-}
-
-/** In the conversation, a screen open over the room: the way back to it after it was closed. */
-export function PageScreenCard({ onOpen }: { onOpen: () => void }) {
-  return (
-    <InlineNote>
-      {text.pageScreenOpen}{" "}
-      <Button type="button" size="sm" variant="outline" onClick={onOpen}>
-        {text.pageScreenReopen}
-      </Button>
-    </InlineNote>
   );
 }

@@ -12,7 +12,6 @@ import {
   SpecialistBuilder,
 } from "@corbits-builder/plugin";
 import { byAction, pluginFolder } from "./roles.ts";
-import { SLOT } from "./plugin-screens.tsx";
 import {
   listedHost,
   screenHost,
@@ -34,7 +33,6 @@ export type ScreenFiles = {
 
 type Installed = {
   host: ComponentType<ScreenHostProps>;
-  page: boolean;
   listed: ComponentType<ListedHostProps>;
 };
 
@@ -109,10 +107,8 @@ export function installScreens({
             data = screen.data.assert(shipped);
           }
           const host = screenHost(name, declared, { screen, view, data });
-          const page =
-            screen.render !== undefined && SLOT[screen.render] === "page";
           const listed = listedHost(name, handle, view);
-          return [[name, { host, page, listed }] as const];
+          return [[name, { host, listed }] as const];
         });
       },
     ),

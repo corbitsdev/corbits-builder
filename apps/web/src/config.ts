@@ -288,9 +288,6 @@ export const wording = {
     ],
   },
   liveApp: {
-    tab: "Live preview",
-    title: "What the coder is building, as it runs",
-    manualTitle: "How to use it, with pictures of it as built",
     frameTitle: "The running preview",
     notBuiltTitle: "Anything that runs appears here",
     notBuilt: "When the coder builds something you can run, it shows here.",
@@ -340,13 +337,6 @@ export const wording = {
       `${String(done)} of ${String(total)} checked so far.`,
     checklistDone: "Checked",
     checklistOpen: "Not checked yet",
-  },
-  nextStep: {
-    action: {
-      open_app: "Open the preview",
-      reply: "Reply",
-      resume_coordinator: "Start the coordinator",
-    },
   },
   paneBar: {
     hide: "Hide the controls",
@@ -594,16 +584,6 @@ export const wording = {
   },
   conversation: {
     label: "Conversation",
-    map: "Conversation map",
-    /** A map entry for a filed document: "Requirements v1". */
-    mapDocument: (name: string, version: number) =>
-      `${name} v${String(version)}`,
-    /** A map entry with where it ended: "Pick a font · Answered". */
-    mapMarked: (label: string, mark: string) => `${label} · ${mark}`,
-    /** How the map marks a question or approval once answered. */
-    mapAnswered: "Answered",
-    /** A map marker's accessible name, saying it jumps there, so it never shares a name with the card's own controls. */
-    mapGoTo: (label: string) => `Go to: ${label}`,
     empty: "Nothing in the conversation yet",
     emptyLead:
       "Replies show here, and each saved document opens from where it was saved.",
@@ -614,43 +594,13 @@ export const wording = {
     /** Opens everything the project has, its documents, design and preview, over the conversation. */
     openProject: "Project",
     openProjectHint: "Open the project's documents, design and preview",
-    /** A plugin tab's status beside the plan, for a screen reader, which otherwise hears only it. */
+    /** A plugin tab's status in the room's top bar, for a screen reader, which otherwise hears only it. */
     tabStatus: (tab: string, status: string) => `${tab}: ${status}`,
     openTab: (tab: string) => `Open ${tab}`,
-    /** Takes the person from the project view back to the conversation. */
-    closeProject: "Back to the conversation",
-    /** The plan beside the conversation: its heading, the button that shows and hides it, and its parts. */
+    /** A plan step's settings, in its row's menu in the project sidebar. */
     plan: {
-      title: "Plan",
-      show: "Show the plan",
-      hide: "Hide the plan",
-      resize: "Resize the plan",
-      steps: "Plan steps",
-      optional: "optional",
-      approvalRequired: "needs your approval",
-      approvalOffered: "asks for your approval",
-      /** A step's switches and button, each named with the step it changes. */
-      skip: "Skip",
-      goAhead: "Go ahead",
       askFirst: "Ask me first",
-      forStep: (control: string, step: string) => `${control}: ${step}`,
       notChanged: "That step could not be changed.",
-      /** How far along the plan is, beside its button. */
-      progress: (done: number, total: number) =>
-        `${String(done)}/${String(total)}`,
-      /** The plan button's name: how far along the plan is, and a step that wants a look. */
-      progressLabel: (
-        done: number,
-        total: number,
-        alert: "failed" | "needs_you" | null,
-      ) =>
-        [
-          `Plan: ${String(done)} of ${String(total)} steps done`,
-          alert === "failed" ? "a step failed" : undefined,
-          alert === "needs_you" ? "a step needs you" : undefined,
-        ]
-          .filter((part) => part !== undefined)
-          .join(", "),
     },
   },
   /** The composer's placeholder when no approval is open. An open approval keeps approval.composerPlaceholder. */
@@ -666,6 +616,43 @@ export const wording = {
     pill: {
       open: "Open",
       seeChanges: "See what changed",
+    },
+    /** The pill's one line, and its button, as room-status.ts picks them. */
+    status: {
+      sending: "Sending your message",
+      thinking: "Thinking…",
+      /** One piece of work, and how many more go on beside it. */
+      andMore: (doing: string, more: number) =>
+        `${doing} and ${String(more)} more`,
+      didNotFinish: (doing: string) => `${doing} did not finish`,
+      stepFailed: (step: string) => `${step} did not finish`,
+      /** The hub has no retry, so the button asks for one, and says so. */
+      tryAgain: "Ask to try again",
+      tryAgainMessage: "That did not finish. Please try again.",
+      ready: (title: string, version: number) =>
+        version > 1
+          ? `${title} version ${String(version)} is ready`
+          : `${title} is ready`,
+      appRunning: "The app is running",
+      appFailed: "The app did not start",
+      open: "Open",
+    },
+    /** The box's card for what waits on the person, where no card of its own says it. */
+    waiting: {
+      /** A step the person asked to be consulted on, held until they say go ahead. */
+      step: (title: string) => `Go ahead with “${title}”?`,
+      stepDetail: "You asked to be asked first.",
+      goAhead: "Yes, go ahead",
+      /** A plugin's screen waiting in the plugin space. */
+      screen: (title: string) => `${title} is waiting for you`,
+      openScreen: "Open",
+      /** The placeholder while a step waits: words sent instead go to the coordinator. */
+      stepPlaceholder: "Or say what to do instead…",
+    },
+    /** The space beside the main area where plugin screens open. */
+    space: {
+      label: "Waiting for you",
+      close: "Close",
     },
     /** The token in the typing row while comments on a document wait to be made. */
     comments: (count: number) =>
@@ -1074,6 +1061,8 @@ export const wording = {
         year: "numeric",
       }),
     writing: (version: number) => `Writing · Version ${String(version)}`,
+    /** The manual's running header: it follows the app, so it has no filing date. */
+    asBuilt: "As built",
     stopped: "Writing stopped here",
     page: (current: number, total: number) =>
       `Page ${String(current)} of ${String(total)}`,
@@ -1089,7 +1078,6 @@ export const wording = {
   },
   printDocument: "Save as PDF or print",
   removeAttachment: {
-    menu: "Remove attachment…",
     confirm: "Yes, remove it",
     done: (name: string, told: boolean) =>
       told
@@ -1103,6 +1091,13 @@ export const wording = {
     comparing: (older: number, newer: number) =>
       `Comparing v${String(older)} → v${String(newer)}`,
     stopComparing: "Stop comparing",
+    /** An older version read from the menu, while the plan names the newest. */
+    showing: (shown: number, newest: number) =>
+      `Showing v${String(shown)}. The plan names v${String(newest)}.`,
+    reading: (version: number) => `Reading v${String(version)}…`,
+    readingForComparison: (version: number) =>
+      `Reading v${String(version)} for comparison…`,
+    historyUnavailable: (reason: string) => `History unavailable: ${reason}`,
   },
   preview: {
     actions: "Preview controls",
@@ -1161,23 +1156,14 @@ export const wording = {
     /** Where the open question sits among them, beside the heading. */
     position: (at: number, count: number) =>
       `${String(at)} of ${String(count)}`,
-    /** The list of questions, answered ones above the open one. */
-    thread: "Questions",
     pickOne: "Pick one",
     pickAny: "Pick any that apply",
     selected: (picked: number, count: number) =>
       `${String(picked)} of ${String(count)} selected`,
-    /** The row where the person types their own answer instead. */
-    other: "Something else…",
+    /** The field where the person types their own answer. */
     otherAnswer: "Your own answer",
     /** The field of a question with no options to pick from. */
     typed: "Type your answer…",
-    changeAnswer: (prompt: string, answer: string) =>
-      `Change your answer to "${prompt}": ${answer}`,
-    earlier: (count: number) =>
-      count === 1 ? "1 earlier answer" : `${String(count)} earlier answers`,
-    /** After the next question, how many more follow it. */
-    more: (count: number) => `+${String(count)} more`,
     back: "Back",
     next: "Continue",
     backKeys: "Previous question (←)",
@@ -1189,7 +1175,6 @@ export const wording = {
     addDetails: (picked: string) => `Add details for ${picked}…`,
     /** The tag on the option the coordinator recommends. */
     recommended: "Recommended",
-    send: "Send answers",
     sending: "Sending…",
     /** Closes an open question without choosing; the reply is what the settled card then shows. */
     cancel: "Cancel",
@@ -1218,11 +1203,6 @@ export const wording = {
     screenUnavailable:
       "This question cannot be shown here. Answer it in your own words below.",
     screenLoading: "Loading…",
-    /** In the conversation while a screen placed over the room is open but closed for now. */
-    pageScreenOpen: "Waiting for your review.",
-    pageScreenReopen: "Open",
-    /** On a screen placed over the room, back to the conversation without answering. */
-    pageScreenClose: "Back to the conversation",
     /** Beside Send, and its name, while a screen's decision has items to send back, such as "2 comments". */
     sendBack: (items: string) => `Send feedback · ${items}`,
     /** What the prompt box asks meanwhile. */

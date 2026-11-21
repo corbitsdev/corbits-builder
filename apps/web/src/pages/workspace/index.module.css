@@ -1,4 +1,11 @@
 .room {
+  /* The plugin space's column: what a reading measure in the middle of the window leaves it, within
+     bounds a screen can be used in. */
+  --plugin-column: clamp(20rem, (100% - 48rem) / 2 - var(--space-2), 28rem);
+  /* The prompt box's width: the turns' text measure inside their 48rem column, so the box's edges
+     line up with the words above it, and a document's page runs a little wider either side. */
+  --box-measure: 46rem;
+
   position: relative;
   display: flex;
   flex-direction: row;
@@ -6,6 +13,43 @@
   min-height: 0;
   min-width: 0;
   overflow: hidden;
+  background: var(--wb-background);
+}
+
+/* The canvas beside the sidebar, edge to edge to the window's: the conversation, the project view
+   over it and the plugin sheet over both; the plugin space's column stands beside it. What it holds
+   is centred in it. Its own stacking context, so what covers it stays under the sidebar's drawer. */
+.main {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--wb-background);
+  container: canvas / inline-size;
+}
+
+/* With the sidebar closed, or a drawer, the project's name floats in the canvas's top corner. Where
+   the canvas is too narrow for what runs along its top to pass beside it, that drops below it. */
+@container canvas (max-width: 56rem) {
+  .room:has(
+      > [data-slot="project-sidebar"]:is(:not([data-open]), [data-drawer])
+    )
+    .top {
+    min-height: 3.75rem;
+  }
+
+  .room:has(
+      > [data-slot="project-sidebar"]:is(:not([data-open]), [data-drawer])
+    )
+    .page
+    [data-slot="document-page"]
+    > [data-slot="pane-bar"] {
+    top: 3.625rem;
+    margin-top: 3.625rem;
+  }
 }
 
 .conversationPane {
@@ -17,12 +61,12 @@
   min-height: 0;
   overflow: hidden;
   background: var(--wb-background);
-  /* What layers inside the conversation, such as its map, stays under the plan drawer. */
+  /* What layers inside the conversation stays inside it. */
   isolation: isolate;
 }
 
-/* The room's top bar: the next-step line on the left, the plan and project controls on the right,
-   on the page's own background above one full-width hairline. With neither, there is no bar. */
+/* The room's top bar: the project control at its end, on the page's own background above one
+   full-width hairline. Without it, there is no bar. */
 .top {
   display: flex;
   flex-shrink: 0;
@@ -38,11 +82,6 @@
   display: none;
 }
 
-.top > :not(.controls) {
-  flex: 1;
-  min-width: 0;
-}
-
 .controls {
   display: flex;
   flex: none;
@@ -51,65 +90,34 @@
   margin-inline-start: auto;
 }
 
-/* Quiet like the project view's bar: muted until hovered or pressed. */
+/* Quiet like the project view's bar: muted until hovered. */
 .control {
   color: var(--wb-muted-foreground);
 }
 
-.control:hover,
-.control[aria-pressed="true"] {
+.control:hover {
   color: var(--wb-foreground);
 }
 
-/* The plan's progress: a segment per step, done in green, the rest neutral, and a step that
-   failed or waits on the person in its own colour. */
-.meter {
-  display: inline-flex;
-  gap: 2px;
-  width: max-content;
-  max-width: 4rem;
-}
-
-.meter > span,
-.alert {
-  background: var(--wb-border);
-}
-
-.meter > span {
-  flex: 0 1 0.625rem;
-  min-width: 2px;
-  height: 4px;
-  border-radius: 999px;
-}
-
-.meter > span[data-mark="running"] {
-  background: var(--wb-muted-foreground);
-}
-
-.meter > span[data-mark="done"],
-.alert[data-mark="done"] {
-  background: var(--wb-okay);
-}
-
-.meter > [data-mark="failed"],
-.alert[data-mark="failed"] {
-  background: var(--wb-destructive);
-}
-
-.meter > [data-mark="needs_you"],
-.alert[data-mark="needs_you"] {
-  background: var(--wb-primary);
-}
-
-.count {
-  font-size: 0.75rem;
-  font-variant-numeric: tabular-nums;
-}
-
+/* A plugin tab's mark beside where it stands: neutral, or the plan's colour for done, failed or
+   waiting on the person. */
 .alert {
   width: 6px;
   height: 6px;
   border-radius: 999px;
+  background: var(--wb-border);
+}
+
+.alert[data-mark="done"] {
+  background: var(--wb-okay);
+}
+
+.alert[data-mark="failed"] {
+  background: var(--wb-destructive);
+}
+
+.alert[data-mark="needs_you"] {
+  background: var(--wb-primary);
 }
 
 /* On a phone the project control keeps only its icon; its name stays its accessible name. */
@@ -131,24 +139,33 @@
   flex: none;
 }
 
-/* The composer keeps a reading measure in a wide pane. */
-.conversation > [data-slot="composer"] {
+/* The status pill floats 8px above the box where the way back to the latest message stands; while
+   the pill shows, that button stands clear above it. */
+.conversation:has(> [data-slot="composer"] [data-slot="pill"])
+  [data-slot="conversation-scroll-button"] {
+  bottom: calc(var(--space-2) + 32px + var(--space-3));
+}
+
+/* The prompt box, and what stands in its place, keep the box's measure in the middle of the canvas
+   however wide it is. */
+:is(.conversation, .page) > :is([data-slot="composer"], .archived, .notice) {
   box-sizing: border-box;
   width: 100%;
-  max-width: 46rem;
+  max-width: calc(var(--box-measure) + 2 * var(--space-4));
   margin-inline: auto;
 }
 
 /* The archived line sits where the composer would, on the same measure and padding. */
 .archived {
-  box-sizing: border-box;
-  width: 100%;
-  max-width: 46rem;
-  margin-inline: auto;
   padding: var(--space-2) var(--space-4) var(--space-4);
 }
 
-/* The chat taken full screen stands in for the project view or page it was pulled up over; that
+/* Why there is no box yet, or none at all: the box's measure, clear of the window's foot. */
+.notice {
+  padding: var(--space-2) var(--space-4) var(--space-4);
+}
+
+/* The chat taken full screen stands in for the project view or sheet it was pulled up over; that
    stays mounted, only hidden. */
 .page:has(
     > [data-slot="composer"] > [data-slot="chat-sheet"][data-state="full"]
@@ -224,32 +241,35 @@
   padding-bottom: var(--space-2);
 }
 
-/* A screen placed on the page, or the project view, covers the room, the prompt box at its foot. */
+/* The project view, or the plugin sheet on a narrow room, fills the canvas edge to edge, the prompt
+   box at its foot. */
 .page {
+  /* A written page lies on the canvas's grey, a step darker than the sidebar's, as in the design.
+     Dark keeps its black backdrop. */
+  --wb-frame: var(--muted);
+
   position: absolute;
   inset: 0;
   z-index: 10;
   display: flex;
   flex-direction: column;
   background: var(--wb-background);
-  /* It fades and grows in as it opens and back out as it closes; display waits for the fade. */
+  /* It is the canvas changing what it shows, not a layer over it: a short fade, no growth. Display
+     waits for the fade. */
   transition:
-    opacity 180ms ease-out,
-    scale 180ms ease-out,
-    display 180ms ease-out allow-discrete;
+    opacity 120ms ease-out,
+    display 120ms ease-out allow-discrete;
 }
 
 .page[hidden] {
   display: none;
   opacity: 0;
-  scale: 0.985;
   pointer-events: none;
 }
 
 @starting-style {
   .page {
     opacity: 0;
-    scale: 0.985;
   }
 }
 
@@ -259,18 +279,46 @@
   }
 }
 
-.pageScreen {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-height: 0;
+/* The prompt box floats over the project view's foot, whatever it shows: a written page runs on
+   under it over a fade into the page's backdrop, so its last lines read clearly as they scroll
+   beneath it, and a design or the live app keeps its full height under it. Each keeps what it must
+   reach clear of the box by the box's height, which the room sets on the page. Full screen, the
+   chat is the page instead. */
+.footFade {
+  display: none;
 }
 
-.page > [data-slot="composer"] {
-  box-sizing: border-box;
-  width: 100%;
-  max-width: 46rem;
-  margin-inline: auto;
+.page:has(
+    > [data-slot="artifact-pane"]
+      [data-slot="panel-pane"][data-state="active"]
+      [data-slot="document-page"]
+  ):not(
+    :has(> [data-slot="composer"] > [data-slot="chat-sheet"][data-state="full"])
+  )
+  > .footFade {
+  display: contents;
+}
+
+/* Over the project view only: the plugin sheet keeps its box below what it asks. Above whatever
+   the view lays over its own page, its bar's popovers and panels among them. */
+.page[data-slot="room-project"]:not(
+    :has(> [data-slot="composer"] > [data-slot="chat-sheet"][data-state="full"])
+  )
+  > [data-slot="composer"] {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  z-index: 4;
+}
+
+/* Pulled up, the chat covers the view's foot and, on a narrow canvas, its edge where the view's
+   floating bar stands, so the bar steps aside until the chat is put away. */
+.page:has(
+    > [data-slot="composer"]
+      > [data-slot="chat-sheet"]:is([data-state="open"], [data-state="moving"])
+  )
+  :is([data-slot="pane-bar"][data-floating], [data-slot="pane-bar-handle"]) {
+  visibility: hidden;
 }
 
 /* The pane is a side panel by make, which a narrow container lays over everything; over the room
@@ -285,4 +333,8 @@
   height: auto;
   min-height: 0;
   border-inline-start: 0;
+}
+
+:global(.dark) .page {
+  --wb-frame: unset;
 }

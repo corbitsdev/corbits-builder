@@ -4,11 +4,12 @@ import { QuestionOutcomes } from "./question-outcome.tsx";
  * the agents file, without making chat inert during document review.
  */
 import { EnableAiDialog } from "../model-setup.tsx";
+import { ProjectInfoDialog } from "../project-menu.tsx";
 import { ApprovalRoundsPanel } from "./approval-rounds.tsx";
 import { ConceptMockup } from "./design-concepts.tsx";
 import { LiveApp } from "./live-app.tsx";
 import { TweakPanel } from "./mockup-tweaks.tsx";
-import { NextStepLine } from "./next-step.tsx";
+import { SpaceScreen } from "./plugin-screens.tsx";
 import {
   useRoom,
   useRoomGate,
@@ -17,7 +18,8 @@ import {
 } from "./room.model.ts";
 import { RoomFault, RoomSkeleton } from "./room-skeleton.tsx";
 import { RoomView } from "./room.view.tsx";
-import { ScreenQuestion } from "./screen-question.tsx";
+import { RoomThread } from "./transcript.tsx";
+import { WrittenDocument } from "./written-document.tsx";
 
 /** The room shows its loading or fault state until its first read is in hand. */
 export function StageWorkspace(props: StageWorkspaceProps) {
@@ -31,26 +33,26 @@ function ReadyRoom(props: ReadyRoomProps) {
   const { projectId } = props;
   const {
     view,
-    nextStep,
+    projectSettings,
     enableAi,
     liveApp,
-    pluginScreens,
-    pageScreen,
+    spaceScreen,
     questionOutcomes,
   } = useRoom(props);
   return (
     <QuestionOutcomes value={questionOutcomes}>
       <RoomView
         {...view}
-        nextStep={nextStep === null ? null : <NextStepLine {...nextStep} />}
-        page={
-          pageScreen === null ? (
-            pluginScreens.page
-          ) : (
-            <ScreenQuestion {...pageScreen} />
-          )
+        // Over the project view the chat pulls up around the prompt box, so the person reads and
+        // replies without leaving the page; with nothing said yet there is nothing to pull up.
+        chat={
+          view.conversation.empty === null ? (
+            <RoomThread {...view.conversation.thread} />
+          ) : undefined
         }
-        chatScreens={pluginScreens.chat}
+        pluginSpace={
+          spaceScreen === null ? null : <SpaceScreen {...spaceScreen} />
+        }
         paneParts={{
           liveApp: liveApp === null ? null : <LiveApp {...liveApp} />,
           conceptMockup: (concept, frame) => (
@@ -62,9 +64,13 @@ function ReadyRoom(props: ReadyRoomProps) {
           tweakPanel: (panel) => (
             <TweakPanel {...panel} design={{ projectId }} />
           ),
+          writtenDocument: (page) => <WrittenDocument {...page} />,
         }}
       />
       <EnableAiDialog {...enableAi} />
+      {projectSettings === null ? null : (
+        <ProjectInfoDialog {...projectSettings} />
+      )}
     </QuestionOutcomes>
   );
 }

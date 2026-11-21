@@ -57,6 +57,8 @@ export type AppViewProps = {
    * the canvas. Null when the address names none of them.
    */
   current: "newProject" | "library" | "project" | "settings" | null;
+  /** A project's room is on the page, and its own sidebar stands where the rail would. */
+  roomOpen: boolean;
   rail: {
     /** An icon rail that keeps every control and its name. */
     collapsed: boolean;
@@ -86,6 +88,7 @@ export type AppViewProps = {
 
 export function AppView({
   current,
+  roomOpen,
   rail,
   workspaceMenu,
   projectMenu,
@@ -97,14 +100,16 @@ export function AppView({
   const [whatsNewOpen, setWhatsNewOpen] = useState(false);
   return (
     <>
-      <div className={styles.app}>
-        <Rail
-          current={current}
-          rail={rail}
-          workspaceMenu={workspaceMenu}
-          projectMenu={projectMenu}
-          onOpenWhatsNew={() => setWhatsNewOpen(true)}
-        />
+      <div className={styles.app} data-room={roomOpen ? "" : undefined}>
+        {roomOpen ? null : (
+          <Rail
+            current={current}
+            rail={rail}
+            workspaceMenu={workspaceMenu}
+            projectMenu={projectMenu}
+            onOpenWhatsNew={() => setWhatsNewOpen(true)}
+          />
+        )}
 
         <main className={styles.canvas}>
           <div

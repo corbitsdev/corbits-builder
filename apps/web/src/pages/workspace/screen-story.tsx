@@ -6,7 +6,7 @@ import {
 import { wording } from "../../config.ts";
 import type { ScreenViewProps } from "@corbits-builder/plugin-ui/screen";
 /**
- * A plugin's screen as the conversation hosts it, in each state a person can meet it, for the
+ * A plugin's screen as the room hosts it, in each state a person can meet it, for the
  * screens' stories: the real host around the real view, with the project's values, the host's
  * supplies and the hub's answer stood in by plain values.
  */
@@ -24,7 +24,6 @@ import { MockupFrame } from "./mockup-frame.tsx";
 import { ClosedQuestions } from "./questions-card.tsx";
 import { sampleDesign } from "./sample-design.ts";
 import {
-  PageScreenCard,
   ScreenQuestion,
   screenHost,
   type HostSupplies,
@@ -136,7 +135,6 @@ export function ScreenStory({
   project,
   draft,
   output,
-  placed = "conversation",
   plans = () => [],
 }: {
   screen: ReturnType<typeof storyScreen>;
@@ -147,12 +145,10 @@ export function ScreenStory({
   draft?: Record<string, unknown>;
   /** What they chose, in the "answered" state. */
   output?: Record<string, unknown>;
-  /** A screen placed on the page shows a card in the conversation that opens it. */
-  placed?: "conversation" | "page";
   /** The installed ready-made plans a screen that prepares from the project reads. */
   plans?: (group: string) => readonly ReadyPlanOffer[];
 }) {
-  const signalName = `story-${state}-${placed}`;
+  const signalName = `story-${state}`;
   const [ready, setReady] = useState(false);
   useLayoutEffect(() => {
     const key = `unsent:screen:${signalName}`;
@@ -162,7 +158,6 @@ export function ScreenStory({
     else sessionStorage.setItem(key, JSON.stringify(draft));
     setReady(true);
   }, [signalName, draft, state]);
-  const [onPage, setOnPage] = useState(placed === "page");
   // An answer the hub took settles the question, as the room does.
   const [outcomes, setOutcomes] = useState<ReadonlyMap<string, AnswerOutcome>>(
     new Map(),
@@ -207,25 +202,11 @@ export function ScreenStory({
         ...storySupplies,
         asked: () => screen.asked(input, storyRead(project, plans)),
       }}
-      page={onPage ? { close: () => setOnPage(false) } : undefined}
     />
   );
-  const pagePending =
-    placed === "page" && given === undefined && answers[state] === undefined;
   return (
     <QuestionOutcomes value={outcomes}>
-      <QuestionEntry signalName={signalName}>
-        {pagePending ? (
-          <PageScreenCard onOpen={() => setOnPage(true)} />
-        ) : (
-          question
-        )}
-      </QuestionEntry>
-      {pagePending ? (
-        <div hidden={!onPage} data-slot="story-page">
-          {question}
-        </div>
-      ) : null}
+      <QuestionEntry signalName={signalName}>{question}</QuestionEntry>
     </QuestionOutcomes>
   );
 }

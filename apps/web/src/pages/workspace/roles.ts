@@ -31,7 +31,7 @@ let actions: ReadonlyMap<
   { role: string; kind: string | undefined; says: Says | undefined }
 > = new Map();
 
-/** What a person reads of a screen in the conversation's map, from its definition. */
+/** What a person reads of a screen in the conversation, from its definition. */
 export type ScreenWords = {
   label: (input: unknown) => string | undefined;
   chose: (output: unknown) => string | undefined;

@@ -19,7 +19,8 @@ import liveApp from "./live-app.stories.tsx";
 import { LiveAppView } from "./live-app.view.tsx";
 import { TweakPanelView } from "./mockup-tweaks.view.tsx";
 import { sampleDesign, sampleDraft } from "./sample-design.ts";
-import { WithPictures as manual } from "./user-manual.stories.tsx";
+import writtenDocument, { SAMPLE_MANUAL } from "./written-document.stories.tsx";
+import { WrittenDocumentView } from "./written-document.view.tsx";
 
 const brief: PaneDocument = {
   id: "problem_brief",
@@ -123,7 +124,6 @@ const meta = {
     onSelect: fn(),
     onSeen: fn(),
     open: true,
-    onClose: fn(),
     onRetry: fn(),
     onAddToPrompt: fn(),
     conceptMockup: (concept, frame) => (
@@ -145,6 +145,8 @@ const meta = {
     tweakPanel: (panel) => (
       <TweakPanelView {...panel} onSave={onSave} saving={false} />
     ),
+    // The page the brief reads as, drawn from its own story's args.
+    writtenDocument: () => <WrittenDocumentView {...writtenDocument.args} />,
   },
   render: (args) => <Pane {...args} />,
 } satisfies Meta<typeof ArtifactPane>;
@@ -185,12 +187,12 @@ export const HtmlDesign: Story = {
   },
 };
 
-/** The live designer's unfiled mockup has a tab of its own until a design is filed. */
+/** The live designer's unfiled mockup, shown on its own until a design is filed. */
 export const DesignDraft: Story = {
   args: { documents: [], selectedId: null, draft: sampleDraft },
 };
 
-/** Each design concept the person compares is a tab of its own. */
+/** Each design concept the person compares is shown on its own. */
 export const Concepts: Story = {
   args: {
     concepts: ["Paper", "Quiet"].map((label) => ({
@@ -203,13 +205,13 @@ export const Concepts: Story = {
 /** Once a build plan is filed, the app it builds and its manual sit beside the plan. */
 export const AppAndManual: Story = {
   args: {
-    ...manual.args,
+    manual: SAMPLE_MANUAL,
     documents: [brief, plan],
     liveApp: <LiveAppView {...liveApp.args} />,
   },
 };
 
-/** An approval package's tab is its rounds: who was asked to sign off and what each decided. */
+/** An approval package shows its rounds: who was asked to sign off and what each decided. */
 export const ApprovalPackage: Story = {
   args: {
     documents: [brief, approvalPackage],

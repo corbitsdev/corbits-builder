@@ -17,6 +17,7 @@ import {
 } from "./deliverable-block.tsx";
 import { TweakPanel } from "./mockup-tweaks.tsx";
 import { LIVE_TAB } from "./tab-follow.ts";
+import { WrittenDocument } from "./written-document.tsx";
 
 const filed = (id: string, title: string, version: number): PaneDocument => ({
   id,
@@ -51,6 +52,7 @@ const parts: ArtifactPaneSlots = {
   tweakPanel: (panel) => (
     <TweakPanel {...panel} design={{ projectId: "project" }} />
   ),
+  writtenDocument: (page) => <WrittenDocument {...page} />,
 };
 function render(selected: PaneDocument | null, state?: DeliverableState) {
   return renderToStaticMarkup(
@@ -63,7 +65,6 @@ function render(selected: PaneDocument | null, state?: DeliverableState) {
       onSelect={() => {}}
       onSeen={() => {}}
       open
-      onClose={() => {}}
       {...parts}
     />,
   );
@@ -85,8 +86,8 @@ describe("persistent artifact pane", () => {
     const html = render(ready, document);
     expect(html).toContain("Real output");
     expect(html).toContain("Updated content");
-    expect(html).toContain('role="tab"');
-    expect(html).toContain('aria-selected="true"');
+    // The project sidebar lists the files, so the pane draws no tabs of its own.
+    expect(html).not.toContain('role="tab"');
     expect(html).not.toContain("<select");
     // The pane opens a comparison itself, so the open one is drawn through the document's body.
     const comparing = renderToStaticMarkup(
@@ -105,7 +106,7 @@ describe("persistent artifact pane", () => {
     expect(comparing).toContain("v1 → v2");
     expect(comparing).not.toContain("<select");
   });
-  test("shows the document title once and hides a single retained version", () => {
+  test("heads the page with the document's title once and hides a single retained version", () => {
     if (document.status !== "ready") throw new Error("invalid fixture");
     const title = "Weather App First-Version Problem Brief";
     const html = render(
@@ -127,8 +128,7 @@ describe("persistent artifact pane", () => {
         },
       },
     );
-    expect(html).toContain('role="tab"');
-    expect(html.split(`>${title}<`).length - 1).toBe(1);
+    expect(html.split(`>${title}</h1>`).length - 1).toBe(1);
     expect(html).toContain("The forecast for the weekend.");
     expect(html).not.toContain(">Artifacts<");
     expect(html).not.toContain(">Output<");
@@ -190,7 +190,7 @@ describe("persistent artifact pane", () => {
       }),
     ).toContain("Retained content unavailable");
   });
-  test("renders approval_package deliverable with Approval tab", () => {
+  test("renders an approval_package deliverable", () => {
     if (document.status !== "ready") throw new Error("invalid fixture");
     const pkgDeliverable = filed(
       "approval_package",
@@ -246,7 +246,6 @@ describe("persistent artifact pane", () => {
         content: bundleContent,
       },
     });
-    expect(html).toContain(">Approval<");
     expect(html).not.toContain(">Approval package<");
     expect(html).not.toContain(">Executive Sign-off Package</h1>");
     expect(html).toContain("Add new reviewer");

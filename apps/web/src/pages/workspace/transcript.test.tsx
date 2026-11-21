@@ -7,7 +7,6 @@ import {
   clippedTurnText,
   maxTurnText,
 } from "@corbits-builder/schemas/conversation";
-import { HUB_NOTE_LEAD } from "@corbits-builder/schemas/conversation";
 import { IMPORTED_PROJECT_LEAD, wording } from "../../config.ts";
 import { Markdown } from "@corbits-builder/plugin-ui/markdown";
 import { DocumentDecision } from "./document-decision.tsx";
@@ -45,15 +44,6 @@ function findElement(
 }
 
 const briefId = "problem_brief";
-
-/** The accessible names the conversation map's ticks carry, in order. */
-function mapLabels(html: string): string[] {
-  return [
-    ...html.matchAll(
-      /data-slot="conversation-map-tick"[^>]*aria-label="([^"]*)"/g,
-    ),
-  ].map((match) => match[1] ?? "");
-}
 
 // A room with nothing filed and no run at work, so each hand-off stands where its own call puts it.
 const standing = (unit: WorkUnit) =>
@@ -160,25 +150,20 @@ describe("conversation transcript", () => {
     expect(prevented).toEqual(["Enter", " "]);
   });
 
-  test("Not yet denies the approval and then takes the person to the composer", () => {
-    const calls: string[] = [];
-    const thread = RoomThread({
+  test("an approval still open waits in the prompt box; the thread keeps it once decided", () => {
+    const ask = {
+      approvalId: "appr-1",
+      toolName: "run_shell",
+      subject: "bun run build",
+    };
+    const open = RoomThread({ standing, turns: [], approvals: [ask] });
+    expect(findElement(open, DocumentDecision)).toBeNull();
+    const decided = RoomThread({
       standing,
       turns: [],
-      approvals: [
-        {
-          approvalId: "appr-1",
-          toolName: "run_shell",
-          subject: "bun run build",
-        },
-      ],
-      onDecide: (decision) =>
-        calls.push(`${decision.approvalId}:${decision.choice}`),
-      onRequestChanges: () => calls.push("composer"),
+      approvals: [{ ...ask, outcome: { status: "approved", scope: "once" } }],
     });
-    const card = findElement(thread, DocumentDecision);
-    (card?.props["onNo"] as (() => void) | undefined)?.();
-    expect(calls).toEqual(["appr-1:no", "composer"]);
+    expect(findElement(decided, DocumentDecision)).not.toBeNull();
   });
 
   test("a coordinator held on an approval or a question is waiting, not thinking", () => {
@@ -453,7 +438,7 @@ describe("conversation transcript", () => {
         ]}
       />,
     );
-    // Not a card of its own: the row is its own item, for the map, inside the coordinator's list.
+    // Not a card of its own: the row is its own item inside the coordinator's list.
     expect(html).not.toContain('data-item-id="units:');
     expect(html.indexOf('data-item-id="work:call-1"')).toBeGreaterThan(
       html.indexOf('data-slot="activity-content"'),
@@ -536,9 +521,9 @@ describe("conversation transcript", () => {
             approvalId: "appr-1",
             toolName: "run_shell",
             at: 3,
+            outcome: { status: "approved", scope: "once" },
           },
         ]}
-        onDecide={() => {}}
       />,
     );
     expect(html.split(`>${wording.speaker.coordinator}<`)).toHaveLength(3);
@@ -599,29 +584,7 @@ describe("conversation transcript", () => {
     }
   });
 
-  test("the map marks the person's messages and not the hub's notices", () => {
-    const html = renderToStaticMarkup(
-      <RoomThread
-        standing={standing}
-        turns={[
-          { role: "person", text: "What is the weather?", at: 1 },
-          {
-            role: "person",
-            text: `${HUB_NOTE_LEAD}The writer stopped before finishing.`,
-            at: 2,
-          },
-          { role: "assistant", text: "I'll pick it up.", at: 3 },
-          { role: "person", text: "Thanks.", at: 4 },
-        ]}
-      />,
-    );
-    expect(mapLabels(html)).toEqual([
-      "Go to: What is the weather?",
-      "Go to: Thanks.",
-    ]);
-  });
-
-  test("an imported project's opening is a divider, not a turn in the map", () => {
+  test("an imported project's opening is a divider, not the person's message", () => {
     const html = renderToStaticMarkup(
       <RoomThread
         standing={standing}
@@ -638,9 +601,6 @@ describe("conversation transcript", () => {
       />,
     );
     expect(html).toContain(wording.projectImported);
-    expect(mapLabels(html)).toEqual([
-      "Go to: What should we do first?",
-      "Go to: Go ahead and draft it.",
-    ]);
+    expect(html).not.toContain("Then tell me what happens next.");
   });
 });

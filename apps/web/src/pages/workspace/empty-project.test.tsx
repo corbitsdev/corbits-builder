@@ -9,6 +9,7 @@ import {
 } from "./artifact-pane.tsx";
 import { documentReadFailure, documentsForPane } from "./document-read.ts";
 import type { DeliverableState } from "./deliverable-block.tsx";
+import { WrittenDocument } from "./written-document.tsx";
 
 const sha = "ab".repeat(32);
 
@@ -22,11 +23,12 @@ function filed(id: string, title: string): PaneDocument {
   };
 }
 
-// A written document draws none of the parts that read the hub.
+// A written document draws none of the other parts that read the hub.
 const parts: ArtifactPaneSlots = {
   conceptMockup: () => null,
   approvalRounds: () => null,
   tweakPanel: () => null,
+  writtenDocument: (page) => <WrittenDocument {...page} />,
 };
 
 const brief = filed("problem_brief", "Weather App Problem Brief");
@@ -49,7 +51,7 @@ function ready(title: string, content: string): DeliverableState {
 }
 
 describe("empty project room", () => {
-  test("a rejected document is not a tab, and a real document still renders", () => {
+  test("a rejected document is not listed, and a real document still renders", () => {
     const rejected = documentReadFailure(
       new ProductApiError(
         new Response("", { status: 400, statusText: "Bad Request" }),
@@ -92,11 +94,9 @@ describe("empty project room", () => {
         onSelect={() => {}}
         onSeen={() => {}}
         open
-        onClose={() => {}}
         {...parts}
       />,
     );
-    expect(html).toContain('role="tab"');
     expect(html).toContain("Weather design");
     expect(html).toContain("The page.");
     expect(html).not.toContain("Weather App Problem Brief");
@@ -121,12 +121,10 @@ describe("empty project room", () => {
         onSelect={() => {}}
         onSeen={() => {}}
         open
-        onClose={() => {}}
         onRetry={() => {}}
         {...parts}
       />,
     );
-    expect(html).toContain("Weather design");
     expect(html).toContain("The project could not be reached. Try again.");
     expect(html).toContain(`>${wording.action.retry}<`);
     expect(html).not.toContain("Service Unavailable");

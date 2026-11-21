@@ -3,9 +3,10 @@ import { QuestionEntry } from "./question-outcome.tsx";
  * Committed person and assistant turns, drawn through the vendored
  * MessageParts path. The body is the human-readable turn: questions,
  * decisions, documents, and plain failures. Tool names, ids, hashes, and
- * status payloads stay on the turn data and out of the transcript. A pending
- * native approval is still a decision on the existing path. This view does
- * not invent a coordinator turn, and it does not decide an approval on its own.
+ * status payloads stay on the turn data and out of the transcript. What still
+ * waits on the person, an open question or an undecided approval, is the
+ * prompt box's; the thread keeps only how each settled. This view does not
+ * invent a coordinator turn.
  */
 import { IMPORTED_PROJECT_LEAD, wording } from "../../config.ts";
 import { Fragment, useState, type ReactNode } from "react";
@@ -18,7 +19,6 @@ import {
   ConversationContent,
   ConversationDivider,
   ConversationItem,
-  ConversationMap,
   ConversationNotice,
   ConversationScrollButton,
   Message,
@@ -36,7 +36,6 @@ import {
   ToolInput,
   ToolOutput,
   type ActivityStep,
-  type ConversationMapTurn,
   type ConversationPart,
   type PartText,
   type PartTool,
@@ -48,7 +47,6 @@ import { toast } from "sonner";
 import styles from "./transcript.module.css";
 import { proseSegments, type NamedDocument } from "./collaboration.ts";
 import { DocumentDecision, PackageDecision } from "./document-decision.tsx";
-import { TypedYesCountdown, type TypedYes } from "./typed-yes.tsx";
 import { turnLabel, visibleTurnParts } from "./visible-chat.ts";
 import {
   distinctUpdates,
@@ -71,16 +69,8 @@ import {
   type WorkUnitStanding,
 } from "./work-unit-step.view.tsx";
 import type { CallResult } from "./live-run.ts";
-import {
-  approvalEntry,
-  askedLabel,
-  distinctEntries,
-  questionEntry,
-  workEntry,
-} from "./conversation-map.ts";
 import { ClosedQuestions, QuestionsCard } from "./questions-card.tsx";
 import {
-  PageScreenCard,
   ScreenQuestion,
   type HostSupplies,
   type ProjectValuesStore,
@@ -90,9 +80,10 @@ import {
   HUB_NOTE_LEAD,
   QUESTION_TOOL_NAME,
   showsScreen,
+  type AskedQuestion,
   type ConversationQuestion,
-  type QuestionAnswer,
 } from "@corbits-builder/schemas/conversation";
+import { screenWords } from "./roles.ts";
 
 type TurnBody = {
   text: string;
@@ -181,7 +172,7 @@ function readableTool(
   };
 }
 
-/** The item a specialist's row is, so the conversation map jumps to that row itself. */
+/** The item a specialist's row is, its own among the coordinator's steps. */
 const workItemId = (unit: WorkUnit) => `work:${unit.key}`;
 
 /** A run or filed thing with no hand-off in this session's view, placed at its start or filing. */
@@ -525,8 +516,16 @@ function CopyAction({ text }: { text: string }) {
 }
 
 const COPIED_MS = 2_000;
-// A tick's name is the person's words; a long message is named by its opening.
-const MAP_LABEL_CHARS = 160;
+
+/** The name of what was asked: a screen by what it is for, else the first question's own header. */
+function askedLabel(asked: AskedQuestion): string {
+  if (!("plugin" in asked))
+    return asked.questions[0]?.header ?? wording.questions.title(1);
+  return (
+    screenWords(asked.plugin, asked.action ?? "")?.label(asked.input) ??
+    wording.questions.title(1)
+  );
+}
 
 const wordsOf = (parts: readonly ConversationPart[]) =>
   parts
@@ -567,7 +566,7 @@ function SpecialistEnded({ text }: { text: string }) {
 /**
  * Some person turns are the hub writing as the person: an import's opening and
  * a hub note. They read as a divider or a notice, never as a
- * message, so the map must not count them as turns the person took.
+ * message.
  */
 type PersonTurnKind = "divider" | "notice" | "message";
 
@@ -576,6 +575,10 @@ function personTurnKind(text: string): PersonTurnKind {
   if (text.startsWith(HUB_NOTE_LEAD)) return "notice";
   return "message";
 }
+
+// The thread only records questions and decisions; answering and deciding happen in the prompt box.
+const settled = () => Promise.resolve(false);
+const decided = () => {};
 
 /** What the thread shows and what the person can do in it. */
 export type RoomThreadContent = {
@@ -590,7 +593,7 @@ export type RoomThreadContent = {
   documents?: readonly NamedDocument[];
   /** Opens that document over the room. The id is not shown. */
   onOpenDocument?: (id: string) => void;
-  /** Pending document decisions. Not decided here. */
+  /** Decisions, each shown once it settled; one still pending waits in the prompt box. */
   approvals?: readonly DocumentApproval[];
   /** Native results of the coordinator's calls this session saw, by call id. */
   results?: ReadonlyMap<string, CallResult>;
@@ -600,32 +603,17 @@ export type RoomThreadContent = {
   live?: (dispatch: Dispatch) => boolean;
   /** A piece of work as its step shows it, by where its hand-off stands. */
   standing: (unit: WorkUnit) => WorkUnitStanding;
-  onDecide?: (decision: {
-    approvalId: string;
-    choice: "yes" | "always" | "no";
-  }) => void;
-  /** Takes the person to the composer to say what should change. */
-  onRequestChanges?: () => void;
-  approvalDisabled?: boolean;
-  approvalError?: string;
-  /** A typed yes counting down on the card it will approve. */
-  typedYes?: { held: TypedYes; onUndo: () => void };
-  /** The coordinator's questions from its run logs, earlier runs' and this one's. */
+  /**
+   * The coordinator's questions from its run logs, earlier runs' and this one's, each shown once
+   * answered or closed; the open one waits in the prompt box or the plugin space.
+   */
   questions?: readonly ConversationQuestion[];
-  /** Answers an open question by its signal. */
-  onAnswerQuestion?: (
-    signalName: string,
-    answer: QuestionAnswer,
-  ) => Promise<boolean>;
-  questionsDisabled?: boolean;
   /** The project's values a plugin's screen reads and saves. */
   projectValues?: ProjectValuesStore;
   /** Finds the screen a question names, among the plugins the project uses. */
   screenOf?: ScreenLookup;
   /** What the interface supplies a plugin's screen beyond its input. */
   screenSupplies?: HostSupplies;
-  /** Opens the screen the coordinator placed on the page again, while its question is open. */
-  onOpenPageScreen?: () => void;
 };
 
 export type RoomThreadProps = RoomThreadContent & {
@@ -640,23 +628,15 @@ export function RoomThread({
   thinking = false,
   documents = [],
   onOpenDocument,
-  approvals = [],
   results = new Map(),
   runs = [],
   live = () => false,
   standing,
-  onDecide,
-  onRequestChanges,
-  approvalDisabled = false,
-  approvalError,
-  typedYes,
+  approvals = [],
   questions = [],
-  onAnswerQuestion,
-  questionsDisabled = false,
   projectValues,
   screenOf,
   screenSupplies,
-  onOpenPageScreen,
   children,
 }: RoomThreadProps) {
   const renderTurnText = (part: PartText) => (
@@ -676,9 +656,9 @@ export function RoomThread({
   const { items, specialists } = threadItems(
     turns,
     updates,
-    approvals,
+    approvals.filter((approval) => approval.outcome !== undefined),
     runs,
-    questions,
+    questions.filter((question) => question.status !== "open"),
     results,
   );
   // A specialist's own steps, one level in, as its row opens onto them, each with what it returned.
@@ -696,7 +676,7 @@ export function RoomThread({
       <ActivityContent renderStep={renderStep} />
     </Activity>
   );
-  // A step that started specialists is each of them, each its own item for the map to jump to;
+  // A step that started specialists is each of them, each its own item;
   // any other is the call itself.
   const renderWork = (step: ActivityStep): ReactNode => {
     const units =
@@ -748,36 +728,21 @@ export function RoomThread({
     if (card.kind === "questions") {
       const { question } = card;
       const { signalName } = question;
-      const closed = questionsDisabled || onAnswerQuestion === undefined;
-      const answer = async (given: QuestionAnswer) => {
-        if (onAnswerQuestion === undefined) return false;
-        return onAnswerQuestion(signalName, given);
-      };
       if (showsScreen(question)) {
-        const installed = screenOf?.(question.asked);
-        const placedOnPage =
-          question.status === "open" &&
-          installed?.page === true &&
-          onOpenPageScreen !== undefined;
-        let shown: ReactNode;
-        if (question.status === "closed")
-          shown = <ClosedQuestions asks={[askedLabel(question.asked)]} />;
-        else if (placedOnPage)
-          shown = <PageScreenCard onOpen={onOpenPageScreen} />;
-        else
-          shown = (
+        const shown =
+          question.status === "answered" ? (
             <ScreenQuestion
               signalName={signalName}
-              host={installed?.host}
+              host={screenOf?.(question.asked)?.host}
               input={question.asked.input}
               projectValues={projectValues}
-              answer={
-                question.status === "answered" ? question.answer : undefined
-              }
-              disabled={closed || question.status !== "open"}
-              onAnswer={answer}
+              answer={question.answer}
+              disabled
+              onAnswer={settled}
               supplies={screenSupplies}
             />
+          ) : (
+            <ClosedQuestions asks={[askedLabel(question.asked)]} />
           );
         return (
           <ConversationItem key={signalName} itemId={`questions:${signalName}`}>
@@ -797,11 +762,7 @@ export function RoomThread({
               <MessageHeader name={wording.speaker.coordinator} />
             )}
             <QuestionEntry signalName={signalName}>
-              <QuestionsCard
-                question={question}
-                disabled={closed}
-                onAnswer={answer}
-              />
+              <QuestionsCard question={question} disabled onAnswer={settled} />
             </QuestionEntry>
           </Message>
         </ConversationItem>
@@ -812,28 +773,19 @@ export function RoomThread({
   const renderUpdates = (group: UpdateGroup, subject: string | undefined) => (
     <SpecialistUpdatesView key={group.key} row={updatesRow(group, subject)} />
   );
-  const decisionCard = (approval: DocumentApproval) => {
-    const countdown =
-      typedYes !== undefined &&
-      typedYes.held.approvalId === approval.approvalId &&
-      approval.outcome === undefined ? (
-        <TypedYesCountdown held={typedYes.held} onUndo={typedYes.onUndo} />
-      ) : undefined;
-    const choose = (choice: "yes" | "always" | "no") =>
-      onDecide?.({ approvalId: approval.approvalId, choice });
-    return approval.packages ? (
+  // A settled decision is a record: nothing on it decides anything.
+  const decisionCard = (approval: DocumentApproval) =>
+    approval.packages ? (
       <PackageDecision
         approvalId={approval.approvalId}
         packages={approval.packages}
         {...(approval.outcome === undefined
           ? {}
           : { outcome: approval.outcome })}
-        disabled={approvalDisabled}
-        {...(approvalError === undefined ? {} : { error: approvalError })}
-        onYes={() => choose("yes")}
-        onAlways={() => choose("always")}
-        onNo={() => choose("no")}
-        countdown={countdown}
+        disabled
+        onYes={decided}
+        onAlways={decided}
+        onNo={decided}
       />
     ) : (
       <DocumentDecision
@@ -841,18 +793,12 @@ export function RoomThread({
         {...(onOpenDocument === undefined
           ? {}
           : { onShowDocument: onOpenDocument })}
-        disabled={approvalDisabled}
-        {...(approvalError === undefined ? {} : { error: approvalError })}
-        onYes={() => choose("yes")}
-        onAlways={() => choose("always")}
-        onNo={() => {
-          choose("no");
-          onRequestChanges?.();
-        }}
-        countdown={countdown}
+        disabled
+        onYes={decided}
+        onAlways={decided}
+        onNo={decided}
       />
     );
-  };
   const renderApproval = (
     approval: DocumentApproval,
     position: string,
@@ -928,73 +874,6 @@ export function RoomThread({
     );
     wordsLast = headedLast && last.cards.length === 0;
   }
-  // The person's messages, and what the agents produced at the item that shows it.
-  const agentEntries = (
-    section: Extract<Section, { kind: "coordinator" }>,
-    position: number,
-  ): ConversationMapTurn[] => {
-    const handed = section.turns
-      .flatMap(({ turn }) => readableParts(visibleTurnParts(turn), results))
-      .flatMap((part) =>
-        part.kind === "tool-trace"
-          ? (specialists.get(part.toolCallId) ?? [])
-          : [],
-      );
-    return [
-      ...handed.flatMap((unit) =>
-        workEntry(workItemId(unit), unit, standing(unit)),
-      ),
-      ...foldUpdates(liveLast(section.cards, live)).flatMap((card, at) => {
-        if (card.kind === "units")
-          return card.units.flatMap((unit) =>
-            workEntry(workItemId(unit), unit, standing(unit)),
-          );
-        if (card.kind === "questions")
-          return questionEntry(
-            `questions:${card.question.signalName}`,
-            card.question,
-          );
-        if (card.kind === "approval")
-          return approvalEntry(
-            `document-decision:${card.approval.at === undefined ? `${String(position)}:${String(at)}` : String(card.approval.at)}`,
-            card.approval,
-          );
-        return [];
-      }),
-    ];
-  };
-  const mapEntries = sections.flatMap(
-    (section, position): ConversationMapTurn[] => {
-      if (section.kind === "coordinator")
-        return agentEntries(section, position);
-      if (
-        personTurnKind(section.turn.text) !== "message" ||
-        section.turn.text.trim() === ""
-      )
-        return [];
-      const next = sections[position + 1];
-      const reply =
-        next?.kind === "coordinator"
-          ? next.turns
-              .map(({ turn }) => wordsOf(visibleTurnParts(turn)))
-              .join(" ")
-              .trim()
-          : "";
-      const label =
-        section.turn.text.length > MAP_LABEL_CHARS
-          ? `${section.turn.text.slice(0, MAP_LABEL_CHARS).trimEnd()}…`
-          : section.turn.text;
-      return [
-        {
-          id: turnItemId(section.turn, section.index),
-          label,
-          name: wording.conversation.mapGoTo(label),
-          ...(reply === "" ? {} : { preview: reply }),
-        },
-      ];
-    },
-  );
-  const mapTurns = distinctEntries(mapEntries);
   return (
     // The view follows the reply to its end once the person sends, and stays put when they scroll
     // away, so a long answer is read without chasing it.
@@ -1002,7 +881,6 @@ export function RoomThread({
       scrollPolicy="stick"
       sentId={sentId}
       className={styles.thread}
-      data-mapped={mapTurns.length > 1 ? "" : undefined}
     >
       <ConversationContent
         aria-label={wording.conversation.label}
@@ -1085,7 +963,6 @@ export function RoomThread({
         ) : null}
         {children}
       </ConversationContent>
-      <ConversationMap aria-label={wording.conversation.map} turns={mapTurns} />
       <ConversationScrollButton />
     </Conversation>
   );

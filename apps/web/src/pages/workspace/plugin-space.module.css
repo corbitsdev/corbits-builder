@@ -1,0 +1,65 @@
+.space {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--wb-background);
+}
+
+/* Beside the main area: a column of its own, set off by one hairline, as wide as the room gives it. */
+.space[data-as="column"] {
+  flex: 0 0 var(--plugin-column, min(28rem, 42%));
+  border-inline-start: 1px solid var(--wb-border);
+}
+
+/* Over the main area: it takes what the prompt box leaves. */
+.space[data-as="sheet"] {
+  flex: 1 1 auto;
+}
+
+.head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--space-2);
+  min-height: 2.75rem;
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--wb-border);
+}
+
+.label {
+  grid-column: 1;
+  margin: 0;
+  color: var(--wb-muted-foreground);
+  font-size: var(--text-xs);
+  line-height: 16px;
+}
+
+.title {
+  grid-column: 1;
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  line-height: 20px;
+  overflow-wrap: anywhere;
+}
+
+/* Focus lands here from Open; the heading shows it as any focused control does. */
+.title:focus-visible {
+  outline: 2px solid var(--wb-ring);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.close {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  color: var(--wb-muted-foreground);
+}
+
+.body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--space-4);
+}

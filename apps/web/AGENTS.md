@@ -65,9 +65,9 @@ A section, panel or dialog that reads the hub for itself is split the same way.
 - **Regions:** a view never renders a part that reads the hub. Such a part
   that is always on the page is split too, and the page's model returns its
   props for the view to pass to its view. One that comes and goes inside the
-  layout, such as a tab's content, is a slot: a `ReactNode` prop named for its
-  place (`profiles`, `liveApp`), or a function when the view must hand the
-  part something (`projectMenu(projectId, trigger)`). The page fills a slot
+  layout, such as an open file's content, is a slot: a `ReactNode` prop named
+  for its place (`profiles`, `liveApp`), or a function when the view must hand
+  the part something (`projectMenu(projectId, trigger)`). The page fills a slot
   with the part and a story fills it with the part's view. A dialog the page
   opens over itself has no place in the layout, so the page renders it beside
   the view.
@@ -83,14 +83,15 @@ A section, panel or dialog that reads the hub for itself is split the same way.
 A new kind (a sheet, a deck, a diagram) is integrated everywhere a document
 is, not shown as a standalone widget:
 
-- **Tab:** it opens as a tab in the document pane. The tab names it, so the
-  view adds no second title and no outer margin; content sits flush.
+- **Sidebar row:** it has a row under Files in the project sidebar, which
+  opens it in the project view. The row names it, so the view adds no second
+  title and no outer margin; content sits flush.
 - **Floating bar:** every action on it (download, share, search, filters,
   copy, quote, versions, compare) goes in the document pane's one floating
   bar, supplied by the view. Views draw no toolbars, inline links or buttons
   of their own.
-- **Tab menu:** per-document commands that aren't everyday actions, such as
-  print, go in the tab's context menu next to the existing items.
+- **Row menu:** per-document commands that aren't everyday actions, such as
+  print, go in the row's menu next to the existing items.
 - **Quote:** whatever the person points at, whether a passage, a cell range or
   a slide element, can be quoted into their message through the existing quote
   offer, naming the document, the version and the location.

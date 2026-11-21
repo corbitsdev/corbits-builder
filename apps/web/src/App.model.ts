@@ -548,18 +548,26 @@ export function useApp(): AppScreen {
           openProjectSummary?.title ?? wording.shell.untitledProject,
         ...(openProjectSummary === null
           ? {}
-          : { listedArchived: openProjectSummary.archivedAt !== null }),
+          : {
+              listedArchived: openProjectSummary.archivedAt !== null,
+              menuProject: openProjectSummary,
+            }),
         onChanged: refresh,
+        onProjectError: reportProjectError,
         onOpenSettings: openSettings,
+        onAllProjects: () => navigate("library"),
+        onNewProject: () => navigate("projects"),
         ...(openingMessage !== undefined ? { openingMessage } : {}),
       },
     };
   };
 
+  const shown = page();
   return {
     screen: "shell",
     view: {
       current: PLACES[view],
+      roomOpen: shown?.name === "project",
       rail: {
         collapsed: sidebar.collapsed,
         onToggleCollapsed: sidebar.toggle,
@@ -600,6 +608,6 @@ export function useApp(): AppScreen {
     },
     menuOf,
     onOpenWorkspace: switchWorkspace,
-    page: page(),
+    page: shown,
   };
 }

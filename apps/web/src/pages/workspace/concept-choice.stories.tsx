@@ -23,8 +23,7 @@ const screen = storyScreen(
   },
 );
 
-// Placed on the page: the room covers the conversation with it, and the conversation keeps a card
-// that opens it again.
+// In the plugin space beside the room's main area.
 const meta = {
   title: "Screens/Plugins/ConceptChoice",
   component: ScreenStory,
@@ -32,7 +31,6 @@ const meta = {
   args: {
     screen,
     state: "open",
-    placed: "page",
     input: {},
     project: {},
     draft: {
@@ -83,26 +81,26 @@ export const Refused: Story = {
   },
 };
 export const Answered: Story = {
-  args: { state: "answered", placed: "conversation" },
+  args: { state: "answered" },
 };
 export const Replied: Story = {
-  args: { state: "replied", placed: "conversation" },
+  args: { state: "replied" },
 };
 export const Closed: Story = {
-  args: { state: "closed", placed: "conversation" },
+  args: { state: "closed" },
 };
 /** This interface has no view for the screen. */
 export const NotInstalled: Story = {
-  args: { state: "missing", placed: "conversation" },
+  args: { state: "missing" },
 };
 
-// The picker over the page with the prompt box beneath it, sharing the box as the room does.
+// The picker in the plugin space with the prompt box beside it, sharing the box as the room does.
 function OverTheBox(props: ComponentProps<typeof ScreenStory>) {
   const ports = useBoxPorts();
   return (
     <>
       <div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
-        <InBox ports={ports} as="page">
+        <InBox ports={ports} as="space">
           <ScreenStory {...props} />
         </InBox>
       </div>

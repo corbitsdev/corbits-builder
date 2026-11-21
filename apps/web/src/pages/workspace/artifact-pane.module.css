@@ -1,101 +1,3 @@
-/* An underline strip on the pane's own surface: one hairline under the row,
-   and the open document marked by ink beneath its title, not a raised box. */
-.pane [data-slot="panel-header"] {
-  display: flex;
-  align-items: flex-end;
-  min-height: 0;
-  padding: 0 var(--space-4);
-  border-bottom: 1px solid color-mix(in srgb, var(--wb-border) 70%, transparent);
-  background: transparent;
-}
-
-.pane [data-slot="panel-tabs"] {
-  flex: 1;
-  min-width: 0;
-  gap: var(--space-1);
-  border: 0;
-  --tab-fade: 2rem;
-}
-
-/* A long row scrolls rather than squeezing its tabs, and fades at an end that hides more. */
-.pane [data-slot="panel-tabs"][data-more-start] {
-  mask-image: linear-gradient(to right, transparent, #000 var(--tab-fade));
-}
-
-.pane [data-slot="panel-tabs"][data-more-end] {
-  mask-image: linear-gradient(to left, transparent, #000 var(--tab-fade));
-}
-
-.pane [data-slot="panel-tabs"][data-more-start][data-more-end] {
-  mask-image: linear-gradient(
-    to right,
-    transparent,
-    #000 var(--tab-fade),
-    #000 calc(100% - var(--tab-fade)),
-    transparent
-  );
-}
-
-/* Tabs keep their size: the open or focused one shows its full name, the rest a shortened one. */
-.pane [data-slot="panel-tab"] {
-  flex: none;
-  height: 40px;
-  min-width: 0;
-  max-width: 9rem;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  color: var(--wb-muted-foreground);
-  box-shadow: inset 0 -2px 0 transparent;
-  transition:
-    color 120ms ease,
-    box-shadow 150ms ease-out;
-}
-
-.pane [data-slot="panel-tab"]:hover {
-  background: transparent;
-  color: var(--wb-foreground);
-}
-
-.pane [data-slot="panel-tab"][data-state="active"],
-.pane [data-slot="panel-tab"]:focus-within {
-  max-width: 20rem;
-}
-
-.pane [data-slot="panel-tab"][data-state="active"] {
-  border: 0;
-  background: transparent;
-  color: var(--wb-foreground);
-  box-shadow: inset 0 -2px 0 var(--wb-foreground);
-}
-
-.pane [role="tab"] {
-  gap: var(--space-2);
-  padding: 0 var(--space-2);
-  border-radius: var(--radius-md) var(--radius-md) 0 0;
-  font-size: 0.8125rem;
-  font-weight: 600;
-  letter-spacing: -0.005em;
-}
-
-.pane [role="tab"]:focus-visible {
-  outline: 2px solid var(--wb-ring);
-  outline-offset: -2px;
-}
-
-/* Where a document tab's menu opens: the pointer, or the tab's corner from the keyboard. */
-.menuAnchor {
-  position: fixed;
-  width: 0;
-  height: 0;
-  pointer-events: none;
-}
-
-/* A tab chosen by pointer shows only its underline. */
-.pane [data-pointer-tabs] [role="tab"]:focus-visible {
-  outline: none;
-}
-
 .content {
   flex: 1;
   min-height: 0;
@@ -107,7 +9,7 @@
 
 /* Each pane is its own scroller, so the padding belongs inside it: padding on the panel sat below
    the scroller as a band the page never reached. The foot leaves room for the last lines to scroll
-   clear of the floating bar, whose height the bar sets on its pane. */
+   clear of the prompt box floating over it, whose height the room sets. */
 .content[data-slot="panel-content"] {
   position: relative;
   padding: 0;
@@ -115,7 +17,7 @@
 
 .content > [data-slot="panel-pane"]:not(.fill) {
   padding: var(--space-3) var(--space-6)
-    calc(var(--space-6) + var(--pane-bar-height, 0px));
+    calc(var(--space-6) + var(--box-height, 0px));
 }
 
 .empty {

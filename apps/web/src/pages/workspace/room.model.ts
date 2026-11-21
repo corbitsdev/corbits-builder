@@ -52,7 +52,8 @@ import {
 } from "@corbits-builder/schemas/artifact";
 import { toast } from "sonner";
 import { sendMessage } from "../../api/conversation.ts";
-import { pluginSlots, type PluginSlots } from "./plugin-screens.tsx";
+import { inTab, pluginTabs, type SpaceScreenProps } from "./plugin-screens.tsx";
+import { usePromptBox } from "./prompt-box.model.ts";
 import { subscribeWorkflowRun } from "../../api/run-stream.ts";
 import {
   runStepsQuery,
@@ -68,10 +69,6 @@ import {
   acceptedMaterials,
   approveDocument,
   attachMaterials,
-  declinePlanStep,
-  goAheadPlanStep,
-  restorePlanStep,
-  setPlanStepAskFirst,
   removeMaterial,
   readArtifact,
   readProjectValues,
@@ -90,7 +87,7 @@ import {
   showsScreen,
 } from "@corbits-builder/schemas/conversation";
 import { keys } from "../../queries/keys.ts";
-import { turnItemId } from "./transcript.tsx";
+import { turnItemId, type TranscriptTurn } from "./transcript.tsx";
 import { useQuestions } from "./questions.model.ts";
 import { useFiledVersions } from "./filed-versions.tsx";
 import { threadUpdates } from "./specialist-updates.ts";
@@ -105,6 +102,7 @@ import {
   DRAFT_TAB,
   followDeliverableId,
   LIVE_TAB,
+  MOCKUP_TAB,
   shownDeliverableId,
   type DocumentChoice,
 } from "./tab-follow.ts";
@@ -146,7 +144,7 @@ import {
 import { designDraftFiled, useDesignDraft } from "./design-preview.model.ts";
 import { useUserManual } from "./user-manual.model.ts";
 import { workUnitStanding } from "./work-unit-step.model.ts";
-import { conceptOfTab, conceptTab } from "./design-concept.ts";
+import { conceptTab } from "./design-concept.ts";
 import { designConcepts, DESIGN_OPTION } from "./design-concepts.model.ts";
 import { useLiveAppPresence } from "./live-app.model.ts";
 import { usePreference } from "../../queries/preferences.ts";
@@ -155,11 +153,7 @@ import {
   useSeenVersions,
   type SeenVersions,
 } from "./seen-versions.ts";
-import {
-  projectNextStepQuery,
-  useProjectNextStep,
-  type NextStepLineProps,
-} from "./next-step.model.ts";
+import { projectNextStepQuery, useProjectNextStep } from "./next-step.model.ts";
 import { composerPlaceholder } from "./composer-placeholder.ts";
 import {
   needsModelSetup,
@@ -167,13 +161,19 @@ import {
 } from "../model-setup.model.ts";
 import { useModelCatalog } from "../settings/model-catalog.ts";
 import type { RoomContent, RoomDock } from "./room.view.tsx";
+import { useProjectSidebar } from "./project-sidebar.model.ts";
+import type { SettingsTab } from "../settings/settings.view.tsx";
+import type {
+  MenuProject,
+  ProjectInfoDialogProps,
+} from "../project-menu.model.ts";
 import { parseBundle } from "./design-bundle.ts";
 import { MockupFrame } from "./mockup-frame.tsx";
 import type {
   ChoosableConcept,
   HostSupplies,
+  ListedHostProps,
   ReviewedDesign,
-  ScreenQuestionProps,
   ShownDocument,
 } from "./screen-question.tsx";
 import { inShort } from "@corbits-builder/schemas/in-short";
@@ -400,7 +400,12 @@ export type StageWorkspaceProps = {
   /** Whether the project list shows it archived, so an archive or restore made elsewhere is read again. */
   listedArchived?: boolean;
   onChanged: () => void;
-  onOpenSettings: () => void;
+  /** The project as its options menu reads it; absent until the project list has it. */
+  menuProject?: MenuProject;
+  onProjectError: (cause: unknown) => void;
+  onOpenSettings: (tab?: SettingsTab) => void;
+  onAllProjects: () => void;
+  onNewProject: () => void;
   /** The opening sentence the project was started with. It is not a stored
    *  artifact but the first conversation message, sent here once the
    *  coordinator binds. */
@@ -564,7 +569,11 @@ export function useRoom({
   projectId,
   projectTitle,
   onChanged,
+  menuProject,
+  onProjectError,
   onOpenSettings,
+  onAllProjects,
+  onNewProject,
   openingMessage,
   status,
   runTenantId,
@@ -573,14 +582,13 @@ export function useRoom({
   refetchProject,
 }: ReadyRoomProps): {
   view: RoomContent;
-  /** The line above the conversation; null on an archived project, which has none. */
-  nextStep: NextStepLineProps | null;
+  /** Project settings, opened from the sidebar, while open. */
+  projectSettings: ProjectInfoDialogProps | null;
   enableAi: EnableAiDialogProps;
   /** The app the build plan builds, once one is filed. */
   liveApp: { projectId: string; builder: InFlightRun | undefined } | null;
-  pluginScreens: PluginSlots;
-  /** The coordinator's open question when its screen is placed over the whole room. */
-  pageScreen: ScreenQuestionProps | null;
+  /** The screen the plugin space shows; null while none waits. */
+  spaceScreen: SpaceScreenProps | null;
   questionOutcomes: ReadonlyMap<string, AnswerOutcome>;
 } {
   const queryClient = useQueryClient();
@@ -610,8 +618,6 @@ export function useRoom({
     () => screensFor(selection.data ?? {}),
     [selection.data],
   );
-  // The page screen the person closed to read the conversation, by its question's signal.
-  const [closedPage, setClosedPage] = useState<string | null>(null);
   // What the open screen's decision sends back when the person presses Send, given what they typed.
   const stagedSend = useRef<
     ((message: string | undefined) => Promise<boolean>) | null
@@ -648,6 +654,9 @@ export function useRoom({
     null,
   );
   const [paneTab, setPaneTab] = useState<{ value: string } | null>(null);
+  const [printTab, setPrintTab] = useState<{ value: string } | null>(null);
+  // The tab the project view shows, which the sidebar marks while the view is open.
+  const [shownTab, setShownTab] = useState<string | null>(null);
   const documentPaneRef = useRef<HTMLElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   // Each committed reply's thinking and tool work, as this session watched it.
@@ -737,17 +746,10 @@ export function useRoom({
     onChanged,
     setSending,
   });
-  const pageQuestion =
-    openQuestion !== undefined &&
-    showsScreen(openQuestion) &&
-    screenOf(openQuestion.asked)?.page === true
-      ? {
-          signalName: openQuestion.signalName,
-          asked: openQuestion.asked,
-        }
+  const screenQuestion =
+    openQuestion !== undefined && showsScreen(openQuestion)
+      ? openQuestion
       : undefined;
-  const pageOpen =
-    pageQuestion !== undefined && closedPage !== pageQuestion.signalName;
 
   useEffect(() => {
     setApprovalBusy(false);
@@ -898,10 +900,6 @@ export function useRoom({
         ),
     );
   const pendingApprovals = waits === undefined ? undefined : pendingFrom(waits);
-  const shownApprovals =
-    pendingApprovals === undefined
-      ? settledApprovals
-      : [...settledApprovals, ...pendingApprovals];
   const openApprovalIds = new Set(
     pendingApprovals?.map((approval) => approval.approvalId),
   );
@@ -1154,10 +1152,9 @@ export function useRoom({
     setPaneTab({ value: tab });
     setProjectOpen(true);
   };
-  const openDocument = (id: string) => {
-    openProject(id);
-    if (conceptOfTab(id) === undefined) chooseDocument(id);
-  };
+  // The conversation opens the design as it is drawn, its mockup, as the pane always has.
+  const openDocument = (id: string) =>
+    openProject(id === "design" ? MOCKUP_TAB : id);
   // "settled" is a 409: someone already decided the ask, or its run moved on; the page reads
   // where it stands.
   const saveDecision = async (decision: {
@@ -1624,14 +1621,14 @@ export function useRoom({
     mockupFrame: MockupFrame,
     // The last round's answer on the same screen, so the person sees what they asked for before.
     earlierAnswer:
-      pageQuestion === undefined
+      screenQuestion === undefined
         ? undefined
         : questions
             .flatMap((question) =>
-              question.signalName !== pageQuestion.signalName &&
+              question.signalName !== screenQuestion.signalName &&
               showsScreen(question) &&
-              question.asked.plugin === pageQuestion.asked.plugin &&
-              question.asked.action === pageQuestion.asked.action &&
+              question.asked.plugin === screenQuestion.asked.plugin &&
+              question.asked.action === screenQuestion.asked.action &&
               question.status === "answered" &&
               "output" in question.answer
                 ? [question.answer.output]
@@ -1656,19 +1653,24 @@ export function useRoom({
     asked: (signalName) =>
       snapshot.plan.asked.find((each) => each.signalName === signalName)?.data,
   };
-  const pluginScreens = pluginSlots({
+  const actFromScreen: ListedHostProps["act"] = async (
+    plugin,
+    action,
+    input,
+  ) => {
+    try {
+      await runPluginAction(projectId, plugin, action, input);
+    } catch (cause) {
+      return humanFault(cause, wording.questions.answerFault.refused);
+    }
+    reloadRef.current();
+    return undefined;
+  };
+  const pluginScreens = pluginTabs({
     screens: archived ? [] : snapshot.plan.screens,
     screenOf,
     supplies,
-    act: async (plugin, action, input) => {
-      try {
-        await runPluginAction(projectId, plugin, action, input);
-      } catch (cause) {
-        return humanFault(cause, wording.questions.answerFault.refused);
-      }
-      reloadRef.current();
-      return undefined;
-    },
+    act: actFromScreen,
   });
   // Each read times its own wake, so a screen counting down is read again as its clock says.
   const { rereadIn } = pluginScreens;
@@ -1677,9 +1679,6 @@ export function useRoom({
     const timer = setTimeout(() => reloadRef.current(), rereadIn);
     return () => clearTimeout(timer);
   }, [snapshot, rereadIn]);
-  const pageHost = {
-    close: () => setClosedPage(pageQuestion?.signalName ?? null),
-  };
   const appFiled = snapshot.artifacts.some((item) => item.kind === "app");
   const firstBuilder = appFiled ? undefined : inFlight.find(writesCode);
   // There is an app to preview once one is filed, built here or imported, or a coder is building
@@ -1742,14 +1741,52 @@ export function useRoom({
     paneDeliverables.find((item) => item.kind === shownId) ?? null;
   const selectedState = selected === null ? undefined : documentState(selected);
 
-  // Until the first document is filed, drafted, there is an app or a plugin lists a tab, the project
-  // view has nothing to show.
+  // Until the first document is filed, drafted or there is an app, the project view has nothing
+  // to show.
   const nothingYet =
     paneDeliverables.length === 0 &&
     designDraft === null &&
     concepts.length === 0 &&
-    liveApp === null &&
-    pluginScreens.tabs.length === 0;
+    liveApp === null;
+  const promptBox = usePromptBox({
+    projectId,
+    archived,
+    openQuestion,
+    onAnswer: answer,
+    sending,
+    approvals: pendingApprovals,
+    approvalBusy,
+    approvalError,
+    typedYes:
+      typedYes.held === null
+        ? null
+        : { held: typedYes.held, onUndo: typedYes.undo },
+    onDecide: onDecideApproval,
+    onRequestChanges: requestChanges,
+    plan: snapshot.plan.steps,
+    // A screen with a tab of its own waits there, not in the space.
+    screens: snapshot.plan.screens.filter((screen) => !inTab(screen)),
+    screenOf,
+    supplies,
+    projectValues,
+    act: actFromScreen,
+    restarts:
+      restarting === undefined
+        ? null
+        : wording.earlierDocument.restarts(restartedWork(restarting)),
+    thinking,
+    dispatches: [...dispatches, ...unseenRuns.map(({ dispatch }) => dispatch)],
+    dispatchRoom,
+    failed: snapshot.failed,
+    lastSentAt: lastSentAt(awaitingSince, turns),
+    documents: paneDeliverables,
+    seen,
+    hasApp: liveApp !== null,
+    onOpenDocument: openDocument,
+    onOpenApp: () => openProject(LIVE_TAB),
+    onSend: (message) => void deliver(message),
+    reload: () => reloadRef.current(),
+  });
   const dock = (): RoomDock => {
     if (archived)
       return {
@@ -1796,7 +1833,7 @@ export function useRoom({
         nothingFiled: nothingYet,
       }),
       inputRef: composerRef,
-      working: working || sending,
+      working: promptBox.working,
       busy: sending || approvalBusy,
       disabled: composerWaits,
       needsProvider: providerMissing,
@@ -1814,16 +1851,39 @@ export function useRoom({
       },
       sendFault:
         questionFault(outcomes) ?? (sendFailed && sendFault ? sendFault : null),
-      restarts:
-        restarting === undefined
-          ? null
-          : wording.earlierDocument.restarts(restartedWork(restarting)),
+      restarts: promptBox.restarts,
+      status: promptBox.status,
+      onStop: promptBox.onStop,
       suggestedReplies: replies,
       onReply: (reply) => void deliver(reply),
       sendLabel:
         stagedItems === null ? null : wording.questions.sendBack(stagedItems),
     };
   };
+  const paneDocuments = paneDeliverables.map((item) =>
+    paneDocument(item, seen),
+  );
+  const { sidebar, projectSettings } = useProjectSidebar({
+    projectId,
+    title: projectTitle,
+    project: menuProject,
+    onProjectChanged: onChanged,
+    onProjectError,
+    onOpenSettings,
+    onAllProjects,
+    onNewProject,
+    plan: snapshot.plan.steps,
+    documents: paneDocuments,
+    draft: designDraft !== null,
+    concepts,
+    manual: userManual !== null,
+    appShown: liveApp !== null,
+    shown: projectOpen && !nothingYet ? shownTab : null,
+    onOpen: openProject,
+    onPrint: (tab) => setPrintTab({ value: tab }),
+    onRemove: removeAttachment,
+    reload: () => reloadRef.current(),
+  });
   const emptyConversation = () => {
     if (archived) return "archived";
     return shownTurns.length === 0 && !thinking ? "new" : null;
@@ -1837,9 +1897,6 @@ export function useRoom({
         // The view cannot be open once it has nothing to show, or the prompt box is placed in it unseen.
         projectOpen: projectOpen && !nothingYet,
         onProjectOpenChange: setProjectOpen,
-        pageOpen:
-          pageOpen ||
-          (pageQuestion === undefined && pluginScreens.page.length > 0),
       },
       conversation: {
         thread: {
@@ -1851,63 +1908,23 @@ export function useRoom({
             title: item.title,
           })),
           onOpenDocument: openDocument,
-          approvals: shownApprovals,
+          approvals: settledApprovals,
           results: new Map([...coordinatorResults, ...runResults]),
           runs: cards,
           live: (dispatch) => dispatchLive(dispatch, dispatchRoom),
           standing: (unit) => workUnitStanding(unit, dispatchRoom),
-          onDecide: onDecideApproval,
-          onRequestChanges: requestChanges,
-          approvalDisabled: approvalBusy || archived,
-          ...(approvalError === null ? {} : { approvalError }),
-          ...(typedYes.held === null
-            ? {}
-            : {
-                typedYes: {
-                  held: typedYes.held,
-                  onUndo: typedYes.undo,
-                },
-              }),
           ...(sentId === undefined ? {} : { sentId }),
           questions,
-          onAnswerQuestion: answer,
-          questionsDisabled: sending || archived,
           projectValues,
           screenOf,
           screenSupplies: supplies,
-          onOpenPageScreen: () => setClosedPage(null),
         },
         empty: emptyConversation(),
       },
       dock: dock(),
-      plan: snapshot.plan.steps,
-      onDeclineStep: async (stepId, declined) => {
-        try {
-          await (declined ? declinePlanStep : restorePlanStep)(
-            projectId,
-            stepId,
-          );
-          reloadRef.current();
-        } catch (cause) {
-          toast.error(humanFault(cause, wording.conversation.plan.notChanged));
-        }
-      },
-      onGoAheadStep: async (stepId) => {
-        try {
-          await goAheadPlanStep(projectId, stepId);
-          reloadRef.current();
-        } catch (cause) {
-          toast.error(humanFault(cause, wording.conversation.plan.notChanged));
-        }
-      },
-      onAskFirstStep: async (stepId, askFirst) => {
-        try {
-          await setPlanStepAskFirst(projectId, stepId, askFirst);
-          reloadRef.current();
-        } catch (cause) {
-          toast.error(humanFault(cause, wording.conversation.plan.notChanged));
-        }
-      },
+      sidebar,
+      waiting: promptBox.waiting,
+      space: promptBox.space,
       documentPane: {
         projectId,
         projectTitle,
@@ -1915,7 +1932,9 @@ export function useRoom({
         manual: userManual,
         concepts,
         openTab: paneTab,
-        documents: paneDeliverables.map((item) => paneDocument(item, seen)),
+        printTab,
+        onShownChange: setShownTab,
+        documents: paneDocuments,
         selectedId: selected === null ? null : selected.kind,
         state: selected ? (selectedState ?? { status: "loading" }) : undefined,
         ...(selectedState?.status === "error" && selectedState.retryable
@@ -1927,7 +1946,6 @@ export function useRoom({
           : {}),
         onSelect: chooseDocument,
         onSeen: markDocumentSeen,
-        onRemove: removeAttachment,
         onReadVersion: async (version) => {
           if (selected === null) throw new Error("No artifact is selected.");
           const { content, filedAt, approaches } = await readArtifact(
@@ -1960,39 +1978,22 @@ export function useRoom({
       ),
       paneRef: documentPaneRef,
     },
-    nextStep: archived
-      ? null
-      : {
-          projectId,
-          actions: {
-            reply: requestChanges,
-            resume_coordinator: () => void startCoordinator(),
-            ...(liveApp === null
-              ? {}
-              : {
-                  open_app: () => openProject(LIVE_TAB),
-                }),
-          },
-        },
+    projectSettings,
     enableAi: { open: enablingAi, onOpenChange: setEnablingAi },
     liveApp,
-    pluginScreens,
+    spaceScreen: promptBox.spaceScreen,
     questionOutcomes: outcomes,
-    pageScreen:
-      pageQuestion === undefined
-        ? null
-        : {
-            signalName: pageQuestion.signalName,
-            host: screenOf(pageQuestion.asked)?.host,
-            input: pageQuestion.asked.input,
-            projectValues,
-            answer: undefined,
-            disabled: sending || archived,
-            onAnswer: (given) => answer(pageQuestion.signalName, given),
-            supplies,
-            page: pageHost,
-          },
   };
+}
+
+/** When the person last wrote: their latest turn, or a send this session has not seen land yet. */
+function lastSentAt(
+  awaitingSince: number | null,
+  turns: readonly TranscriptTurn[],
+): number | null {
+  const wrote = turns.findLast((turn) => turn.role === "person")?.at;
+  if (wrote === undefined) return awaitingSince;
+  return awaitingSince === null ? wrote : Math.max(wrote, awaitingSince);
 }
 
 function questionFault(

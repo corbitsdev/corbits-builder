@@ -1,10 +1,12 @@
 import { QuestionOutcomes, type AnswerOutcome } from "./question-outcome.tsx";
 import { wording } from "../../config.ts";
-import { useState } from "react";
-import type { Meta, StoryObj } from "@storybook/react-vite";
+import { useState, type ReactNode } from "react";
+import type { Decorator, Meta, StoryObj } from "@storybook/react-vite";
 import type { PromptQuestion } from "@corbits-builder/schemas/conversation";
 import { fn } from "storybook/test";
+import { composer } from "./prompt-box.fixtures.ts";
 import { QuestionsCard } from "./questions-card.tsx";
+import { RoomDockView } from "./room.view.tsx";
 
 const ask: PromptQuestion["asked"] = {
   questions: [
@@ -71,11 +73,33 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** One question at a time, the answered ones above it and the next below. */
-export const Open: Story = {};
+// An open question waits in the prompt box, which holds the words typed and draws Continue where
+// Send stands; the box's own stories draw it partway through and picked.
+function PromptBox({ children }: { children: ReactNode }) {
+  const [text, setText] = useState("");
+  return (
+    <RoomDockView
+      waiting={children}
+      dock={{
+        ...composer,
+        placeholder: wording.questions.composerPlaceholder,
+        text,
+        onTextChange: setText,
+        onSend: () => setText(""),
+      }}
+    />
+  );
+}
 
-/** One question: no position, and the button sends. */
+const inPromptBox: Decorator = (Story) => (
+  <PromptBox>
+    <Story />
+  </PromptBox>
+);
+
+/** One question: no position, and Continue sends. */
 export const OneQuestion: Story = {
+  decorators: [inPromptBox],
   args: {
     question: {
       at: 0,
@@ -88,6 +112,7 @@ export const OneQuestion: Story = {
 
 /** A question with nothing to pick: the person types their answer in a field of its own. */
 export const TypedAnswer: Story = {
+  decorators: [inPromptBox],
   args: {
     question: {
       at: 0,
@@ -144,7 +169,9 @@ export const NotSent: Story = {
     return (
       <>
         <QuestionOutcomes value={outcomes}>
-          <QuestionsCard {...args} onAnswer={onAnswer} />
+          <PromptBox>
+            <QuestionsCard {...args} onAnswer={onAnswer} />
+          </PromptBox>
         </QuestionOutcomes>
         {pending !== undefined && (
           <button type="button" onClick={pending.fail}>
@@ -157,6 +184,7 @@ export const NotSent: Story = {
 };
 
 export const Disabled: Story = {
+  decorators: [inPromptBox],
   args: { disabled: true },
 };
 
@@ -205,38 +233,6 @@ export const ClosedOneQuestion: Story = {
       signalName: "call-1",
       asked: { questions: [ask.questions[0]!] },
       status: "closed",
-    },
-  },
-};
-
-/** Sent answers settle the card, as the room shows them, and focus moves onto what was answered. */
-export const SettlesOnSend: Story = {
-  render: function SettlingCard(args) {
-    const [question, setQuestion] = useState<PromptQuestion>(args.question);
-    return (
-      <QuestionsCard
-        {...args}
-        question={question}
-        onAnswer={(answer) => {
-          if (!("output" in answer))
-            setQuestion({
-              at: question.at,
-              signalName: question.signalName,
-              asked: question.asked,
-              status: "answered",
-              answer,
-            });
-          return Promise.resolve(true);
-        }}
-      />
-    );
-  },
-  args: {
-    question: {
-      at: 0,
-      signalName: "call-settles",
-      asked: { questions: [ask.questions[1]!] },
-      status: "open",
     },
   },
 };

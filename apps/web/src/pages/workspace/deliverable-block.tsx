@@ -5,33 +5,36 @@
  * for HTML and JSON.
  */
 import { wording } from "../../config.ts";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 import { CsvTable, ShimmerText } from "@corbits/react-ui";
-import { DocumentView } from "@corbits-builder/plugin-ui/markdown";
 import { APPROVAL_PACKAGE_MEDIA_TYPE } from "./approval-package.ts";
 import { ApprovalPackagePreview } from "./approval-package-preview.tsx";
 import { DESIGN_MEDIA_TYPE, parseBundle } from "./design-bundle.ts";
 import { DesignPreviewView, type DesignPart } from "./design-preview.view.tsx";
 import { ComparisonView } from "./comparison-view.tsx";
 import { DevicePreview, type PreviewDevice } from "./device-preview.tsx";
-import { predecessorOf, type RetainedVersion } from "./document-versions.ts";
+import type { RetainedVersion } from "./document-versions.ts";
 import { PassageQuotes, type PassageQuote } from "./passage-note.tsx";
 import { versionGroup } from "./version-menu.tsx";
+import { useVersionReading } from "./version-reading.ts";
+import { useApproveGroup } from "./approve-group.ts";
+import { VersionNotes } from "./version-notes.tsx";
 import { PaneBar } from "./pane-bar.tsx";
 import {
   csvFile,
+  documentFile,
   fileStem,
   markdownFile,
   type PaneFile,
+  shownFile,
   useFileGroup,
   ZIP_TYPE,
   zipFile,
 } from "./pane-file.tsx";
-import { splitLeadingHeading } from "./reading-selection.ts";
 import type { ApproachesMeta } from "@corbits-builder/schemas/approaches";
-import { ApproachesComparison } from "./approaches-comparison.tsx";
 import type { ApproachChoice } from "./approach-choice.ts";
 import type { TweakPanelProps } from "./mockup-tweaks.view.tsx";
+import type { DocumentPageProps } from "./document-page.model.ts";
 import { Fault, InlineNote } from "../../components.jsx";
 import styles from "./deliverable-block.module.css";
 
@@ -83,10 +86,15 @@ function mediaKind(
   return mediaType.startsWith("image/") ? "image" : "file";
 }
 
-/** A spreadsheet fills its pane edge to edge, as a mockup does. */
+/** A written document, read as a printed page rather than in the pane's own reading view. */
+const readsAsPage = (document: LoadedDeliverable) =>
+  mediaKind(document.mediaType, document.title) === "prose";
+
+/** A spreadsheet or a written document's page fills its pane edge to edge, as a mockup does. */
 export const fillsPane = (state: DeliverableState | undefined) =>
   state?.status === "ready" &&
-  mediaKind(state.document.mediaType, state.document.title) === "sheet";
+  (readsAsPage(state.document) ||
+    mediaKind(state.document.mediaType, state.document.title) === "sheet");
 
 /** What an approval package's tab hands the approval rounds drawn in it. */
 export type PackageRounds = {
@@ -119,6 +127,8 @@ export type DeliverableSlots = {
   approvalRounds: (rounds: PackageRounds) => ReactNode;
   /** The look panel a design mockup's bar opens over it. */
   tweakPanel: (panel: TweakPanelProps) => ReactNode;
+  /** A written document's printed page, which reads the versions it is asked for. */
+  writtenDocument: (page: DocumentPageProps) => ReactNode;
 };
 
 export function DeliverableBody({
@@ -138,6 +148,7 @@ export function DeliverableBody({
   onOpenSource,
   approvalRounds,
   tweakPanel,
+  writtenDocument,
 }: DeliverableSlots & {
   state: DeliverableState | undefined;
   /** Approving the document being read; absent where it cannot be approved here. */
@@ -174,9 +185,28 @@ export function DeliverableBody({
   }
   if (state.status === "error")
     return <Fault onRetry={onRetry}>{state.message}</Fault>;
+  const key = `${state.document.sha256}:${String(state.document.version)}:${state.document.content}`;
+  if (readsAsPage(state.document))
+    return (
+      <Fragment key={key}>
+        {writtenDocument({
+          project: fileName.project,
+          name: fileName.document,
+          document: state.document,
+          changesOpen,
+          onToggleChanges,
+          onReadVersion,
+          onViewVersion,
+          requestedVersion,
+          approval,
+          approachChoice,
+          onAddToPrompt,
+        })}
+      </Fragment>
+    );
   return (
     <ReadyDocument
-      key={`${state.document.sha256}:${String(state.document.version)}:${state.document.content}`}
+      key={key}
       document={state.document}
       designPart={designPart}
       fileName={fileName}
@@ -186,7 +216,6 @@ export function DeliverableBody({
       {...(onAddToPrompt === undefined ? {} : { onAddToPrompt })}
       {...(onDeliverMessage === undefined ? {} : { onDeliverMessage })}
       {...(onViewVersion === undefined ? {} : { onViewVersion })}
-      {...(approachChoice === undefined ? {} : { approachChoice })}
       approval={approval}
       {...(requestedVersion === undefined ? {} : { requestedVersion })}
       {...(onOpenSource === undefined ? {} : { onOpenSource })}
@@ -195,22 +224,6 @@ export function DeliverableBody({
     />
   );
 }
-
-const shownFile = (file: File, download: string, share: string): PaneFile => ({
-  type: file.type,
-  download,
-  share,
-  key: file.name,
-  prepare: "shown",
-  build: () => Promise.resolve({ file }),
-});
-
-const documentFile = (file: File) =>
-  shownFile(
-    file,
-    wording.paneFile.downloadDocument,
-    wording.paneFile.shareDocument,
-  );
 
 function ReadyDocument({
   document,
@@ -222,13 +235,12 @@ function ReadyDocument({
   onAddToPrompt,
   onDeliverMessage,
   onViewVersion,
-  approachChoice,
   approval,
   requestedVersion,
   onOpenSource,
   approvalRounds,
   tweakPanel,
-}: DeliverableSlots & {
+}: Omit<DeliverableSlots, "writtenDocument"> & {
   document: LoadedDeliverable;
   approval: DocumentApprovalControl | undefined;
   designPart: DesignPart;
@@ -239,117 +251,36 @@ function ReadyDocument({
   onAddToPrompt?: (passage: PassageQuote) => void;
   onDeliverMessage?: ((message: string) => Promise<boolean | void>) | undefined;
   onViewVersion?: () => void;
-  approachChoice?: ApproachChoice;
   requestedVersion?: { version: number; seq: number } | undefined;
   onOpenSource?: ((kind: string, version: number) => void) | undefined;
 }) {
-  const [viewing, setViewing] = useState(document.version);
-  const [cache, setCache] = useState<Record<number, ReadVersion>>({});
-  const [baseline, setBaseline] = useState<number | null>(null);
-  const [pendingVersion, setPendingVersion] = useState<number | null>(null);
-  const [readError, setReadError] = useState<string | null>(null);
+  const {
+    viewing,
+    afterText,
+    beforeText,
+    compareWith,
+    predecessor,
+    pendingVersion,
+    readError,
+    fetchVersion,
+    selectVersion,
+    comparePrevious,
+    stopComparing,
+  } = useVersionReading({
+    document,
+    changesOpen,
+    onToggleChanges,
+    onReadVersion,
+    onViewVersion,
+    requestedVersion,
+  });
   const [device, setDevice] = useState<PreviewDevice>("desktop");
   const [shareOpen, setShareOpen] = useState(false);
-  const [approving, setApproving] = useState(false);
-  const readRef = useRef(onReadVersion);
-  readRef.current = onReadVersion;
-
-  const readFor = (version: number): ReadVersion | null => {
-    if (cache[version] !== undefined) return cache[version] ?? null;
-    if (version === document.version) return document;
-    if (document.before?.version === version) return document.before;
-    return null;
-  };
-  const textFor = (version: number): string | null =>
-    readFor(version)?.content ?? null;
-
-  const predecessor = predecessorOf(
-    document.versions,
-    viewing,
-    document.version,
-    document.before?.version ?? null,
-  );
-  const compareWith = changesOpen ? (baseline ?? predecessor) : null;
-  const afterText = textFor(viewing);
-  const beforeText = compareWith === null ? null : textFor(compareWith);
   const viewed = document.versions.find((item) => item.version === viewing);
   const mediaType = viewed?.mediaType ?? document.mediaType;
   const title = viewed?.title ?? document.title;
   const kind = mediaKind(mediaType, title);
-  const shown = readFor(viewing);
-  const approaches = shown?.approaches;
-  const chooseApproach =
-    viewing === document.version ? approachChoice?.choose : undefined;
-
-  const remember = (version: number, read: ReadVersion) => {
-    setCache((current) => ({ ...current, [version]: read }));
-  };
-
-  const fetchVersion = async (version: number): Promise<string> => {
-    const known = textFor(version);
-    if (known !== null) return known;
-    const read = readRef.current;
-    if (read === undefined)
-      throw new Error("This version is listed, but the room cannot read it.");
-    const loaded = await read(version);
-    remember(version, loaded);
-    return loaded.content;
-  };
-
-  // Reads a version the room has not loaded, then acts on it; a failed read is the block's error line.
-  const withVersion = async (version: number, use: () => void) => {
-    setPendingVersion(version);
-    setReadError(null);
-    try {
-      await fetchVersion(version);
-      use();
-    } catch (cause) {
-      setReadError(cause instanceof Error ? cause.message : String(cause));
-    } finally {
-      setPendingVersion(null);
-    }
-  };
-
-  const selectVersion = (version: number) => {
-    if (version === viewing) return;
-    onViewVersion?.();
-    setReadError(null);
-    if (textFor(version) !== null) {
-      setViewing(version);
-      return;
-    }
-    void withVersion(version, () => setViewing(version));
-  };
-
-  const appliedRequestSeq = useRef<number | null>(null);
-  useEffect(() => {
-    if (
-      requestedVersion !== undefined &&
-      requestedVersion.seq !== appliedRequestSeq.current
-    ) {
-      appliedRequestSeq.current = requestedVersion.seq;
-      selectVersion(requestedVersion.version);
-    }
-  }, [requestedVersion]);
-
-  const comparePrevious = () => {
-    if (predecessor === null) return;
-    void withVersion(predecessor, () => {
-      setBaseline(predecessor);
-      if (!changesOpen) onToggleChanges();
-    });
-  };
-
-  const stopComparing = () => {
-    setBaseline(null);
-    if (changesOpen) onToggleChanges();
-  };
-
-  const lifted =
-    kind === "prose"
-      ? splitLeadingHeading(afterText ?? "")
-      : { heading: null, body: afterText ?? "" };
-  const body = lifted.body;
+  const body = afterText ?? "";
   const comparing =
     changesOpen &&
     compareWith !== null &&
@@ -362,7 +293,7 @@ function ReadyDocument({
         after={afterText}
         beforeVersion={compareWith}
         afterVersion={viewing}
-        prose={kind === "prose"}
+        prose={false}
         onClose={stopComparing}
       />
     ) : null;
@@ -377,8 +308,6 @@ function ReadyDocument({
     kind === "design" && afterText !== null ? parseBundle(afterText) : null;
   const plan = designPart === "plan" ? design?.["DESIGN.md"] : undefined;
   const sourceFile = (): PaneFile | null => {
-    if (kind === "prose" && afterText !== null)
-      return documentFile(markdownFile(stem, afterText));
     if (plan !== undefined) return documentFile(markdownFile(stem, plan));
     if (design !== null && designPart === "mockup")
       return {
@@ -413,43 +342,9 @@ function ReadyDocument({
           },
         ]
       : [];
-  // The version on show once approved, else Approve while it is the newest; an older version read
-  // from the menu is neither, since only the newest can be approved.
-  const approveVersion = async (
-    approve: DocumentApprovalControl["approve"],
-  ) => {
-    setApproving(true);
-    try {
-      await approve(viewing);
-    } finally {
-      setApproving(false);
-    }
-  };
-  const approveGroup = () => {
-    if (approval === undefined) return [];
-    const words = wording.documentApproval;
-    if (approval.approvedVersion === viewing)
-      return [
-        {
-          id: "approved",
-          label: words.approvedLabel(viewing, approval.approvedAt),
-          text: words.approved(viewing),
-          note: true,
-        },
-      ];
-    if (viewing !== document.version) return [];
-    return [
-      {
-        id: "approve",
-        label: words.approveLabel(viewing),
-        text: words.approve(viewing),
-        disabled: approving,
-        onSelect: () => void approveVersion(approval.approve),
-      },
-    ];
-  };
+  const approveGroup = useApproveGroup(approval, viewing, document.version);
   const barGroups = [
-    approveGroup(),
+    approveGroup,
     approvalGroup,
     versionGroup({
       versions: document.versions,
@@ -507,61 +402,30 @@ function ReadyDocument({
       return <pre className={styles.raw}>{body}</pre>;
     if (kind === "image")
       return <img className={styles.image} src={body} alt={title} />;
-    if (kind === "file")
-      return (
-        <p>
-          <a href={body} download={title}>
-            {wording.attach.open(title)}
-          </a>
-        </p>
-      );
-    if (comparing) return null;
     return (
-      <>
-        {approaches === undefined ? null : (
-          <ApproachesComparison
-            meta={approaches}
-            chosen={
-              shown === null
-                ? undefined
-                : approachChoice?.chosen(approaches, shown.filedAt)
-            }
-            {...(chooseApproach === undefined
-              ? {}
-              : { onChoose: chooseApproach })}
-          />
-        )}
-        <DocumentView source={body} />
-      </>
+      <p>
+        <a href={body} download={title}>
+          {wording.attach.open(title)}
+        </a>
+      </p>
     );
   };
   const add = onAddToPrompt === undefined ? {} : { onAdd: onAddToPrompt };
 
   const notes = (
-    <>
-      {viewing !== document.version ? (
-        <InlineNote role="status" pill={fill}>
-          Showing v{String(viewing)}. The plan names v{String(document.version)}
-          .
-        </InlineNote>
-      ) : null}
-      {pendingVersion !== null ? (
-        <InlineNote role="status" pill={fill}>
-          Reading v{String(pendingVersion)}…
-        </InlineNote>
-      ) : null}
-      {readError !== null ? <Fault>{readError}</Fault> : null}
-      {document.historyError !== undefined ? (
-        <InlineNote role="status" pill={fill}>
-          History unavailable: {document.historyError}
-        </InlineNote>
-      ) : null}
-      {changesOpen && compareWith !== null && beforeText === null ? (
-        <InlineNote role="status" pill={fill}>
-          Reading v{String(compareWith)} for comparison…
-        </InlineNote>
-      ) : null}
-    </>
+    <VersionNotes
+      viewing={viewing}
+      newest={document.version}
+      reading={pendingVersion}
+      readError={readError}
+      historyError={document.historyError}
+      readingForComparison={
+        changesOpen && compareWith !== null && beforeText === null
+          ? compareWith
+          : null
+      }
+      pill={fill}
+    />
   );
 
   const renderDocumentHeader = () => {
@@ -575,7 +439,7 @@ function ReadyDocument({
       <>
         <header className={styles.header} data-slot="document-header">
           <h1 className={styles.title} title={title}>
-            {lifted.heading ?? title}
+            {title}
           </h1>
         </header>
         {notes}

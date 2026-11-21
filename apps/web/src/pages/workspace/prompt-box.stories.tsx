@@ -1,10 +1,8 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState, type ReactNode } from "react";
 import { expect, fn, userEvent, waitFor, within } from "storybook/test";
-import writer from "@plugins/writer/package.json";
-import approveDefinition from "@plugins/writer/src/approve/definition.ts";
-import ApproveView from "@plugins/writer/src/approve/view.tsx";
 import { wording } from "../../config.ts";
+import { ScreenCard, StepCard } from "./box-cards.tsx";
 import { DocumentDecision } from "./document-decision.tsx";
 import {
   composer,
@@ -14,35 +12,18 @@ import {
 } from "./prompt-box.fixtures.ts";
 import { QuestionsCard } from "./questions-card.tsx";
 import { RoomDockView } from "./room.view.tsx";
-import { ScreenStory, storyScreen } from "./screen-story.tsx";
 
-const approveDocuments = storyScreen(
-  "@corbits-builder/writer approve",
-  writer.builder.actions["approve"],
-  { screen: approveDefinition, view: ApproveView, data: undefined },
-);
-
-/**
- * What waits on the person, each the very card the conversation shows it in: the box only frames
- * it.
- */
+/** What waits on the person, one card at a time: the box only frames it. */
 const waits = {
   question: () => (
     <QuestionsCard
-      place="box"
       question={question}
       disabled={false}
       onAnswer={fn(() => Promise.resolve(true))}
     />
   ),
-  documents: () => (
-    <ScreenStory
-      screen={approveDocuments}
-      state="open"
-      input={{ kinds: ["build_plan"] }}
-      project={{}}
-    />
-  ),
+  step: () => <StepCard title="Build the app" busy={false} onGoAhead={fn()} />,
+  screen: () => <ScreenCard title="Approve documents" onOpen={fn()} />,
   tool: () => (
     <DocumentDecision
       place="box"
@@ -253,27 +234,32 @@ export const QuestionOwnAnswer: Story = {
 };
 
 /**
- * Approving a document: what is asked, the document's summary in a line, the document as a chip
- * that opens it, and Approve where Send stands.
+ * A step the person asked to be consulted on: the ask heads the box, and Yes, go ahead, green,
+ * stands where Send is.
  */
-const approving = {
-  dock: {
-    ...composer,
-    placeholder:
-      approveDefinition.describe?.says?.reply ?? composer.placeholder,
-  },
-  waiting: "documents",
-} satisfies Args;
-
-export const ApproveDocuments: Story = { args: approving };
-
-/** Typing says what should change instead: Send, blue, takes Approve's place. */
-export const ApproveDocumentsTyping: Story = {
+export const StepGoAhead: Story = {
   args: {
-    ...approving,
-    dock: { ...approving.dock, text: "Move the launch to the second Saturday" },
+    dock: {
+      ...composer,
+      placeholder: wording.promptBox.waiting.stepPlaceholder,
+    },
+    waiting: "step",
   },
 };
+
+/** Typing says what to do instead: Send, blue, takes the go-ahead's place. */
+export const StepGoAheadTyping: Story = {
+  args: {
+    dock: { ...composer, text: "Wait until the menu is final" },
+    waiting: "step",
+  },
+};
+
+/**
+ * A plugin's screen waits in the plugin space: the box names it, with Open to go to it. Its own
+ * forward action reaches the box from the space.
+ */
+export const ScreenWaiting: Story = { args: { waiting: "screen" } };
 
 /**
  * A tool asks before it runs: what would run in a block beneath the ask, Not yet beside it, and
@@ -362,8 +348,13 @@ export const DarkQuestionPicked: Story = {
   globals: { mode: "dark" },
 };
 
-export const DarkApproveDocuments: Story = {
-  ...ApproveDocuments,
+export const DarkStepGoAhead: Story = {
+  ...StepGoAhead,
+  globals: { mode: "dark" },
+};
+
+export const DarkScreenWaiting: Story = {
+  ...ScreenWaiting,
   globals: { mode: "dark" },
 };
 
