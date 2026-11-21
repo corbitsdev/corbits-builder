@@ -37,7 +37,7 @@ jobs:
           persist-credentials: false
           sparse-checkout: test/e2e/builds
       - id: build-tests
-        run: echo "files=$(cd test/e2e/builds && ls *.test.ts | grep -vx new-app.test.ts | jq -Rcs 'split("\n")[:-1]')" >> "$GITHUB_OUTPUT"
+        run: echo "files=$(cd test/e2e/builds && ls *.test.ts | grep -vxE "new-app.test.ts|font-change.test.ts" | jq -Rcs 'split("\n")[:-1]')" >> "$GITHUB_OUTPUT"
       - id: filter
         if: github.event_name == 'pull_request'
         uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
@@ -148,7 +148,20 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup
-      - run: bun run test
+      - run: bun run test --path-ignore-patterns=apps/hub/src/workflows/packaged.test.ts
+
+  # Packaging every agent takes most of a minute, so its test runs beside the others.
+  packaged:
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.test == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - run: bun --conditions=intx-src test apps/hub/src/workflows/packaged.test.ts
 
   e2e:
     name: e2e (${{ matrix.shard }}/8)
@@ -233,11 +246,7 @@ jobs:
       - uses: ./.github/actions/setup
       - uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9 # v1.6.3
         with:
-          packages: >-
-            bubblewrap socat unzip fonts-liberation libasound2t64
-            libatk-bridge2.0-0t64 libatk1.0-0t64 libatspi2.0-0t64 libdbus-1-3
-            libexpat1 libgbm1 libglib2.0-0t64 libnspr4 libnss3 libx11-6 libxcb1
-            libxcomposite1 libxdamage1 libxext6 libxfixes3 libxkbcommon0 libxrandr2
+          packages: bubblewrap socat unzip
       - run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       # These tests skip themselves on a host that cannot sandbox, so a skipped test fails the job.
       - run: |

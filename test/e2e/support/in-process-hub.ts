@@ -59,12 +59,7 @@ export async function startInProcessHub(
   let cookie: string;
   try {
     await migrateDatabase(readMigrationEnvironment(environment));
-    runtime = await createHubRuntime(
-      readHubEnvironment(environment),
-      testing?.toolReplay === undefined
-        ? undefined
-        : { toolReplay: testing.toolReplay },
-    );
+    runtime = await createHubRuntime(readHubEnvironment(environment), testing);
     const app = runtime.app;
     cookie = await signUpSessionCookie(
       (request) => app.fetch(request),

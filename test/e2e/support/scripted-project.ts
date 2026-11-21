@@ -225,7 +225,6 @@ const RunActions = type({ plugin: "string", action: "string" }).array();
 export async function openProject(options: {
   start: Start;
   runs: Readonly<Record<string, Run>>;
-  // What the hub's toolReplay is set to, from tool-replay.ts.
   toolReplay?: string | undefined;
 }) {
   const fixtures = Object.entries(options.runs).map(

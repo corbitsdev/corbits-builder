@@ -133,7 +133,7 @@ const log = getLogger(["corbits-builder", "hub"]);
 
 export async function createHubRuntime(
   env: HubEnvironment,
-  testing?: { toolReplay?: string },
+  testing?: { toolReplay?: string | undefined },
 ) {
   const handle = createDB(env.database);
   let authEmail: ReturnType<typeof createAuthEmail>;
@@ -460,6 +460,7 @@ export async function createHubRuntime(
       paths: env.SANDBOX_TOOLCHAIN_PATHS,
       dataDir: resolve(env.HUB_DATA_DIR),
     };
+    // oxlint-disable-next-line corbits-builder/no-tool-replay
     if (testing?.toolReplay) toolchains.replay = testing.toolReplay;
     const coordinatorTokens = createAgentTokenBridge(
       handle.db,

@@ -4,7 +4,7 @@ import { type } from "arktype";
 import { createPosixTools } from "@intx/tools-posix";
 import { hasCode } from "@intx/types/has-code";
 import { ToolResult, type ToolCall } from "@intx/types/runtime";
-import type { createPosixBuildExecutor } from "../../../apps/hub/src/builds/posix-sandbox.ts";
+import type { createPosixBuildExecutor } from "@corbits-builder/hub/builds/posix-sandbox";
 
 // The sandbox's policy is left out: there is no sandbox, and nothing reads it.
 type Executor = Omit<

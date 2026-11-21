@@ -193,12 +193,7 @@ export async function startTestHub(
   let server: ReturnType<typeof Bun.serve> | undefined;
 
   const boot = async () => {
-    runtime = await createHubRuntime(
-      readHubEnvironment(hubEnv),
-      testing?.toolReplay === undefined
-        ? undefined
-        : { toolReplay: testing.toolReplay },
-    );
+    runtime = await createHubRuntime(readHubEnvironment(hubEnv), testing);
     server = Bun.serve({
       hostname: runtime.hostname,
       port: runtime.port,
