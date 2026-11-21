@@ -4,6 +4,7 @@ import type { TenantEnv } from "@intx/hub-api";
 import type { QuestionAnswer } from "@intx/types/signals";
 import { getLogger } from "@intx/log";
 import type { createArtifactService } from "../artifacts/service.ts";
+import type { planReader } from "../plans/routes.ts";
 import type { createPlanService } from "../plans/service.ts";
 import type { createSettingsService } from "../settings/service.ts";
 import type { createValueService } from "../values/service.ts";
@@ -30,8 +31,13 @@ export type AnswerOptions = {
     | "releaseQuestion"
     | "approveShown"
     | "saveStyleTokens"
+    | "stopRun"
   >;
-  plans: Pick<ReturnType<typeof createPlanService>, "answerPlanStep">;
+  plans: Pick<
+    ReturnType<typeof createPlanService>,
+    "answerPlanStep" | "cancelPlanSteps"
+  >;
+  readPlan: ReturnType<typeof planReader>;
   values: Pick<ReturnType<typeof createValueService>, "saveStoredValues">;
   nativeFetch?: ((request: Request) => Promise<Response>) | undefined;
   settings?:
@@ -42,6 +48,7 @@ export type AnswerOptions = {
 export function createAnswer({
   service,
   plans,
+  readPlan,
   values,
   nativeFetch,
   settings,
@@ -71,8 +78,8 @@ export function createAnswer({
   };
   // The one way the person answers the coordinator's open question, from the answers route or an
   // approval that covers what the question asked: a screen's output saves the values it writes,
-  // records what it approves, sets the preferences it names and marks the plan step it does before
-  // the answer reaches the run.
+  // records what it approves, sets the preferences it names, marks the plan step it does and cancels
+  // the plan steps it names before the answer reaches the run.
   const answer = async (
     c: Context<TenantEnv>,
     projectId: string,
@@ -86,10 +93,8 @@ export function createAnswer({
       projectId,
       signalName,
     );
-    const screen = screenOf(
-      await catalogOf(service.projectState, current, projectId),
-      asked,
-    );
+    const catalog = await catalogOf(service.projectState, current, projectId);
+    const screen = screenOf(catalog, asked);
     const answered =
       screen !== undefined && "output" in given
         ? screen.answer(given.output)
@@ -148,6 +153,27 @@ export function createAnswer({
           await prefer(c, projectId, answered.preferences);
         step = "marking the plan step";
         await plans.answerPlanStep(current, projectId, screen);
+        step = "cancelling plan steps";
+        if (answered.cancels.length > 0) {
+          const { read } = await readPlan(c, projectId, catalog);
+          const cancelled = read.steps
+            .flatMap((each) => ("steps" in each ? each.steps : [each]))
+            .filter(
+              ({ id, state }) =>
+                answered.cancels.includes(id) && state !== "done",
+            );
+          await plans.cancelPlanSteps(
+            current,
+            projectId,
+            cancelled.map(({ id }) => id),
+          );
+          for (const { runId, state } of cancelled)
+            if (
+              runId !== undefined &&
+              (state === "running" || state === "needs_you")
+            )
+              await service.stopRun(current, projectId, runId, "person");
+        }
       }
       step = "delivering the answer";
       await answerQuestionAsCaller(

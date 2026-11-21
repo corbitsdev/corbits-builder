@@ -51,26 +51,18 @@ import type { createPlanService } from "./service.ts";
 const AskFirst = type({ "+": "reject", askFirst: "boolean" });
 const ActionRun = type({ "+": "reject", "input?": "Record<string, unknown>" });
 
-export function mountPlanRoutes(
-  app: Hono<TenantEnv>,
-  service: ReturnType<typeof createPlanService>,
-  artifacts: ReturnType<typeof createArtifactService>,
-  values: Pick<ReturnType<typeof createValueService>, "saveStoredValues">,
+// Where each step of the project's plan stands, worked out from what the hub has recorded, with
+// the records and questions it was worked out from.
+export function planReader(
+  service: Pick<ReturnType<typeof createPlanService>, "projectPlan">,
+  artifacts: Pick<
+    ReturnType<typeof createArtifactService>,
+    "list" | "stepRuns"
+  >,
   nativeFetch?: (request: Request) => Promise<Response>,
   checks?: Checks,
 ) {
-  const projectView = async (current: Actor, projectId: string) => {
-    const state = await artifacts.projectState(current, projectId);
-    const catalog = await projectCatalog(async (names) =>
-      readProjectValues(names, state, CATALOG.values),
-    );
-    return { state, catalog };
-  };
-  const readPlan = async (
-    c: Context<TenantEnv>,
-    projectId: string,
-    catalog: Catalog,
-  ) => {
+  return async (c: Context<TenantEnv>, projectId: string, catalog: Catalog) => {
     const current = actorOf(c);
     const plan = await service.projectPlan(current, projectId);
     if (!checks) throw new ProjectError(503, "plan_state_unavailable");
@@ -114,6 +106,24 @@ export function mountPlanRoutes(
       read: { facts, steps, appVersion, asking },
     };
   };
+}
+
+export function mountPlanRoutes(
+  app: Hono<TenantEnv>,
+  service: ReturnType<typeof createPlanService>,
+  artifacts: ReturnType<typeof createArtifactService>,
+  values: Pick<ReturnType<typeof createValueService>, "saveStoredValues">,
+  nativeFetch?: (request: Request) => Promise<Response>,
+  checks?: Checks,
+) {
+  const projectView = async (current: Actor, projectId: string) => {
+    const state = await artifacts.projectState(current, projectId);
+    const catalog = await projectCatalog(async (names) =>
+      readProjectValues(names, state, CATALOG.values),
+    );
+    return { state, catalog };
+  };
+  const readPlan = planReader(service, artifacts, nativeFetch, checks);
   // What a screen's state or a task reads of the project, as of now.
   const readProject = async (
     current: Actor,

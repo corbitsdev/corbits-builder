@@ -200,6 +200,34 @@ export function createPlanService(rawDB: DB["db"]) {
       return plan;
     },
 
+    // The person's answer to a screen cancels the plan steps it names, leaving any it does not hold
+    // and keeping the mark of one already cancelled. Only a person may.
+    async cancelPlanSteps(
+      actor: Actor,
+      projectId: string,
+      stepIds: readonly string[],
+    ) {
+      await authorizeProject(rawDB, actor, projectId, "manage");
+      const [caller] = await rawDB
+        .select({ kind: principal.kind })
+        .from(principal)
+        .where(eq(principal.id, actor.principalId));
+      if (caller?.kind !== "user")
+        throw new ProjectError(403, "only_a_person_cancels");
+      await rawDB.transaction(async (tx) => {
+        const plan = await lockedPlan(tx, projectId);
+        const named = planActionSteps(plan).filter(
+          (step) => stepIds.includes(step.id) && !step.cancelled,
+        );
+        if (!plan || named.length === 0) return;
+        const at = new Date().toISOString();
+        for (const step of named)
+          step.cancelled = { by: actor.principalId, at };
+        plan.updatedAt = at;
+        await writePlan(tx, projectId, plan);
+      });
+    },
+
     // The person answered a screen, which does the plan's first open step for that screen. The
     // answer cannot name its step, since a parked question carries only the screen and its input.
     async answerPlanStep(

@@ -173,6 +173,53 @@ test("a screen is listed, with its state, only while its state returns one, and 
   expect(shown(failing, { "tester.notes": "Try the save button" })).toEqual([]);
 });
 
+test("a screen reads each plan step's id and title, and its answer gives the steps it cancels, none when it declares none", async () => {
+  const step = {
+    id: "deploy",
+    title: "Put the app online",
+    plugin: "tester",
+    action: "test",
+    input: {},
+    askFirst: false,
+    state: "running" as const,
+    kind: "workflow" as const,
+  };
+  expect(
+    projectRead(catalog, Object.assign(read(), { steps: [step] })).plan,
+  ).toMatchObject([{ id: "deploy", title: "Put the app online" }]);
+
+  const cancelling = await loadCatalog(
+    [
+      ...installed,
+      tester(
+        "./src/notes/definition.ts",
+        defineScreen({
+          input: type({ "+": "reject" }),
+          output: type({ "+": "reject", drop: "string[]" }),
+          describe: {
+            summary: "Asks which steps to drop.",
+            when: "Steps may go.",
+            unless: "None may.",
+            fields: {},
+          },
+          cancels: ({ drop }) => drop,
+        }),
+      ),
+    ],
+    HOST,
+  );
+  const screenOf = (on: typeof catalog, plugin: string, action: string) =>
+    on.screens.find((each) => each.plugin === plugin && each.action === action);
+  const answered = screenOf(cancelling, "tester", "notes")?.answer({
+    drop: ["deploy", "seed"],
+  });
+  expect(answered?.ok && answered.cancels).toEqual(["deploy", "seed"]);
+  const plain = screenOf(catalog, "designer", "looks")?.answer({
+    looks: "two",
+  });
+  expect(plain?.ok && plain.cancels).toEqual([]);
+});
+
 test("the route refuses an action whose requires do not hold, adds it once they do, and gives the go-ahead to the same step not yet begun or finished", async () => {
   const change = {
     instruction: "Make the save button on the contact page save the form.",
