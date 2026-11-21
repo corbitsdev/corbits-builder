@@ -15,9 +15,13 @@ import {
 const IDEA = "A reading list where I track the books my book club picks.";
 const CHANGE = "Forget the web app, make it a phone app.";
 const PROTECTED = "protected_plan_step_removed";
-const DROPPED = ["build-plan", "build"];
+const UNDER_WAY = '"Write the user manual" is part of a plan that is under way';
+const AWAITS_APPROVAL =
+  '"Design the look" is waiting for the person\'s approval';
+const DROPPED = ["report", "build-plan", "build"];
+const FILED = "The requirements are filed.";
 
-// The web app plan's steps that lead to the build, under ids the scripted coordinator can name.
+// The web app plan's steps, under ids the scripted coordinator can name.
 const WEB_APP = {
   id: "web-app",
   title: "A web app",
@@ -39,6 +43,14 @@ const WEB_APP = {
       input: {},
       askFirst: false,
       approval: { of: ["product_requirements"], when: "optional" },
+    },
+    {
+      id: "report",
+      title: "Write the user manual",
+      plugin: "writer",
+      action: "write",
+      input: {},
+      askFirst: false,
     },
     {
       id: "build-plan",
@@ -75,7 +87,7 @@ const steps = async ({ hub, tenantId, projectId }: ScriptedProject) =>
     .flatMap((step) => ("steps" in step ? step.steps : [step]))
     .map(({ id, state }) => ({ id, state }));
 
-test("a change of direction the person turns down leaves the plan as it was, and one they agree to lets the coordinator drop the steps it named and no others", async () => {
+test("on a plan under way, a change of direction the person turns down leaves the plan as it was, and one they agree to lets the coordinator drop the steps it named and no others", async () => {
   const project = await openProject({
     start: { idea: IDEA, title: "Reading List" },
     runs: {
@@ -83,7 +95,25 @@ test("a change of direction the person turns down leaves the plan as it was, and
         role: "coordinator",
         turns: [
           turn(user("reading list"), say("Tell me what to change.")),
-          turn(user(CHANGE), remove("c_remove", DROPPED)),
+          turn(
+            user("Write the requirements"),
+            call("c_requirements", "execute", {
+              plugin: "writer",
+              action: "write-requirements",
+              input: { instruction: IDEA },
+              step: "requirements",
+            }),
+          ),
+          turn(
+            results(ok("c_requirements", "execute")),
+            say("The writer is on it."),
+          ),
+          turn(user(FILED), say("The requirements are written.")),
+          turn(user(CHANGE), remove("c_report", ["report"])),
+          turn(
+            results(refused("c_report", "plan", UNDER_WAY)),
+            remove("c_remove", DROPPED),
+          ),
           turn(
             results(refused("c_remove", "plan", PROTECTED)),
             execute("c_build", "coder", "build", {
@@ -110,9 +140,23 @@ test("a change of direction the person turns down leaves the plan as it was, and
           turn(user("Go"), remove("c_drop", DROPPED)),
           turn(results(ok("c_drop", "plan")), remove("c_design", ["design"])),
           turn(
-            results(refused("c_design", "plan", PROTECTED)),
+            results(refused("c_design", "plan", AWAITS_APPROVAL)),
             say("The design stays on the plan."),
           ),
+        ],
+      },
+      writer: {
+        role: "writer",
+        turns: [
+          turn(
+            user(),
+            call("w_file", "write_artifact", {
+              title: "Reading list requirements",
+              content:
+                "## In short\n- Members see every book the club picked.\n\n## What it does\nLists the club's picks in the order they were chosen.",
+            }),
+          ),
+          turn(results(ok("w_file", "write_artifact")), say(FILED)),
         ],
       },
     },
@@ -123,7 +167,11 @@ test("a change of direction the person turns down leaves the plan as it was, and
       steps: [WEB_APP],
     });
     expect(saved.status).toBe(200);
+    await project.say("Write the requirements.");
+    await project.heard("The requirements are written.");
     const before = await steps(project);
+    expect(before).toContainEqual({ id: "requirements", state: "done" });
+    expect(before).toContainEqual({ id: "report", state: "not_started" });
     await project.say(CHANGE);
 
     const declined = await project.question();

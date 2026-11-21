@@ -40,9 +40,24 @@ const built: PlanStepView = {
   kind: "workflow",
   runId: "run",
 };
+const answered: PlanStepView = {
+  id: "ask",
+  title: "Choose the look",
+  plugin: "designer",
+  action: "looks",
+  input: {},
+  askFirst: false,
+  state: "done",
+  kind: "screen",
+  answered: { by: "person", at: "2026-01-01T00:00:00.000Z" },
+};
 
 test("a plan is under way once one of its own steps has begun, not because a step matches an earlier record", () => {
   expect(protectedSteps([check, build], records)).toEqual([]);
+  expect(protectedSteps([answered, build], records)).toEqual([
+    { step: answered, reason: "done" },
+    { step: build, reason: "underway" },
+  ]);
   expect(protectedSteps([check, built], records)).toEqual([
     { step: check, reason: "underway" },
     { step: built, reason: "done" },
