@@ -69,12 +69,7 @@ const production = (install: string, build: string) => ({
   },
 });
 
-// Replay runs no build, so the saved app already holds what the build would leave.
-const SOURCE = {
-  "package.json": "{}",
-  "src/page.txt": "page",
-  "dist/index.html": "page\n",
-};
+const SOURCE = { "package.json": "{}", "src/page.txt": "page" };
 
 const builtPaths = async (response: Response) => {
   const zip = await JSZip.loadAsync(await response.arrayBuffer());
@@ -168,9 +163,6 @@ async function starterFiles() {
       continue;
     files[relative(root, full)] = await readFile(full, "utf8");
   }
-  // Replay runs no build, so the saved app already holds the client the build would leave.
-  files["client/dist/index.html"] = "<!doctype html>\n";
-  files["client/dist/assets/index.js"] = "export {};\n";
   return files;
 }
 
