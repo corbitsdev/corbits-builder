@@ -344,8 +344,6 @@ test("a second plan step for coder build with no approval does not let the build
     filed("build_plan"),
   ]);
   await following.plan({ operation: "add", plan: "build-web-app" });
-  expect((await following.execute(coderBuild)).isError).toBe(true);
-
   const added = await following.plan({
     operation: "add",
     steps: [

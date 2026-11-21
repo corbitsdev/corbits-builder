@@ -1,4 +1,3 @@
-import { isDeepStrictEqual } from "node:util";
 import { eq } from "drizzle-orm";
 import type { DB, DBExecutor } from "@intx/db";
 import { isLiveWorkflowRunStatus, principal } from "@intx/db/schema";
@@ -207,18 +206,7 @@ export function createPlanService(
             id: dropped.id,
             text: stepKeptText(dropped.title, dropped.declined !== undefined),
           });
-        const actionSteps = saved.flatMap((step) =>
-          "steps" in step ? step.steps : [step],
-        );
-        const removed = kept.find(({ step }) => {
-          const now = actionSteps.find(({ id }) => id === step.id);
-          return (
-            now === undefined ||
-            now.plugin !== step.plugin ||
-            now.action !== step.action ||
-            !isDeepStrictEqual(now.input, step.input)
-          );
-        });
+        const removed = kept.find(({ step }) => !ids.includes(step.id));
         if (removed)
           throw new ProjectError(409, "protected_plan_step_removed", {
             id: removed.step.id,

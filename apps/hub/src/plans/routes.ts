@@ -43,32 +43,6 @@ import type { createPlanService } from "./service.ts";
 const AskFirst = type({ "+": "reject", askFirst: "boolean" });
 const ActionRun = type({ "+": "reject", "input?": "Record<string, unknown>" });
 
-function planReader(
-  service: Pick<ReturnType<typeof createPlanService>, "readPlan">,
-  nativeFetch?: (request: Request) => Promise<Response>,
-) {
-  return async (c: Context<TenantEnv>, projectId: string, catalog: Catalog) => {
-    // Only a person reads the conversation; the coordinator, which asks the questions, cannot be
-    // reading the plan while one waits on an answer.
-    const asked =
-      c.get("principal")?.kind === "user"
-        ? (await askedQuestions(c, nativeFetch, projectId)).questions
-        : [];
-    const asking = asked.flatMap((question) =>
-      question.status === "open" && showsScreen(question)
-        ? [question.asked]
-        : [],
-    );
-    const { plan, recorded, read } = await service.readPlan(
-      actorOf(c),
-      projectId,
-      catalog,
-      asking,
-    );
-    return { plan, asked, recorded, read };
-  };
-}
-
 export function mountPlanRoutes(
   app: Hono<TenantEnv>,
   service: ReturnType<typeof createPlanService>,
@@ -84,7 +58,30 @@ export function mountPlanRoutes(
     );
     return { state, catalog };
   };
-  const readPlan = planReader(service, nativeFetch);
+  const readPlan = async (
+    c: Context<TenantEnv>,
+    projectId: string,
+    catalog: Catalog,
+  ) => {
+    // Only a person reads the conversation; the coordinator, which asks the questions, cannot be
+    // reading the plan while one waits on an answer.
+    const asked =
+      c.get("principal")?.kind === "user"
+        ? (await askedQuestions(c, nativeFetch, projectId)).questions
+        : [];
+    const asking = asked.flatMap((question) =>
+      question.status === "open" && showsScreen(question)
+        ? [question.asked]
+        : [],
+    );
+    const { plan, read } = await service.readPlan(
+      actorOf(c),
+      projectId,
+      catalog,
+      asking,
+    );
+    return { plan, asked, read };
+  };
   // What a screen's state or a task reads of the project, as of now.
   const readProject = async (
     current: Actor,

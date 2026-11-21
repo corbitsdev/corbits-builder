@@ -112,7 +112,7 @@ test("on a plan under way, a change of direction the person turns down leaves th
           turn(user(CHANGE), remove("c_report", ["report"])),
           turn(
             results(refused("c_report", "plan", UNDER_WAY)),
-            remove("c_remove", DROPPED),
+            remove("c_remove", [WEB_APP.id]),
           ),
           turn(
             results(refused("c_remove", "plan", PROTECTED)),
