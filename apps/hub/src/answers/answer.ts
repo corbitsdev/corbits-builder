@@ -32,6 +32,7 @@ export type AnswerOptions = {
     | "releaseQuestion"
     | "approveShown"
     | "saveStyleTokens"
+    | "runs"
     | "stopRun"
   >;
   plans: Pick<
@@ -156,7 +157,7 @@ export function createAnswer({
         await plans.answerPlanStep(current, projectId, screen);
         step = "cancelling plan steps";
         if (answered.cancels.length > 0) {
-          const { read, recorded } = await readPlan(c, projectId, catalog);
+          const { read } = await readPlan(c, projectId, catalog);
           const cancelled = read.steps
             .flatMap((each) => ("steps" in each ? each.steps : [each]))
             .filter(
@@ -165,7 +166,7 @@ export function createAnswer({
             );
           // The jobs stop before the steps are marked, so an answer retried after a failed stop
           // still finds them.
-          const live = recorded.runs.filter(
+          const live = (await service.runs(current, projectId)).filter(
             (run) =>
               isLiveWorkflowRunStatus(run.status) &&
               cancelled.some((each) => each.id === run.step),
