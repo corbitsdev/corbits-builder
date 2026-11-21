@@ -315,9 +315,10 @@ export function protectedSteps(
     step.state === "running" ||
     (step.state === "needs_you" && step.runId !== undefined);
   return plans.flatMap((plan) => {
+    // A check's record names no step, so a new step can match an older plan's: only a run started
+    // for the step or the person's answer to it says the plan has begun.
     const underway = plan.some(
-      (step) =>
-        started(step) || step.state === "done" || step.state === "failed",
+      (step) => step.runId !== undefined || step.answered !== undefined,
     );
     const reasonOf = (step: PlanStepView): ProtectedStep["reason"] | null => {
       if (step.cancelled) return null;

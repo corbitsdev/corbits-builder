@@ -7,7 +7,7 @@ const records = {
   personFacts: new Set<Fact>(),
   asksApprovals: true,
 };
-// A check step that matches a record some earlier plan left, which does not hold now.
+// A check step that matches a failed record some earlier plan left.
 const check: PlanStepView = {
   id: "check",
   title: "Check the app",
@@ -15,7 +15,7 @@ const check: PlanStepView = {
   action: "check",
   input: {},
   askFirst: false,
-  state: "not_started",
+  state: "failed",
   kind: "check",
   checkId: "earlier",
 };
