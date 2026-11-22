@@ -45,6 +45,21 @@ jobs:
           SHA: ${{ steps.sha.outputs.sha }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
+          release=${VERSION%%-*}
+          tags=$(git ls-remote --tags origin "refs/tags/v$release*")
+          if [[ "$VERSION" == *-* ]]; then
+            if awk -v ref="refs/tags/v$release" '$2 == ref { found = 1 } END { exit !found }' <<< "$tags"; then
+              echo "::error::v$release is already released; bump package.json before cutting another candidate"
+              exit 1
+            fi
+          elif ! awk -v sha="$SHA" -v prefix="refs/tags/v$release-rc." '$1 == sha && index($2, prefix) == 1 { found = 1 } END { exit !found }' <<< "$tags"; then
+            echo "::error::$GITHUB_REF_NAME must tag the commit of a v$release-rc.N candidate"
+            exit 1
+          fi
+      - env:
+          SHA: ${{ steps.sha.outputs.sha }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
           channel=latest
           if [[ "$VERSION" == *-* ]]; then
             channel=rc

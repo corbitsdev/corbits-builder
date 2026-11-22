@@ -166,8 +166,9 @@ publishes the GitHub release:
   candidate's commit, not a newer main, so the release is exactly what was
   tried.
 
-The release workflow refuses any other tag, and any tag whose `X.Y.Z` differs
-from the package.json version.
+The release workflow refuses any other tag, any tag whose `X.Y.Z` differs from
+the package.json version, a release tag on a commit no candidate was cut from,
+and a candidate for a version that is already released.
 
 ## Security
 
