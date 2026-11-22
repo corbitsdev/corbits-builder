@@ -27,7 +27,7 @@ export default defineScreen({
       chose: ({ agreed }) => (agreed === null ? text.keep : text.go),
     },
     summary:
-      "Puts a change of direction to the person before any work the plan still holds is dropped: the steps that stop, by their titles on the plan, and what you will do instead, with one button to change direction and one to keep the plan. The answer { agreed: [stepIds] } is their go-ahead to stop exactly the steps they were shown: Builder has then cancelled those steps and stopped any still running, and you may take them out of the plan and carry on with what you said. { agreed: null } means they keep the plan, and nothing changed. If they write back instead, what they wrote is their answer and no step was cancelled.",
+      "Puts a change of direction to the person before any work the plan still holds is dropped: the steps that stop, by their titles on the plan, and what you will do instead, with one button to change direction and one to keep the plan. The answer { agreed: [stepIds] } is their go-ahead to stop exactly the steps they were shown: Builder has then cancelled those steps and stopped any still running, and you may take them out of the plan and carry on with what you said. { agreed: null } means they keep the plan, and nothing changed. If they write back instead, what they wrote is their answer and no step was cancelled. When what they wrote agrees to the change, tell them in one sentence that the steps are dropped only when they press Change direction, then open this screen again.",
     when: "The person wants to go a different way while a plan is under way, or to drop a step that waits for their approval, and the plan refused to let you take those steps out. Their yes here is the only thing that lets you.",
     unless:
       "The change only adds steps, redoes a step, stops a job or skips an optional step; none of those drops work the plan holds.",
@@ -38,7 +38,7 @@ export default defineScreen({
       },
       instead: {
         about:
-          "What you will do instead, in one plain sentence the person reads.",
+          "The new work only, in one plain sentence the person reads after the word Instead. Leave out what stops: the screen lists those steps itself.",
       },
     },
   },
