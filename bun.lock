@@ -62,7 +62,7 @@
     },
     "apps/hub": {
       "name": "@corbits-builder/hub",
-      "version": "0.1.0-rc.3",
+      "version": "0.1.0",
       "dependencies": {
         "@anthropic-ai/sandbox-runtime": "0.0.81",
         "@corbits-builder/coordinator": "workspace:*",
@@ -124,7 +124,7 @@
     },
     "apps/web": {
       "name": "@corbits-builder/web",
-      "version": "0.1.0-rc.3",
+      "version": "0.1.0",
       "dependencies": {
         "@corbits-builder/client": "workspace:*",
         "@corbits-builder/plugin": "workspace:*",
@@ -168,7 +168,7 @@
     },
     "packages/client": {
       "name": "@corbits-builder/client",
-      "version": "0.1.0-rc.3",
+      "version": "0.1.0",
       "dependencies": {
         "@corbits-builder/schemas": "workspace:*",
         "@intx/types": "workspace:*",
@@ -234,7 +234,7 @@
     },
     "packages/schemas": {
       "name": "@corbits-builder/schemas",
-      "version": "0.1.0-rc.3",
+      "version": "0.1.0",
       "dependencies": {
         "@intx/types": "workspace:*",
         "arktype": "catalog:",

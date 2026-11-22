@@ -1,6 +1,6 @@
 {
   "name": "corbits-builder",
-  "version": "0.1.0-rc.3",
+  "version": "0.1.0",
   "private": true,
   "description": "Builder lets you build, write, edit or improve anything by talking to one assistant that brings in specialists, on the model provider you choose.",
   "license": "SEE LICENSE IN LICENSE.md",
