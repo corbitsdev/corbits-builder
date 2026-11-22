@@ -1,10 +1,20 @@
 import { and, eq } from "drizzle-orm";
+import { authorizeActionUntil } from "@intx/authz";
 import {
+  createGrantStore,
   SidecarReuseRejectedError,
   workflowRunExecutability,
   type DB,
 } from "@intx/db";
-import { sidecarAllocation, tenant, workflowRun } from "@intx/db/schema";
+import {
+  grant,
+  principal,
+  sidecarAllocation,
+  tenant,
+  workflowRun,
+  workflowRunLaunchSpec,
+} from "@intx/db/schema";
+import { GrantWalkSnapshot } from "@intx/types/grant-snapshot";
 import {
   WorkflowProvisioningError,
   type AssetService,
@@ -18,7 +28,7 @@ import {
   startFailed,
 } from "../workflows/install-for-tenant.ts";
 import { projectCoordinator } from "../db/schema.ts";
-import { ProjectError } from "./errors.ts";
+import { ProjectError, projectResource } from "./errors.ts";
 import type { Actor } from "../lib/actor.ts";
 
 const START_FAILED = "coordinator_start_failed";
@@ -48,6 +58,11 @@ type CoordinatorStartupPorts = {
     projectId: string,
     body: { runId: string; idempotencyKey: string },
   ): Promise<unknown>;
+  keepRequirements(
+    tenantId: string,
+    projectId: string,
+    runId: string,
+  ): Promise<void>;
 };
 
 function errorChain(error: unknown): Error[] {
@@ -154,6 +169,7 @@ async function attach(
   const existing = await ports.boundRun(actor.tenantId, projectId);
   if (existing && !existing.ended) {
     await ports.awaitReady({ tenantId: actor.tenantId, runId: existing.runId });
+    await ports.keepRequirements(actor.tenantId, projectId, existing.runId);
     return false;
   }
   if (existing) {
@@ -198,7 +214,78 @@ async function attach(
       throw startFailed();
     throw error;
   }
+  await ports.keepRequirements(actor.tenantId, projectId, runId);
   return true;
+}
+
+// Interchange expires a run's invoker allows a day after the run starts. The coordinator gets a
+// system copy of each requirement it declares that its deploying person holds in their own right,
+// with sb-project narrowed to its one project, so it keeps working past that day.
+async function copyCoordinatorRequirements(
+  db: DB["db"],
+  tenantId: string,
+  projectId: string,
+  runId: string,
+) {
+  const [launch] = await db
+    .select({
+      principalId: principal.id,
+      source: workflowRunLaunchSpec.sourceAuthorityPrincipalId,
+      snapshot: workflowRunLaunchSpec.grantSnapshot,
+    })
+    .from(workflowRunLaunchSpec)
+    .innerJoin(
+      principal,
+      and(
+        eq(principal.refId, workflowRunLaunchSpec.anchorRunId),
+        eq(principal.kind, "workflow"),
+        eq(principal.tenantId, tenantId),
+      ),
+    )
+    .where(eq(workflowRunLaunchSpec.anchorRunId, runId));
+  if (!launch?.snapshot) return;
+  const held = (
+    await createGrantStore(db).collectGrants(launch.source, tenantId)
+  ).filter((item) => item.origin !== "invoker" || item.effect !== "allow");
+  const rows: (typeof grant.$inferInsert)[] = [];
+  for (const requirement of GrantWalkSnapshot.assert(launch.snapshot)
+    .grantRequirements) {
+    if (
+      requirement.source !== "invoker" ||
+      (requirement.effect ?? "allow") !== "allow"
+    )
+      continue;
+    const resource =
+      requirement.resource === "sb-project:*"
+        ? projectResource(projectId)
+        : requirement.resource;
+    const decision = await authorizeActionUntil(
+      held,
+      resource,
+      requirement.action,
+      { conditions: "pessimistic" },
+    );
+    if (!decision.ok) continue;
+    rows.push({
+      id:
+        "coord-grant-" +
+        new Bun.CryptoHasher("sha256")
+          .update(
+            launch.principalId + "\n" + resource + "\n" + requirement.action,
+          )
+          .digest("hex")
+          .slice(0, 40),
+      tenantId,
+      principalId: launch.principalId,
+      resource,
+      action: requirement.action,
+      effect: "allow",
+      origin: "system",
+      expiresAt: decision.expiresAt,
+    });
+  }
+  if (rows.length > 0)
+    await db.insert(grant).values(rows).onConflictDoNothing();
 }
 
 export async function awaitCoordinatorReady(
@@ -331,6 +418,9 @@ export function createInstalledCoordinatorStartup(
     },
     bind(actor, projectId, body) {
       return registry.bind(actor, projectId, body);
+    },
+    keepRequirements(tenantId, projectId, runId) {
+      return copyCoordinatorRequirements(db, tenantId, projectId, runId);
     },
   });
 }

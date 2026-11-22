@@ -129,6 +129,7 @@ test("a coordinator deploys a specialist without holding the person's admin auth
           resource: grant.resource,
           action: grant.action,
           effect: grant.effect,
+          origin: grant.origin,
         })
         .from(grant)
         .where(eq(grant.principalId, principalId))
@@ -165,6 +166,29 @@ test("a coordinator deploys a specialist without holding the person's admin auth
           /^(grant|role|principal|credential):/,
         );
     }
+    // Its own declared requirements outlive Interchange's one-day invoker grants, narrowed to its project.
+    const copies = (await grantsOf(coordinator))
+      .filter((held) => held.origin === "system")
+      .map((held) => `${held.effect} ${held.resource} ${held.action}`);
+    expect(copies).toEqual(
+      expect.arrayContaining([
+        `allow sb-project:${projectId} read`,
+        `allow sb-project:${projectId} manage`,
+        "allow sb-artifact:* write",
+        "allow workflow:* create",
+        "allow asset:* read",
+        "allow credential:* read",
+      ]),
+    );
+    expect(copies.filter((copy) => copy.includes("sb-project:*"))).toEqual([]);
+    expect(
+      (
+        await asRun(coordinator, "POST", "/roles", {
+          name: "Taken over",
+          grants: [{ resource: "*", action: "*", effect: "allow" }],
+        })
+      ).status,
+    ).toBe(403);
     expect(
       (
         await asRun(coordinator, "POST", "/grants", {
