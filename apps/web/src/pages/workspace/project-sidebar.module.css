@@ -85,7 +85,6 @@
   padding: 0 var(--space-2) 0 var(--space-1);
   border: 0;
   border-radius: var(--radius-lg);
-  background: var(--card);
   color: var(--wb-foreground);
   font: inherit;
   text-align: start;
@@ -101,9 +100,12 @@
    the page's own title rather than a tab stuck to its edge. */
 .sidebar:not([data-open]) .toggle {
   translate: var(--space-1) var(--space-2);
+  /* The open sidebar's ground, folded to its name, so it reads as something to press. */
+  background: var(--card);
 }
 
-.toggle:hover {
+.toggle:hover,
+.sidebar:not([data-open]) .toggle:hover {
   background: var(--wb-muted);
 }
 
