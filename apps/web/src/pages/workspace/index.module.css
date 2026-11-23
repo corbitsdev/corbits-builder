@@ -65,8 +65,8 @@
   isolation: isolate;
 }
 
-/* The room's top bar: the project control at its end, on the page's own background above one
-   full-width hairline. Without it, there is no bar. */
+/* Above the turns, the project control at the end: no bar of its own, no hairline, only the page
+   with a button in its corner. Without a control, there is nothing. */
 .top {
   display: flex;
   flex-shrink: 0;
@@ -74,8 +74,6 @@
   min-width: 0;
   min-height: 2.75rem;
   padding-inline-end: var(--space-2);
-  border-bottom: 1px solid var(--wb-border);
-  background: var(--wb-background);
 }
 
 .top:empty {
