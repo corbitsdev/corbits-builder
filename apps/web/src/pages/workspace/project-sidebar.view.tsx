@@ -30,7 +30,7 @@ import {
   Settings,
   type LucideIcon,
 } from "lucide-react";
-import { SidebarItem, StatusDot, type StatusDotTone } from "@corbits/react-ui";
+import { SidebarItem } from "@corbits/react-ui";
 import {
   Menu,
   MenuContent,
@@ -68,17 +68,22 @@ export type SidebarStep = {
   askFirst: boolean | null;
   /** The person declined the step; null where it cannot be declined. */
   declined: boolean | null;
-  /**
-   * The tab of what the step made, which its row opens; null while it has made nothing to show,
-   * and the row is only where the work stands.
-   */
-  opens: string | null;
 };
 
-/** A part of the plan; its name is a heading only when the plan has more than one. */
-export type SidebarPlanGroup = {
+/**
+ * One thing the project makes, as the plan lists it: a document, the app, or what a ready-made
+ * plan ends in. It covers the steps taken to make it, whose settings its menu changes.
+ */
+export type SidebarRow = {
   id: string;
   name: string;
+  state: SidebarStepState;
+  /** What it is at, under its name, when the name alone does not say; null otherwise. */
+  doing: string | null;
+  /** It makes the project's app: once built it opens the app and says how it runs. */
+  app: boolean;
+  /** The tab of what it made, which the row opens; null while there is nothing to show. */
+  opens: string | null;
   steps: readonly SidebarStep[];
 };
 
@@ -96,7 +101,7 @@ export type ProjectSidebarViewProps = {
   open: boolean;
   /** The room is narrow, so the open sidebar lies over the page. */
   drawer: boolean;
-  plan: readonly SidebarPlanGroup[];
+  plan: readonly SidebarRow[];
   app: SidebarAppState;
   /** The app is on the page; its line is marked. */
   appOpen: boolean;
@@ -146,12 +151,16 @@ export function ProjectSidebarView({
       <PlanTree
         label={project}
         plan={plan}
+        app={app}
         shown={shown}
         onAskFirst={onAskFirst}
         onDecline={onDecline}
         onOpenStep={onOpenStep}
       />
-      <AppLine app={app} open={appOpen} onOpen={onOpenApp} />
+      {/* The app has its own line only where no row of the plan makes it. */}
+      {plan.some((row) => row.app) ? null : (
+        <AppLine app={app} open={appOpen} onOpen={onOpenApp} />
+      )}
       <SidebarFoot>
         <SidebarLinks label={words.groups.thisProject}>
           <SidebarLink icon={Settings} onClick={onProjectSettings}>
@@ -348,7 +357,7 @@ export function SidebarLink({
 
 const PLAN = "plan";
 
-const stepKey = (stepId: string) => `step:${stepId}`;
+const rowKey = (rowId: string) => `row:${rowId}`;
 
 /** A row of the tree, whether or not the fold hides it. */
 type TreeRow = {
@@ -371,20 +380,22 @@ type TreeItemProps = Required<
 /**
  * The plan as a tree with a single tab stop, after the WAI-ARIA tree view pattern: the arrows move
  * between rows and fold Plan, Home and End jump, a letter finds the next row starting with it,
- * Enter or Space folds Plan, opens what a step made or else the step's menu, and Shift+F10 or the
- * context-menu key opens a step's menu. Folding and menus only change the look, so they are held
+ * Enter or Space folds Plan, opens what a row made or else the row's menu, and Shift+F10 or the
+ * context-menu key opens a row's menu. Folding and menus only change the look, so they are held
  * here.
  */
 function PlanTree({
   label,
   plan,
+  app,
   shown,
   onAskFirst,
   onDecline,
   onOpenStep,
 }: {
   label: string;
-  plan: readonly SidebarPlanGroup[];
+  plan: readonly SidebarRow[];
+  app: SidebarAppState;
   shown: string | null;
   onAskFirst: (stepId: string, askFirst: boolean) => void;
   onDecline: (stepId: string, declined: boolean) => void;
@@ -393,10 +404,9 @@ function PlanTree({
   // The row whose menu is open.
   const [menu, setMenu] = useState<string | null>(null);
   const [folded, setFolded] = useState(false);
-  const steps = plan.flatMap((group) => group.steps);
-  const folds = steps.length > 0;
+  const folds = plan.length > 0;
   const toggle = () => setFolded(!folded);
-  const opener = ({ opens }: SidebarStep) =>
+  const opener = ({ opens }: SidebarRow) =>
     opens === null ? null : () => onOpenStep(opens);
   const allRows: TreeRow[] = [
     {
@@ -406,14 +416,14 @@ function PlanTree({
       activate: folds ? toggle : null,
       menu: false,
     },
-    ...steps.map((step): TreeRow => {
-      const key = stepKey(step.id);
-      const menu = stepHasMenu(step);
+    ...plan.map((row): TreeRow => {
+      const key = rowKey(row.id);
+      const menu = row.steps.some(stepHasMenu);
       return {
         key,
         parent: PLAN,
-        name: step.name,
-        activate: opener(step) ?? (menu ? () => setMenu(key) : null),
+        name: row.name,
+        activate: opener(row) ?? (menu ? () => setMenu(key) : null),
         menu,
       };
     }),
@@ -513,8 +523,6 @@ function PlanTree({
     onOpenChange: (open) => setMenu(open ? key : null),
     onClosed: () => focus(key),
   });
-  const many = plan.length > 1;
-  const headings = useId();
   return (
     <ul
       role="tree"
@@ -529,51 +537,37 @@ function PlanTree({
         empty={words.noPlan}
         open={folds ? !folded : null}
         busy={
-          steps.some((each) => each.state === "needs_you")
+          plan.some((each) => each.state === "needs_you")
             ? "needs_you"
-            : steps.some((each) => each.state === "running")
+            : plan.some((each) => each.state === "running")
               ? "running"
               : null
         }
         onToggle={toggle}
         {...itemProps(PLAN)}
       >
-        {plan.map((group, index) => {
-          const headingId = `${headings}-${String(index)}`;
-          return (
-            <ul
-              key={group.id}
-              role="group"
-              className={styles.rows}
-              aria-labelledby={many ? headingId : undefined}
-            >
-              {many ? (
-                <li role="none" id={headingId} className={styles.heading}>
-                  {group.name}
-                </li>
-              ) : null}
-              {group.steps.map((step) => (
-                <StepItem
-                  key={step.id}
-                  step={step}
-                  current={step.opens !== null && step.opens === shown}
-                  onOpen={opener(step)}
-                  menu={
-                    stepHasMenu(step) ? (
-                      <StepMenu
-                        step={step}
-                        menu={menuOf(stepKey(step.id), step.name)}
-                        onAskFirst={(askFirst) => onAskFirst(step.id, askFirst)}
-                        onDecline={(declined) => onDecline(step.id, declined)}
-                      />
-                    ) : null
-                  }
-                  {...itemProps(stepKey(step.id))}
-                />
-              ))}
-            </ul>
-          );
-        })}
+        <ul role="group" className={styles.rows}>
+          {plan.map((row) => (
+            <PlanRow
+              key={row.id}
+              row={row}
+              app={row.app ? app : null}
+              current={row.opens !== null && row.opens === shown}
+              onOpen={opener(row)}
+              menu={
+                row.steps.some(stepHasMenu) ? (
+                  <RowStepsMenu
+                    steps={row.steps.filter(stepHasMenu)}
+                    menu={menuOf(rowKey(row.id), row.name)}
+                    onAskFirst={onAskFirst}
+                    onDecline={onDecline}
+                  />
+                ) : null
+              }
+              {...itemProps(rowKey(row.id))}
+            />
+          ))}
+        </ul>
       </BranchItem>
     </ul>
   );
@@ -640,7 +634,7 @@ function BranchItem({
             {busy === "running" ? (
               <Working />
             ) : (
-              <StatusDot label="" size="xs" tone="emphasis" />
+              <span className={styles.mark} data-state="needs_you" />
             )}
           </span>
         )}
@@ -652,39 +646,43 @@ function BranchItem({
   );
 }
 
-// Where a step stands is said by its words: finished steps are quiet, the one being worked on
-// shimmers and turns, and only a step that waits on the person or failed carries a dot.
-const stepTone: Partial<Record<SidebarStepState, StatusDotTone>> = {
-  needs_you: "emphasis",
-  failed: "danger",
-};
-
 /**
- * A step's row shows what will happen to it as well as where it stands: a skipped step is struck
- * through, and one that will pause for the person before it starts carries a pause mark, so neither
- * setting hides in its menu.
+ * Where a row stands is said by its words: finished ones are quiet, the one being worked on
+ * shimmers and turns, and only one that waits on the person or failed carries a dot. It shows what
+ * will happen as well as where it stands: a thing that will not be made is struck
+ * through, and one whose next step will pause for the person first carries a pause mark, so neither
+ * setting hides in its menu. Once the app is built, its row carries the app's own mark and says how
+ * it runs.
  */
-function StepItem({
-  step,
+function PlanRow({
+  row,
+  app,
   current,
   onOpen,
   menu,
   ...item
 }: {
-  step: SidebarStep;
+  row: SidebarRow;
+  /** How the app stands, on the row that makes it; null on every other. */
+  app: SidebarAppState | null;
   /** What it made is on the page. */
   current: boolean;
-  /** Opens what it made; null while it has made nothing to show. */
+  /** Opens what it made; null while there is nothing to show. */
   onOpen: (() => void) | null;
   menu: ReactNode;
 } & TreeItemProps) {
-  const { state } = step;
-  const tone = stepTone[state];
-  const skipped = state === "declined" || step.declined === true;
-  const pauses = state === "to_do" && !skipped && step.askFirst === true;
+  const { state } = row;
+  const marked = state === "needs_you" || state === "failed";
+  const next = row.steps.find(
+    (step) => step.state === "to_do" && step.declined !== true,
+  );
+  const pauses = state === "to_do" && next?.askFirst === true;
+  const live = state === "done" && app !== null && app !== "not_built";
+  const doing = live ? words.appNow[app] : row.doing;
   const said = [
-    step.name,
-    skipped ? words.skipped : words.stepState[state],
+    row.name,
+    state === "declined" ? words.skipped : words.stepState[state],
+    ...(doing === null ? [] : [doing]),
     ...(pauses ? [words.pausesFirst] : []),
   ].join(", ");
   return (
@@ -695,7 +693,7 @@ function StepItem({
       aria-label={said}
       aria-current={current ? "page" : undefined}
       className={styles.item}
-      title={step.name}
+      title={row.name}
       onClick={
         onOpen === null
           ? undefined
@@ -714,17 +712,32 @@ function StepItem({
       <span
         className={styles.row}
         data-row="step"
-        data-state={skipped ? "declined" : state}
+        data-state={state}
         data-opens={onOpen === null ? undefined : ""}
       >
-        <span className={styles.name}>{step.name}</span>
-        {state === "running" ? (
+        <span className={styles.text}>
+          <span className={styles.name}>{row.name}</span>
+          {doing === null ? null : (
+            <span className={styles.doing} aria-live="polite">
+              {doing}
+            </span>
+          )}
+        </span>
+        {live ? (
+          <span className={styles.dot}>
+            {app === "starting" ? (
+              <Working />
+            ) : (
+              <span className={styles.appDot} data-state={app} />
+            )}
+          </span>
+        ) : state === "running" ? (
           <span className={styles.dot}>
             <Working />
           </span>
-        ) : tone !== undefined ? (
+        ) : marked ? (
           <span className={styles.dot}>
-            <StatusDot label="" size="xs" tone={tone} />
+            <span className={styles.mark} data-state={state} />
           </span>
         ) : pauses ? (
           <span className={styles.dot} title={words.pausesFirst}>
@@ -768,7 +781,7 @@ type RowMenuProps = {
 };
 
 /**
- * A step's menu, from its button or the keyboard. The button is for the pointer only: the row
+ * A row's menu, from its button or the keyboard. The button is for the pointer only: the row
  * itself holds focus and says it has a menu, which Shift+F10 opens.
  */
 function RowMenu({
@@ -808,31 +821,56 @@ function RowMenu({
   );
 }
 
-function StepMenu({
-  step,
+/**
+ * A row's menu: the settings of the steps it covers. Each item says what choosing it will do, so
+ * the row, not the menu, shows how things stand; where the row covers more than one step with
+ * settings, each item names its step.
+ */
+function RowStepsMenu({
+  steps,
   menu,
   onAskFirst,
   onDecline,
 }: {
-  step: SidebarStep;
+  steps: readonly SidebarStep[];
   menu: RowMenuProps;
-  onAskFirst: (askFirst: boolean) => void;
-  onDecline: (declined: boolean) => void;
+  onAskFirst: (stepId: string, askFirst: boolean) => void;
+  onDecline: (stepId: string, declined: boolean) => void;
 }) {
-  // Each item says what choosing it will do, so the row, not the menu, shows how things stand.
-  const { askFirst, declined } = step;
+  const named = steps.length > 1;
+  const said = words.stepMenu;
   return (
     <RowMenu {...menu}>
-      {askFirst === null || declined === true ? null : (
-        <MenuItem onSelect={() => onAskFirst(!askFirst)}>
-          {askFirst ? words.stepMenu.dontPause : words.stepMenu.pause}
-        </MenuItem>
-      )}
-      {declined === null ? null : (
-        <MenuItem onSelect={() => onDecline(!declined)}>
-          {declined ? words.stepMenu.keep : words.stepMenu.skip}
-        </MenuItem>
-      )}
+      {steps.flatMap(({ id, name, askFirst, declined }) => [
+        askFirst === null || declined === true ? null : (
+          <MenuItem
+            key={`${id}:ask`}
+            onSelect={() => onAskFirst(id, !askFirst)}
+          >
+            {askFirst
+              ? named
+                ? said.dontPauseBefore(name)
+                : said.dontPause
+              : named
+                ? said.pauseBefore(name)
+                : said.pause}
+          </MenuItem>
+        ),
+        declined === null ? null : (
+          <MenuItem
+            key={`${id}:skip`}
+            onSelect={() => onDecline(id, !declined)}
+          >
+            {declined
+              ? named
+                ? said.keepStep(name)
+                : said.keep
+              : named
+                ? said.skipStep(name)
+                : said.skip}
+          </MenuItem>
+        ),
+      ])}
     </RowMenu>
   );
 }

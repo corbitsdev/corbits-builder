@@ -194,9 +194,10 @@
   outline: none;
 }
 
+/* Blue, as every focus ring in the room is; the library's ring is the brand's orange. */
 .item:focus-visible > .row,
 .toggle:focus-visible {
-  outline: 2px solid var(--wb-ring);
+  outline: 2px solid var(--wb-action);
   outline-offset: -2px;
 }
 
@@ -312,15 +313,7 @@
   margin-block-end: var(--space-2);
 }
 
-/* A part of the plan, named only when the plan has more than one. */
-.heading {
-  padding: var(--space-3) var(--space-2) var(--space-1) 20px;
-  color: var(--wb-muted-foreground);
-  font-size: var(--text-xs);
-  line-height: var(--text-xs--line-height);
-}
-
-/* Indented so a step's name starts under Plan's chevron. */
+/* Indented so a row's name starts under Plan's chevron. */
 .rows > .item {
   padding-inline-start: var(--space-3);
 }
@@ -342,9 +335,37 @@
   color: var(--wb-foreground);
 }
 
-/* A step that has made nothing to show is only where the work stands: no fill or pointer, as
-   though it opened something. One that has opens it, and is marked as the app's line is while
-   what it made is on the page. */
+/* What a row is at sits under its name, small and quiet, and the row grows to hold it. */
+.text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.text > .name {
+  flex: none;
+}
+
+.doing {
+  overflow: hidden;
+  color: var(--wb-muted-foreground);
+  font-size: var(--text-xs);
+  font-weight: 400;
+  line-height: var(--text-xs--line-height);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row[data-row="step"]:has(.doing) {
+  height: auto;
+  min-height: 2rem;
+  padding-block: var(--space-1);
+}
+
+/* A row with nothing to show yet is only where the work stands: no fill or pointer, as though it
+   opened something. One that has made its thing opens it, and is marked as the app's line is
+   while that is on the page. */
 .row[data-row="step"]:not([data-opens]) {
   cursor: default;
 }
@@ -551,6 +572,19 @@
 
 .app[data-current] {
   font-weight: 500;
+}
+
+/* What waits on the person is blue, as the room's actions are, and a failure red; the library's
+   own tones are the brand's orange. */
+.mark {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--wb-action);
+}
+
+.mark[data-state="failed"] {
+  background: var(--destructive);
 }
 
 .appDot {

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { wording } from "../../config.ts";
 import { conceptTab } from "./design-concept.ts";
-import { DRAFT_TAB, MANUAL_TAB, MOCKUP_TAB } from "./tab-follow.ts";
+import { DRAFT_TAB, LIVE_TAB, MANUAL_TAB, MOCKUP_TAB } from "./tab-follow.ts";
 import {
   building,
   designing,
@@ -73,55 +73,122 @@ describe("a step's row", () => {
   });
 });
 
-describe("what a step opens", () => {
-  const { files } = projectOutline(designing);
-  const opens = (fields: Parameters<typeof planStep>[2]) =>
-    outlineStep(planStep("step", "done", fields), files).opens;
-
-  test("is the tab of the first file it makes that the project has", () => {
-    expect(opens({ files: ["gone", "product_requirements"] })).toBe(
-      "product_requirements",
-    );
-    expect(opens({ files: ["design"] })).toBe(DRAFT_TAB);
-  });
-
-  test("is nothing while it makes no file, or none the project has yet", () => {
-    expect(opens({})).toBeNull();
-    expect(opens({ files: ["build_plan"] })).toBeNull();
-  });
-});
-
 describe("the plan", () => {
+  const webApp = (steps: Parameters<typeof planGroup>[2], name?: string) =>
+    planGroup("web-app", "A ready-made plan for a web app", steps, {
+      plan: "web-app",
+      ...(name === undefined ? {} : { name }),
+    });
+
   test("is empty while the project has none", () => {
     expect(outlinePlan([])).toEqual([]);
   });
 
-  test("a ready-made plan is one group of its steps", () => {
-    const plan = outlinePlan(planning.plan);
-    expect(plan).toHaveLength(1);
-    expect(plan[0]?.name).toBe("Build a web app");
-    expect(plan[0]?.steps.map((step) => step.name)).toEqual([
-      "Write the brief",
-      "List the constraints",
-      "Compare approaches",
-      "Research other bakeries",
-      "Write the requirements",
+  test("is a row for each thing made, named as its tab is, holding the steps before it that make nothing", () => {
+    const rows = outlinePlan([
+      webApp([
+        planStep("requirements", "done", {
+          makes: ["product_requirements"],
+        }),
+        planStep("looks", "done", { optional: true }),
+        planStep("mockup", "running", {
+          title: "Design the look",
+          makes: ["design_option"],
+        }),
+        planStep("build", "not_started", { makes: ["app"] }),
+      ]),
+    ]);
+    expect(rows.map((row) => row.name)).toEqual([
+      wording.documentTab["product_requirements"]!,
+      wording.projectShell.makes["design_option"]!,
+      wording.projectShell.makes["app"]!,
+    ]);
+    expect(rows.map((row) => row.steps.length)).toEqual([1, 2, 1]);
+    expect(rows.map((row) => row.app)).toEqual([false, false, true]);
+  });
+
+  test("steps after the last thing made are one row named for what their plan makes", () => {
+    const rows = outlinePlan([
+      webApp(
+        [
+          planStep("ready", "done"),
+          planStep("where", "needs_you", {
+            title: "Confirm where your app goes",
+          }),
+          planStep("live", "not_started"),
+        ],
+        "Published on Cloudflare",
+      ),
+    ]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      name: "Published on Cloudflare",
+      state: "needs_you",
+      doing: "Confirm where your app goes",
+    });
+  });
+
+  test("steps after the last thing made join its row when their plan names nothing", () => {
+    const rows = outlinePlan([
+      webApp([
+        planStep("manual", "done", { makes: ["user_manual"] }),
+        planStep("review", "running", { title: "Review the manual" }),
+      ]),
+    ]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      name: wording.documentTab["user_manual"],
+      state: "running",
+      doing: "Review the manual",
+    });
+  });
+
+  test("a step outside a group is a row of its own, named for it when it makes nothing", () => {
+    const rows = outlinePlan([
+      planStep("brief", "done", { makes: ["problem_brief"] }),
+      planStep("call", "not_started", { title: "Call the bakery" }),
+    ]);
+    expect(rows.map((row) => row.name)).toEqual([
+      wording.documentTab["problem_brief"]!,
+      "Call the bakery",
     ]);
   });
 
-  test("steps outside a group are gathered into one, between the groups around them", () => {
-    const plan = outlinePlan([
-      planStep("brief", "done"),
-      planStep("requirements", "running"),
-      planGroup("site", "Build the site", [planStep("build", "not_started")]),
-      planStep("publish", "not_started"),
+  test("reads as its steps stand: what waits on the person first, then a failure, then work", () => {
+    const state = (...states: Parameters<typeof planStep>[1][]) =>
+      outlinePlan([
+        webApp(
+          states.map((each, index) => planStep(`s${String(index)}`, each)),
+          "Published",
+        ),
+      ])[0]?.state;
+    expect(state("done", "needs_you", "failed")).toBe("needs_you");
+    expect(state("failed", "running")).toBe("failed");
+    expect(state("done", "running")).toBe("running");
+    expect(state("done", "done")).toBe("done");
+    expect(state("done", "not_started")).toBe("to_do");
+    expect(state("skipped", "cancelled")).toBe("declined");
+  });
+
+  test("says nothing under its name while the step that makes it is the one at work", () => {
+    const [row] = outlinePlan([
+      planStep("build", "running", { makes: ["app"] }),
     ]);
-    expect(plan.map((group) => [group.name, group.steps.length])).toEqual([
-      [wording.projectShell.plan, 2],
-      ["Build the site", 1],
-      [wording.projectShell.plan, 1],
-    ]);
-    expect(new Set(plan.map((group) => group.id)).size).toBe(3);
+    expect(row?.doing).toBeNull();
+  });
+
+  test("opens the first thing it made that the project has, and the app once it is shown", () => {
+    const { files } = projectOutline(designing);
+    const opens = (makes: string[], appShown = false) =>
+      outlinePlan([planStep("step", "done", { makes })], files, appShown)[0]
+        ?.opens;
+    expect(opens(["gone", "product_requirements"])).toBe(
+      "product_requirements",
+    );
+    expect(opens(["design_option"])).toBe(DRAFT_TAB);
+    expect(opens(["build_plan"])).toBeNull();
+    expect(opens(["app"])).toBeNull();
+    expect(opens(["app"], true)).toBe(LIVE_TAB);
   });
 });
 

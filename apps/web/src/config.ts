@@ -460,6 +460,11 @@ export const wording = {
     },
     plan: "Plan",
     noPlan: "No steps yet",
+    /** What a row of the plan is named for what its step makes, where no document's tab names it. */
+    makes: {
+      app: "App",
+      design_option: "Design",
+    } as Record<string, string>,
     /** Read after a step's name, since its mark alone does not say it. */
     stepState: {
       to_do: "to do",
@@ -476,6 +481,11 @@ export const wording = {
       dontPause: "Don't pause",
       skip: "Skip this step",
       keep: "Keep this step",
+      /** The same, in a row that covers more than one step with settings, naming the step. */
+      pauseBefore: (step: string) => `Pause before: ${step}`,
+      dontPauseBefore: (step: string) => `Don't pause before: ${step}`,
+      skipStep: (step: string) => `Skip: ${step}`,
+      keepStep: (step: string) => `Keep: ${step}`,
     },
     /** Read after a step's name, and shown on its pause mark. */
     pausesFirst: "pauses for you before it starts",
@@ -486,6 +496,13 @@ export const wording = {
       running: "App running",
       stopped: "App stopped",
       failed: "App failed to start",
+    },
+    /** How the app stands, under its row once it is built. */
+    appNow: {
+      starting: "Starting",
+      running: "Running",
+      stopped: "Stopped",
+      failed: "Didn't start",
     },
     openApp: "Open app",
     projectSettings: "Project settings",

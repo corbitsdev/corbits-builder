@@ -5,56 +5,106 @@ import { wording } from "../../config.ts";
 import {
   ProjectSidebarView,
   type ProjectSidebarViewProps,
-  type SidebarPlanGroup,
+  type SidebarRow,
   type SidebarStep,
   type SidebarStepState,
 } from "./project-sidebar.view.tsx";
+import { LIVE_TAB } from "./tab-follow.ts";
 
 const words = wording.projectShell;
 
 /**
  * A step not yet started can be set to ask first; once it runs, neither setting changes. Only an
- * optional step can be declined. A step opens what it made only once the project has it.
+ * optional step can be declined.
  */
 const step = (
   id: string,
   name: string,
   state: SidebarStepState = "to_do",
-  settings: Partial<Pick<SidebarStep, "askFirst" | "declined" | "opens">> = {},
+  settings: Partial<Pick<SidebarStep, "askFirst" | "declined">> = {},
 ): SidebarStep => ({
   id,
   name,
   state,
   askFirst: state === "to_do" || state === "needs_you" ? false : null,
   declined: state === "declined" ? true : null,
-  opens: null,
   ...settings,
 });
 
-/** A plan of one part: its steps stand on their own, with no heading. */
-const onePart = (steps: readonly SidebarStep[]): SidebarPlanGroup[] => [
-  { id: "plan", name: "Plan", steps },
+/** A thing the project makes, made by one step of the same name; it opens what it made once it has. */
+const row = (
+  id: string,
+  name: string,
+  state: SidebarStepState = "to_do",
+  settings: Partial<Pick<SidebarStep, "askFirst" | "declined">> = {},
+  fields: Partial<SidebarRow> = {},
+): SidebarRow => ({
+  id,
+  name,
+  state,
+  doing: null,
+  app: false,
+  opens: null,
+  steps: [step(id, name, state, settings)],
+  ...fields,
+});
+
+const planning = [
+  row("brief", "Brief", "done", {}, { opens: "problem_brief" }),
+  row("constraints", "Constraints", "done", {}, { opens: "constraints" }),
+  row("approaches", "Approaches", "running"),
+  row("requirements", "Requirements", "to_do", { askFirst: true }),
+  row("research", "Research", "to_do", { declined: false }),
+  row("design", "Design"),
+  row("build", "App", "to_do", {}, { app: true }),
 ];
 
-const planning = onePart([
-  step("brief", "Write the brief", "done", { opens: "problem_brief" }),
-  step("constraints", "List the constraints", "done"),
-  step("approaches", "Compare approaches", "running"),
-  step("requirements", "Write the requirements", "to_do", { askFirst: true }),
-  step("research", "Research other bakeries", "to_do", { declined: false }),
-  step("design", "Design the screens"),
-  step("build", "Build the app"),
-]);
+const building = [
+  row("brief", "Brief", "done", {}, { opens: "problem_brief" }),
+  row(
+    "requirements",
+    "Requirements",
+    "done",
+    {},
+    { opens: "product_requirements" },
+  ),
+  row(
+    "design",
+    "Design",
+    "done",
+    {},
+    {
+      opens: "design",
+      steps: [
+        step("looks", "Choose how many looks", "done"),
+        step("design", "Design the look", "done"),
+      ],
+    },
+  ),
+  row("build_plan", "Build plan", "done", {}, { opens: "build_plan" }),
+  row("build", "App", "done", {}, { app: true, opens: LIVE_TAB }),
+  row("manual", "User manual", "running"),
+];
 
-const building = onePart([
-  step("brief", "Write the brief", "done", { opens: "problem_brief" }),
-  step("requirements", "Write the requirements", "done", {
-    opens: "product_requirements",
-  }),
-  step("design", "Design the screens", "done"),
-  step("build", "Build the app", "running"),
-  step("manual", "Write the user manual", "running"),
-]);
+/** Published after the build: one row for the whole ready-made plan, saying what waits on the person. */
+const publishing = [
+  ...building,
+  row(
+    "publish",
+    "Published on Cloudflare",
+    "needs_you",
+    {},
+    {
+      doing: "Confirm where your app goes",
+      steps: [
+        step("ready", "Check your app is ready for Cloudflare", "done"),
+        step("where", "Confirm where your app goes", "needs_you"),
+        step("go", "Publish the app to Cloudflare"),
+        step("live", "Confirm the saved version is the one live"),
+      ],
+    },
+  ),
+];
 
 // Holds what the page would: what is on the page and whether the sidebar is out, so a story can
 // be clicked through.
@@ -70,12 +120,12 @@ function Clickable(args: ProjectSidebarViewProps) {
       open={open}
       onOpenApp={() => {
         setAppOpen(true);
-        setShown(null);
+        setShown(LIVE_TAB);
         args.onOpenApp();
       }}
       onOpenStep={(tab) => {
         setShown(tab);
-        setAppOpen(false);
+        setAppOpen(tab === LIVE_TAB);
         args.onOpenStep(tab);
       }}
       onToggleSidebar={() => {
@@ -158,7 +208,7 @@ const buildingArgs = {
   app: "running",
 } satisfies Partial<ProjectSidebarViewProps>;
 
-/** While building: two steps run at once, and the app is up. */
+/** While building: the app is built and up, and its manual is being written. */
 export const Building: Story = { args: buildingArgs };
 
 export const BuildingDark: Story = {
@@ -166,14 +216,14 @@ export const BuildingDark: Story = {
   globals: { mode: "dark" },
 };
 
-/** The app is starting: its line turns until it is up. */
+/** The app is starting: its row turns until it is up. */
 export const AppStarting: Story = {
   args: { ...buildingArgs, app: "starting" },
 };
 
-/** The app is running and on the page: its line is marked. */
+/** The app is running and on the page: its row is marked. */
 export const AppOpen: Story = {
-  args: { ...buildingArgs, appOpen: true },
+  args: { ...buildingArgs, appOpen: true, shown: LIVE_TAB },
 };
 
 /** Nothing runs the app right now; opening it starts it again. */
@@ -187,9 +237,9 @@ export const AppFailedDark: Story = {
   globals: { mode: "dark" },
 };
 
-/** The app's line opens the app and is marked once it is on the page. */
+/** Where no row makes the app, its own line opens it and is marked once it is on the page. */
 export const OpenApp: Story = {
-  args: buildingArgs,
+  args: { plan: [], app: "running" },
   play: async ({ canvasElement, args }) => {
     const canvas = within(canvasElement);
     const line = canvas.getByRole("button", { name: words.appState.running });
@@ -211,46 +261,31 @@ export const NoApp: Story = {
 /** A new project: no steps yet, and no app. */
 export const NewProject: Story = { args: { plan: [] } };
 
-/** A plan in more than one part: each part's name heads its steps. */
-export const PlanInParts: Story = {
-  args: {
-    plan: [
-      {
-        id: "understand",
-        name: "Understand the bakery",
-        steps: [
-          step("brief", "Write the brief", "done"),
-          step("constraints", "List the constraints", "done"),
-        ],
-      },
-      {
-        id: "shape",
-        name: "Shape the app",
-        steps: [
-          step("requirements", "Write the requirements", "needs_you"),
-          step("design", "Design the screens"),
-        ],
-      },
-      {
-        id: "make",
-        name: "Make it",
-        steps: [step("build", "Build the app")],
-      },
-    ],
-  },
+/**
+ * A ready-made plan whose steps make nothing of their own until its end is one row, named for what
+ * it makes, saying under its name what waits on the person.
+ */
+export const Publishing: Story = { args: { plan: publishing, app: "running" } };
+
+export const PublishingDark: Story = {
+  args: { plan: publishing, app: "running" },
+  globals: { mode: "dark" },
 };
+
+/** Without a row that makes it, as when the app came before the plan, the app keeps its own line. */
+export const AppWithoutPlan: Story = { args: { plan: [], app: "running" } };
 
 /** Every state a step takes: done, running, waiting on the person, failed, declined, to do. */
 export const StepStates: Story = {
   args: {
-    plan: onePart([
-      step("brief", "Write the brief", "done"),
-      step("approaches", "Compare approaches", "running"),
-      step("requirements", "Write the requirements", "needs_you"),
-      step("design", "Design the screens", "failed"),
-      step("research", "Research other bakeries", "declined"),
-      step("build", "Build the app"),
-    ]),
+    plan: [
+      row("brief", "Write the brief", "done"),
+      row("approaches", "Compare approaches", "running"),
+      row("requirements", "Write the requirements", "needs_you"),
+      row("design", "Design the screens", "failed"),
+      row("research", "Research other bakeries", "declined"),
+      row("build", "Build the app"),
+    ],
   },
 };
 
@@ -263,18 +298,18 @@ export const StepStatesDark: Story = {
 export const LongNames: Story = {
   args: {
     project: "Bakery orders and wholesale delivery scheduling",
-    plan: onePart([
-      step(
+    plan: [
+      row(
         "interviews",
         "Interview the Saturday market stall owners about their orders",
         "running",
       ),
-      step(
+      row(
         "pricing",
         "Set wholesale pricing tiers for cafés and restaurants",
         "needs_you",
       ),
-    ]),
+    ],
   },
 };
 
@@ -285,22 +320,22 @@ export const LongNames: Story = {
 export const LongPlan: Story = {
   args: {
     ...buildingArgs,
-    plan: onePart([
-      step("brief", "Write the brief", "done"),
-      step("constraints", "List the constraints", "done"),
-      step("approaches", "Compare approaches", "done"),
-      step("requirements", "Write the requirements", "done"),
-      step("research", "Research other bakeries", "declined"),
-      step("design", "Design the screens", "done"),
-      step("review", "Review the design", "done"),
-      step("build", "Build the app", "running"),
-      step("orders", "Add online cake orders"),
-      step("allergies", "Flag allergies on every order"),
-      step("ready", "Tell customers when a cake is ready"),
-      step("test", "Test the app with the counter staff"),
-      step("manual", "Write the user manual"),
-      step("launch", "Launch for the Saturday market"),
-    ]),
+    plan: [
+      row("brief", "Write the brief", "done"),
+      row("constraints", "List the constraints", "done"),
+      row("approaches", "Compare approaches", "done"),
+      row("requirements", "Write the requirements", "done"),
+      row("research", "Research other bakeries", "declined"),
+      row("design", "Design the screens", "done"),
+      row("review", "Review the design", "done"),
+      row("build", "Build the app", "running"),
+      row("orders", "Add online cake orders"),
+      row("allergies", "Flag allergies on every order"),
+      row("ready", "Tell customers when a cake is ready"),
+      row("test", "Test the app with the counter staff"),
+      row("manual", "Write the user manual"),
+      row("launch", "Launch for the Saturday market"),
+    ],
   },
 };
 
@@ -322,7 +357,7 @@ export const Keyboard: Story = {
     while (document.activeElement !== plan) await userEvent.tab();
     await userEvent.keyboard("{ArrowDown}{ArrowDown}");
     await expect(
-      canvas.getByRole("treeitem", { name: /^Write the requirements/ }),
+      canvas.getByRole("treeitem", { name: /^Requirements/ }),
     ).toHaveFocus();
     await userEvent.keyboard("{ArrowLeft}");
     await expect(plan).toHaveFocus();
@@ -352,7 +387,7 @@ export const FoldedPlan: Story = {
 };
 
 export const FoldedPlanNeedsYou: Story = {
-  args: { ...PlanInParts.args },
+  args: { plan: publishing, app: "running" },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const plan = canvas.getByRole("treeitem", { name: words.plan });
@@ -373,10 +408,10 @@ export const StepMenu: Story = {
   play: async ({ canvasElement, args }) => {
     const canvas = within(canvasElement);
     const requirements = canvas.getByRole("treeitem", {
-      name: /^Write the requirements/,
+      name: /^Requirements/,
     });
     await expect(requirements).toHaveAccessibleName(
-      `Write the requirements, ${words.stepState.to_do}, ${words.pausesFirst}`,
+      `Requirements, ${words.stepState.to_do}, ${words.pausesFirst}`,
     );
     await expect(requirements).toHaveAttribute("aria-haspopup", "menu");
     requirements.focus();
@@ -397,11 +432,11 @@ export const StepMenu: Story = {
 /** An optional step's menu offers to skip it; once skipped, it offers to keep it. */
 export const SkipMenu: Story = {
   args: {
-    plan: onePart([
-      step("brief", "Write the brief", "done"),
-      step("research", "Research other bakeries", "to_do", { declined: false }),
-      step("visit", "Visit the market stalls", "to_do", { declined: true }),
-    ]),
+    plan: [
+      row("brief", "Write the brief", "done"),
+      row("research", "Research other bakeries", "to_do", { declined: false }),
+      row("visit", "Visit the market stalls", "declined", { declined: true }),
+    ],
   },
   play: async ({ canvasElement, args }) => {
     const canvas = within(canvasElement);
@@ -441,23 +476,69 @@ export const DrawerDark: Story = {
 };
 
 /**
- * A step that made something opens it, and is marked while it is on the page. One that has made
- * nothing to show is only where the work stands, and pressing it does nothing.
+ * A row whose thing is made opens it, and is marked while it is on the page; the app's row opens
+ * the app. One with nothing to show yet is only where the work stands, and pressing it does
+ * nothing.
  */
-export const OpensWhatAStepMade: Story = {
-  args: { plan: building, app: "starting" },
+export const OpensWhatARowMade: Story = {
+  args: buildingArgs,
   play: async ({ args, canvasElement }) => {
     const canvas = within(canvasElement);
     const requirements = canvas.getByRole("treeitem", {
-      name: /^Write the requirements/,
+      name: /^Requirements/,
     });
     await userEvent.click(requirements);
     await expect(args.onOpenStep).toHaveBeenCalledWith("product_requirements");
     await expect(requirements).toHaveAttribute("aria-current", "page");
     await userEvent.click(
-      canvas.getByRole("treeitem", { name: /^Build the app/ }),
+      canvas.getByRole("treeitem", { name: /^User manual/ }),
     );
     await expect(args.onOpenStep).toHaveBeenCalledTimes(1);
-    await expect(requirements).toHaveAttribute("aria-current", "page");
+    const app = canvas.getByRole("treeitem", { name: /^App/ });
+    await expect(app).toHaveAccessibleName(
+      `App, ${words.stepState.done}, ${words.appNow.running}`,
+    );
+    await userEvent.click(app);
+    await expect(args.onOpenStep).toHaveBeenLastCalledWith(LIVE_TAB);
+    await expect(app).toHaveAttribute("aria-current", "page");
+  },
+};
+
+/**
+ * A row covering several steps says what waits on the person under its name, and its menu names
+ * each step whose settings it changes.
+ */
+export const RowOfSeveralSteps: Story = {
+  args: {
+    plan: [
+      row(
+        "design",
+        "Design",
+        "to_do",
+        {},
+        {
+          steps: [
+            step("looks", "Choose how many looks", "to_do", {
+              declined: false,
+            }),
+            step("design", "Design the look", "to_do", { askFirst: true }),
+          ],
+        },
+      ),
+    ],
+  },
+  play: async ({ args, canvasElement }) => {
+    const design = within(canvasElement).getByRole("treeitem", {
+      name: /^Design/,
+    });
+    design.focus();
+    await userEvent.keyboard("{Enter}");
+    const page = within(document.body);
+    await userEvent.click(
+      await page.findByRole("menuitem", {
+        name: words.stepMenu.skipStep("Choose how many looks"),
+      }),
+    );
+    await expect(args.onDecline).toHaveBeenCalledWith("looks", true);
   },
 };
