@@ -231,7 +231,20 @@ export function usePromptBox(room: PromptBoxRoom): PromptBox {
           onGoAhead: () => void goAhead(card.stepId),
         };
       case "screen":
-        return { kind: "screen", title: card.title };
+        return {
+          kind: "screen",
+          title: card.title,
+          // A screen that answers the coordinator takes words as its answer, so Not now is one.
+          ...(card.from === "question"
+            ? {
+                onNotNow: () =>
+                  void room.onAnswer(card.signalName, {
+                    reply: wording.promptBox.waiting.notNow,
+                  }),
+              }
+            : {}),
+          disabled: room.sending || room.archived,
+        };
       case "warning":
         return null;
       default:

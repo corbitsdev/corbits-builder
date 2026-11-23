@@ -50,15 +50,21 @@ export function StepCard({
 }
 
 /**
- * A plugin's screen waiting in the plugin space: Open takes the person to it. The screen's own
- * forward action reaches the box from the space.
+ * A plugin's screen waiting in the plugin space: Open takes the person to it, and Not now turns
+ * down one the coordinator asked with. The screen's own forward action reaches the box from the
+ * space.
  */
 export function ScreenCard({
   title,
   onOpen,
+  onNotNow,
+  disabled = false,
 }: {
   title: string;
   onOpen: () => void;
+  /** Turns the screen down; absent where it answers nothing, so it simply waits. */
+  onNotNow?: (() => void) | undefined;
+  disabled?: boolean;
 }) {
   const ask = text.screen(title);
   return (
@@ -70,6 +76,18 @@ export function ScreenCard({
     >
       <header className={styles.head}>
         <p className={styles.ask}>{ask}</p>
+        {onNotNow === undefined ? null : (
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className={styles.notNow}
+            disabled={disabled}
+            onClick={onNotNow}
+          >
+            {text.notNow}
+          </Button>
+        )}
         <Button
           type="button"
           size="sm"

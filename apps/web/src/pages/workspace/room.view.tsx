@@ -190,7 +190,13 @@ export type BoxWaiting =
       busy: boolean;
       onGoAhead: () => void;
     }
-  | { kind: "screen"; title: string };
+  | {
+      kind: "screen";
+      title: string;
+      /** Answers the screen with Not now; absent where the screen answers nothing. */
+      onNotNow?: (() => void) | undefined;
+      disabled: boolean;
+    };
 
 /** What sits under the conversation: the composer, or why the person cannot write yet. */
 export type RoomDock =
@@ -636,7 +642,14 @@ function waitingCard(
         />
       );
     case "screen":
-      return <ScreenCard title={waiting.title} onOpen={openSpace} />;
+      return (
+        <ScreenCard
+          title={waiting.title}
+          onOpen={openSpace}
+          onNotNow={waiting.onNotNow}
+          disabled={waiting.disabled}
+        />
+      );
     default:
       return waiting satisfies never;
   }

@@ -636,6 +636,8 @@ export const wording = {
       /** The box shrunk to a pill on a question that names none of its own. */
       question: "A question for you",
       openScreen: "Open",
+      /** Turns down a screen that answers the coordinator, sent as the person's answer to it. */
+      notNow: "Not now",
       /** The placeholder while a step waits: words sent instead go to the coordinator. */
       stepPlaceholder: "Or say what to do instead…",
     },

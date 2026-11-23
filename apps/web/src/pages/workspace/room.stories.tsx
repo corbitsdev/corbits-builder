@@ -816,13 +816,20 @@ const pickColoursScreen = storyScreen(
   { screen: pickColours, view: PickColoursView, data: undefined },
 );
 
+const screenNotNow = fn();
+
 /**
- * A plugin's screen waits: the box names the screen with Open, and the screen's forward action
- * stands where Send is. The plugin space stays closed until the person opens it.
+ * A plugin's screen waits: the box names the screen with Not now and Open, and the screen's forward
+ * action stands where Send is. The plugin space stays closed until the person opens it.
  */
 export const ScreenWaiting: Story = {
   args: {
-    waiting: { kind: "screen", title: "Pick colours" },
+    waiting: {
+      kind: "screen",
+      title: "Pick colours",
+      onNotNow: screenNotNow,
+      disabled: false,
+    },
     space: { key: "screen:story", title: "Pick colours" },
     pluginSpace: (
       <ScreenStory
@@ -835,6 +842,38 @@ export const ScreenWaiting: Story = {
         }}
       />
     ),
+  },
+};
+
+/** Not now turns the screen down from the box, without opening it. */
+export const ScreenNotNow: Story = {
+  ...ScreenWaiting,
+  play: async ({ canvasElement }) => {
+    screenNotNow.mockClear();
+    await userEvent.click(
+      within(canvasElement).getByRole("button", {
+        name: wording.promptBox.waiting.notNow,
+      }),
+    );
+    await expect(screenNotNow).toHaveBeenCalledOnce();
+    await expect(
+      canvasElement.querySelector('[data-slot="plugin-space"]'),
+    ).toHaveAttribute("hidden");
+  },
+};
+
+/** A plugin's own screen answers nothing, so it has Open alone and simply waits. */
+export const ScreenOfItsOwn: Story = {
+  args: {
+    ...ScreenWaiting.args,
+    waiting: { kind: "screen", title: "Pick colours", disabled: false },
+  },
+  play: async ({ canvasElement }) => {
+    await expect(
+      within(canvasElement).queryByRole("button", {
+        name: wording.promptBox.waiting.notNow,
+      }),
+    ).toBeNull();
   },
 };
 
