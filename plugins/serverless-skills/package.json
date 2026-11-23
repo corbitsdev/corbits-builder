@@ -4,7 +4,6 @@
   "private": true,
   "description": "How the coder makes an app run on a host with no disk and no long-running process, while it still runs on Bun for Live Preview.",
   "license": "SEE LICENSE IN ../../LICENSE.md",
-  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
   "type": "module",
   "builder": {
     "handle": "serverless-skills",

@@ -4,7 +4,6 @@
   "private": true,
   "description": "Publishes the project's app to Cloudflare, so people can open it at its own address, with the person's own Cloudflare account or without one.",
   "license": "SEE LICENSE IN ../../LICENSE.md",
-  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
   "type": "module",
   "dependencies": {
     "@corbits-builder/plugin": "workspace:*",

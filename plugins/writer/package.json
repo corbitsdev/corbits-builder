@@ -4,7 +4,6 @@
   "private": true,
   "description": "Writes any document the work needs, has it reviewed and puts documents in front of the person to approve.",
   "license": "SEE LICENSE IN ../../LICENSE.md",
-  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
   "type": "module",
   "exports": {
     "./task": "./src/task.ts"

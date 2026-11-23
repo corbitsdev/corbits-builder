@@ -4,7 +4,6 @@
   "private": true,
   "description": "Builds the project's code the first time, whatever kind of thing it is, and changes the code the project has, built here or imported.",
   "license": "SEE LICENSE IN ../../LICENSE.md",
-  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
   "type": "module",
   "dependencies": {
     "@corbits-builder/app-checks": "workspace:*",

@@ -4,7 +4,6 @@
   "private": true,
   "description": "A ready-made plan for a web app: requirements the person approves, a design they choose, a build plan, then the build.",
   "license": "SEE LICENSE IN ../../LICENSE.md",
-  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
   "type": "module",
   "builder": {
     "handle": "build-web-app",

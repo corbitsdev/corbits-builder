@@ -47,53 +47,6 @@
   animation: flourish-climb 1.2s ease-in-out infinite;
 }
 
-.credit {
-  display: block;
-  margin: var(--space-6) auto 0;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--muted-foreground);
-  font: inherit;
-  font-size: 11px;
-  opacity: 0.6;
-  cursor: pointer;
-}
-
-.credit:hover,
-.credit:focus-visible {
-  opacity: 1;
-}
-
-.swarm {
-  position: fixed;
-  inset: 0;
-  z-index: 1000;
-  overflow: hidden;
-  pointer-events: none;
-}
-
-.flyer {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: var(--size);
-  height: var(--size);
-  color: var(--foreground);
-  opacity: 0;
-  animation: flourish-fly linear both;
-}
-
-.fill,
-.fillStrong {
-  fill: var(--primary);
-  fill-opacity: 0.35;
-}
-
-.fillStrong {
-  fill-opacity: 0.75;
-}
-
 @keyframes flourish-rise {
   from {
     opacity: 0;
@@ -104,17 +57,6 @@
 @keyframes flourish-climb {
   50% {
     transform: translateY(-4px) rotate(-6deg);
-  }
-}
-
-@keyframes flourish-fly {
-  0% {
-    opacity: 1;
-    transform: translate(var(--from-x), var(--from-y)) rotate(0deg);
-  }
-  100% {
-    opacity: 1;
-    transform: translate(var(--to-x), var(--to-y)) rotate(var(--spin));
   }
 }
 
@@ -170,21 +112,5 @@
   .shell,
   .shellAnswer {
     animation: none;
-  }
-
-  .flyer {
-    animation: flourish-flash 900ms ease-out both;
-    transform: translate(45vw, 40vh);
-  }
-}
-
-@keyframes flourish-flash {
-  0%,
-  100% {
-    opacity: 0;
-  }
-  30%,
-  70% {
-    opacity: 1;
   }
 }

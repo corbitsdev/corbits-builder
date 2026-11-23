@@ -4,7 +4,6 @@
   "private": true,
   "description": "Builder lets you build, write, edit or improve anything by talking to one assistant that brings in specialists, on the model provider you choose.",
   "license": "SEE LICENSE IN LICENSE.md",
-  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/corbitsdev/corbits-builder.git"

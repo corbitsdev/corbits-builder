@@ -4,7 +4,6 @@
   "private": true,
   "description": "How the coder builds a web app on the web-app starter: the design, the order of the work and the product standard.",
   "license": "SEE LICENSE IN ../../LICENSE.md",
-  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
   "type": "module",
   "builder": {
     "handle": "web-app-starter-skills",

@@ -4,7 +4,6 @@
   "private": true,
   "description": "Works through the numbers of a question, from the project's documents and figures on the web, and files the analysis.",
   "license": "SEE LICENSE IN ../../LICENSE.md",
-  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
   "type": "module",
   "dependencies": {
     "@corbits-builder/plugin": "workspace:*",

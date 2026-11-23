@@ -4,7 +4,6 @@
   "private": true,
   "description": "Records where the project's app was last published, which every publish target writes, and asks the person where to publish, for their go-ahead to each publish they ask for, and before taking the app down. It publishes nothing itself: a ready-made plan in the publish group does, such as publish-to-server.",
   "license": "SEE LICENSE IN ../../LICENSE.md",
-  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
   "type": "module",
   "dependencies": {
     "@corbits-builder/plugin": "workspace:*",

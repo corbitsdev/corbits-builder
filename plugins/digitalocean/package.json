@@ -4,7 +4,6 @@
   "private": true,
   "description": "Publishes the project's app to a server Builder makes for the person in their own DigitalOcean account, so people can open it at the server's address.",
   "license": "SEE LICENSE IN ../../LICENSE.md",
-  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
   "type": "module",
   "dependencies": {
     "@corbits-builder/plugin": "workspace:*",

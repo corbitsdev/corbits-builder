@@ -4,7 +4,6 @@
   "private": true,
   "description": "Does any task no other specialist fits: looks things up, reads the project's documents and code, answers or files a document.",
   "license": "SEE LICENSE IN ../../LICENSE.md",
-  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
   "type": "module",
   "dependencies": {
     "@corbits-builder/plugin": "workspace:*",

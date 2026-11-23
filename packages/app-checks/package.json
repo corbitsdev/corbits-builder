@@ -4,7 +4,6 @@
   "private": true,
   "description": "The check scripts a coding or design workspace runs, which the plugins that declare such a workspace ship.",
   "license": "SEE LICENSE IN ../../LICENSE.md",
-  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
