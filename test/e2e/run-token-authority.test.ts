@@ -3,7 +3,7 @@ import { type } from "arktype";
 import { and, eq, ne } from "drizzle-orm";
 import { createEnvKeyCredentialCipher } from "@intx/crypto";
 import { createRunTokenStore } from "@intx/db";
-import { grant, workflowRun } from "@intx/db/schema";
+import { grant, workflowRun, workflowRunLaunchSpec } from "@intx/db/schema";
 import { hexDecode } from "@intx/types";
 import { startTestHub } from "./support/hub.ts";
 import {
@@ -218,6 +218,41 @@ test("a coordinator deploys a specialist without holding the person's admin auth
       ).artifacts.some((item) => item.kind === "product_requirements");
     }
     expect(filed).toBe(true);
+
+    // A permission the person no longer holds is not copied when the coordinator is reattached.
+    const [launch] = await db
+      .select({ person: workflowRunLaunchSpec.sourceAuthorityPrincipalId })
+      .from(workflowRunLaunchSpec)
+      .where(
+        eq(
+          workflowRunLaunchSpec.anchorRunId,
+          type("string").assert(coordinatorRunId),
+        ),
+      );
+    await db.insert(grant).values({
+      id: `deny-${projectId}`,
+      tenantId,
+      principalId: type("string").assert(launch?.person),
+      resource: "credential:*",
+      action: "read",
+      effect: "deny",
+      origin: "system",
+    });
+    await db
+      .delete(grant)
+      .where(
+        and(
+          eq(grant.principalId, coordinator),
+          eq(grant.origin, "system"),
+          eq(grant.resource, "credential:*"),
+        ),
+      );
+    await client.startProjectCoordinator(workspaceTenantId, projectId);
+    const reattached = (await grantsOf(coordinator))
+      .filter((held) => held.origin === "system")
+      .map((held) => `${held.effect} ${held.resource} ${held.action}`);
+    expect(reattached).toContain("allow asset:* read");
+    expect(reattached).not.toContain("allow credential:* read");
   } finally {
     await hub.close();
     await model.stop();

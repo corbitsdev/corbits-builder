@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { authorizeActionUntil } from "@intx/authz";
 import {
   createGrantStore,
@@ -14,6 +14,8 @@ import {
   workflowRun,
   workflowRunLaunchSpec,
 } from "@intx/db/schema";
+import { collectDeployerInvokerGrants } from "@intx/hub-api";
+import { getLogger } from "@intx/log";
 import { GrantWalkSnapshot } from "@intx/types/grant-snapshot";
 import {
   WorkflowProvisioningError,
@@ -34,6 +36,8 @@ import type { Actor } from "../lib/actor.ts";
 const START_FAILED = "coordinator_start_failed";
 const START_TIMEOUT = "coordinator_start_timeout";
 const READY_POLL_MS = 250;
+
+const log = getLogger(["corbits-builder", "hub", "coordinator-startup"]);
 
 type CancelRun = (
   tenantId: string,
@@ -230,7 +234,6 @@ async function copyCoordinatorRequirements(
   const [launch] = await db
     .select({
       principalId: principal.id,
-      source: workflowRunLaunchSpec.sourceAuthorityPrincipalId,
       snapshot: workflowRunLaunchSpec.grantSnapshot,
     })
     .from(workflowRunLaunchSpec)
@@ -243,13 +246,25 @@ async function copyCoordinatorRequirements(
       ),
     )
     .where(eq(workflowRunLaunchSpec.anchorRunId, runId));
-  if (!launch?.snapshot) return;
-  const held = (
-    await createGrantStore(db).collectGrants(launch.source, tenantId)
-  ).filter((item) => item.origin !== "invoker" || item.effect !== "allow");
+  if (!launch?.snapshot) {
+    log.error("Coordinator permissions not kept", {
+      runId,
+      code: "launch_unavailable",
+    });
+    return;
+  }
+  const { grantRequirements } = GrantWalkSnapshot.assert(launch.snapshot);
+  // Not ok when the person who deployed it is no longer active: nothing is copied.
+  const held = await collectDeployerInvokerGrants({
+    db,
+    grantStore: createGrantStore(db),
+    tenantId,
+    anchorRunId: runId,
+    grantRequirements,
+  });
+  if (!held.ok) return;
   const rows: (typeof grant.$inferInsert)[] = [];
-  for (const requirement of GrantWalkSnapshot.assert(launch.snapshot)
-    .grantRequirements) {
+  for (const requirement of grantRequirements) {
     if (
       requirement.source !== "invoker" ||
       (requirement.effect ?? "allow") !== "allow"
@@ -260,7 +275,7 @@ async function copyCoordinatorRequirements(
         ? projectResource(projectId)
         : requirement.resource;
     const decision = await authorizeActionUntil(
-      held,
+      held.invokerGrants,
       resource,
       requirement.action,
       { conditions: "pessimistic" },
@@ -285,7 +300,13 @@ async function copyCoordinatorRequirements(
     });
   }
   if (rows.length > 0)
-    await db.insert(grant).values(rows).onConflictDoNothing();
+    await db
+      .insert(grant)
+      .values(rows)
+      .onConflictDoUpdate({
+        target: grant.id,
+        set: { expiresAt: sql`excluded.expires_at` },
+      });
 }
 
 export async function awaitCoordinatorReady(
