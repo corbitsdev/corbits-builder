@@ -68,6 +68,11 @@ export type SidebarStep = {
   askFirst: boolean | null;
   /** The person declined the step; null where it cannot be declined. */
   declined: boolean | null;
+  /**
+   * The tab of what the step made, which its row opens; null while it has made nothing to show,
+   * and the row is only where the work stands.
+   */
+  opens: string | null;
 };
 
 /** A part of the plan; its name is a heading only when the plan has more than one. */
@@ -95,10 +100,14 @@ export type ProjectSidebarViewProps = {
   app: SidebarAppState;
   /** The app is on the page; its line is marked. */
   appOpen: boolean;
+  /** The tab on the page, whose step is marked; null while the chat fills the room. */
+  shown: string | null;
   onToggleSidebar: () => void;
   onAskFirst: (stepId: string, askFirst: boolean) => void;
   onDecline: (stepId: string, declined: boolean) => void;
   onOpenApp: () => void;
+  /** Opens what a step made, on its tab. */
+  onOpenStep: (tab: string) => void;
   onProjectSettings: () => void;
   onSecrets: () => void;
   onAllProjects: () => void;
@@ -114,10 +123,12 @@ export function ProjectSidebarView({
   plan,
   app,
   appOpen,
+  shown,
   onToggleSidebar,
   onAskFirst,
   onDecline,
   onOpenApp,
+  onOpenStep,
   onProjectSettings,
   onSecrets,
   onAllProjects,
@@ -135,8 +146,10 @@ export function ProjectSidebarView({
       <PlanTree
         label={project}
         plan={plan}
+        shown={shown}
         onAskFirst={onAskFirst}
         onDecline={onDecline}
+        onOpenStep={onOpenStep}
       />
       <AppLine app={app} open={appOpen} onOpen={onOpenApp} />
       <SidebarFoot>
@@ -344,7 +357,7 @@ type TreeRow = {
   parent: string | null;
   /** What a typed letter matches. */
   name: string;
-  /** What Enter or Space does on it. */
+  /** What Enter or Space, or a press, does on it. */
   activate: (() => void) | null;
   /** It has a menu, which Shift+F10 or the context-menu key opens. */
   menu: boolean;
@@ -358,19 +371,24 @@ type TreeItemProps = Required<
 /**
  * The plan as a tree with a single tab stop, after the WAI-ARIA tree view pattern: the arrows move
  * between rows and fold Plan, Home and End jump, a letter finds the next row starting with it,
- * Enter or Space folds Plan or opens a step's menu, and Shift+F10 or the context-menu key opens a
- * step's menu. Folding and menus only change the look, so they are held here.
+ * Enter or Space folds Plan, opens what a step made or else the step's menu, and Shift+F10 or the
+ * context-menu key opens a step's menu. Folding and menus only change the look, so they are held
+ * here.
  */
 function PlanTree({
   label,
   plan,
+  shown,
   onAskFirst,
   onDecline,
+  onOpenStep,
 }: {
   label: string;
   plan: readonly SidebarPlanGroup[];
+  shown: string | null;
   onAskFirst: (stepId: string, askFirst: boolean) => void;
   onDecline: (stepId: string, declined: boolean) => void;
+  onOpenStep: (tab: string) => void;
 }) {
   // The row whose menu is open.
   const [menu, setMenu] = useState<string | null>(null);
@@ -378,6 +396,8 @@ function PlanTree({
   const steps = plan.flatMap((group) => group.steps);
   const folds = steps.length > 0;
   const toggle = () => setFolded(!folded);
+  const opener = ({ opens }: SidebarStep) =>
+    opens === null ? null : () => onOpenStep(opens);
   const allRows: TreeRow[] = [
     {
       key: PLAN,
@@ -393,7 +413,7 @@ function PlanTree({
         key,
         parent: PLAN,
         name: step.name,
-        activate: menu ? () => setMenu(key) : null,
+        activate: opener(step) ?? (menu ? () => setMenu(key) : null),
         menu,
       };
     }),
@@ -536,6 +556,8 @@ function PlanTree({
                 <StepItem
                   key={step.id}
                   step={step}
+                  current={step.opens !== null && step.opens === shown}
+                  onOpen={opener(step)}
                   menu={
                     stepHasMenu(step) ? (
                       <StepMenu
@@ -644,9 +666,18 @@ const stepTone: Partial<Record<SidebarStepState, StatusDotTone>> = {
  */
 function StepItem({
   step,
+  current,
+  onOpen,
   menu,
   ...item
-}: { step: SidebarStep; menu: ReactNode } & TreeItemProps) {
+}: {
+  step: SidebarStep;
+  /** What it made is on the page. */
+  current: boolean;
+  /** Opens what it made; null while it has made nothing to show. */
+  onOpen: (() => void) | null;
+  menu: ReactNode;
+} & TreeItemProps) {
   const { state } = step;
   const tone = stepTone[state];
   const skipped = state === "declined" || step.declined === true;
@@ -662,14 +693,29 @@ function StepItem({
       aria-level={2}
       aria-haspopup={menu === null ? undefined : "menu"}
       aria-label={said}
+      aria-current={current ? "page" : undefined}
       className={styles.item}
       title={step.name}
+      onClick={
+        onOpen === null
+          ? undefined
+          : (event) => {
+              // The row's menu button and the menu it opens are not the row.
+              if (
+                event.target instanceof Element &&
+                event.target.closest("button, [role='menu']") !== null
+              )
+                return;
+              onOpen();
+            }
+      }
       {...item}
     >
       <span
         className={styles.row}
         data-row="step"
         data-state={skipped ? "declined" : state}
+        data-opens={onOpen === null ? undefined : ""}
       >
         <span className={styles.name}>{step.name}</span>
         {state === "running" ? (

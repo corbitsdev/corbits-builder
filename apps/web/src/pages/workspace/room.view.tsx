@@ -437,6 +437,7 @@ export function RoomView({
             narrow ? () => setDrawerOpen(!drawerOpen) : sidebar.onToggleSidebar
           }
           onOpenApp={leaveDrawer(sidebar.onOpenApp)}
+          onOpenStep={leaveDrawer(sidebar.onOpenStep)}
         />
         {/* The page beside the sidebar: the conversation, and what covers it. */}
         <div className={styles.main} data-slot="room-main">

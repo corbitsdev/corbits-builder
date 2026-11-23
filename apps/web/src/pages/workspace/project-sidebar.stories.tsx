@@ -14,19 +14,20 @@ const words = wording.projectShell;
 
 /**
  * A step not yet started can be set to ask first; once it runs, neither setting changes. Only an
- * optional step can be declined.
+ * optional step can be declined. A step opens what it made only once the project has it.
  */
 const step = (
   id: string,
   name: string,
   state: SidebarStepState = "to_do",
-  settings: Partial<Pick<SidebarStep, "askFirst" | "declined">> = {},
+  settings: Partial<Pick<SidebarStep, "askFirst" | "declined" | "opens">> = {},
 ): SidebarStep => ({
   id,
   name,
   state,
   askFirst: state === "to_do" || state === "needs_you" ? false : null,
   declined: state === "declined" ? true : null,
+  opens: null,
   ...settings,
 });
 
@@ -36,7 +37,7 @@ const onePart = (steps: readonly SidebarStep[]): SidebarPlanGroup[] => [
 ];
 
 const planning = onePart([
-  step("brief", "Write the brief", "done"),
+  step("brief", "Write the brief", "done", { opens: "problem_brief" }),
   step("constraints", "List the constraints", "done"),
   step("approaches", "Compare approaches", "running"),
   step("requirements", "Write the requirements", "to_do", { askFirst: true }),
@@ -46,26 +47,36 @@ const planning = onePart([
 ]);
 
 const building = onePart([
-  step("brief", "Write the brief", "done"),
-  step("requirements", "Write the requirements", "done"),
+  step("brief", "Write the brief", "done", { opens: "problem_brief" }),
+  step("requirements", "Write the requirements", "done", {
+    opens: "product_requirements",
+  }),
   step("design", "Design the screens", "done"),
   step("build", "Build the app", "running"),
   step("manual", "Write the user manual", "running"),
 ]);
 
-// Holds what the page would: whether the app is on the page and whether the sidebar is out, so a
-// story can be clicked through.
+// Holds what the page would: what is on the page and whether the sidebar is out, so a story can
+// be clicked through.
 function Clickable(args: ProjectSidebarViewProps) {
   const [appOpen, setAppOpen] = useState(args.appOpen);
+  const [shown, setShown] = useState(args.shown);
   const [open, setOpen] = useState(args.open);
   return (
     <ProjectSidebarView
       {...args}
       appOpen={appOpen}
+      shown={shown}
       open={open}
       onOpenApp={() => {
         setAppOpen(true);
+        setShown(null);
         args.onOpenApp();
+      }}
+      onOpenStep={(tab) => {
+        setShown(tab);
+        setAppOpen(false);
+        args.onOpenStep(tab);
       }}
       onToggleSidebar={() => {
         setOpen(!open);
@@ -111,10 +122,12 @@ const meta = {
     plan: planning,
     app: "not_built",
     appOpen: false,
+    shown: null,
     onToggleSidebar: fn(),
     onAskFirst: fn(),
     onDecline: fn(),
     onOpenApp: fn(),
+    onOpenStep: fn(),
     onProjectSettings: fn(),
     onSecrets: fn(),
     onAllProjects: fn(),
@@ -425,4 +438,26 @@ export const Drawer: Story = {
 export const DrawerDark: Story = {
   args: { ...buildingArgs, drawer: true },
   globals: { viewport: "mobile1", mode: "dark" },
+};
+
+/**
+ * A step that made something opens it, and is marked while it is on the page. One that has made
+ * nothing to show is only where the work stands, and pressing it does nothing.
+ */
+export const OpensWhatAStepMade: Story = {
+  args: { plan: building, app: "starting" },
+  play: async ({ args, canvasElement }) => {
+    const canvas = within(canvasElement);
+    const requirements = canvas.getByRole("treeitem", {
+      name: /^Write the requirements/,
+    });
+    await userEvent.click(requirements);
+    await expect(args.onOpenStep).toHaveBeenCalledWith("product_requirements");
+    await expect(requirements).toHaveAttribute("aria-current", "page");
+    await userEvent.click(
+      canvas.getByRole("treeitem", { name: /^Build the app/ }),
+    );
+    await expect(args.onOpenStep).toHaveBeenCalledTimes(1);
+    await expect(requirements).toHaveAttribute("aria-current", "page");
+  },
 };

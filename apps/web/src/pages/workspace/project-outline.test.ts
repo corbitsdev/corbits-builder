@@ -73,6 +73,24 @@ describe("a step's row", () => {
   });
 });
 
+describe("what a step opens", () => {
+  const { files } = projectOutline(designing);
+  const opens = (fields: Parameters<typeof planStep>[2]) =>
+    outlineStep(planStep("step", "done", fields), files).opens;
+
+  test("is the tab of the first file it makes that the project has", () => {
+    expect(opens({ files: ["gone", "product_requirements"] })).toBe(
+      "product_requirements",
+    );
+    expect(opens({ files: ["design"] })).toBe(DRAFT_TAB);
+  });
+
+  test("is nothing while it makes no file, or none the project has yet", () => {
+    expect(opens({})).toBeNull();
+    expect(opens({ files: ["build_plan"] })).toBeNull();
+  });
+});
+
 describe("the plan", () => {
   test("is empty while the project has none", () => {
     expect(outlinePlan([])).toEqual([]);

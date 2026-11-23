@@ -333,12 +333,28 @@
 }
 
 .row[data-row="step"]:is(
-    :hover,
+    [data-opens]:hover,
     [data-state="running"],
     [data-state="needs_you"],
     [data-state="failed"]
-  ) {
+  ),
+.item[aria-current] > .row[data-row="step"] {
   color: var(--wb-foreground);
+}
+
+/* A step that has made nothing to show is only where the work stands: no fill or pointer, as
+   though it opened something. One that has opens it, and is marked as the app's line is while
+   what it made is on the page. */
+.row[data-row="step"]:not([data-opens]) {
+  cursor: default;
+}
+
+.row[data-row="step"]:not([data-opens]):hover {
+  background: transparent;
+}
+
+.item[aria-current] > .row[data-row="step"] {
+  font-weight: 500;
 }
 
 .row[data-row="step"][data-state="running"] {

@@ -28,6 +28,8 @@ export type OutlineStep = {
   askFirst: boolean | null;
   /** The person declined the step; null where it cannot be declined. */
   declined: boolean | null;
+  /** The tab of what the step filed, once the project has it; null while it has nothing to show. */
+  opens: string | null;
 };
 
 export type OutlineGroup = {
@@ -136,8 +138,14 @@ function stepState(step: PlanChild): OutlineStepState {
   }
 }
 
-/** A step's row: where it stands, and which of its settings the person can still change. */
-export function outlineStep(step: PlanChild): OutlineStep {
+/**
+ * A step's row: where it stands, which of its settings the person can still change, and the first
+ * of the files it makes that the project has, to open.
+ */
+export function outlineStep(
+  step: PlanChild,
+  files: readonly OutlineFile[] = [],
+): OutlineStep {
   const declined = step.declined !== undefined;
   const mayAsk =
     !declined &&
@@ -156,6 +164,10 @@ export function outlineStep(step: PlanChild): OutlineStep {
     state: stepState(step),
     askFirst: mayAsk ? step.askFirst : null,
     declined: mayDecline ? declined : null,
+    opens:
+      (step.files ?? [])
+        .map((kind) => fileTab(files, kind))
+        .find((tab) => tab !== null) ?? null,
   };
 }
 
@@ -163,7 +175,11 @@ export function outlineStep(step: PlanChild): OutlineStep {
  * The plan's groups: each group of the hub's plan is one, and steps that stand outside a group are
  * gathered into one between them, named after the plan.
  */
-export function outlinePlan(plan: PlanView["steps"]): OutlineGroup[] {
+export function outlinePlan(
+  plan: PlanView["steps"],
+  files: readonly OutlineFile[] = [],
+): OutlineGroup[] {
+  const row = (step: PlanChild) => outlineStep(step, files);
   const groups: OutlineGroup[] = [];
   let loose: OutlineGroup | null = null;
   for (const step of plan) {
@@ -172,7 +188,7 @@ export function outlinePlan(plan: PlanView["steps"]): OutlineGroup[] {
       groups.push({
         id: step.id,
         name: step.title,
-        steps: step.steps.map(outlineStep),
+        steps: step.steps.map(row),
       });
       continue;
     }
@@ -180,7 +196,7 @@ export function outlinePlan(plan: PlanView["steps"]): OutlineGroup[] {
       loose = { id: step.id, name: wording.projectShell.plan, steps: [] };
       groups.push(loose);
     }
-    loose.steps.push(outlineStep(step));
+    loose.steps.push(row(step));
   }
   return groups;
 }
@@ -294,9 +310,10 @@ export function outlineApp(app: OutlineInput["app"]): OutlineAppState {
 }
 
 export function projectOutline(input: OutlineInput): Outline {
+  const files = outlineFiles(input);
   return {
-    plan: outlinePlan(input.plan),
-    files: outlineFiles(input),
+    plan: outlinePlan(input.plan, files),
+    files,
     app: outlineApp(input.app),
   };
 }

@@ -108,6 +108,7 @@ export function useProjectSidebar(input: ProjectSidebarInput): {
       plan: outline.plan,
       app: outline.app,
       appOpen: shown === LIVE_TAB,
+      shown,
       onToggleSidebar: () =>
         writeStoredPreference(SIDEBAR_KEY, open ? "closed" : "open"),
       onAskFirst: (stepId, askFirst) =>
@@ -117,6 +118,7 @@ export function useProjectSidebar(input: ProjectSidebarInput): {
           (declined ? declinePlanStep : restorePlanStep)(projectId, stepId),
         ),
       onOpenApp: () => input.onOpen(LIVE_TAB),
+      onOpenStep: input.onOpen,
       onProjectSettings: () => setSettingsOpen(true),
       onSecrets: () => input.onOpenSettings("secrets"),
       onAllProjects: input.onAllProjects,
