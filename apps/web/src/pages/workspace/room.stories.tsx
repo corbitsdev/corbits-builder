@@ -609,9 +609,12 @@ export const OpenProjectKeepsMessage: Story = {
     await userEvent.click(
       canvas.getByRole("button", { name: wording.conversation.openProject }),
     );
-    await expect(
-      canvasElement.querySelector('[data-slot="room-project"]'),
-    ).not.toHaveAttribute("hidden");
+    // The view opens in a view transition, which updates the page a frame later.
+    await waitFor(() =>
+      expect(
+        canvasElement.querySelector('[data-slot="room-project"]'),
+      ).not.toHaveAttribute("hidden"),
+    );
     // The box moves into the project view, with what was typed.
     await expect(canvas.getByRole("textbox")).toHaveValue(
       "Also take orders by",
