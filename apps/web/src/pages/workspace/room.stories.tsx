@@ -1147,9 +1147,10 @@ export const CommentWriting: Story = {
     selection?.removeAllRanges();
     selection?.addRange(range);
     passage.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    // Where the page has no margin to spare, the card opens over it, outside the canvas.
     await waitFor(() =>
       expect(
-        canvasElement.querySelector(
+        canvasElement.ownerDocument.querySelector(
           '[data-slot="comment-card"][data-state="writing"]',
         ),
       ).not.toBeNull(),
