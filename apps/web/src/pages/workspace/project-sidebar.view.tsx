@@ -245,7 +245,7 @@ function AppLine({
       onClick={onOpen}
     >
       {/* The library's success tone is the brand's orange, so the app's dot is drawn here, green
-          while the app is up. Starting, it turns and its words shimmer as a running step's do. */}
+          while the app is up. Starting, it turns as a running step's does. */}
       <span className={styles.dot}>
         {app === "starting" ? (
           <Working />
@@ -509,8 +509,8 @@ function PlanTree({
 
 /**
  * Plan: a row that folds its steps, or, while there are none, says so and does nothing. `open` is
- * null while there is nothing to fold. Folded, it still says what its steps would: it shimmers and
- * turns while one runs, and carries the dot while one waits on the person.
+ * null while there is nothing to fold. Folded, it still says what its steps would: it turns while
+ * one runs, and carries the dot while one waits on the person.
  */
 function BranchItem({
   name,
@@ -581,7 +581,7 @@ function BranchItem({
 }
 
 // Where a step stands is said by its words: finished steps are quiet, the one being worked on
-// shimmers and turns, and only a step that waits on the person or failed carries a dot.
+// is set heavier and turns, and only a step that waits on the person or failed carries a dot.
 const stepTone: Partial<Record<SidebarStepState, StatusDotTone>> = {
   needs_you: "emphasis",
   failed: "danger",

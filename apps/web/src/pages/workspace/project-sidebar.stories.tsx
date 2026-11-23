@@ -321,7 +321,7 @@ export const Keyboard: Story = {
 };
 
 /**
- * Folded, Plan still says what its steps would: it shimmers while a step runs, and carries the dot
+ * Folded, Plan still says what its steps would: it turns while a step runs, and carries the dot
  * while one waits on the person, which says more.
  */
 export const FoldedPlan: Story = {
