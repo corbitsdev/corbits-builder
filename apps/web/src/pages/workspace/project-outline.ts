@@ -50,8 +50,8 @@ export type OutlineRow = {
   /** It makes the project's app, so it stands for the app's own line. */
   app: boolean;
   /**
-   * The kind of thing it makes, a document's kind or the app, which its icon shows; null for what a
-   * ready-made plan ends in that files nothing, such as the app published.
+   * The kind of thing it makes, which its icon shows: a document's kind, the app, or the outcome a
+   * ready-made plan that files nothing ends in, such as "published"; null where nothing says.
    */
   makes: string | null;
   /** The tab of what it made, once the project has it; null while there is nothing to show. */
@@ -221,6 +221,7 @@ export function outlinePlan(
     steps: readonly PlanChild[],
     maker: PlanChild | null,
     name: string,
+    outcome: string | null = null,
   ): OutlineRow => {
     const outlined = steps.map(outlineStep);
     const made = maker?.makes ?? [];
@@ -240,7 +241,7 @@ export function outlinePlan(
         maker === null ? null : (outlined[steps.indexOf(maker)] ?? null),
       ),
       app,
-      makes: made[0] ?? null,
+      makes: made[0] ?? outcome,
       opens: tab,
       steps: outlined,
     };
@@ -280,7 +281,14 @@ export function outlinePlan(
       continue;
     }
     if (last !== undefined) rows.push(last);
-    rows.push(row(waiting, null, entry.name ?? waiting.at(-1)!.title));
+    rows.push(
+      row(
+        waiting,
+        null,
+        entry.name ?? waiting.at(-1)!.title,
+        entry.name === undefined ? null : (entry.outcome ?? null),
+      ),
+    );
   }
   return rows;
 }

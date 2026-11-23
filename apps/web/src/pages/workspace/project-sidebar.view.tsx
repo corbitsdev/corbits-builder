@@ -27,11 +27,12 @@ import {
   Ellipsis,
   File,
   FileText,
-  Flag,
   Folder,
+  Globe,
   ListChecks,
   Lock,
   NotebookText,
+  Package,
   Palette,
   PanelLeftClose,
   PanelLeftOpen,
@@ -91,7 +92,7 @@ export type SidebarRow = {
   doing: string | null;
   /** It makes the project's app: once built it opens the app and says how it runs. */
   app: boolean;
-  /** The kind of thing it makes, which its icon shows; null for a ready-made plan's own end. */
+  /** The kind of thing it makes, which its icon shows; null where nothing says. */
   makes: string | null;
   /** The tab of what it made, which the row opens; null while there is nothing to show. */
   opens: string | null;
@@ -535,10 +536,11 @@ function PlanTree({
   );
 }
 
-// What a row makes, by its kind, so the list reads as the things themselves. A document of a kind
-// not named here is a page; what a ready-made plan ends in, which files nothing, is its goal.
+// What a row makes, by its kind, so the list reads as the things themselves: a document of a kind
+// not named here is a page, and a ready-made plan's end that names no outcome is a package.
 const KIND_ICONS: Record<string, LucideIcon> = {
   app: AppWindow,
+  published: Globe,
   problem_brief: NotebookText,
   product_requirements: FileText,
   design: Palette,
@@ -548,7 +550,7 @@ const KIND_ICONS: Record<string, LucideIcon> = {
 };
 
 const kindIcon = (makes: string | null): LucideIcon =>
-  makes === null ? Flag : (KIND_ICONS[makes] ?? File);
+  makes === null ? Package : (KIND_ICONS[makes] ?? File);
 
 /**
  * One thing the project makes: its icon, then its name. Where it stands is said by its words and

@@ -74,10 +74,15 @@ describe("a step's row", () => {
 });
 
 describe("the plan", () => {
-  const webApp = (steps: Parameters<typeof planGroup>[2], name?: string) =>
+  const webApp = (
+    steps: Parameters<typeof planGroup>[2],
+    name?: string,
+    outcome?: "published",
+  ) =>
     planGroup("web-app", "A ready-made plan for a web app", steps, {
       plan: "web-app",
       ...(name === undefined ? {} : { name }),
+      ...(outcome === undefined ? {} : { outcome }),
     });
 
   test("is empty while the project has none", () => {
@@ -112,7 +117,7 @@ describe("the plan", () => {
     ]);
   });
 
-  test("steps after the last thing made are one row named for what their plan makes", () => {
+  test("steps after the last thing made are one row named for what their plan makes, showing its outcome", () => {
     const rows = outlinePlan([
       webApp(
         [
@@ -123,6 +128,7 @@ describe("the plan", () => {
           planStep("live", "not_started"),
         ],
         "Published on Cloudflare",
+        "published",
       ),
     ]);
     expect(rows).toHaveLength(1);
@@ -130,7 +136,7 @@ describe("the plan", () => {
       name: "Published on Cloudflare",
       state: "needs_you",
       doing: "Confirm where your app goes",
-      makes: null,
+      makes: "published",
     });
   });
 

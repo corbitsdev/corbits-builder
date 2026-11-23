@@ -42,6 +42,7 @@ const KINDS: Record<string, string> = {
   build_plan: "build_plan",
   build: "app",
   manual: "user_manual",
+  publish: "published",
 };
 
 /** A thing the project makes, made by one step of the same name; it opens what it made once it has. */
