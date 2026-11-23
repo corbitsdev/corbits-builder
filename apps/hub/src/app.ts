@@ -233,10 +233,7 @@ export async function createHubRuntime(env: HubEnvironment) {
       grantStoreFor: createGrantStore,
       registry: HUB_CONDITION_REGISTRY,
     });
-    // The relay refuses every recipient without a send authorizer, so the
-    // type requires one here.
-    const lookups: SidecarLookups &
-      Required<Pick<SidecarLookups, "authorizeMailSend">> = {
+    const lookups: SidecarLookups = {
       ...nativeLookups,
       persistMail: createWorkflowMailPersistence({
         db: handle.db,

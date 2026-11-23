@@ -196,7 +196,6 @@ const databaseConfig = (
         schema: "public",
       };
 
-// Where the hub keeps agents' saved conversations, which a migration moves too.
 const agentStateVariables = {
   HUB_DATA_DIR: "string = 'data/hub'",
   "SIDECAR_IMAGE?": "string",

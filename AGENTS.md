@@ -53,9 +53,7 @@ These are the ones no check catches:
 - `vendor/interchange` is only added to, never reworded: a change adds what
   Builder needs beside Interchange's own code. Each change is its own
   `(vendor)` commit that also updates `vendor/interchange.manifest.json`, and
-  `bun run vendor:verify` fails on anything unrecorded. A bump to a new
-  upstream revision carries the Builder changes it needs to build in the same
-  commit, since every commit must pass the pre-commit checks.
+  `bun run vendor:verify` fails on anything unrecorded.
 - A schema change ships as one migration, generated with `bun run
   db:generate`. Its journal `when` must be later than every migration already
   merged; regenerate it if another merged first, and never move a merged one.
