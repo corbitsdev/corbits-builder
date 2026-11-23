@@ -16,6 +16,7 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
+import { flushSync } from "react-dom";
 import { ArrowDown, ArrowLeft, Maximize2 } from "lucide-react";
 import { wording } from "../../config.ts";
 import { Pill } from "./pill.tsx";
@@ -34,8 +35,12 @@ const PRESS_PX = 4;
 const FADE_PX = 32;
 /** The fastest a pull hands on to the spring, in pixels per millisecond; one jumpy sample can't fling the sheet. */
 const MAX_PX_PER_MS = 3;
-/** Stiff and just short of critical, so the sheet lands without wobbling and a grab mid-way keeps its speed. */
-const SPRING = { stiffness: 380, damping: 36 };
+/** Critically damped: the sheet lands without wobbling or a long creep, and a grab mid-way keeps its speed. */
+const SPRING = { stiffness: 700, damping: 53 };
+/** The longest step the spring is worked out in, in seconds. */
+const STEP_S = 1 / 240;
+/** Over this much of its height the sheet's edge and fill come in, and over the same they leave. */
+const EDGE_PX = 32;
 
 export type PullHandleState = "rest" | "dragging";
 
@@ -82,7 +87,7 @@ function ReturnPill({
 }: {
   title: string;
   version?: string | undefined;
-  onReturn: () => void;
+  onReturn: (event: MouseEvent<HTMLButtonElement>) => void;
 }) {
   return (
     <Pill as="button" aria-label={copy.chat.backTo(title)} onClick={onReturn}>
@@ -141,6 +146,8 @@ export function ChatSheet({
   const [state, setState] = useState<ChatSheetState>(defaultState);
   const [moving, setMoving] = useState(defaultPull !== undefined);
   const [held, setHeld] = useState(defaultPull !== undefined);
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const edgeRef = useRef<HTMLDivElement>(null);
   const historyRef = useRef<HTMLDivElement>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
   const gripRef = useRef<HTMLDivElement>(null);
@@ -184,6 +191,15 @@ export function ChatSheet({
       Math.min(FADE_PX, overflow(history), room > 0 ? room : FADE_PX),
     );
     history.style.setProperty("--fade", `${String(fade)}px`);
+    // The edge comes in as the sheet leaves the box and goes as it comes back, so the sheet never
+    // sits empty around the box, nor lingers faintly through the spring's last few pixels. A pill
+    // above hands over to the handle the same way.
+    const presence = Math.min(1, next / EDGE_PX) ** 2;
+    edgeRef.current?.style.setProperty("opacity", String(presence));
+    if (gripRef.current !== null) {
+      gripRef.current.style.opacity = String(1 - presence);
+      handleRef.current?.style.setProperty("opacity", String(presence));
+    }
   };
 
   /** Past the conversation's height the sheet gives less and less, rather than stopping dead. */
@@ -200,8 +216,6 @@ export function ChatSheet({
   /** Comes to rest, either way, with nothing left of the motion on the element. */
   const settle = (next: "open" | "closed") => {
     stopSpring();
-    historyRef.current?.style.removeProperty("height");
-    historyRef.current?.style.removeProperty("--fade");
     setMoving(false);
     setState(next);
   };
@@ -215,11 +229,17 @@ export function ChatSheet({
     let last = performance.now();
     const step = (now: number) => {
       const target = to === "open" ? openHeight() : 0;
-      const dt = Math.min(32, now - last) / 1000;
+      const dt = Math.min(64, now - last) / 1000;
       last = now;
-      const x = height.current;
-      v += (-SPRING.stiffness * (x - target) - SPRING.damping * v) * dt;
-      const next = x + v * dt;
+      // In small fixed steps: one long step after a slow frame would overshoot and ring.
+      const steps = Math.ceil(dt / STEP_S);
+      let next = height.current;
+      for (let i = 0; i < steps; i += 1) {
+        v +=
+          (-SPRING.stiffness * (next - target) - SPRING.damping * v) *
+          (dt / steps);
+        next += v * (dt / steps);
+      }
       if (Math.abs(next - target) < 0.5 && Math.abs(v) < 20) return settle(to);
       paint(resist(next));
       spring.current = requestAnimationFrame(step);
@@ -235,12 +255,51 @@ export function ChatSheet({
     glide(to);
   };
 
+  /**
+   * Between the sheet and full screen, the sheet's edge travels to its new place over the page,
+   * which fades under it; the box and the newest lines stay where they are. From the keyboard it
+   * changes at once.
+   */
+  const morph = (to: ChatSheetState, animate: boolean) => {
+    if (to === "closed") refocus.current = "grip";
+    const apply = () =>
+      flushSync(() => {
+        settle(to === "closed" ? "closed" : "open");
+        if (to === "full") setState("full");
+      });
+    const sheet = sheetRef.current;
+    if (
+      !animate ||
+      reducedMotion() ||
+      sheet === null ||
+      !("startViewTransition" in document)
+    )
+      return apply();
+    // The direction goes on the root, where the transition's layers are styled from.
+    const root = document.documentElement;
+    sheet.dataset.morph = "";
+    root.dataset.chatSheet = to;
+    const transition = document.startViewTransition(apply);
+    // Skipped, as when another transition starts, it has simply changed.
+    transition.ready.catch(() => undefined);
+    void transition.finished.finally(() => {
+      delete sheet.dataset.morph;
+      delete root.dataset.chatSheet;
+    });
+  };
+
   useEffect(() => stopSpring, []);
 
-  // The first frame of a motion is painted before the history is shown and can be measured, so
-  // it is painted again once it is.
+  // The first frame of a motion is painted before the history is shown and can be measured, so it
+  // is painted again once it is. What a motion left on the elements is cleared in the same commit
+  // as the state it lands in: any sooner, a frame would be painted between the two, the sheet
+  // without its edge or the whole conversation back at full height before it is put away.
   useLayoutEffect(() => {
-    if (moving) paint(height.current);
+    if (moving) return paint(height.current);
+    historyRef.current?.style.removeProperty("height");
+    historyRef.current?.style.removeProperty("--fade");
+    for (const ref of [edgeRef, gripRef, handleRef])
+      ref.current?.style.removeProperty("opacity");
   }, [moving]);
 
   useLayoutEffect(() => {
@@ -310,7 +369,8 @@ export function ChatSheet({
       if (!moved) {
         moved = true;
         height.current = from;
-        setMoving(true);
+        // Now, not on React's next pass: the pull is painted below, onto a sheet already moving.
+        flushSync(() => setMoving(true));
       }
       const dt = next.timeStamp - last.t;
       if (dt > 0)
@@ -391,12 +451,14 @@ export function ChatSheet({
   const sheetState = moving ? "moving" : state;
   return (
     <div
+      ref={sheetRef}
       className={styles.sheet}
       data-slot="chat-sheet"
       data-state={sheetState}
       data-held={held ? "" : undefined}
     >
-      {shown || grip === null ? null : (
+      <div ref={edgeRef} className={styles.edge} aria-hidden="true" />
+      {grip === null || (shown && !(moving && status !== null)) ? null : (
         <div ref={gripRef} className={styles.grip}>
           {grip}
         </div>
@@ -406,10 +468,7 @@ export function ChatSheet({
           <ReturnPill
             title={returnTo.title}
             version={returnTo.version}
-            onReturn={() => {
-              refocus.current = "grip";
-              setState("closed");
-            }}
+            onReturn={(event) => morph("closed", event.detail !== 0)}
           />
         </div>
       ) : null}
@@ -436,10 +495,7 @@ export function ChatSheet({
               className={styles.icon}
               aria-label={copy.chat.fullScreen}
               title={copy.chat.fullScreen}
-              onClick={() => {
-                settle("open");
-                setState("full");
-              }}
+              onClick={(event) => morph("full", event.detail !== 0)}
             >
               <Maximize2 size={16} aria-hidden="true" />
             </button>
@@ -450,8 +506,8 @@ export function ChatSheet({
             aria-label={copy.chat.putBack}
             title={copy.chat.putBack}
             onClick={(event) => {
+              if (state === "full") return morph("closed", event.detail !== 0);
               refocus.current = "grip";
-              if (state === "full") return setState("closed");
               go("closed", event.detail !== 0);
             }}
           >
