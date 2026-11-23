@@ -322,6 +322,20 @@
   height: 10px;
 }
 
+/* Send becoming Stop fades its fill, so its mark comes in with it rather than swapping under it. */
+.box [data-slot="prompt-input-submit"] > svg {
+  transition:
+    opacity var(--duration-micro) var(--ease-out),
+    scale var(--duration-micro) var(--ease-out);
+}
+
+@starting-style {
+  .box [data-slot="prompt-input-submit"] > svg {
+    opacity: 0;
+    scale: 0.8;
+  }
+}
+
 @media (hover: hover) and (pointer: fine) {
   .box
     [data-slot="prompt-input-submit"]:not([aria-disabled]):hover:not(
