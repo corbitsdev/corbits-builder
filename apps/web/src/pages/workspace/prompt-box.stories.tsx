@@ -312,41 +312,56 @@ const commenting = {
   ...composer,
   comments: 3,
   onSendComments: fn(),
+  onShowComments: fn(),
+  onRemoveComments: fn(),
 } satisfies ComposerDock;
 
-/** Comments wait in the row as a token; pressing it, or Send in the empty box, sends them as one message. */
-export const CommentsWaiting: Story = {
-  args: { dock: commenting },
-  play: async ({ args, canvasElement }) => {
-    const token = within(canvasElement).getByRole("button", {
-      name: wording.promptBox.sendComments(3),
-    });
-    await userEvent.click(token);
-    await expect(args.dock.onSendComments).toHaveBeenCalledOnce();
-  },
+const submit = (canvasElement: HTMLElement) => {
+  const button = canvasElement.querySelector<HTMLElement>(
+    '[data-slot="prompt-input-submit"]',
+  );
+  if (button === null) throw new Error("No Send in the box");
+  return button;
 };
 
 /**
- * Words typed beside the comments: Send sends the words, and the token sends the comments alone,
- * leaving the words in the box.
+ * Comments wait in the row as a token: the count opens the page they are on, the cross removes
+ * them, and Send in the empty box sends them as one message.
  */
-export const CommentsWithWords: Story = {
-  args: { dock: { ...commenting, text: typed } },
+export const CommentsWaiting: Story = {
+  args: { dock: commenting },
   play: async ({ args, canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(
       canvas.getByRole("button", {
-        name: wording.promptBox.sendComments(3),
+        name: wording.promptBox.showComments(3),
       }),
     );
-    await expect(args.dock.onSendComments).toHaveBeenCalledOnce();
-    await expect(canvas.getByRole("textbox")).toHaveValue(typed);
+    await expect(args.dock.onShowComments).toHaveBeenCalledOnce();
+    await expect(args.dock.onSendComments).not.toHaveBeenCalled();
+    await userEvent.click(
+      canvas.getByRole("button", {
+        name: wording.promptBox.removeComments(3),
+      }),
+    );
+    await expect(args.dock.onRemoveComments).toHaveBeenCalledOnce();
+    await userEvent.click(submit(canvasElement));
+    await expect(args.dock.onSendComments).toHaveBeenCalledWith();
+  },
+};
+
+/** Words typed beside the comments: Send sends them together, the words after the comments. */
+export const CommentsWithWords: Story = {
+  args: { dock: { ...commenting, text: typed } },
+  play: async ({ args, canvasElement }) => {
+    await userEvent.click(submit(canvasElement));
+    await expect(args.dock.onSendComments).toHaveBeenCalledWith(typed);
   },
 };
 
 /**
- * A question is open, so a message now would answer it: the token stays, still reachable from the
- * keyboard, but sends nothing, and a line under the card says what to do first.
+ * A question is open, so a message now would answer it: Send leaves the comments alone, and a
+ * line under the card says what to do first. The token still opens their page.
  */
 export const CommentsWaitOnQuestion: Story = {
   args: {
@@ -359,22 +374,16 @@ export const CommentsWaitOnQuestion: Story = {
   },
   play: async ({ args, canvasElement }) => {
     const canvas = within(canvasElement);
-    const token = canvas.getByRole("button", {
-      name: wording.promptBox.sendComments(3),
-    });
-    await expect(token).toHaveAttribute("aria-disabled", "true");
-    await expect(token).not.toHaveAttribute("disabled");
-    await expect(token).toHaveAttribute(
-      "title",
-      wording.promptBox.commentsAfterQuestion,
-    );
-    token.focus();
-    await expect(token).toHaveFocus();
-    await userEvent.click(token);
-    await expect(args.dock.onSendComments).not.toHaveBeenCalled();
     await expect(
       canvasElement.querySelector('[data-slot="comments-blocked"]'),
     ).toHaveTextContent(wording.promptBox.commentsAfterQuestion);
+    await userEvent.click(
+      canvas.getByRole("button", {
+        name: wording.promptBox.showComments(3),
+      }),
+    );
+    await expect(args.dock.onShowComments).toHaveBeenCalledOnce();
+    await expect(args.dock.onSendComments).not.toHaveBeenCalled();
   },
 };
 

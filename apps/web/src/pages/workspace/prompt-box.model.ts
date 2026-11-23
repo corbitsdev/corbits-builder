@@ -21,11 +21,13 @@ import { wording } from "../../config.ts";
 import { useUnsent } from "../../unsent.ts";
 import {
   afterSent,
+  commentedDocument,
   commentsMessage,
   commentsSend,
   deleteDraft,
   draftsKey,
   readDrafts,
+  restoreDrafts,
   saveDraft,
   storedDrafts,
   type CommentDraft,
@@ -357,17 +359,29 @@ export type CommentsRoom = {
   sending: boolean;
   /** Re-reads the hub for an open approval just before the comments go. */
   approvalOpenNow: () => Promise<boolean>;
-  /** Sends one ordinary message as the person; resolves whether it went. */
-  mail: (message: string) => Promise<boolean>;
+  /**
+   * Sends one ordinary message as the person; resolves whether it went. With the person's own
+   * words in it, the box is cleared once it went.
+   */
+  mail: (message: string, clearBox: boolean) => Promise<boolean>;
+  /** The document on screen, if one is. */
+  shown: string | null;
+  /** Opens a document by the room's key for it. */
+  open: (document: string) => void;
 };
 
-/** The comment row in the prompt box: how many wait, and sending them. */
+/** The comment token in the prompt box: how many wait, sending, showing and removing them. */
 export type BoxComments = {
   count: number;
   /** Why they cannot be sent now, naming what to deal with first; null while they can. */
   blocked: string | null;
   sending: boolean;
-  onSend: () => void;
+  /** Sends them as one message, with any words typed beside them last. */
+  onSend: (words?: string) => void;
+  /** Opens the page they are on. */
+  onShow: () => void;
+  /** Removes them all, with a moment to undo it. */
+  onRemove: () => void;
 };
 
 /**
@@ -393,18 +407,31 @@ export function useCommentDrafts(room: CommentsRoom): {
     approval: room.approval,
   });
 
-  const sendAll = async () => {
+  const sendAll = async (words = "") => {
     if (send.state !== "ready") return;
     const outgoing = drafts;
     setGoing(true);
     try {
       // An approval raised since the room last read would take the message as its decline.
       if (await room.approvalOpenNow()) return;
-      if (await room.mail(commentsMessage(outgoing)))
+      if (
+        await room.mail(commentsMessage(outgoing, words), words.trim() !== "")
+      )
         change((now) => afterSent(now, outgoing));
     } finally {
       setGoing(false);
     }
+  };
+
+  const removeAll = () => {
+    const removed = drafts;
+    change(() => []);
+    toast(wording.promptBox.commentsRemoved(removed.length), {
+      action: {
+        label: wording.promptBox.undoRemove,
+        onClick: () => change((now) => restoreDrafts(now, removed)),
+      },
+    });
   };
 
   if (room.archived) return { comments: undefined, box: null };
@@ -427,7 +454,12 @@ export function useCommentDrafts(room: CommentsRoom): {
                   ? words.commentsAfterQuestion
                   : words.commentsAfterApproval,
             sending: send.state === "sending",
-            onSend: () => void sendAll(),
+            onSend: (typed) => void sendAll(typed),
+            onShow: () => {
+              const document = commentedDocument(drafts, room.shown);
+              if (document !== undefined) room.open(document);
+            },
+            onRemove: removeAll,
           },
   };
 }

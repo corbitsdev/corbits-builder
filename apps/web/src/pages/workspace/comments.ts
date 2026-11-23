@@ -97,6 +97,26 @@ export function draftCard(found: boolean): {
     : { place: "top", showsQuote: true };
 }
 
+/** The document the box's comments open: the one on screen when it has any, else the first. */
+export function commentedDocument(
+  drafts: readonly CommentDraft[],
+  shown: string | null,
+): string | undefined {
+  return (drafts.find((draft) => draft.document === shown) ?? drafts[0])
+    ?.document;
+}
+
+/** Puts back drafts removed together, ahead of any written since. */
+export function restoreDrafts(
+  drafts: readonly CommentDraft[],
+  removed: readonly CommentDraft[],
+): CommentDraft[] {
+  return [
+    ...removed.filter((gone) => !drafts.some((draft) => draft.id === gone.id)),
+    ...drafts,
+  ];
+}
+
 /** Whether Send comments can send now, and what to deal with first when it cannot. */
 export type CommentsSend =
   | { state: "none" }
@@ -123,11 +143,18 @@ export function commentsSend({
   return { state: "ready" };
 }
 
-/** The one message every draft makes: each quote's line, then the comment under it. */
-export function commentsMessage(drafts: readonly CommentDraft[]): string {
-  return drafts
-    .map((draft) => `${formatPassageQuote(draft)}${draft.comment}`)
-    .join("\n\n");
+/**
+ * The one message every draft makes: each quote's line, then the comment under it, and last any
+ * words the person typed beside them.
+ */
+export function commentsMessage(
+  drafts: readonly CommentDraft[],
+  words = "",
+): string {
+  return [
+    ...drafts.map((draft) => `${formatPassageQuote(draft)}${draft.comment}`),
+    ...(words.trim() === "" ? [] : [words.trim()]),
+  ].join("\n\n");
 }
 
 /**

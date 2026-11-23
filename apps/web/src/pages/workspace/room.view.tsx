@@ -19,6 +19,7 @@ import {
   Plus,
   Sparkles,
   TriangleAlert,
+  X,
 } from "lucide-react";
 import {
   Attachment,
@@ -145,11 +146,14 @@ export type RoomComposer = {
   /** What is happening, in the pill above the box; null or absent while nothing is. */
   status?: StatusPillContent | null;
   /**
-   * Comment drafts waiting to be sent, as a token in the typing row. The token sends them all as
-   * one message and leaves the words as typed; Send in an empty box sends them too.
+   * Comment drafts waiting to be sent, as a token in the typing row. The token opens the page
+   * they are on and its cross removes them; Send sends them as one message, with any words typed
+   * after them.
    */
   comments?: number;
-  onSendComments?: () => void;
+  onSendComments?: (words?: string) => void;
+  onShowComments?: () => void;
+  onRemoveComments?: () => void;
   /** Why the comments cannot be sent now, naming what to deal with first; null while they can. */
   commentsBlocked?: string | null;
   /** The comments are on their way. */
@@ -816,6 +820,8 @@ function RoomComposerView({
   status = null,
   comments = 0,
   onSendComments,
+  onShowComments,
+  onRemoveComments,
   commentsBlocked = null,
   commentsSending = false,
   onStop,
@@ -891,6 +897,8 @@ function RoomComposerView({
     const words = text.trim();
     if (files.length === 0 && words !== "" && ports.take?.(words) === true)
       return onTextChange("");
+    // Words typed beside the comments go out with them, as one message.
+    if (files.length === 0 && commentsReady) return onSendComments(words);
     onSend();
   };
   const stopping = working && onStop !== undefined && !typed;
@@ -969,25 +977,30 @@ function RoomComposerView({
               </>
             )}
             {comments > 0 && !folded ? (
-              // Sends the comments alone, whatever is typed; while they wait on a question or an
-              // approval it stays where it is and says, beneath the box's card, what comes first.
-              <button
-                type="button"
-                className={styles.commentsToken}
-                data-slot="comments-token"
-                aria-label={wording.promptBox.sendComments(comments)}
-                title={
-                  commentsBlocked ?? wording.promptBox.sendComments(comments)
-                }
-                aria-disabled={commentsReady ? undefined : true}
-                aria-busy={commentsSending || undefined}
-                onClick={() => {
-                  if (commentsReady) onSendComments();
-                }}
-              >
-                <MessageSquare size={12} aria-hidden="true" />
-                {wording.promptBox.comments(comments)}
-              </button>
+              // The count opens the page the comments are on; the cross removes them all.
+              <span className={styles.commentsToken} data-slot="comments-token">
+                <button
+                  type="button"
+                  className={styles.commentsShow}
+                  aria-label={wording.promptBox.showComments(comments)}
+                  title={wording.promptBox.showComments(comments)}
+                  aria-busy={commentsSending || undefined}
+                  onClick={onShowComments}
+                >
+                  <MessageSquare size={12} aria-hidden="true" />
+                  {wording.promptBox.comments(comments)}
+                </button>
+                <button
+                  type="button"
+                  className={styles.commentsRemove}
+                  aria-label={wording.promptBox.removeComments(comments)}
+                  title={wording.promptBox.removeComments(comments)}
+                  disabled={commentsSending}
+                  onClick={onRemoveComments}
+                >
+                  <X size={12} aria-hidden="true" />
+                </button>
+              </span>
             ) : null}
             <PromptInputTextarea
               ref={inputRef}

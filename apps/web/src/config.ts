@@ -644,14 +644,23 @@ export const wording = {
       label: "Waiting for you",
       close: "Close",
     },
-    /** The token in the typing row while comments on a document wait to be made. */
+    /** The token in the typing row while comments on a document wait to be sent. */
     comments: (count: number) =>
       count === 1 ? "1 comment" : `${String(count)} comments`,
-    /** The placeholder beside that token, while Send in an empty box sends the comments. */
+    /** The placeholder beside that token: Send sends the comments, with any words typed after them. */
     commentsPlaceholder: "Add a message…",
-    /** The token's name and what it does: sends every comment as one message, the words left as typed. */
-    sendComments: (count: number) =>
-      count === 1 ? "Send 1 comment" : `Send ${String(count)} comments`,
+    /** The token's name and what it does: opens the page the comments are on. */
+    showComments: (count: number) =>
+      count === 1 ? "Show the comment" : `Show the ${String(count)} comments`,
+    /** The cross on the token, which removes every comment waiting. */
+    removeComments: (count: number) =>
+      count === 1
+        ? "Remove the comment"
+        : `Remove the ${String(count)} comments`,
+    /** Said once they are removed, with Undo to bring them back. */
+    commentsRemoved: (count: number) =>
+      count === 1 ? "Comment removed" : `${String(count)} comments removed`,
+    undoRemove: "Undo",
     /** Why the comments wait: a message now would answer the question or decline the approval. */
     commentsAfterQuestion:
       "Answer the question first, then send your comments.",

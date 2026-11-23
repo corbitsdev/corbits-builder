@@ -1102,22 +1102,24 @@ const commentsDock = {
   ...composer,
   comments: 3,
   onSendComments: fn(),
+  onShowComments: fn(),
+  onRemoveComments: fn(),
   commentsBlocked: null,
   commentsSending: false,
 };
 
-/** Comments wait to be sent: the box counts them in its typing row, and the count sends them. */
+/** Comments wait to be sent: the box counts them in its typing row, and the count opens their page. */
 export const CommentsWaiting: Story = {
   args: { ...withDocuments, dock: commentsDock },
   play: async ({ canvasElement, args }) => {
     const canvas = within(canvasElement);
     const token = canvas.getByRole("button", {
-      name: wording.promptBox.sendComments(3),
+      name: wording.promptBox.showComments(3),
     });
     await expect(token).toHaveTextContent(wording.promptBox.comments(3));
     await userEvent.click(token);
     if (args.dock.kind === "composer")
-      await expect(args.dock.onSendComments).toHaveBeenCalledOnce();
+      await expect(args.dock.onShowComments).toHaveBeenCalledOnce();
   },
 };
 
@@ -1176,7 +1178,7 @@ export const CommentsWaitOnQuestion: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(
-      canvas.getByRole("button", { name: wording.promptBox.sendComments(3) }),
+      canvasElement.querySelector('[data-slot="prompt-input-submit"]'),
     ).toHaveAttribute("aria-disabled", "true");
     await expect(
       canvas.getByText(wording.promptBox.commentsAfterQuestion),

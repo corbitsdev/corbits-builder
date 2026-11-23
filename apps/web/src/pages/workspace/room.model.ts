@@ -1280,7 +1280,9 @@ export function useRoom({
       (await readPendingApprovals())?.some(
         (approval) => approval.packages === undefined,
       ) ?? false,
-    mail: (message) => deliverMail(message),
+    mail: (message, clearBox) => deliverMail(message, clearBox),
+    shown: projectOpen ? shownTab : null,
+    open: openDocument,
   });
   const sendFiles = async () => {
     if (sending) return false;
@@ -1853,6 +1855,8 @@ export function useRoom({
             commentsBlocked: commentDrafts.box.blocked,
             commentsSending: commentDrafts.box.sending,
             onSendComments: commentDrafts.box.onSend,
+            onShowComments: commentDrafts.box.onShow,
+            onRemoveComments: commentDrafts.box.onRemove,
           }),
     };
   };

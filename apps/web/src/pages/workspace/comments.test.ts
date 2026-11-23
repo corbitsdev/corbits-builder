@@ -8,6 +8,7 @@ import {
 } from "./comments.fixtures.ts";
 import {
   afterSent,
+  commentedDocument,
   commentsMessage,
   commentsSend,
   deleteDraft,
@@ -15,6 +16,7 @@ import {
   draftCard,
   draftsKey,
   readDrafts,
+  restoreDrafts,
   saveDraft,
   storedDrafts,
 } from "./comments.ts";
@@ -192,6 +194,52 @@ describe("the message they make", () => {
     expect(commentsMessage([planDeadline])).toBe(
       'On "Build plan" v1:\n\n> Two weeks to the first release.\n\nCan the order list ship first?',
     );
+  });
+
+  test("words typed beside the comments come last, after a blank line", () => {
+    expect(commentsMessage([planDeadline], "  Keep it short.  ")).toBe(
+      `${commentsMessage([planDeadline])}\n\nKeep it short.`,
+    );
+  });
+
+  test("blank words add nothing", () => {
+    expect(commentsMessage([planDeadline], "  \n ")).toBe(
+      commentsMessage([planDeadline]),
+    );
+  });
+});
+
+describe("the page the box's comments open", () => {
+  test("the document on screen, when it has comments", () => {
+    expect(commentedDocument(projectDrafts, "build_plan")).toBe("build_plan");
+  });
+
+  test("otherwise the document of the first comment written", () => {
+    expect(commentedDocument(projectDrafts, "user_manual")).toBe(
+      "problem_brief",
+    );
+    expect(commentedDocument(projectDrafts, null)).toBe("problem_brief");
+  });
+
+  test("none without comments", () => {
+    expect(commentedDocument([], "build_plan")).toBeUndefined();
+  });
+});
+
+describe("undoing a removal", () => {
+  test("the removed comments come back in their order, ahead of any written since", () => {
+    expect(restoreDrafts([briefRewritten], projectDrafts)).toEqual([
+      ...projectDrafts,
+      briefRewritten,
+    ]);
+  });
+
+  test("a comment already back is not doubled", () => {
+    expect(restoreDrafts([briefPhone], projectDrafts)).toEqual([
+      planDeadline,
+      briefSaturday,
+      briefPhone,
+    ]);
   });
 });
 

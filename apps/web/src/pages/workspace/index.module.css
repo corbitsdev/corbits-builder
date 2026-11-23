@@ -233,33 +233,66 @@
   display: none;
 }
 
-/* Comments waiting to be sent; pressing it sends them alone and leaves the words as typed. */
+/* Comments waiting to be sent: the count opens the page they are on, the cross removes them. */
 .commentsToken {
   display: inline-flex;
   flex: none;
   align-items: center;
-  gap: var(--space-1);
   align-self: center;
   height: 22px;
-  padding: 0 6px;
-  border: 0;
   border-radius: 6px;
   background: var(--wb-muted);
   color: var(--wb-foreground);
-  font: inherit;
   font-size: var(--text-xs);
   font-weight: var(--font-weight-medium);
   white-space: nowrap;
+}
+
+.commentsShow,
+.commentsRemove {
+  display: inline-flex;
+  align-items: center;
+  height: 100%;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
   cursor: pointer;
-  transition: background-color 120ms ease;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
 }
 
-.commentsToken:hover:not([aria-disabled]) {
-  background: var(--wb-selected);
+.commentsShow {
+  gap: var(--space-1);
+  padding: 0 4px 0 6px;
+  border-radius: 6px 0 0 6px;
 }
 
-.commentsToken[aria-disabled] {
+.commentsRemove {
+  justify-content: center;
+  width: 20px;
+  border-radius: 0 6px 6px 0;
+  color: var(--wb-muted-foreground);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .commentsShow:hover,
+  .commentsRemove:hover:not(:disabled) {
+    background: var(--wb-selected);
+    color: var(--wb-foreground);
+  }
+}
+
+.commentsRemove:disabled {
   cursor: default;
+  opacity: 0.5;
+}
+
+.commentsShow:focus-visible,
+.commentsRemove:focus-visible {
+  outline: 2px solid var(--wb-action);
+  outline-offset: -2px;
 }
 
 /* Says what Send carries while a screen has feedback staged, so the one send control names its load. */
