@@ -386,6 +386,7 @@ export function DocumentPage({
     const fitsBelow =
       below + box.offsetHeight <= window.innerHeight - MARGIN_GAP;
     box.style.top = `${String(fitsBelow ? below : card.line.top - MARGIN_GAP - box.offsetHeight)}px`;
+    box.dataset.side = fitsBelow ? "below" : "above";
     box.style.left = `${String(Math.max(MARGIN_GAP, Math.min(card.line.left, window.innerWidth - box.offsetWidth - MARGIN_GAP)))}px`;
     // Opened from the keyboard, the card takes focus so Escape can hand it back, and appears at
     // once: a key press is answered without a flourish.
