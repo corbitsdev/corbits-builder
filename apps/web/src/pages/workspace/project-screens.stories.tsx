@@ -46,8 +46,7 @@ const PLAN: readonly StepStatus[] = [
   ),
 ];
 
-const INSTEAD =
-  "I'll turn the bakery's order form into a simple page that emails each order to you.";
+const INSTEAD = "a simple page that emails each bakery order to you.";
 
 // The change of direction for these steps, and the answer given.
 const changeDirection = (
@@ -78,14 +77,14 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** Three steps the plan still holds stop, and what happens instead. */
+/** Three steps the plan still holds are cancelled for the new goal. */
 export const ChangeDirection: Story = {};
 
-/** One step stops, with a long title and a long line about what happens instead. */
+/** One step stops, with a long title and a long new goal. */
 export const ChangeDirectionOneStep: Story = {
   args: changeDirection(
     ["accounts"],
-    "I'll leave sign-in out for now and let customers check out as guests with just their name, phone number and pickup time, so the shop can start taking Saturday orders this week.",
+    "guest checkout with just a name, phone number and pickup time, so the shop can start taking Saturday orders this week.",
     ["accounts"],
   ),
 };

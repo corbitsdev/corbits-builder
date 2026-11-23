@@ -73,10 +73,13 @@ export const isPending = (decision: DecisionControls) =>
 
 export function ScreenActions({
   note,
+  declines = false,
   children,
 }: {
   /** A quiet line beneath the buttons, such as why the main one is disabled. */
   note?: ReactNode;
+  /** One of the view's own buttons already says no, so Cancel is left out. */
+  declines?: boolean;
   /** The view's own small buttons, its main action first; Cancel follows them. */
   children?: ReactNode;
 }) {
@@ -169,7 +172,7 @@ export function ScreenActions({
             {row.back.label}
           </Button>
         ) : null}
-        {row === null ? null : (
+        {row === null || declines ? null : (
           <Button
             type="button"
             size="sm"

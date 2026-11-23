@@ -1,6 +1,6 @@
 /**
- * Puts a change of direction to the person: the plan steps that stop and what happens instead, with
- * one button to change direction and one to keep the plan. Settles to one line once answered.
+ * Puts a change of direction to the person: their new goal and the plan steps it cancels, with one
+ * button to confirm and one to keep the plan. Settles to one line once answered.
  */
 import type { ScreenViewProps } from "@corbits-builder/plugin-ui/screen";
 import { ScreenActions } from "@corbits-builder/plugin-ui/screen-actions";
@@ -29,7 +29,7 @@ export function ChangeDirection({
     return (
       <ScreenSettled
         asked={text.title}
-        answer={answer.agreed === null ? text.keep : text.go}
+        answer={answer.agreed === null ? text.kept : text.went}
       />
     );
   const { stops, instead } = data;
@@ -37,7 +37,7 @@ export function ChangeDirection({
     <ScreenCard
       title={text.title}
       actions={
-        <ScreenActions note={text.orWrite}>
+        <ScreenActions note={text.orWrite} declines>
           <Button
             type="button"
             size="sm"
@@ -64,14 +64,14 @@ export function ChangeDirection({
         </p>
       ) : (
         <div data-slot="change-direction">
-          <p className={styles.line}>{text.stops}</p>
-          <ul className={styles.steps}>
-            {stops.map(({ id, title }) => (
-              <li key={id}>{title}</li>
-            ))}
-          </ul>
           <p className={styles.line}>
-            {text.instead} {instead}
+            {text.goal} {instead}
+          </p>
+          <p className={styles.line}>
+            {text.stops}{" "}
+            <span className={styles.steps}>
+              {stops.map(({ title }) => title).join(", ")}
+            </span>
           </p>
         </div>
       )}
