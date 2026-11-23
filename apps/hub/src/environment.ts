@@ -373,7 +373,7 @@ export const readHubEnvironment = reader(hubSchema);
 export type HubEnvironment = ReturnType<typeof readHubEnvironment>;
 export type PluginHint = HubEnvironment["PLUGIN_HINT"];
 
-/** `bun run db:migrate`'s environment: the database alone, so a migration needs no hub secrets. */
+/** `bun run db:migrate`'s environment: the database and the agent state it moves, never the hub's secrets. */
 const migrationSchema = type({
   "+": "delete",
   ...databaseVariables,
