@@ -630,7 +630,7 @@ function waitingCard(
   }
 }
 
-/** What waits on the person in one line, as its card heads itself, for the box folded to a line. */
+/** What waits on the person in one line, as its card heads itself, for the box shrunk to a pill. */
 export function waitingLine(waiting: BoxWaiting): string {
   switch (waiting.kind) {
     case "question":

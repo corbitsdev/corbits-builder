@@ -944,15 +944,15 @@ export const DarkScreenSheetNarrow: Story = {
   globals: { mode: "dark" },
 };
 
-/** The box's line for what waits, while it is folded under the app. */
+/** The pill's line, while the box is shrunk over the app. */
 const foldLine = (canvasElement: HTMLElement) =>
   canvasElement.querySelector<HTMLElement>(
     '[data-slot="room-project"] [data-slot="fold-line"]',
   );
 
 /**
- * Under the running app, what waits folds the box to one line, its action where Send stands, and
- * the app ends above the box.
+ * Over the running app, the box shrinks to a pill saying what waits, its action where Send stands,
+ * and the app runs to the foot of the view beneath it.
  */
 export const AppScreenWaiting: Story = {
   args: { ...ScreenWaiting.args, ...AppBuilt.args },
@@ -981,10 +981,9 @@ export const AppStepGoAhead: Story = {
   args: { ...StepGoAhead.args, ...AppBuilt.args },
 };
 
-/** The pill standing on the box over the app: the app ends above it too. */
-export const AppWithPill: Story = {
+/** Work running over the app: the pill says what is happening, with Stop at its end. */
+export const AppWorking: Story = {
   args: {
-    ...ApprovalWaiting.args,
     ...AppBuilt.args,
     chat: <RoomThread {...thread.args} />,
     dock: {
@@ -996,7 +995,7 @@ export const AppWithPill: Story = {
 };
 
 /**
- * The line opens the box with the cursor in it; a press outside, with nothing written, folds it
+ * The pill opens the box with the cursor in it; a press outside, with nothing written, shrinks it
  * again.
  */
 export const AppBoxOpens: Story = {

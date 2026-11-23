@@ -18,7 +18,7 @@ export function Composer({
   /** In a pane it keeps its own inset; on a page the page gives it a gutter. */
   variant?: "pane" | "page";
   /**
-   * Folded to one line beside what it sits under: the panel stays mounted, so what waits keeps its
+   * Shrunk to a pill over what it floats on: the panel stays mounted, so what waits keeps its
    * buttons in the row, but only the row shows.
    */
   folded?: boolean;
