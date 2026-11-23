@@ -163,15 +163,6 @@
   padding: var(--space-2) var(--space-4) var(--space-4);
 }
 
-/* The chat taken full screen stands in for the project view or sheet it was pulled up over; that
-   stays mounted, only hidden. */
-.page:has(
-    > [data-slot="composer"] > [data-slot="chat-sheet"][data-state="full"]
-  )
-  > :not([data-slot="composer"]) {
-  display: none;
-}
-
 /* A quiet line on an archived project, with its way on beside it. */
 .caution {
   display: flex;
@@ -280,8 +271,7 @@
 /* The prompt box floats over the project view's foot, whatever it shows: a written page runs on
    under it over a fade into the page's backdrop, so its last lines read clearly as they scroll
    beneath it, and a design or the live app keeps its full height under it. Each keeps what it must
-   reach clear of the box by the box's height, which the room sets on the page. Full screen, the
-   chat is the page instead. */
+   reach clear of the box by the box's height, which the room sets on the page. */
 .footFade {
   display: none;
 }
@@ -290,8 +280,6 @@
     > [data-slot="artifact-pane"]
       [data-slot="panel-pane"][data-state="active"]
       [data-slot="document-page"]
-  ):not(
-    :has(> [data-slot="composer"] > [data-slot="chat-sheet"][data-state="full"])
   )
   > .footFade {
   display: contents;
@@ -299,10 +287,7 @@
 
 /* Over the project view only: the plugin sheet keeps its box below what it asks. Above whatever
    the view lays over its own page, its bar's popovers and panels among them. */
-.page[data-slot="room-project"]:not(
-    :has(> [data-slot="composer"] > [data-slot="chat-sheet"][data-state="full"])
-  )
-  > [data-slot="composer"] {
+.page[data-slot="room-project"] > [data-slot="composer"] {
   position: absolute;
   inset-inline: 0;
   bottom: 0;
@@ -335,4 +320,228 @@
 
 :global(.dark) .page {
   --wb-frame: unset;
+}
+
+/* Full screen from the chat over the view, or the view back over the conversation, is one view
+   transition (the room's swapCover). The chat's surface travels between the sheet around the box
+   and the whole page, its edge and corners drawn live so they never stretch; the lines and the box
+   keep their place; the view fades and settles beneath. The parts are named only while it runs. */
+:root[data-room-morph] .page {
+  transition: none;
+}
+
+/* While something covers the conversation, the chat is the sheet on it, and the conversation
+   behind is left out of the motion. */
+:root[data-room-morph] .main:has(> .page:not([hidden])) > .conversationPane {
+  view-transition-name: room-behind;
+}
+
+:root[data-room-morph] .page:not([hidden]):last-of-type {
+  view-transition-name: room-cover;
+}
+
+:root[data-room-morph]
+  .page:not([hidden]):last-of-type
+  > [data-slot="composer"]
+  [data-slot="chat-sheet-edge"] {
+  view-transition-name: chat-surface;
+}
+
+:root[data-room-morph]
+  .page:not([hidden]):last-of-type
+  > [data-slot="composer"]
+  [data-slot="chat-history"] {
+  view-transition-name: chat-thread;
+}
+
+:root[data-room-morph]
+  .page:not([hidden]):last-of-type
+  > [data-slot="composer"]
+  [data-slot="chat-sheet-box"] {
+  view-transition-name: chat-box;
+}
+
+/* With nothing over it, the chat is the conversation itself. */
+:root[data-room-morph]
+  .main:not(:has(> .page:not([hidden])))
+  > .conversationPane {
+  view-transition-name: chat-surface;
+}
+
+:root[data-room-morph]
+  .main:not(:has(> .page:not([hidden])))
+  .conversation
+  > [data-slot="conversation"] {
+  view-transition-name: chat-thread;
+}
+
+:root[data-room-morph]
+  .main:not(:has(> .page:not([hidden])))
+  .conversation
+  [data-slot="chat-sheet-box"] {
+  view-transition-name: chat-box;
+}
+
+:root[data-room-morph]::view-transition-group(*) {
+  animation-duration: var(--duration-large);
+  animation-timing-function: var(--ease-out);
+}
+
+/* Bottom to top: the view, the chat's surface, its lines, the box. */
+:root[data-room-morph]::view-transition-group(room-behind) {
+  z-index: 1;
+}
+
+:root[data-room-morph]::view-transition-group(room-cover) {
+  z-index: 2;
+}
+
+:root[data-room-morph]::view-transition-group(chat-surface) {
+  z-index: 3;
+}
+
+:root[data-room-morph]::view-transition-group(chat-thread) {
+  z-index: 4;
+}
+
+:root[data-room-morph]::view-transition-group(chat-box) {
+  z-index: 5;
+}
+
+/* The conversation behind the view is not part of either end. */
+:root[data-room-morph]::view-transition-old(room-behind),
+:root[data-room-morph]::view-transition-new(room-behind) {
+  animation: none;
+  opacity: 0;
+}
+
+/* The view settles back a little as it goes, and rises the same way as it comes. */
+:root[data-room-morph="chat"]::view-transition-old(room-cover) {
+  animation: room-cover-away var(--duration-large) var(--ease-out) both;
+}
+
+:root[data-room-morph="project"]::view-transition-new(room-cover) {
+  animation: room-cover-away var(--duration-large) var(--ease-out) reverse both;
+}
+
+@keyframes room-cover-away {
+  to {
+    opacity: 0;
+    scale: 0.98;
+  }
+}
+
+/* The surface: its edge, fill and lift drawn on the layer that carries it, so its corners stay
+   round as it grows. Only the conversation's own controls, in the page's corner, come from a
+   snapshot, at their size and in their corner. */
+:root[data-room-morph]::view-transition-image-pair(chat-surface) {
+  overflow: clip;
+  border: 1px solid var(--wb-border);
+  border-radius: calc(var(--radius-xl) + 12px);
+  background: var(--wb-background);
+  box-shadow: var(--wb-pane-shadow);
+}
+
+:root[data-room-morph="chat"]::view-transition-image-pair(chat-surface) {
+  animation: chat-surface-page var(--duration-large) var(--ease-out) both;
+}
+
+:root[data-room-morph="project"]::view-transition-image-pair(chat-surface) {
+  animation: chat-surface-box var(--duration-large) var(--ease-out) both;
+}
+
+@keyframes chat-surface-page {
+  to {
+    border-color: transparent;
+    border-radius: 0;
+    box-shadow: none;
+  }
+}
+
+/* Down into the box it takes its corners and lift again, and is gone as it reaches it. */
+@keyframes chat-surface-box {
+  from {
+    border-color: transparent;
+    border-radius: 0;
+    box-shadow: none;
+  }
+  70% {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+:root[data-room-morph]::view-transition-old(chat-surface),
+:root[data-room-morph]::view-transition-new(chat-surface) {
+  inset: 0 0 auto auto;
+  width: auto;
+  height: auto;
+}
+
+:root[data-room-morph="chat"]::view-transition-old(chat-surface) {
+  animation: none;
+  opacity: 0;
+}
+
+:root[data-room-morph="chat"]::view-transition-new(chat-surface) {
+  animation: room-fade-in var(--duration-large) var(--ease-out) both;
+}
+
+:root[data-room-morph="project"]::view-transition-old(chat-surface) {
+  animation: room-fade-in var(--duration-standard) var(--ease-out) reverse both;
+}
+
+:root[data-room-morph="project"]::view-transition-new(chat-surface) {
+  animation: none;
+  opacity: 0;
+}
+
+@keyframes room-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* The lines at their own size, never stretched. The two ends lay them out differently (the sheet
+   holds the newest by the box, the page reads from the top), so they hand over rather than
+   cross: the sheet's go first where they stand, then the page's come in riding the surface's
+   top edge to where they rest. */
+:root[data-room-morph]::view-transition-image-pair(chat-thread) {
+  overflow: clip;
+}
+
+:root[data-room-morph]::view-transition-old(chat-thread),
+:root[data-room-morph]::view-transition-new(chat-thread) {
+  left: 50%;
+  width: auto;
+  height: auto;
+  translate: -50% 0;
+}
+
+:root[data-room-morph="chat"]::view-transition-old(chat-thread) {
+  inset-block: auto 0;
+}
+
+:root[data-room-morph]::view-transition-old(chat-thread) {
+  animation: room-thread-out var(--duration-large) var(--ease-out) both;
+}
+
+:root[data-room-morph]::view-transition-new(chat-thread) {
+  animation: room-thread-in var(--duration-large) var(--ease-out) both;
+}
+
+@keyframes room-thread-out {
+  35%,
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes room-thread-in {
+  from,
+  40% {
+    opacity: 0;
+  }
 }

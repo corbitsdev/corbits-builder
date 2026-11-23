@@ -12,6 +12,7 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
+import { flushSync } from "react-dom";
 import {
   FolderOpen,
   MessageSquare,
@@ -83,6 +84,24 @@ export type RoomSlots = {
    */
   chat?: ReactNode;
 };
+
+/**
+ * Puts away what covers the conversation, or brings the project view back over it, as one motion:
+ * the chat's surface grows from the sheet to the page or shrinks from the page into the box, the
+ * lines and the box keep their place, and the view fades under it. The parts are named only while
+ * it runs, in index.module.css.
+ */
+function swapCover(to: "chat" | "project", update: () => void) {
+  const root = document.documentElement;
+  if (
+    typeof document.startViewTransition !== "function" ||
+    matchMedia("(prefers-reduced-motion: reduce)").matches
+  )
+    return update();
+  root.dataset.roomMorph = to;
+  const transition = document.startViewTransition(() => flushSync(update));
+  void transition.finished.finally(() => delete root.dataset.roomMorph);
+}
 
 /** The box the person writes to the coordinator in. */
 export type RoomComposer = {
@@ -391,9 +410,11 @@ export function RoomView({
       waiting={card}
       chat={chat}
       chatStart={{
-        onFullScreen: dockInSheet
-          ? closeSheet
-          : () => onProjectOpenChange(false),
+        onFullScreen: () =>
+          swapCover(
+            "chat",
+            dockInSheet ? closeSheet : () => onProjectOpenChange(false),
+          ),
       }}
       answersShell={shell.answers}
     />
@@ -452,7 +473,9 @@ export function RoomView({
                       className={styles.control}
                       aria-label={wording.conversation.openProject}
                       title={wording.conversation.openProjectHint}
-                      onClick={() => onProjectOpenChange(true)}
+                      onClick={() =>
+                        swapCover("project", () => onProjectOpenChange(true))
+                      }
                     >
                       <FolderOpen size={16} aria-hidden="true" />
                       <span className={styles.label}>

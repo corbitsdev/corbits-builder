@@ -402,7 +402,12 @@ export function ChatSheet({
       data-state={sheetState}
       data-held={held ? "" : undefined}
     >
-      <div ref={edgeRef} className={styles.edge} aria-hidden="true" />
+      <div
+        ref={edgeRef}
+        className={styles.edge}
+        data-slot="chat-sheet-edge"
+        aria-hidden="true"
+      />
       {grip === null || (shown && !(moving && status !== null)) ? null : (
         <div ref={gripRef} className={styles.grip}>
           {grip}
@@ -458,7 +463,9 @@ export function ChatSheet({
           {children}
         </div>
       </div>
-      <div className={styles.box}>{box}</div>
+      <div className={styles.box} data-slot="chat-sheet-box">
+        {box}
+      </div>
     </div>
   );
 }
