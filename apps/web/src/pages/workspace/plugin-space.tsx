@@ -16,6 +16,7 @@ export function PluginSpace({
   as,
   headingRef,
   onClose,
+  hidden = false,
   children,
 }: {
   /** What the screen is, as the plugin names it. */
@@ -23,8 +24,13 @@ export function PluginSpace({
   /** Beside the main area, or over it with the prompt box beneath. */
   as: "column" | "sheet";
   headingRef?: Ref<HTMLHeadingElement>;
-  /** Puts the sheet away, the screen still waiting; a column has no way to close. */
+  /** Puts the space away, the screen still waiting. */
   onClose?: (() => void) | undefined;
+  /**
+   * Closed while its screen still waits: kept mounted, so the screen's forward action stays in the
+   * prompt box, which opens it.
+   */
+  hidden?: boolean;
   children: ReactNode;
 }) {
   const id = useId();
@@ -34,6 +40,7 @@ export function PluginSpace({
       data-slot="plugin-space"
       data-as={as}
       aria-labelledby={id}
+      hidden={hidden}
     >
       <header className={styles.head}>
         <p className={styles.label}>{text.label}</p>

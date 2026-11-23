@@ -817,9 +817,8 @@ const pickColoursScreen = storyScreen(
 );
 
 /**
- * A plugin's screen waits: on a wide window the plugin space stands beside the conversation without
- * taking focus, the box names the screen with Open, and the screen's forward action stands where
- * Send is.
+ * A plugin's screen waits: the box names the screen with Open, and the screen's forward action
+ * stands where Send is. The plugin space stays closed until the person opens it.
  */
 export const ScreenWaiting: Story = {
   args: {
@@ -839,12 +838,40 @@ export const ScreenWaiting: Story = {
   },
 };
 
-/** The plugin space beside the open project view, as beside the conversation. */
+/** Open in the box brings the plugin space up beside the conversation; Close puts it away. */
+export const ScreenOpened: Story = {
+  ...ScreenWaiting,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const space = () =>
+      canvasElement.querySelector('[data-slot="plugin-space"]');
+    await expect(space()).toHaveAttribute("hidden");
+    await userEvent.click(
+      canvas.getByRole("button", {
+        name: wording.promptBox.waiting.openScreen,
+      }),
+    );
+    await waitFor(() => expect(space()).not.toHaveAttribute("hidden"));
+    await userEvent.click(
+      canvas.getByRole("button", { name: wording.promptBox.space.close }),
+    );
+    await waitFor(() => expect(space()).toHaveAttribute("hidden"));
+  },
+};
+
+/** The plugin space opened beside the open project view, as beside the conversation. */
 export const ScreenWaitingProjectOpen: Story = {
   args: {
     ...ScreenWaiting.args,
     ...withDocuments,
     layout: { ...withDocuments.layout, projectOpen: true },
+  },
+  play: async ({ canvasElement }) => {
+    await userEvent.click(
+      within(canvasElement).getByRole("button", {
+        name: wording.promptBox.waiting.openScreen,
+      }),
+    );
   },
 };
 

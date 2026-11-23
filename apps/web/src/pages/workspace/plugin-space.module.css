@@ -6,6 +6,10 @@
   background: var(--wb-background);
 }
 
+.space[hidden] {
+  display: none;
+}
+
 /* Beside the main area: a column of its own, set off by one hairline, as wide as the room gives it. */
 .space[data-as="column"] {
   flex: 0 0 var(--plugin-column, min(28rem, 42%));

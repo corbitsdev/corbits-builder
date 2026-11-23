@@ -326,15 +326,16 @@ export function RoomView({
       setDrawerOpen(false);
       go(...args);
     };
-  // On a wide window the space stands beside the main area as soon as a screen waits, taking no
-  // focus; on a narrow one it waits until the person opens it as a sheet, and Close puts it away.
+  // A waiting screen opens only when the person presses Open in the box: beside the main area on a
+  // wide window, as a sheet on a narrow one, and Close puts it away. Closed on a wide window, the
+  // column stays mounted out of sight, so the screen's forward action stays in the box.
   const [sheetOpen, setSheetOpen] = useState(false);
   const sheetShown = narrow && sheetOpen && space !== null;
-  const columnShown = !narrow && space !== null;
+  const columnShown = !narrow && sheetOpen && space !== null;
   const headingRef = useRef<HTMLHeadingElement>(null);
   const inputRef = dock.kind === "composer" ? dock.inputRef : null;
   const openSpace = () => {
-    if (narrow && !sheetOpen) setSheetOpen(true);
+    if (!sheetOpen) setSheetOpen(true);
     else headingRef.current?.focus();
   };
   // The box moves with the sheet, so the cursor goes back to it once it has moved.
@@ -343,10 +344,10 @@ export function RoomView({
     setSheetOpen(false);
     refocusBox.current = true;
   };
-  // The sheet takes focus to its heading as it opens.
+  // The space takes focus to its heading as it opens.
   useEffect(() => {
-    if (sheetShown) headingRef.current?.focus();
-  }, [sheetShown]);
+    if (sheetShown || columnShown) headingRef.current?.focus();
+  }, [sheetShown, columnShown]);
   // Once a screen is submitted the next takes its place, or the space closes; either way the
   // person carries on in the prompt box, with what they had typed still there.
   const spaceKey = space?.key ?? null;
@@ -541,8 +542,14 @@ export function RoomView({
             </div>
           ) : null}
         </div>
-        {columnShown && space !== null ? (
-          <PluginSpace title={space.title} as="column" headingRef={headingRef}>
+        {!narrow && space !== null ? (
+          <PluginSpace
+            title={space.title}
+            as="column"
+            headingRef={headingRef}
+            onClose={closeSheet}
+            hidden={!columnShown}
+          >
             {spaceScreen}
           </PluginSpace>
         ) : null}
