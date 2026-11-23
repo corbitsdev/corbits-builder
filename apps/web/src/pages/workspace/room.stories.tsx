@@ -63,6 +63,7 @@ function Room(args: RoomViewProps) {
         layout={{
           ...args.layout,
           projectOpen,
+          appShown: onScreen === LIVE_TAB,
           onProjectOpenChange: setProjectOpen,
         }}
         dock={
@@ -181,6 +182,7 @@ function paneOf(story: Partial<ArtifactPaneProps> = {}) {
 const layout: RoomViewProps["layout"] = {
   projectReady: false,
   projectOpen: false,
+  appShown: false,
   onProjectOpenChange: fn(),
 };
 
@@ -904,6 +906,90 @@ export const DarkScreenWaiting: Story = {
 
 export const DarkScreenSheetNarrow: Story = {
   ...ScreenSheetNarrow,
+  globals: { mode: "dark" },
+};
+
+/** The box's line for what waits, while it is folded under the app. */
+const foldLine = (canvasElement: HTMLElement) =>
+  canvasElement.querySelector<HTMLElement>(
+    '[data-slot="room-project"] [data-slot="fold-line"]',
+  );
+
+/**
+ * Under the running app, what waits folds the box to one line, its action where Send stands, and
+ * the app ends above the box.
+ */
+export const AppScreenWaiting: Story = {
+  args: { ...ScreenWaiting.args, ...AppBuilt.args },
+  play: async ({ canvasElement }) => {
+    await waitFor(() => expect(foldLine(canvasElement)).not.toBeNull());
+    await expect(foldLine(canvasElement)).toHaveTextContent("Pick colours");
+    await expect(
+      canvasElement.querySelector(
+        '[data-slot="room-project"] [data-slot="composer-panel"]',
+      ),
+    ).toHaveAttribute("hidden");
+  },
+};
+
+export const AppApprovalWaiting: Story = {
+  args: { ...ApprovalWaiting.args, ...AppBuilt.args },
+  play: async ({ canvasElement }) => {
+    await waitFor(() => expect(foldLine(canvasElement)).not.toBeNull());
+    await expect(foldLine(canvasElement)).toHaveTextContent(
+      wording.approval.run,
+    );
+  },
+};
+
+export const AppStepGoAhead: Story = {
+  args: { ...StepGoAhead.args, ...AppBuilt.args },
+};
+
+/** The pill standing on the box over the app: the app ends above it too. */
+export const AppWithPill: Story = {
+  args: {
+    ...ApprovalWaiting.args,
+    ...AppBuilt.args,
+    chat: <RoomThread {...thread.args} />,
+    dock: {
+      ...composer,
+      working: true,
+      status: { state: "working", label: "Building the app" },
+    },
+  },
+};
+
+/**
+ * The line opens the box with the cursor in it; a press outside, with nothing written, folds it
+ * again.
+ */
+export const AppBoxOpens: Story = {
+  args: { ...ApprovalWaiting.args, ...AppBuilt.args },
+  play: async ({ canvasElement }) => {
+    await waitFor(() => expect(foldLine(canvasElement)).not.toBeNull());
+    const line = foldLine(canvasElement);
+    if (line === null) throw new Error("No folded line under the app");
+    await userEvent.click(line);
+    const project = canvasElement.querySelector<HTMLElement>(
+      '[data-slot="room-project"]',
+    );
+    if (project === null) throw new Error("No project view");
+    const box = within(project).getByRole("textbox");
+    await waitFor(() => expect(box).toHaveFocus());
+    await expect(foldLine(canvasElement)).toBeNull();
+    await expect(
+      project.querySelector('[data-slot="composer-panel"]'),
+    ).not.toHaveAttribute("hidden");
+    const app = project.querySelector<HTMLElement>('[data-slot="live-app"]');
+    if (app === null) throw new Error("No app in the project view");
+    await userEvent.click(app);
+    await waitFor(() => expect(foldLine(canvasElement)).not.toBeNull());
+  },
+};
+
+export const AppScreenWaitingDark: Story = {
+  ...AppScreenWaiting,
   globals: { mode: "dark" },
 };
 

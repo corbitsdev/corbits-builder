@@ -54,7 +54,11 @@ import {
 } from "./artifact-pane.tsx";
 import { InBox, useBoxPorts, type BoxPorts } from "./box-ports.tsx";
 import { ScreenCard, StepCard } from "./box-cards.tsx";
-import { DocumentDecision, PackageDecision } from "./document-decision.tsx";
+import {
+  approvalAsk,
+  DocumentDecision,
+  PackageDecision,
+} from "./document-decision.tsx";
 import { FootFade } from "./foot-fade.tsx";
 import { PluginSpace } from "./plugin-space.tsx";
 import { QuestionsCard } from "./questions-card.tsx";
@@ -210,6 +214,11 @@ export type RoomContent = {
     projectReady: boolean;
     /** The project view covers the room, with the prompt box beneath it; closed, it waits hidden. */
     projectOpen: boolean;
+    /**
+     * The open project view shows the app, which the prompt box keeps clear of: the app ends above
+     * it, and what waits folds to one line until the person opens it.
+     */
+    appShown: boolean;
     onProjectOpenChange: (open: boolean) => void;
   };
   conversation: {
@@ -259,7 +268,7 @@ export function RoomView({
   pluginSpace,
   chat,
 }: RoomViewProps) {
-  const { projectReady, projectOpen, onProjectOpenChange } = layout;
+  const { projectReady, projectOpen, appShown, onProjectOpenChange } = layout;
   const conversationRef = useRef<HTMLElement>(null);
   const shell = useShellReply(conversationRef);
   const closeProject = () => onProjectOpenChange(false);
@@ -421,6 +430,11 @@ export function RoomView({
       dock={dock}
       ports={ports}
       waiting={card}
+      fold={
+        dockInProject && appShown && waiting !== null
+          ? waitingLine(waiting)
+          : undefined
+      }
       chat={chat}
       chatStart={{
         onFullScreen: () =>
@@ -612,6 +626,25 @@ function waitingCard(
   }
 }
 
+/** What waits on the person in one line, as its card heads itself, for the box folded to a line. */
+export function waitingLine(waiting: BoxWaiting): string {
+  switch (waiting.kind) {
+    case "question":
+      return (
+        waiting.question.asked.questions[0]?.question ??
+        wording.promptBox.waiting.question
+      );
+    case "approval":
+      return approvalAsk(waiting.approval);
+    case "step":
+      return wording.promptBox.waiting.step(waiting.title);
+    case "screen":
+      return waiting.title;
+    default:
+      return waiting satisfies never;
+  }
+}
+
 function EmptyConversation({ empty }: { empty: "archived" | "new" | null }) {
   if (empty === "archived")
     return (
@@ -646,6 +679,7 @@ type ChatStart = Pick<
 export function RoomDockView({
   dock,
   waiting,
+  fold,
   chat,
   chatStart,
   ports,
@@ -659,6 +693,11 @@ export function RoomDockView({
    * question card, a plugin's screen or an approval. Absent while nothing does.
    */
   waiting?: ReactNode;
+  /**
+   * What waits in one line, while the box sits under the app: the box folds to that line and its
+   * action until the person opens it. Absent, the box never folds.
+   */
+  fold?: string | undefined;
   chat?: ReactNode;
   chatStart?: ChatStart | undefined;
   answersShell?: AnswersShell;
@@ -735,6 +774,7 @@ export function RoomDockView({
     <RoomComposerView
       {...dock}
       waiting={waiting}
+      fold={fold}
       chat={chat}
       chatStart={chatStart}
       ports={ports}
@@ -764,12 +804,14 @@ function RoomComposerView({
   comments = 0,
   onStop,
   waiting,
+  fold,
   chat,
   chatStart,
   ports: shared,
   answersShell,
 }: RoomComposer & {
   waiting: ReactNode;
+  fold?: string | undefined;
   chat: ReactNode;
   chatStart?: ChatStart | undefined;
   ports?: BoxPorts | undefined;
@@ -784,6 +826,34 @@ function RoomComposerView({
   // mid-send; the drop zone, the attach button and a paste all follow this.
   const attaching = accept !== null && !busy;
   const typed = text.trim() !== "" || files.length > 0;
+  // Under the app, what waits folds to its line and its action, so the box takes one row. The
+  // line opens the box; leaving it with nothing written, by a press elsewhere or into the app's
+  // frame, folds it again.
+  const [unfolded, setUnfolded] = useState(false);
+  const foldable = fold !== undefined;
+  const folded = foldable && !unfolded && !typed;
+  const unfold = () => {
+    flushSync(() => setUnfolded(true));
+    inputRef.current?.focus();
+  };
+  useEffect(() => {
+    if (!foldable) setUnfolded(false);
+  }, [foldable]);
+  useEffect(() => {
+    if (!unfolded) return;
+    const composer = inputRef.current?.closest('[data-slot="composer"]');
+    const leave = (event: Event) => {
+      if (event.target instanceof Node && composer?.contains(event.target))
+        return;
+      setUnfolded(false);
+    };
+    document.addEventListener("pointerdown", leave, true);
+    window.addEventListener("blur", leave);
+    return () => {
+      document.removeEventListener("pointerdown", leave, true);
+      window.removeEventListener("blur", leave);
+    };
+  }, [unfolded]);
   const send = () => {
     if (files.length === 0 && answersShell?.(text) === true)
       return onTextChange("");
@@ -830,8 +900,20 @@ function RoomComposerView({
                 </Attachments>
               </PromptInputFloat>
             )}
+            {/* Folded, what waits is the row: its line opens the box, its action ends the row. */}
+            {folded ? (
+              <button
+                type="button"
+                className={styles.foldLine}
+                data-slot="fold-line"
+                aria-expanded={false}
+                onClick={unfold}
+              >
+                {fold}
+              </button>
+            ) : null}
             {/* Attach leads the row; what is sent with the words follows it, then the words. */}
-            {accept === null ? null : (
+            {accept === null || folded ? null : (
               <>
                 <input
                   ref={fileInputRef}
@@ -855,7 +937,7 @@ function RoomComposerView({
                 </PromptInputButton>
               </>
             )}
-            {comments > 0 ? (
+            {comments > 0 && !folded ? (
               <span className={styles.commentsToken}>
                 <MessageSquare size={12} aria-hidden="true" />
                 {wording.promptBox.comments(comments)}
@@ -881,7 +963,7 @@ function RoomComposerView({
               }
             />
             <PromptInputToolbar>
-              {needsProvider ? null : mic}
+              {needsProvider || folded ? null : mic}
               {needsProvider ? (
                 <UiButton
                   type="button"
@@ -927,6 +1009,7 @@ function RoomComposerView({
   );
   return (
     <Composer
+      folded={folded}
       panel={
         restarts !== null || waiting !== undefined ? (
           <>

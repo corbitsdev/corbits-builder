@@ -9,6 +9,7 @@ import styles from "./composer.module.css";
  */
 export function Composer({
   variant = "pane",
+  folded = false,
   notes,
   panel,
   around,
@@ -16,6 +17,11 @@ export function Composer({
 }: {
   /** In a pane it keeps its own inset; on a page the page gives it a gutter. */
   variant?: "pane" | "page";
+  /**
+   * Folded to one line beside what it sits under: the panel stays mounted, so what waits keeps its
+   * buttons in the row, but only the row shows.
+   */
+  folded?: boolean;
   /** Faults and notices about the message, above the box; they give way before the box does. */
   notes?: ReactNode;
   /** What waits on the person, such as a question card or a plugin's screen, above the typing row. */
@@ -27,7 +33,11 @@ export function Composer({
   const box = (
     <div className={styles.box} data-slot="composer-box">
       {panel === undefined ? null : (
-        <div className={styles.panel} data-slot="composer-panel">
+        <div
+          className={styles.panel}
+          data-slot="composer-panel"
+          hidden={folded}
+        >
           {panel}
         </div>
       )}
@@ -39,6 +49,7 @@ export function Composer({
       className={styles.composer}
       data-slot="composer"
       data-variant={variant}
+      data-folded={folded ? "" : undefined}
     >
       {notes === undefined ? null : (
         <div className={styles.notes} data-slot="composer-notes">

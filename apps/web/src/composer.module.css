@@ -57,6 +57,10 @@
   border-radius: calc(var(--radius-xl) - 1px) calc(var(--radius-xl) - 1px) 0 0;
 }
 
+.panel[hidden] {
+  display: none;
+}
+
 /* The box is the frame, so a question card, a plugin's screen or an approval drops its own and
    takes the box's width; it keeps its own padding. */
 .panel :is([data-gate-kind], [data-slot="tool-approval-card"]) {

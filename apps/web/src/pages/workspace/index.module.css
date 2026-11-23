@@ -200,6 +200,37 @@
 }
 
 /* Comments waiting to be made, carried with whatever is typed after them. */
+/* The box folded under the app: what waits reads as the row's words, and opens the box. Its words
+   sit where the typed ones would, so the row keeps its height. */
+.foldLine {
+  flex: 1;
+  min-width: 0;
+  align-self: center;
+  overflow: hidden;
+  padding: var(--space-2) var(--space-1);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--wb-foreground);
+  font: inherit;
+  font-size: var(--text-sm);
+  line-height: 24px;
+  text-align: start;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: text;
+}
+
+.foldLine:focus-visible {
+  outline: 2px solid var(--wb-ring);
+  outline-offset: -2px;
+}
+
+/* The words stay in the box while it is folded, so they are there as it opens. */
+.foldLine ~ [data-slot="prompt-input-field"] {
+  display: none;
+}
+
 .commentsToken {
   display: inline-flex;
   flex: none;
