@@ -1,6 +1,7 @@
 /**
- * An open project's sidebar: the project's name, which opens and closes it, then the plan's steps
- * and a line saying how the app stands, which opens it. Kept at the bottom, smaller and greyer, are
+ * An open project's sidebar: the project's name, which opens and closes it, then what the project
+ * makes, each thing opening once it is made, and, where no row makes the app, a line saying how the
+ * app stands, which opens it. Kept at the bottom, smaller and greyer, are
  * the links that leave it: the project's settings and secrets, the other projects, and the
  * workspace's settings and the person's account. Closed, only the project's name stays. Where the
  * room is narrow it is a drawer over the page. Its frame, foot and links are the workspace
@@ -17,13 +18,21 @@ import {
   type ReactNode,
 } from "react";
 import {
+  AppWindow,
   ArrowUpRight,
+  BookOpen,
   Building2,
-  ChevronRight,
+  CircleAlert,
   CircleUser,
   Ellipsis,
+  File,
+  FileText,
+  Flag,
   Folder,
+  ListChecks,
   Lock,
+  NotebookText,
+  Palette,
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
@@ -82,6 +91,8 @@ export type SidebarRow = {
   doing: string | null;
   /** It makes the project's app: once built it opens the app and says how it runs. */
   app: boolean;
+  /** The kind of thing it makes, which its icon shows; null for a ready-made plan's own end. */
+  makes: string | null;
   /** The tab of what it made, which the row opens; null while there is nothing to show. */
   opens: string | null;
   steps: readonly SidebarStep[];
@@ -355,15 +366,11 @@ export function SidebarLink({
   );
 }
 
-const PLAN = "plan";
-
 const rowKey = (rowId: string) => `row:${rowId}`;
 
-/** A row of the tree, whether or not the fold hides it. */
+/** A row of the tree. */
 type TreeRow = {
   key: string;
-  /** The row it sits under; null for Plan. */
-  parent: string | null;
   /** What a typed letter matches. */
   name: string;
   /** What Enter or Space, or a press, does on it. */
@@ -378,11 +385,10 @@ type TreeItemProps = Required<
 >;
 
 /**
- * The plan as a tree with a single tab stop, after the WAI-ARIA tree view pattern: the arrows move
- * between rows and fold Plan, Home and End jump, a letter finds the next row starting with it,
- * Enter or Space folds Plan, opens what a row made or else the row's menu, and Shift+F10 or the
- * context-menu key opens a row's menu. Folding and menus only change the look, so they are held
- * here.
+ * What the project makes, as a tree of one level with a single tab stop, after the WAI-ARIA tree
+ * view pattern: the arrows move between rows, Home and End jump, a letter finds the next row
+ * starting with it, Enter or Space opens what a row made or else the row's menu, and Shift+F10 or
+ * the context-menu key opens a row's menu. Until there is a plan it says nothing is made yet.
  */
 function PlanTree({
   label,
@@ -403,45 +409,30 @@ function PlanTree({
 }) {
   // The row whose menu is open.
   const [menu, setMenu] = useState<string | null>(null);
-  const [folded, setFolded] = useState(false);
-  const folds = plan.length > 0;
-  const toggle = () => setFolded(!folded);
   const opener = ({ opens }: SidebarRow) =>
     opens === null ? null : () => onOpenStep(opens);
-  const allRows: TreeRow[] = [
-    {
-      key: PLAN,
-      parent: null,
-      name: words.plan,
-      activate: folds ? toggle : null,
-      menu: false,
-    },
-    ...plan.map((row): TreeRow => {
-      const key = rowKey(row.id);
-      const menu = row.steps.some(stepHasMenu);
-      return {
-        key,
-        parent: PLAN,
-        name: row.name,
-        activate: opener(row) ?? (menu ? () => setMenu(key) : null),
-        menu,
-      };
-    }),
-  ];
-  const rows = folded ? allRows.slice(0, 1) : allRows;
+  const rows = plan.map((row): TreeRow => {
+    const key = rowKey(row.id);
+    const menu = row.steps.some(stepHasMenu);
+    return {
+      key,
+      name: row.name,
+      activate: opener(row) ?? (menu ? () => setMenu(key) : null),
+      menu,
+    };
+  });
   const items = useRef(new Map<string, HTMLElement>());
   const [focused, setFocused] = useState<string | null>(null);
-  // A fold from the keyboard happens at once; one from the pointer slides.
-  const [byKey, setByKey] = useState(false);
-  // A step folded away hands its place to Plan; Tab enters at the row last focused, else Plan.
+  // Tab enters at the row last focused, else the first.
   const tabStop =
     focused !== null && rows.some((row) => row.key === focused)
       ? focused
-      : PLAN;
+      : rows[0]?.key;
   const focus = (key: string) => {
     setFocused(key);
     items.current.get(key)?.focus();
   };
+  if (plan.length === 0) return <p className={styles.empty}>{words.noPlan}</p>;
   const onKeyDown = (event: KeyboardEvent<HTMLUListElement>) => {
     // A row's menu is drawn elsewhere on the page, but its keys still pass through here.
     if (
@@ -457,7 +448,6 @@ function PlanTree({
     const row = rows[index];
     if (row === undefined || event.altKey || event.metaKey || event.ctrlKey)
       return;
-    const branch = row.parent === null && folds;
     const move = (to: TreeRow | undefined) => {
       if (to !== undefined) focus(to.key);
     };
@@ -473,14 +463,6 @@ function PlanTree({
         break;
       case "End":
         move(rows.at(-1));
-        break;
-      case "ArrowRight":
-        if (branch && folded) toggle();
-        else if (branch) move(rows[index + 1]);
-        break;
-      case "ArrowLeft":
-        if (branch && !folded) toggle();
-        else if (row.parent !== null) focus(row.parent);
         break;
       case "Enter":
       case " ":
@@ -505,7 +487,6 @@ function PlanTree({
       }
     }
     event.preventDefault();
-    setByKey(true);
   };
   const itemProps = (key: string): TreeItemProps => ({
     ref: (element) => {
@@ -528,131 +509,54 @@ function PlanTree({
       role="tree"
       aria-label={label}
       className={styles.tree}
-      data-keyboard={byKey ? "" : undefined}
       onKeyDown={onKeyDown}
-      onPointerDown={() => setByKey(false)}
     >
-      <BranchItem
-        name={words.plan}
-        empty={words.noPlan}
-        open={folds ? !folded : null}
-        busy={
-          plan.some((each) => each.state === "needs_you")
-            ? "needs_you"
-            : plan.some((each) => each.state === "running")
-              ? "running"
-              : null
-        }
-        onToggle={toggle}
-        {...itemProps(PLAN)}
-      >
-        <ul role="group" className={styles.rows}>
-          {plan.map((row) => (
-            <PlanRow
-              key={row.id}
-              row={row}
-              app={row.app ? app : null}
-              current={row.opens !== null && row.opens === shown}
-              onOpen={opener(row)}
-              menu={
-                row.steps.some(stepHasMenu) ? (
-                  <RowStepsMenu
-                    steps={row.steps.filter(stepHasMenu)}
-                    menu={menuOf(rowKey(row.id), row.name)}
-                    onAskFirst={onAskFirst}
-                    onDecline={onDecline}
-                  />
-                ) : null
-              }
-              {...itemProps(rowKey(row.id))}
-            />
-          ))}
-        </ul>
-      </BranchItem>
+      {plan.map((row) => (
+        <PlanRow
+          key={row.id}
+          row={row}
+          app={row.app ? app : null}
+          current={row.opens !== null && row.opens === shown}
+          onOpen={opener(row)}
+          menu={
+            row.steps.some(stepHasMenu) ? (
+              <RowStepsMenu
+                steps={row.steps.filter(stepHasMenu)}
+                menu={menuOf(rowKey(row.id), row.name)}
+                onAskFirst={onAskFirst}
+                onDecline={onDecline}
+              />
+            ) : null
+          }
+          {...itemProps(rowKey(row.id))}
+        />
+      ))}
     </ul>
   );
 }
 
-/**
- * Plan: a row that folds its steps, or, while there are none, says so and does nothing. `open` is
- * null while there is nothing to fold. Folded, it still says what its steps would: it shimmers and
- * turns while one runs, and carries the dot while one waits on the person.
- */
-function BranchItem({
-  name,
-  empty,
-  open,
-  busy,
-  onToggle,
-  children,
-  ...item
-}: {
-  name: string;
-  empty: string;
-  open: boolean | null;
-  busy: "running" | "needs_you" | null;
-  onToggle: () => void;
-  children: ReactNode;
-} & TreeItemProps) {
-  if (open === null)
-    return (
-      <li
-        role="treeitem"
-        aria-level={1}
-        aria-label={`${name}, ${empty}`}
-        className={styles.item}
-        {...item}
-      >
-        <span className={styles.row} data-row="branch" data-empty="">
-          <span className={styles.name}>{name}</span>
-        </span>
-        <span className={styles.empty} aria-hidden="true">
-          {empty}
-        </span>
-      </li>
-    );
-  return (
-    <li
-      role="treeitem"
-      aria-level={1}
-      aria-expanded={open}
-      aria-label={name}
-      className={styles.item}
-      data-open={open ? "" : undefined}
-      {...item}
-    >
-      <span
-        className={styles.row}
-        data-row="branch"
-        data-state={open ? undefined : (busy ?? undefined)}
-        onClick={onToggle}
-      >
-        <span className={styles.name}>{name}</span>
-        <ChevronRight className={styles.chevron} aria-hidden="true" />
-        {open || busy === null ? null : (
-          <span className={styles.dot} data-at="end">
-            {busy === "running" ? (
-              <Working />
-            ) : (
-              <span className={styles.waiting} data-state="needs_you" />
-            )}
-          </span>
-        )}
-      </span>
-      <div className={styles.fold}>
-        <div className={styles.folded}>{children}</div>
-      </div>
-    </li>
-  );
-}
+// What a row makes, by its kind, so the list reads as the things themselves. A document of a kind
+// not named here is a page; what a ready-made plan ends in, which files nothing, is its goal.
+const KIND_ICONS: Record<string, LucideIcon> = {
+  app: AppWindow,
+  problem_brief: NotebookText,
+  product_requirements: FileText,
+  design: Palette,
+  design_option: Palette,
+  build_plan: ListChecks,
+  user_manual: BookOpen,
+};
+
+const kindIcon = (makes: string | null): LucideIcon =>
+  makes === null ? Flag : (KIND_ICONS[makes] ?? File);
 
 /**
- * Where a row stands is said by its words: finished ones are quiet, the one being worked on
- * shimmers and turns, and only one that waits on the person or failed carries a dot. It shows what
- * will happen as well as where it stands: a thing that will not be made is struck
+ * One thing the project makes: its icon, then its name. Where it stands is said by its words and
+ * its icon: made ones are quiet, ones still ahead fainter, the one being made shimmers with the
+ * spinner in its icon's place, and one that failed shows the alert in red. One that waits on the
+ * person is shaded, with what it waits for under its name. A thing that will not be made is struck
  * through, and one whose next step will pause for the person first carries a pause mark, so neither
- * setting hides in its menu. Once the app is built, its row carries the app's own mark and says how
- * it runs.
+ * setting hides in its menu. Once the app is built, its row says how it runs.
  */
 function PlanRow({
   row,
@@ -672,13 +576,13 @@ function PlanRow({
   menu: ReactNode;
 } & TreeItemProps) {
   const { state } = row;
-  const marked = state === "needs_you" || state === "failed";
   const next = row.steps.find(
     (step) => step.state === "to_do" && step.declined !== true,
   );
   const pauses = state === "to_do" && next?.askFirst === true;
   const live = state === "done" && app !== null && app !== "not_built";
   const doing = live ? words.appNow[app] : row.doing;
+  const Kind = kindIcon(row.makes);
   const said = [
     row.name,
     state === "declined" ? words.skipped : words.stepState[state],
@@ -688,7 +592,7 @@ function PlanRow({
   return (
     <li
       role="treeitem"
-      aria-level={2}
+      aria-level={1}
       aria-haspopup={menu === null ? undefined : "menu"}
       aria-label={said}
       aria-current={current ? "page" : undefined}
@@ -715,6 +619,15 @@ function PlanRow({
         data-state={state}
         data-opens={onOpen === null ? undefined : ""}
       >
+        <span className={styles.icon}>
+          {state === "running" || (live && app === "starting") ? (
+            <Working />
+          ) : state === "failed" || (live && app === "failed") ? (
+            <CircleAlert data-state="failed" aria-hidden="true" />
+          ) : (
+            <Kind aria-hidden="true" />
+          )}
+        </span>
         <span className={styles.text}>
           <span className={styles.name}>{row.name}</span>
           {doing === null ? null : (
@@ -723,23 +636,7 @@ function PlanRow({
             </span>
           )}
         </span>
-        {live ? (
-          <span className={styles.dot}>
-            {app === "starting" ? (
-              <Working />
-            ) : (
-              <span className={styles.appDot} data-state={app} />
-            )}
-          </span>
-        ) : state === "running" ? (
-          <span className={styles.dot}>
-            <Working />
-          </span>
-        ) : marked ? (
-          <span className={styles.dot}>
-            <span className={styles.waiting} data-state={state} />
-          </span>
-        ) : pauses ? (
+        {pauses ? (
           <span className={styles.dot} title={words.pausesFirst}>
             <svg
               className={styles.pause}

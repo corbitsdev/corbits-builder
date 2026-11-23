@@ -105,6 +105,11 @@ describe("the plan", () => {
     ]);
     expect(rows.map((row) => row.steps.length)).toEqual([1, 2, 1]);
     expect(rows.map((row) => row.app)).toEqual([false, false, true]);
+    expect(rows.map((row) => row.makes)).toEqual([
+      "product_requirements",
+      "design_option",
+      "app",
+    ]);
   });
 
   test("steps after the last thing made are one row named for what their plan makes", () => {
@@ -125,6 +130,7 @@ describe("the plan", () => {
       name: "Published on Cloudflare",
       state: "needs_you",
       doing: "Confirm where your app goes",
+      makes: null,
     });
   });
 

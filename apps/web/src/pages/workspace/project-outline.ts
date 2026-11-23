@@ -49,6 +49,11 @@ export type OutlineRow = {
   doing: string | null;
   /** It makes the project's app, so it stands for the app's own line. */
   app: boolean;
+  /**
+   * The kind of thing it makes, a document's kind or the app, which its icon shows; null for what a
+   * ready-made plan ends in that files nothing, such as the app published.
+   */
+  makes: string | null;
   /** The tab of what it made, once the project has it; null while there is nothing to show. */
   opens: string | null;
   /** The steps it covers, whose settings its menu changes. */
@@ -235,6 +240,7 @@ export function outlinePlan(
         maker === null ? null : (outlined[steps.indexOf(maker)] ?? null),
       ),
       app,
+      makes: made[0] ?? null,
       opens: tab,
       steps: outlined,
     };

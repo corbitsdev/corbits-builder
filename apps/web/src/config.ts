@@ -458,8 +458,7 @@ export const wording = {
       projects: "Projects",
       workspace: "Workspace",
     },
-    plan: "Plan",
-    noPlan: "No steps yet",
+    noPlan: "Nothing made yet",
     /** What a row of the plan is named for what its step makes, where no document's tab names it. */
     makes: {
       app: "App",

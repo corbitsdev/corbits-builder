@@ -179,7 +179,6 @@
 }
 
 .tree,
-.rows,
 .links {
   display: flex;
   flex-direction: column;
@@ -189,7 +188,7 @@
   list-style: none;
 }
 
-/* The tree item holds focus; its row draws the ring, so a branch's ring stops above its rows. */
+/* The tree item holds focus; its row draws the ring. */
 .item:focus-visible {
   outline: none;
 }
@@ -218,43 +217,6 @@
   background: var(--wb-muted);
 }
 
-/* Plan stands level with the app's line under it: the same height, size and colour. */
-.row[data-row="branch"] {
-  gap: var(--space-1);
-  height: 2.25rem;
-  font-size: var(--text-sm);
-  line-height: var(--text-sm--line-height);
-}
-
-.row[data-row="branch"]:hover {
-  color: var(--wb-foreground);
-}
-
-/* Nothing to list yet: named in line with the others, with nothing to fold or press. */
-.row[data-empty] {
-  cursor: default;
-}
-
-.row[data-empty]:hover {
-  background: transparent;
-  color: var(--wb-muted-foreground);
-}
-
-.row[data-empty] .name {
-  flex: none;
-}
-
-.chevron {
-  flex: none;
-  width: 14px;
-  height: 14px;
-  transition: rotate var(--duration-micro) var(--ease-out);
-}
-
-.item[data-open] > .row .chevron {
-  rotate: 90deg;
-}
-
 .name {
   flex: 1;
   min-width: 0;
@@ -263,63 +225,21 @@
   white-space: nowrap;
 }
 
-/* A branch's name is only as wide as its words, so its chevron sits beside them. */
-.row[data-row="branch"] .name {
-  flex: 0 1 auto;
-}
-
-/* No steps yet: said where the first step will be, as faint as a step still ahead. */
+/* Nothing made yet: said where the first thing will be, as faint as one still ahead. */
 .empty {
   display: flex;
   align-items: center;
   height: 2rem;
-  padding-inline-start: 20px;
+  margin: 0;
+  padding-inline-start: var(--space-2);
   color: color-mix(in oklab, var(--wb-muted-foreground) 72%, transparent);
   font-size: var(--wb-text-control);
   line-height: var(--wb-text-control--line-height);
 }
 
-/* Folded, a branch's rows stay mounted but hidden, so they can slide shut and nothing in them
-   takes focus or is read out. */
-.fold {
-  display: grid;
-  grid-template-rows: 0fr;
-  visibility: hidden;
-  transition:
-    grid-template-rows var(--duration-micro) var(--ease-out),
-    visibility var(--duration-micro);
-}
-
-.item[data-open] > .fold {
-  grid-template-rows: 1fr;
-  visibility: visible;
-}
-
-/* Folding from the keyboard is instant: it is repeated too often to wait on. */
-.tree[data-keyboard] :is(.fold, .chevron) {
-  transition: none;
-}
-
-.folded {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.folded > :last-child {
-  margin-block-end: var(--space-2);
-}
-
-/* Indented so a row's name starts under Plan's chevron. */
-.rows > .item {
-  padding-inline-start: var(--space-3);
-}
-
-/* Where a step stands is said by its words. Finished steps stay quiet in the secondary grey; the
-   steps still ahead are fainter, so the eye goes to the one being worked on, which is the
-   brightest row. A step that waits on the person or failed reads as plainly, with its dot. */
+/* Where a thing stands is said by its words and its icon. Made ones stay quiet in the secondary
+   grey; ones still ahead are fainter, so the eye goes to the one being made, which is the brightest
+   row. One that waits on the person or failed reads as plainly. */
 .row[data-row="step"]:is([data-state="to_do"], [data-state="declined"]) {
   color: color-mix(in oklab, var(--wb-muted-foreground) 72%, transparent);
 }
@@ -357,9 +277,39 @@
 }
 
 .row[data-row="step"]:has(.doing) {
+  align-items: flex-start;
   height: auto;
   min-height: 2rem;
   padding-block: var(--space-1);
+}
+
+/* What a row makes, as an icon before its name in its colour, a line high so it stays level with
+   the name when what it is at shows under it. The spinner or the alert takes its place. */
+.icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 16px;
+  height: var(--wb-text-control--line-height);
+}
+
+.icon > svg {
+  width: 16px;
+  height: 16px;
+}
+
+.icon > .working {
+  width: 13px;
+  height: 13px;
+}
+
+.icon > [data-state="failed"] {
+  color: var(--destructive);
+}
+
+/* The end marks sit level with the name, on a row of two lines too. */
+.row[data-row="step"] > .dot {
+  align-self: center;
 }
 
 /* A row with nothing to show yet is only where the work stands: no fill or pointer, as though it
@@ -371,6 +321,12 @@
 
 .row[data-row="step"]:not([data-opens]):hover {
   background: transparent;
+}
+
+/* What waits on the person is shaded, so it stands out without a mark of its own. */
+.row[data-row="step"][data-state="needs_you"],
+.row[data-row="step"][data-state="needs_you"]:hover {
+  background: var(--wb-muted);
 }
 
 .item[aria-current] > .row[data-row="step"] {
@@ -389,7 +345,6 @@
 /* The step being worked on: a soft band of light passes through its words every two seconds. The
    band is the page's own ground showing through the words, so it reads as light in both themes. */
 .row[data-row="step"][data-state="running"] .name,
-.row[data-row="branch"][data-state="running"] .name,
 .app[data-state="starting"] .name {
   background: linear-gradient(
       90deg,
@@ -413,7 +368,6 @@
 
 @media (prefers-reduced-motion: reduce) {
   .row[data-row="step"][data-state="running"] .name,
-  .row[data-row="branch"][data-state="running"] .name,
   .app[data-state="starting"] .name {
     background: none;
     color: var(--wb-foreground);
@@ -454,11 +408,6 @@
   .working {
     animation: none;
   }
-}
-
-/* Folded Plan's dot stands at the row's end, in the steps' column. */
-.dot[data-at="end"] {
-  margin-inline-start: auto;
 }
 
 /* A row's menu button, for the pointer: it shows on the row being hovered or focused, and while
@@ -571,19 +520,6 @@
 
 .app[data-current] {
   font-weight: 500;
-}
-
-/* What waits on the person is blue, as the room's actions are, and a failure red; the library's
-   own tones are the brand's orange. */
-.waiting {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--wb-action);
-}
-
-.waiting[data-state="failed"] {
-  background: var(--destructive);
 }
 
 .appDot {

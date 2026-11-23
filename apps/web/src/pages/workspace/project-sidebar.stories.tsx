@@ -31,6 +31,19 @@ const step = (
   ...settings,
 });
 
+// What each row of the stories makes, which its icon shows.
+const KINDS: Record<string, string> = {
+  brief: "problem_brief",
+  constraints: "constraints",
+  approaches: "approaches",
+  requirements: "product_requirements",
+  research: "research",
+  design: "design_option",
+  build_plan: "build_plan",
+  build: "app",
+  manual: "user_manual",
+};
+
 /** A thing the project makes, made by one step of the same name; it opens what it made once it has. */
 const row = (
   id: string,
@@ -44,6 +57,7 @@ const row = (
   state,
   doing: null,
   app: false,
+  makes: KINDS[id] ?? null,
   opens: null,
   steps: [step(id, name, state, settings)],
   ...fields,
@@ -346,56 +360,25 @@ export const LongPlan: Story = {
 export const Closed: Story = { args: { ...buildingArgs, open: false } };
 
 /**
- * The plan is a tree with one tab stop, which lands on Plan. The arrows move between steps; Left
- * steps out to Plan, then folds it, and Right opens it again.
+ * The list is a tree with one tab stop, which lands on its first row. The arrows move between rows,
+ * and Home and End jump to either end.
  */
 export const Keyboard: Story = {
   args: buildingArgs,
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    const plan = canvas.getByRole("treeitem", { name: words.plan });
-    while (document.activeElement !== plan) await userEvent.tab();
-    await userEvent.keyboard("{ArrowDown}{ArrowDown}");
+    const first = canvas.getByRole("treeitem", { name: /^Brief/ });
+    while (document.activeElement !== first) await userEvent.tab();
+    await userEvent.keyboard("{ArrowDown}");
     await expect(
       canvas.getByRole("treeitem", { name: /^Requirements/ }),
     ).toHaveFocus();
-    await userEvent.keyboard("{ArrowLeft}");
-    await expect(plan).toHaveFocus();
-    await userEvent.keyboard("{ArrowLeft}");
-    await expect(plan).toHaveAttribute("aria-expanded", "false");
-    await userEvent.keyboard("{ArrowRight}");
-    await expect(plan).toHaveAttribute("aria-expanded", "true");
-  },
-};
-
-/**
- * Folded, Plan still says what its steps would: it shimmers while a step runs, and carries the dot
- * while one waits on the person, which says more.
- */
-export const FoldedPlan: Story = {
-  args: { ...buildingArgs },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    const plan = canvas.getByRole("treeitem", { name: words.plan });
-    await userEvent.click(within(plan).getByText(words.plan));
-    await expect(plan).toHaveAttribute("aria-expanded", "false");
-    await expect(plan.querySelector('[data-row="branch"]')).toHaveAttribute(
-      "data-state",
-      "running",
-    );
-  },
-};
-
-export const FoldedPlanNeedsYou: Story = {
-  args: { plan: publishing, app: "running" },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    const plan = canvas.getByRole("treeitem", { name: words.plan });
-    await userEvent.click(within(plan).getByText(words.plan));
-    await expect(plan.querySelector('[data-row="branch"]')).toHaveAttribute(
-      "data-state",
-      "needs_you",
-    );
+    await userEvent.keyboard("{End}");
+    await expect(
+      canvas.getByRole("treeitem", { name: /^User manual/ }),
+    ).toHaveFocus();
+    await userEvent.keyboard("{Home}");
+    await expect(first).toHaveFocus();
   },
 };
 
