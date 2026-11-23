@@ -4,7 +4,6 @@
   "private": true,
   "description": "The building blocks a plugin's screen view draws with, on the interface's own components and tokens, so every screen reads alike.",
   "license": "SEE LICENSE IN ../../LICENSE.md",
-  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
   "type": "module",
   "exports": {
     "./choice-segments": "./src/choice-segments.tsx",

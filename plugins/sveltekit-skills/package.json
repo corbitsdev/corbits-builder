@@ -4,7 +4,6 @@
   "private": true,
   "description": "Routes, data and forms in a SvelteKit app.",
   "license": "SEE LICENSE IN ../../LICENSE.md",
-  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
   "type": "module",
   "builder": {
     "handle": "sveltekit-skills",

@@ -4,7 +4,6 @@
   "private": true,
   "description": "Settles with the person how Builder works on the whole project, such as whether it stops to ask for their approval, and shows them what they must set up outside Builder to use what was built.",
   "license": "SEE LICENSE IN ../../LICENSE.md",
-  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
   "type": "module",
   "dependencies": {
     "@corbits-builder/plugin": "workspace:*",

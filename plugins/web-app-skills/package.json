@@ -4,7 +4,6 @@
   "private": true,
   "description": "How the coder builds a web app's pages, data and forms, whatever its framework.",
   "license": "SEE LICENSE IN ../../LICENSE.md",
-  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
   "type": "module",
   "builder": {
     "handle": "web-app-skills",

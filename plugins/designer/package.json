@@ -4,7 +4,6 @@
   "private": true,
   "description": "Designs how an interface could look, such as a web app, a mobile app's screens, a dashboard or a marketing page, as clickable mockups the person compares, tries and approves, and lets the person choose its fonts and colours.",
   "license": "SEE LICENSE IN ../../LICENSE.md",
-  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
   "type": "module",
   "exports": {
     "./contract": "./src/contract.ts",

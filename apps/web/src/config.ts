@@ -204,7 +204,6 @@ export const wording = {
   flourish: {
     fine: "My UX is FINE.",
     madeWithCare: "Made with care by the OSS Builders at corbits.dev",
-    forgedBy: "Forged by Sawyer Cutler",
     shellRequest: "sudo make me a sandwich",
     shellAnswer: "Okay.",
     consoleNote:

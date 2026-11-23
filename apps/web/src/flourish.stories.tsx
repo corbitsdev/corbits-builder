@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { Credit, LogoMark } from "./flourish.tsx";
+import { LogoMark } from "./flourish.tsx";
 
 const meta = {
   title: "Components/Flourish",
@@ -11,9 +11,4 @@ export default meta;
 export const Logo: StoryObj<typeof LogoMark> = {
   args: { size: 26 },
   render: (args) => <LogoMark {...args} />,
-};
-
-/** Clicking the credit throws a swarm of flyers across the page. */
-export const OwnerCredit: StoryObj = {
-  render: () => <Credit />,
 };

@@ -4,7 +4,6 @@
   "private": true,
   "description": "How the coder makes an app ready for Cloudflare Workers: wrangler.jsonc, the built worker, D1 for its data and what the runtime lacks.",
   "license": "SEE LICENSE IN ../../LICENSE.md",
-  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
   "type": "module",
   "builder": {
     "handle": "workers-skills",

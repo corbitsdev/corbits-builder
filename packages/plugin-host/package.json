@@ -4,7 +4,6 @@
   "private": true,
   "description": "Finds the plugins in a folder, checks them, and answers the coordinator's discover and execute for a host that starts the work.",
   "license": "SEE LICENSE IN ../../LICENSE.md",
-  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
   "type": "module",
   "exports": {
     "./bundle": "./src/bundle.ts",
