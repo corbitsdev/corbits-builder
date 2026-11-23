@@ -90,6 +90,8 @@ export function CommentCard({
 }) {
   const cardRef = useRef<HTMLElement>(null);
   const wasWriting = useRef(state === "writing");
+  // A card that first shows as a field is a comment just started; one shown saved was already there.
+  const [entering] = useState(state === "writing");
 
   // Saving or cancelling removes the field that had focus; the card keeps it, so Tab carries on
   // from here rather than from the top of the page.
@@ -108,6 +110,7 @@ export function CommentCard({
       className={styles.card}
       data-slot="comment-card"
       data-state={state}
+      data-entering={entering ? "" : undefined}
       data-paired={paired ? "" : undefined}
       tabIndex={-1}
     >
