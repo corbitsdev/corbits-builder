@@ -215,8 +215,8 @@ export type RoomContent = {
     /** The project view covers the room, with the prompt box beneath it; closed, it waits hidden. */
     projectOpen: boolean;
     /**
-     * The open project view shows the app, which the prompt box keeps clear of: the app ends above
-     * it, and what waits folds to one line until the person opens it.
+     * The open project view shows the app, which the prompt box keeps clear of by shrinking to a
+     * pill over it until the person opens it.
      */
     appShown: boolean;
     onProjectOpenChange: (open: boolean) => void;
@@ -419,8 +419,10 @@ export function RoomView({
       ports={ports}
       waiting={card}
       fold={
-        dockInProject && appShown && waiting !== null
-          ? waitingLine(waiting)
+        dockInProject && appShown
+          ? waiting === null
+            ? null
+            : waitingLine(waiting)
           : undefined
       }
       chat={chat}
@@ -688,10 +690,11 @@ export function RoomDockView({
    */
   waiting?: ReactNode;
   /**
-   * What waits in one line, while the box sits under the app: the box folds to that line and its
-   * action until the person opens it. Absent, the box never folds.
+   * Over the app the box shrinks to a pill until the person opens it: what waits in one line with
+   * its action, or null while nothing does, when the pill says what is happening. Absent, the box
+   * never folds.
    */
-  fold?: string | undefined;
+  fold?: string | null | undefined;
   chat?: ReactNode;
   chatStart?: ChatStart | undefined;
   answersShell?: AnswersShell;
@@ -805,7 +808,7 @@ function RoomComposerView({
   answersShell,
 }: RoomComposer & {
   waiting: ReactNode;
-  fold?: string | undefined;
+  fold?: string | null | undefined;
   chat: ReactNode;
   chatStart?: ChatStart | undefined;
   ports?: BoxPorts | undefined;
@@ -820,9 +823,9 @@ function RoomComposerView({
   // mid-send; the drop zone, the attach button and a paste all follow this.
   const attaching = accept !== null && !busy;
   const typed = text.trim() !== "" || files.length > 0;
-  // Under the app, what waits folds to its line and its action, so the box takes one row. The
-  // line opens the box; leaving it with nothing written, by a press elsewhere or into the app's
-  // frame, folds it again.
+  // Over the app the box shrinks to a pill: what waits with its action, else what is happening,
+  // else what the box is for. The pill opens the box; leaving it with nothing written, by a press
+  // elsewhere or into the app's frame, shrinks it again.
   const [unfolded, setUnfolded] = useState(false);
   const foldable = fold !== undefined;
   const folded = foldable && !unfolded && !typed;
@@ -901,9 +904,10 @@ function RoomComposerView({
                 className={styles.foldLine}
                 data-slot="fold-line"
                 aria-expanded={false}
+                data-muted={fold === null && status === null ? "" : undefined}
                 onClick={unfold}
               >
-                {fold}
+                {fold ?? status?.label ?? ports.placeholder ?? placeholder}
               </button>
             ) : null}
             {/* Attach leads the row; what is sent with the words follows it, then the words. */}

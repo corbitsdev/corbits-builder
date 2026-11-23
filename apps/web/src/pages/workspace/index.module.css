@@ -200,16 +200,15 @@
 }
 
 /* Comments waiting to be made, carried with whatever is typed after them. */
-/* The box folded under the app: what waits reads as the row's words, and opens the box. Its words
-   sit where the typed ones would, so the row keeps its height. */
+/* The box shrunk to a pill over the app: what it says opens the box. */
 .foldLine {
   flex: 1;
   min-width: 0;
   align-self: center;
   overflow: hidden;
-  padding: var(--space-2) var(--space-1);
+  padding: var(--space-1) var(--space-3);
   border: 0;
-  border-radius: var(--radius-md);
+  border-radius: 9999px;
   background: none;
   color: var(--wb-foreground);
   font: inherit;
@@ -218,7 +217,11 @@
   text-align: start;
   text-overflow: ellipsis;
   white-space: nowrap;
-  cursor: text;
+  cursor: pointer;
+}
+
+.foldLine[data-muted] {
+  color: var(--wb-muted-foreground);
 }
 
 .foldLine:focus-visible {
