@@ -7,7 +7,12 @@ import { QuestionEntry } from "./question-outcome.tsx";
  * native approval is still a decision on the existing path. This view does
  * not invent a coordinator turn, and it does not decide an approval on its own.
  */
-import { IMPORTED_PROJECT_LEAD, wording } from "../../config.ts";
+import {
+  ACTIVITY_SHOWN,
+  IMPORTED_PROJECT_LEAD,
+  wording,
+  type ActivityShown,
+} from "../../config.ts";
 import { Fragment, useState, type ReactNode } from "react";
 import { Check, Copy } from "lucide-react";
 import {
@@ -66,7 +71,6 @@ import {
 import { partsDispatches, type Dispatch } from "./dispatch-card.tsx";
 import { workUnits, type WorkUnit } from "./work-unit.ts";
 import {
-  STEP_STATUS,
   WorkUnitStepView,
   type WorkUnitStanding,
 } from "./work-unit-step.view.tsx";
@@ -206,9 +210,9 @@ type Placed =
 /**
  * The person's and the coordinator's turns in order, with the approvals,
  * questions and updates no hand-off answers placed between them by time. Each
- * hand-off and what came of it is one piece of work, a step of the call that
- * made it; a run with no call in view stands at its latest report. Consecutive
- * updates fold into groups. The live turn stays last.
+ * hand-off and what came of it is one piece of work; a run with no call in view
+ * stands at its latest report. Consecutive updates fold into groups. The live
+ * turn stays last.
  */
 function threadItems(
   turns: readonly TranscriptTurn[],
@@ -240,7 +244,6 @@ function threadItems(
       }),
     ]),
   );
-  // A started run is a step of the call that started it; a run with no call in view, its own.
   const specialists = new Map<string, WorkUnit[]>();
   for (const unit of work.units) {
     const same = specialists.get(unit.dispatch.call);
@@ -380,8 +383,7 @@ type ShownCard =
   | { kind: "units"; units: WorkUnit[] };
 
 /**
- * More than three report rows in a row fold under one line, so decisions and hand-offs stay in view,
- * and runs with no call in view next to each other are one list of steps.
+ * More than three report rows in a row fold under one line, so decisions and hand-offs stay in view.
  */
 function foldUpdates(cards: readonly Card[]): ShownCard[] {
   const shown: ShownCard[] = [];
@@ -407,11 +409,9 @@ function foldUpdates(cards: readonly Card[]): ShownCard[] {
 }
 
 /**
- * A turn's parts in words, with its questions taken out to their own cards. A hand-off stays as the
- * step its specialist shows in. A step already shown never leaves the list, since that moves the
- * page: a call that returned an error, or a hand-off the hub refused, settles as a plain finished
- * step, with no error details, because the agent corrects it and to the person it is a step that
- * happened.
+ * A turn's parts in words, with its questions taken out to their own cards. A call that returned an
+ * error settles as a plain finished step, with no error details, because the agent corrects it and
+ * to the person it is a step that happened.
  */
 function readableParts(
   parts: readonly ConversationPart[],
@@ -468,17 +468,11 @@ function renderStep(step: ActivityStep): ReactNode {
 }
 
 /**
- * A run of the coordinator's work, the specialists it started among its steps. It opens once and
- * stays as the person leaves it: the end of the work never folds it, so the page does not move. Its
- * header counts its steps, so it never repeats a lone row.
+ * A run of the coordinator's work. It opens once and stays as the person leaves it: the end of the
+ * work never folds it, so the page does not move. Its header counts its steps, so it never repeats
+ * a lone row.
  */
-function Run({
-  steps,
-  renderStep,
-}: {
-  steps: readonly ActivityStep[];
-  renderStep: (step: ActivityStep) => ReactNode;
-}) {
+function Run({ steps }: { steps: readonly ActivityStep[] }) {
   return (
     <Activity steps={steps} defaultOpen>
       <ActivityTrigger
@@ -586,6 +580,8 @@ export type RoomThreadContent = {
   sentId?: string;
   /** The colleague is working on a reply. */
   thinking?: boolean;
+  /** Which pieces of the agents' activity are drawn. */
+  shows?: ActivityShown;
   /** Documents the person can open from a name in the conversation. */
   documents?: readonly NamedDocument[];
   /** Opens that document over the room. The id is not shown. */
@@ -638,6 +634,7 @@ export function RoomThread({
   updates = [],
   sentId,
   thinking = false,
+  shows = ACTIVITY_SHOWN,
   documents = [],
   onOpenDocument,
   approvals = [],
@@ -673,7 +670,7 @@ export function RoomThread({
       />
     </MessageFold>
   );
-  const { items, specialists } = threadItems(
+  const thread = threadItems(
     turns,
     updates,
     approvals,
@@ -681,6 +678,19 @@ export function RoomThread({
     questions,
     results,
   );
+  const { specialists } = thread;
+  const items = shows.specialists
+    ? thread.items
+    : thread.items.filter((item) => item.kind !== "unit");
+  // A call that started specialists stands for them; any other is one of the coordinator's own steps.
+  const shownParts = (turn: TranscriptTurn) =>
+    readableParts(visibleTurnParts(turn), results).filter((part) => {
+      if (part.kind !== "tool-trace") return true;
+      return specialists.has(part.toolCallId)
+        ? shows.specialists
+        : shows.coordinatorSteps;
+    });
+  const thinkingShown = thinking && shows.thinking;
   // A specialist's own steps, one level in, as its row opens onto them, each with what it returned.
   const specialistRun = (steps: readonly PartTool[]) => (
     <Activity
@@ -696,30 +706,30 @@ export function RoomThread({
       <ActivityContent renderStep={renderStep} />
     </Activity>
   );
-  // A step that started specialists is each of them, each its own item for the map to jump to;
-  // any other is the call itself.
-  const renderWork = (step: ActivityStep): ReactNode => {
-    const units =
-      step.kind === "tool-trace" ? specialists.get(step.toolCallId) : undefined;
-    if (units === undefined) return renderStep(step);
-    return units.map((unit) => (
+  // Each specialist is its own row and its own item for the map to jump to.
+  const specialistRow = (unit: WorkUnit) => {
+    const row = standing(unit);
+    return (
       <ConversationItem key={unit.key} itemId={workItemId(unit)}>
-        <WorkUnitStepView {...standing(unit)} run={specialistRun} />
+        <WorkUnitStepView
+          {...row}
+          steps={shows.specialistSteps ? row.steps : []}
+          run={specialistRun}
+        />
       </ConversationItem>
-    ));
+    );
   };
+  const started = (step: ActivityStep) =>
+    step.kind === "tool-trace" ? specialists.get(step.toolCallId) : undefined;
+  const renderActivity = (steps: readonly ActivityStep[]) => (
+    <>
+      <Run steps={steps.filter((step) => started(step) === undefined)} />
+      {steps.flatMap((step) => started(step) ?? []).map(specialistRow)}
+    </>
+  );
   // Under a coordinator header, a coordinator's approval card does not repeat the name.
   const renderCard = (card: ShownCard, position: string, headed: boolean) => {
-    if (card.kind === "units") {
-      const steps = card.units.map((unit): PartTool => {
-        const { label, status } = standing(unit);
-        return {
-          kind: "tool-trace",
-          toolCallId: unit.dispatch.call,
-          name: label,
-          status: STEP_STATUS[status.state],
-        };
-      });
+    if (card.kind === "units")
       return (
         <ConversationItem
           key={`units:${card.units[0]?.key ?? position}`}
@@ -729,11 +739,10 @@ export function RoomThread({
             {headed ? null : (
               <MessageHeader name={wording.speaker.coordinator} />
             )}
-            <Run steps={steps} renderStep={renderWork} />
+            {card.units.map(specialistRow)}
           </Message>
         </ConversationItem>
       );
-    }
     if (card.kind === "folded")
       return (
         <FoldedUpdatesView
@@ -891,10 +900,7 @@ export function RoomThread({
           parts={visible}
           streaming={streaming}
           renderText={renderTurnText}
-          renderStep={renderWork}
-          renderActivity={(steps) => (
-            <Run steps={steps} renderStep={renderWork} />
-          )}
+          renderActivity={renderActivity}
         />
         <MessageSendStatus />
         {thinkingHere ? (
@@ -923,9 +929,7 @@ export function RoomThread({
   let headedLast = false;
   let wordsLast = false;
   if (last?.kind === "coordinator") {
-    headedLast = last.turns.some(
-      ({ turn }) => readableParts(visibleTurnParts(turn), results).length > 0,
-    );
+    headedLast = last.turns.some(({ turn }) => shownParts(turn).length > 0);
     wordsLast = headedLast && last.cards.length === 0;
   }
   // The person's messages, and what the agents produced at the item that shows it.
@@ -934,7 +938,7 @@ export function RoomThread({
     position: number,
   ): ConversationMapTurn[] => {
     const handed = section.turns
-      .flatMap(({ turn }) => readableParts(visibleTurnParts(turn), results))
+      .flatMap(({ turn }) => shownParts(turn))
       .flatMap((part) =>
         part.kind === "tool-trace"
           ? (specialists.get(part.toolCallId) ?? [])
@@ -1012,7 +1016,7 @@ export function RoomThread({
           if (section.kind === "coordinator") {
             const first = section.turns[0];
             const visible = section.turns.flatMap(({ turn }) =>
-              readableParts(visibleTurnParts(turn), results),
+              shownParts(turn),
             );
             const headed = first !== undefined && visible.length > 0;
             const streaming = section.turns.some(
@@ -1032,7 +1036,7 @@ export function RoomThread({
                       first.turn,
                       visible,
                       streaming,
-                      thinking && section === last && wordsLast,
+                      thinkingShown && section === last && wordsLast,
                     )
                   : null}
                 {foldUpdates(liveLast(section.cards, live)).map((card, at) =>
@@ -1072,7 +1076,7 @@ export function RoomThread({
             ? null
             : renderMessage(itemId, turn, visible, streaming, false);
         })}
-        {thinking && !wordsLast ? (
+        {thinkingShown && !wordsLast ? (
           <ConversationItem itemId="colleague-thinking">
             <Message from="agent" status="streaming">
               {/* Under the coordinator's words, as its cards are, the name isn't repeated. */}
