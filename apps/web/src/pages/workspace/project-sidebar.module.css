@@ -166,6 +166,10 @@
   line-height: var(--text-xs--line-height);
 }
 
+.link[aria-current] {
+  color: var(--wb-foreground);
+}
+
 .link > svg {
   flex: none;
   width: 14px;

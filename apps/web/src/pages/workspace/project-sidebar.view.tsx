@@ -3,7 +3,8 @@
  * and a line saying how the app stands, which opens it. Kept at the bottom, smaller and greyer, are
  * the links that leave it: the project's settings and secrets, the other projects, and the
  * workspace's settings and the person's account. Closed, only the project's name stays. Where the
- * room is narrow it is a drawer over the page.
+ * room is narrow it is a drawer over the page. Its frame, foot and links are the workspace
+ * sidebar's too, outside a project.
  */
 import {
   useEffect,
@@ -124,10 +125,75 @@ export function ProjectSidebarView({
   onWorkspaceSettings,
   onAccount,
 }: ProjectSidebarViewProps) {
+  return (
+    <SidebarFrame
+      title={project}
+      open={open}
+      drawer={drawer}
+      onToggleSidebar={onToggleSidebar}
+    >
+      <PlanTree
+        label={project}
+        plan={plan}
+        onAskFirst={onAskFirst}
+        onDecline={onDecline}
+      />
+      <AppLine app={app} open={appOpen} onOpen={onOpenApp} />
+      <SidebarFoot>
+        <SidebarLinks label={words.groups.thisProject}>
+          <SidebarLink icon={Settings} onClick={onProjectSettings}>
+            {words.projectSettings}
+          </SidebarLink>
+          <SidebarLink icon={Lock} onClick={onSecrets}>
+            {wording.settings.tab.secrets}
+          </SidebarLink>
+        </SidebarLinks>
+        <SidebarLinks label={words.groups.projects}>
+          <SidebarLink icon={Folder} onClick={onAllProjects}>
+            {words.allProjects}
+          </SidebarLink>
+          <SidebarLink icon={Plus} onClick={onNewProject}>
+            {wording.shell.newProject}
+          </SidebarLink>
+        </SidebarLinks>
+        <SidebarLinks label={words.groups.workspace}>
+          <SidebarLink icon={Building2} onClick={onWorkspaceSettings}>
+            {words.workspaceSettings}
+          </SidebarLink>
+          <SidebarLink icon={CircleUser} onClick={onAccount}>
+            {words.account}
+          </SidebarLink>
+        </SidebarLinks>
+      </SidebarFoot>
+    </SidebarFrame>
+  );
+}
+
+/**
+ * The sidebar's frame, in a project and outside one: a name with the mark, which opens and closes
+ * it from anywhere with the shortcut too, and below it what the sidebar holds. Closed, only the
+ * name stays; narrow, it is a drawer over the page.
+ */
+export function SidebarFrame({
+  label = words.sidebar,
+  title,
+  open,
+  drawer,
+  onToggleSidebar,
+  children,
+}: {
+  /** What a screen reader calls the sidebar. */
+  label?: string;
+  title: string;
+  open: boolean;
+  drawer: boolean;
+  onToggleSidebar: () => void;
+  children: ReactNode;
+}) {
   const bodyId = `project-sidebar-${useId()}`;
   // The last open or close came from the keyboard, so it happens without moving.
   const [byKey, setByKey] = useState(false);
-  // The shortcut opens and closes the sidebar from anywhere in the project.
+  // The shortcut opens and closes the sidebar from anywhere on the page.
   const toggleByKey = useEffectEvent(onToggleSidebar);
   useEffect(() => {
     const onKey = (event: globalThis.KeyboardEvent) => {
@@ -149,7 +215,7 @@ export function ProjectSidebarView({
       data-open={open ? "" : undefined}
       data-drawer={drawer ? "" : undefined}
       data-instant={byKey ? "" : undefined}
-      aria-label={words.sidebar}
+      aria-label={label}
     >
       <button
         type="button"
@@ -166,54 +232,31 @@ export function ProjectSidebarView({
         <span className={styles.mark}>
           <Mark size={28} />
         </span>
-        <span className={styles.project}>{project}</span>
+        <span className={styles.project}>{title}</span>
         <Icon aria-hidden="true" />
       </button>
       <div className={styles.room}>
         <div id={bodyId} className={styles.panel} inert={!open}>
-          <div className={styles.body}>
-            <PlanTree
-              label={project}
-              plan={plan}
-              onAskFirst={onAskFirst}
-              onDecline={onDecline}
-            />
-            <AppLine app={app} open={appOpen} onOpen={onOpenApp} />
-            <div className={styles.utilities}>
-              <Links label={words.groups.thisProject}>
-                <Link icon={Settings} onClick={onProjectSettings}>
-                  {words.projectSettings}
-                </Link>
-                <Link icon={Lock} onClick={onSecrets}>
-                  {wording.settings.tab.secrets}
-                </Link>
-              </Links>
-              <Links label={words.groups.projects}>
-                <Link icon={Folder} onClick={onAllProjects}>
-                  {words.allProjects}
-                </Link>
-                <Link icon={Plus} onClick={onNewProject}>
-                  {wording.shell.newProject}
-                </Link>
-              </Links>
-              <Links label={words.groups.workspace}>
-                <Link icon={Building2} onClick={onWorkspaceSettings}>
-                  {words.workspaceSettings}
-                </Link>
-                <Link icon={CircleUser} onClick={onAccount}>
-                  {words.account}
-                </Link>
-              </Links>
-            </div>
-          </div>
+          <div className={styles.body}>{children}</div>
         </div>
       </div>
     </aside>
   );
 }
 
+/** The sidebar's foot, below what it holds: the links that leave it, smaller and greyer. */
+export function SidebarFoot({ children }: { children: ReactNode }) {
+  return <div className={styles.utilities}>{children}</div>;
+}
+
 /** A few links that go together at the sidebar's foot, named for a screen reader. */
-function Links({ label, children }: { label: string; children: ReactNode }) {
+export function SidebarLinks({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
   return (
     <ul className={styles.links} aria-label={label}>
       {children}
@@ -261,12 +304,15 @@ function AppLine({
   );
 }
 
-function Link({
+/** One link at the sidebar's foot; marked while its page is on screen. */
+export function SidebarLink({
   icon: Icon,
+  current = false,
   onClick,
   children,
 }: {
   icon: LucideIcon;
+  current?: boolean;
   onClick: () => void;
   children: ReactNode;
 }) {
@@ -276,7 +322,11 @@ function Link({
       className={styles.link}
       icon={<Icon aria-hidden="true" />}
     >
-      <button type="button" onClick={onClick}>
+      <button
+        type="button"
+        aria-current={current ? "page" : undefined}
+        onClick={onClick}
+      >
         {children}
       </button>
     </SidebarItem>
