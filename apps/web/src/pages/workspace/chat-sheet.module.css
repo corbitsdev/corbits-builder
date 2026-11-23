@@ -309,12 +309,18 @@
   box-shadow: var(--wb-pane-shadow);
 }
 
+/* The edge travels across the screen, so it eases in and out of the move rather than covering
+   most of it at once and drifting the rest; its corners and lift change in step with it. */
+:root[data-chat-sheet]::view-transition-group(chat-sheet) {
+  animation-timing-function: var(--wb-ease-in-out);
+}
+
 :root[data-chat-sheet="full"]::view-transition-image-pair(chat-sheet) {
-  animation: toPage var(--duration-large) var(--ease-out) both;
+  animation: toPage var(--duration-large) var(--wb-ease-in-out) both;
 }
 
 :root[data-chat-sheet="closed"]::view-transition-image-pair(chat-sheet) {
-  animation: toBox var(--duration-large) var(--ease-out) both;
+  animation: toBox var(--duration-large) var(--wb-ease-in-out) both;
 }
 
 @keyframes toPage {
