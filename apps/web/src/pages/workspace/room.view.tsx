@@ -850,6 +850,13 @@ function RoomComposerView({
     const leave = (event: Event) => {
       if (event.target instanceof Node && composer?.contains(event.target))
         return;
+      // The chat pulled up over the app stays over it until it is put back.
+      if (
+        composer?.querySelector(
+          '[data-slot="chat-sheet"]:not([data-state="closed"])',
+        )
+      )
+        return;
       setUnfolded(false);
     };
     document.addEventListener("pointerdown", leave, true);
