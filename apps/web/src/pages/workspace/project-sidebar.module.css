@@ -194,10 +194,9 @@
   outline: none;
 }
 
-/* Blue, as every focus ring in the room is; the library's ring is the brand's orange. */
 .item:focus-visible > .row,
 .toggle:focus-visible {
-  outline: 2px solid var(--wb-action);
+  outline: 2px solid var(--wb-ring);
   outline-offset: -2px;
 }
 
@@ -576,14 +575,14 @@
 
 /* What waits on the person is blue, as the room's actions are, and a failure red; the library's
    own tones are the brand's orange. */
-.mark {
+.waiting {
   width: 6px;
   height: 6px;
   border-radius: 50%;
   background: var(--wb-action);
 }
 
-.mark[data-state="failed"] {
+.waiting[data-state="failed"] {
   background: var(--destructive);
 }
 

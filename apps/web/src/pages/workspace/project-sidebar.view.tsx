@@ -634,7 +634,7 @@ function BranchItem({
             {busy === "running" ? (
               <Working />
             ) : (
-              <span className={styles.mark} data-state="needs_you" />
+              <span className={styles.waiting} data-state="needs_you" />
             )}
           </span>
         )}
@@ -737,7 +737,7 @@ function PlanRow({
           </span>
         ) : marked ? (
           <span className={styles.dot}>
-            <span className={styles.mark} data-state={state} />
+            <span className={styles.waiting} data-state={state} />
           </span>
         ) : pauses ? (
           <span className={styles.dot} title={words.pausesFirst}>
