@@ -185,6 +185,16 @@ function CommentField({
   const fieldRef = useRef<HTMLTextAreaElement>(null);
   const empty = draft.trim().length === 0;
 
+  // The card opens beside the passage the person is looking at, but takes its place there only
+  // once the page has measured it; focus that scrolled to it would carry the page off to where it
+  // first sat. The cursor goes after any words it opens with.
+  useEffect(() => {
+    const field = fieldRef.current;
+    if (field === null) return;
+    field.focus({ preventScroll: true });
+    field.setSelectionRange(field.value.length, field.value.length);
+  }, []);
+
   useLayoutEffect(() => {
     const field = fieldRef.current;
     if (field === null) return;
@@ -218,7 +228,6 @@ function CommentField({
           aria-invalid={saveFailed ? true : undefined}
           enterKeyHint="done"
           autoCapitalize="sentences"
-          autoFocus
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={(event) => {
             const intent = commentKey({
