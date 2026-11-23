@@ -246,6 +246,11 @@
   animation: global(fade-in) var(--duration-micro) var(--ease-out);
 }
 
+/* The card brings its comment in itself, so the comment does not settle in a second time. */
+.card [data-slot="comment-card"] {
+  animation: none;
+}
+
 .card[data-keys] {
   animation: none;
 }

@@ -13,6 +13,11 @@
   transition:
     border-color var(--duration-micro) ease,
     box-shadow var(--duration-micro) ease;
+}
+
+/* A comment just started settles in beside its passage. The ones already there are simply in place
+   when the page opens, rather than all arriving at once. */
+.card[data-entering] {
   animation: global(settle-in) var(--duration-standard) var(--ease-out);
 }
 
