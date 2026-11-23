@@ -196,10 +196,38 @@ jobs:
       # test/e2e/builds runs in the e2e-builds job.
       # The tests that install a plugin copy it into the shared plugins folder, and the hub reads that
       # folder once per module load, so files run one at a time, each in a fresh module registry.
+      # Each shard records how long its files took, and the next run splits files by those durations:
+      # https://bun.com/docs/test#large-codebases
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .bun-test-timings
+          key: bun-test-timings-${{ github.run_id }}
+          restore-keys: bun-test-timings-
       - run: >-
           bun --conditions=intx-src test ./test/e2e
           --path-ignore-patterns='test/e2e/builds/**'
-          --shard=${{ matrix.shard }}/8 --timings=test/e2e/timings.json --isolate
+          --shard=${{ matrix.shard }}/8 --isolate --update-timings
+          --timings=.bun-test-timings/next/${{ matrix.shard }}.json
+          $(ls .bun-test-timings/*.json 2>/dev/null | sed 's/^/--timings=/')
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: timings-${{ matrix.shard }}
+          path: .bun-test-timings/next/${{ matrix.shard }}.json
+
+  e2e-timings:
+    needs: e2e
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: timings-*
+          path: .bun-test-timings
+          merge-multiple: true
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .bun-test-timings
+          key: bun-test-timings-${{ github.run_id }}
 
   e2e-builds:
     name: e2e-builds (${{ matrix.test || matrix.file }})
