@@ -838,7 +838,7 @@ export const ScreenWaiting: Story = {
   },
 };
 
-/** Open in the box brings the plugin space up beside the conversation; Close puts it away. */
+/** Open in the box brings the plugin space up beside the conversation; Close or Escape puts it away. */
 export const ScreenOpened: Story = {
   ...ScreenWaiting,
   play: async ({ canvasElement }) => {
@@ -855,6 +855,14 @@ export const ScreenOpened: Story = {
     await userEvent.click(
       canvas.getByRole("button", { name: wording.promptBox.space.close }),
     );
+    await waitFor(() => expect(space()).toHaveAttribute("hidden"));
+    await userEvent.click(
+      canvas.getByRole("button", {
+        name: wording.promptBox.waiting.openScreen,
+      }),
+    );
+    await waitFor(() => expect(space()).not.toHaveAttribute("hidden"));
+    await userEvent.keyboard("{Escape}");
     await waitFor(() => expect(space()).toHaveAttribute("hidden"));
   },
 };

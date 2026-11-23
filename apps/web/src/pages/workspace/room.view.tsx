@@ -332,6 +332,7 @@ export function RoomView({
   const [sheetOpen, setSheetOpen] = useState(false);
   const sheetShown = narrow && sheetOpen && space !== null;
   const columnShown = !narrow && sheetOpen && space !== null;
+  const spaceShown = sheetShown || columnShown;
   const headingRef = useRef<HTMLHeadingElement>(null);
   const inputRef = dock.kind === "composer" ? dock.inputRef : null;
   const openSpace = () => {
@@ -346,8 +347,8 @@ export function RoomView({
   };
   // The space takes focus to its heading as it opens.
   useEffect(() => {
-    if (sheetShown || columnShown) headingRef.current?.focus();
-  }, [sheetShown, columnShown]);
+    if (spaceShown) headingRef.current?.focus();
+  }, [spaceShown]);
   // Once a screen is submitted the next takes its place, or the space closes; either way the
   // person carries on in the prompt box, with what they had typed still there.
   const spaceKey = space?.key ?? null;
@@ -368,7 +369,14 @@ export function RoomView({
   useEffect(() => {
     if (!refocusBox.current) return;
     refocusBox.current = false;
-    inputRef?.current?.focus();
+    const input = inputRef?.current;
+    input?.focus();
+    // Shrunk to a pill, the box has no words to take the cursor; its line takes it instead.
+    if (input && document.activeElement !== input)
+      input
+        .closest('[data-slot="composer"]')
+        ?.querySelector<HTMLElement>('[data-slot="fold-line"]')
+        ?.focus();
   });
   // Focus goes into the project view as it opens and back to what opened it as it closes.
   useEffect(() => {
@@ -379,13 +387,13 @@ export function RoomView({
       if (opener instanceof HTMLElement) opener.focus();
     };
   }, [projectOpen]);
-  // Escape puts the sheet away first; a menu inside the view closes on Escape before that, and
+  // Escape puts the space away first; a menu inside the view closes on Escape before that, and
   // marks the key as used.
   useEffect(() => {
-    if (!projectOpen && !sheetShown) return;
+    if (!projectOpen && !spaceShown) return;
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.defaultPrevented) return;
-      if (sheetShown) return closeSheet();
+      if (spaceShown) return closeSheet();
       // An open chat sheet takes the key to put itself back, whichever listener hears it first;
       // the view closes on the next one.
       const sheet =
@@ -396,7 +404,7 @@ export function RoomView({
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [projectOpen, sheetShown]);
+  }, [projectOpen, spaceShown]);
   // The prompt box stays in reach under whatever covers the conversation.
   const dockInSheet = sheetShown;
   const dockInProject = projectOpen && !sheetShown;
