@@ -4,7 +4,7 @@ import { cp, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { and, eq, sql } from "drizzle-orm";
 import { createEnvKeyCredentialCipher } from "@intx/crypto";
-import { credential, principal, provider, workflowRun } from "@intx/db/schema";
+import { credential, provider } from "@intx/db/schema";
 import { hexDecode } from "@intx/types";
 import type {
   PluginSignInStarted,
@@ -108,7 +108,7 @@ const { startInProcessHub } = await import("./support/in-process-hub.ts");
 const { CATALOG } = await import("@corbits-builder/hub/plugins/catalog");
 const { createPluginSignIns, signInCredentials } =
   await import("@corbits-builder/hub/credentials/sign-ins");
-const { runsHolding, startTokenRefresher } =
+const { startTokenRefresher } =
   await import("@corbits-builder/hub/credentials/refresher");
 
 const CREDENTIAL_KEY = randomBytes(32).toString("hex");
@@ -317,7 +317,7 @@ test("signing in where a key was pasted replaces the key", async () => {
   expect(saved?.type).toBe("oauth_token");
 });
 
-test("a renewal uses the manifest's token address and the hub's client even when the credential names another, and reaches the runs that hold it", async () => {
+test("a renewal uses the manifest's token address and the hub's client even when the credential names another, and pushes the renewed credential", async () => {
   const tenant = await project();
   const started = await start(tenant);
   await callback(started);
@@ -334,21 +334,6 @@ test("a renewal uses the manifest's token address and the hub's client even when
       },
     })
     .where(eq(credential.id, saved.id));
-  const [person] = await hub.db
-    .select({ tenantId: principal.tenantId, principalId: principal.id })
-    .from(principal)
-    .where(and(eq(principal.tenantId, tenant), eq(principal.kind, "user")));
-  const holding = await hub.seedRun(person!, "hoster", true);
-  // Another run of the project, which holds no sign-in.
-  await hub.seedRun(person!, "hoster", true);
-  await hub.db
-    .update(workflowRun)
-    .set({ credentialRefs: { credentialIds: [saved.id], bindings: [] } })
-    .where(eq(workflowRun.id, holding.id));
-  expect(await runsHolding(hub.db, workspace, saved.id)).toEqual([
-    `${holding.id}@${tenant}.test`,
-  ]);
-
   const renewed: string[] = [];
   const signIns = createPluginSignIns({
     db: hub.db,

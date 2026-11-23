@@ -38,6 +38,7 @@ import {
   createRunCredentialsLoader,
   pushCredentialReconcile,
   pushCredentialRevoke,
+  pushCredentialRotation,
   type SidecarLookups,
   createSessionService,
   createSidecarCredentialResolver,
@@ -62,10 +63,7 @@ import {
   mountModelLogins,
   oauthModelProviders,
 } from "./inference/oauth-login.ts";
-import {
-  createRenewedPush,
-  startTokenRefresher,
-} from "./credentials/refresher.ts";
+import { startTokenRefresher } from "./credentials/refresher.ts";
 import { mountPluginSignIns } from "./credentials/sign-in-routes.ts";
 import {
   createPluginSignIns,
@@ -686,12 +684,14 @@ export async function createHubRuntime(env: HubEnvironment) {
       providers: modelProviders,
       requireGrant,
     });
-    const pushRenewed = createRenewedPush({
-      db: handle.db,
-      cipher: credentialCipher,
-      sidecarRouter,
-      loadRunCredentials,
-    });
+    const pushRenewed = (tenantId: string, credentialId: string) =>
+      pushCredentialRotation(
+        handle.db,
+        sidecarRouter,
+        tenantId,
+        credentialId,
+        credentialCipher,
+      );
     const pluginSignIns = createPluginSignIns({
       db: handle.db,
       cipher: credentialCipher,
