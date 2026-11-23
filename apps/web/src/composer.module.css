@@ -55,6 +55,18 @@
   overflow: hidden auto;
   border-bottom: 1px solid var(--wb-border);
   border-radius: calc(var(--radius-xl) - 1px) calc(var(--radius-xl) - 1px) 0 0;
+  transition:
+    opacity var(--duration-standard) var(--ease-out),
+    translate var(--duration-standard) var(--ease-out);
+}
+
+/* What waits on the person comes into the box rather than appearing in it. It has no way out:
+   answering it is the person's own move, and the box simply answers back. */
+@starting-style {
+  .panel {
+    opacity: 0;
+    translate: 0 6px;
+  }
 }
 
 /* The box is the frame, so a question card, a plugin's screen or an approval drops its own and
