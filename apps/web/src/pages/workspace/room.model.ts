@@ -69,7 +69,6 @@ import {
   acceptedMaterials,
   approveDocument,
   attachMaterials,
-  removeMaterial,
   readArtifact,
   readProjectValues,
   runPluginAction,
@@ -654,7 +653,6 @@ export function useRoom({
     null,
   );
   const [paneTab, setPaneTab] = useState<{ value: string } | null>(null);
-  const [printTab, setPrintTab] = useState<{ value: string } | null>(null);
   // The tab the project view shows, which the sidebar marks while the view is open.
   const [shownTab, setShownTab] = useState<string | null>(null);
   const documentPaneRef = useRef<HTMLElement>(null);
@@ -1111,29 +1109,6 @@ export function useRoom({
   };
   const chooseDocument = (id: string) =>
     setDocumentChoice({ id, filedCount: filed.length });
-  // An attached file taken back: its tab goes with the next room read, and the person hears so.
-  const removeAttachment = (id: string) => {
-    if (!id.startsWith(MATERIAL_TAB)) return;
-    const artifactId = id.slice(MATERIAL_TAB.length);
-    const item = paneDeliverables.find((entry) => entry.kind === id);
-    void takeBack(artifactId, item?.title);
-  };
-  const takeBack = async (artifactId: string, title: string | undefined) => {
-    try {
-      const removed = await removeMaterial(projectId, artifactId);
-      setDocumentChoice(null);
-      toast.success(
-        wording.removeAttachment.done(
-          title === undefined ? removed.title : title,
-          removed.told,
-        ),
-      );
-      reloadRef.current();
-      onChanged();
-    } catch (cause) {
-      toast.error(humanFault(cause, wording.removeAttachment.failed));
-    }
-  };
   // The person approves the document they read; the next room read shows it approved.
   const approveRead = async (id: string, version: number) => {
     const item = paneDeliverables.find((entry) => entry.kind === id);
@@ -1863,7 +1838,7 @@ export function useRoom({
   const paneDocuments = paneDeliverables.map((item) =>
     paneDocument(item, seen),
   );
-  const { sidebar, projectSettings } = useProjectSidebar({
+  const { sidebar, shownName, projectSettings } = useProjectSidebar({
     projectId,
     title: projectTitle,
     project: menuProject,
@@ -1880,8 +1855,6 @@ export function useRoom({
     appShown: liveApp !== null,
     shown: projectOpen && !nothingYet ? shownTab : null,
     onOpen: openProject,
-    onPrint: (tab) => setPrintTab({ value: tab }),
-    onRemove: removeAttachment,
     reload: () => reloadRef.current(),
   });
   const emptyConversation = () => {
@@ -1923,6 +1896,7 @@ export function useRoom({
       },
       dock: dock(),
       sidebar,
+      shownName,
       waiting: promptBox.waiting,
       space: promptBox.space,
       documentPane: {
@@ -1932,7 +1906,6 @@ export function useRoom({
         manual: userManual,
         concepts,
         openTab: paneTab,
-        printTab,
         onShownChange: setShownTab,
         documents: paneDocuments,
         selectedId: selected === null ? null : selected.kind,

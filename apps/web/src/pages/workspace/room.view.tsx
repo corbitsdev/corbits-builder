@@ -199,8 +199,10 @@ export type RoomContent = {
     empty: "archived" | "new" | null;
   };
   dock: RoomDock;
-  /** The project's sidebar: its plan, its files, its app and the ways out of the room. */
+  /** The project's sidebar: its plan, its app and the ways out of the room. */
   sidebar: Omit<ProjectSidebarViewProps, "drawer">;
+  /** What the project view shows, by name; null while it shows nothing. */
+  shownName: string | null;
   /** What the prompt box holds for the person to deal with; null while nothing waits. */
   waiting: BoxWaiting | null;
   /**
@@ -231,6 +233,7 @@ export function RoomView({
   conversation,
   dock,
   sidebar,
+  shownName,
   waiting,
   space,
   documentPane,
@@ -384,12 +387,8 @@ export function RoomView({
     />
   );
   // Taken full screen, the chat names what it hides for the way back: the plugin's screen in the
-  // sheet, or the file or app the project view shows, as the sidebar names it.
-  const hidden = dockInSheet
-    ? (space?.title ?? null)
-    : sidebar.appOpen
-      ? wording.projectShell.live
-      : fileName(sidebar.files, sidebar.selectedFile);
+  // sheet, or the file or app the project view shows.
+  const hidden = dockInSheet ? (space?.title ?? null) : shownName;
   const roomDock = (
     <RoomDockView
       dock={dock}
@@ -417,7 +416,6 @@ export function RoomView({
           onToggleSidebar={
             narrow ? () => setDrawerOpen(!drawerOpen) : sidebar.onToggleSidebar
           }
-          onOpenFile={leaveDrawer(sidebar.onOpenFile)}
           onOpenApp={leaveDrawer(sidebar.onOpenApp)}
         />
         {/* The page beside the sidebar: the conversation, and what covers it. */}
@@ -515,16 +513,6 @@ export function RoomView({
       {shell.reply}
     </StageView>
   );
-}
-
-/** A sidebar file's name, or one of its parts' such as a design's mockup; null with none chosen. */
-function fileName(
-  files: ProjectSidebarViewProps["files"],
-  id: string | null,
-): string | null {
-  if (id === null) return null;
-  const rows = files.flatMap((file) => [file, ...file.parts]);
-  return rows.find((row) => row.id === id)?.name ?? null;
 }
 
 /** What waits on the person as the card the prompt box holds; a screen's card opens the space. */

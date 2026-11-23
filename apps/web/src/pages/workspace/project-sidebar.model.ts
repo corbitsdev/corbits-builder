@@ -27,7 +27,7 @@ import type { PaneDocument } from "./artifact-pane.tsx";
 import type { DesignConcept } from "./design-concept.ts";
 import { humanFault } from "./human-fault.ts";
 import { liveAppQuery } from "./live-app.model.ts";
-import { fileTab, projectOutline } from "./project-outline.ts";
+import { projectOutline } from "./project-outline.ts";
 import type { ProjectSidebarViewProps } from "./project-sidebar.view.tsx";
 import { LIVE_TAB } from "./tab-follow.ts";
 
@@ -63,8 +63,6 @@ export type ProjectSidebarInput = SidebarWays & {
   shown: string | null;
   /** Opens the project view on a tab. */
   onOpen: (tab: string) => void;
-  onPrint: (tab: string) => void;
-  onRemove: (id: string) => void;
   /** Reads the room again once the hub has a step's change. */
   reload: () => void;
 };
@@ -74,6 +72,8 @@ export type ProjectSidebarProps = Omit<ProjectSidebarViewProps, "drawer">;
 
 export function useProjectSidebar(input: ProjectSidebarInput): {
   sidebar: ProjectSidebarProps;
+  /** What the project view shows, by name, for the full-screen chat's way back; null with nothing. */
+  shownName: string | null;
   /** Project settings, while open. */
   projectSettings: ProjectInfoDialogProps | null;
 } {
@@ -106,27 +106,23 @@ export function useProjectSidebar(input: ProjectSidebarInput): {
       toast.error(humanFault(cause, wording.conversation.plan.notChanged));
     }
   };
-  const openFile = (id: string) => {
-    const tab = fileTab(outline.files, id);
-    if (tab !== null) input.onOpen(tab);
-  };
   return {
+    shownName:
+      shown === LIVE_TAB
+        ? wording.projectShell.appTab
+        : shown === null
+          ? null
+          : (outline.files
+              .flatMap((file) => [file, ...file.parts])
+              .find((row) => row.id === shown)?.name ?? null),
     sidebar: {
       project: input.title,
       open,
       plan: outline.plan,
-      files: outline.files,
-      selectedFile: shown === LIVE_TAB ? null : shown,
       app: outline.app,
       appOpen: shown === LIVE_TAB,
       onToggleSidebar: () =>
         writeStoredPreference(OPEN_KEY, open ? "closed" : "open"),
-      onOpenFile: openFile,
-      onPrintFile: (id) => {
-        const tab = fileTab(outline.files, id);
-        if (tab !== null) input.onPrint(tab);
-      },
-      onRemoveFile: input.onRemove,
       onAskFirst: (stepId, askFirst) =>
         void change(() => setPlanStepAskFirst(projectId, stepId, askFirst)),
       onDecline: (stepId, declined) =>

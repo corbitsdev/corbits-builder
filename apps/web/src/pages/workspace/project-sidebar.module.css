@@ -38,10 +38,8 @@
   width: var(--width);
   height: 100%;
   /* Below the project's name, which floats over the panel's top. */
-  padding-block-start: 60px;
+  padding-block-start: 56px;
   background: var(--card);
-  /* A hairline on its edge, so the canvas beside it never runs into it, whatever ground that shows. */
-  box-shadow: inset -1px 0 0 var(--wb-border);
   transition: visibility 0s;
 }
 
@@ -73,8 +71,8 @@
 
 .toggle {
   position: absolute;
-  inset-block-start: 10px;
-  inset-inline-start: 12px;
+  inset-block-start: var(--space-2);
+  inset-inline-start: var(--space-3);
   z-index: 6;
   display: flex;
   align-items: center;
@@ -83,7 +81,8 @@
   width: max-content;
   max-width: calc(var(--width) - 24px);
   height: 2.5rem;
-  padding: 6px var(--space-2) 6px 6px;
+  /* The mark's left edge lines up with Plan's words below it. */
+  padding: 0 var(--space-2) 0 var(--space-1);
   border: 0;
   border-radius: var(--radius-lg);
   background: var(--card);
@@ -92,16 +91,19 @@
   text-align: start;
   white-space: nowrap;
   cursor: pointer;
-  /* Open or closed, it stays in the canvas's corner where the design puts it. */
-  transition: background-color var(--speed) var(--ease-out);
-}
-
-.sidebar[data-open] .toggle {
   background: transparent;
+  transition:
+    background-color var(--duration-micro) var(--ease-out),
+    translate var(--speed) var(--ease-out);
 }
 
-.toggle:hover,
-.sidebar[data-open] .toggle:hover {
+/* Closed, it stands on the page itself, a step in from the page's rounded corner, so it reads as
+   the page's own title rather than a tab stuck to its edge. */
+.sidebar:not([data-open]) .toggle {
+  translate: var(--space-1) var(--space-2);
+}
+
+.toggle:hover {
   background: var(--wb-muted);
 }
 
@@ -120,7 +122,7 @@
 .mark {
   flex: none;
   overflow: hidden;
-  border-radius: 7px;
+  border-radius: var(--radius-md);
 }
 
 .project {
@@ -140,7 +142,7 @@
   flex-direction: column;
   gap: var(--space-2);
   min-height: 0;
-  padding: 0 var(--space-2) 10px;
+  padding: 0 var(--space-2) var(--space-3);
   overflow-y: auto;
 }
 
@@ -148,7 +150,7 @@
 .utilities {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--space-3);
   margin-block-start: auto;
   padding-block-start: var(--space-4);
 }
@@ -172,7 +174,6 @@
 
 .tree,
 .rows,
-.parts,
 .links {
   display: flex;
   flex-direction: column;
@@ -194,10 +195,11 @@
 }
 
 .row {
+  position: relative;
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  height: 1.75rem;
+  height: 2rem;
   padding: 0 var(--space-2);
   border-radius: var(--radius-md);
   color: var(--wb-muted-foreground);
@@ -210,7 +212,7 @@
   background: var(--wb-muted);
 }
 
-/* Plan and Files stand level with the links under them: the same height, size and colour. */
+/* Plan stands level with the app's line under it: the same height, size and colour. */
 .row[data-row="branch"] {
   gap: var(--space-1);
   height: 2.25rem;
@@ -260,12 +262,15 @@
   flex: 0 1 auto;
 }
 
-.note {
-  flex: none;
-  margin-inline-start: auto;
-  font-size: var(--text-xs);
-  line-height: var(--text-xs--line-height);
-  white-space: nowrap;
+/* No steps yet: said where the first step will be, as faint as a step still ahead. */
+.empty {
+  display: flex;
+  align-items: center;
+  height: 2rem;
+  padding-inline-start: 20px;
+  color: color-mix(in oklab, var(--wb-muted-foreground) 72%, transparent);
+  font-size: var(--wb-text-control);
+  line-height: var(--wb-text-control--line-height);
 }
 
 /* Folded, a branch's rows stay mounted but hidden, so they can slide shut and nothing in them
@@ -303,28 +308,35 @@
 
 /* A part of the plan, named only when the plan has more than one. */
 .heading {
-  padding: var(--space-2) var(--space-2) 2px 20px;
+  padding: var(--space-3) var(--space-2) var(--space-1) 20px;
   color: var(--wb-muted-foreground);
   font-size: var(--text-xs);
   line-height: var(--text-xs--line-height);
 }
 
-/* Indented so a row's name starts under its branch's name, and a part's under its file's. */
+/* Indented so a step's name starts under Plan's chevron. */
 .rows > .item {
-  padding-inline-start: 12px;
+  padding-inline-start: var(--space-3);
 }
 
-.parts {
-  margin-block-start: 2px;
+/* Where a step stands is said by its words. Finished steps stay quiet in the secondary grey; the
+   steps still ahead are fainter, so the eye goes to the one being worked on, which is the
+   brightest row. A step that waits on the person or failed reads as plainly, with its dot. */
+.row[data-row="step"]:is([data-state="to_do"], [data-state="declined"]) {
+  color: color-mix(in oklab, var(--wb-muted-foreground) 72%, transparent);
 }
 
-.parts > .item {
-  padding-inline-start: 12px;
-}
-
-/* A row that wants a look, or one being hovered, reads as plainly as the open one. */
-.row:is(:hover, [data-state="needs_you"], [data-state="failed"]) {
+.row[data-row="step"]:is(
+    :hover,
+    [data-state="running"],
+    [data-state="needs_you"],
+    [data-state="failed"]
+  ) {
   color: var(--wb-foreground);
+}
+
+.row[data-row="step"][data-state="running"] {
+  font-weight: 500;
 }
 
 /* A step that will not happen. */
@@ -332,26 +344,84 @@
   text-decoration: line-through;
 }
 
-.done {
+/* The step being worked on: a soft band of light passes through its words every two seconds. The
+   band is the page's own ground showing through the words, so it reads as light in both themes. */
+.row[data-row="step"][data-state="running"] .name,
+.row[data-row="branch"][data-state="running"] .name,
+.app[data-state="starting"] .name {
+  background: linear-gradient(
+      90deg,
+      var(--wb-foreground) 0%,
+      var(--wb-foreground) 42%,
+      color-mix(in oklab, var(--wb-foreground) 30%, var(--card)) 50%,
+      var(--wb-foreground) 58%,
+      var(--wb-foreground) 100%
+    )
+    100% 0 / 250% 100%;
+  background-clip: text;
+  color: transparent;
+  animation: shimmer 2s var(--ease-out) infinite;
+}
+
+@keyframes shimmer {
+  to {
+    background-position: 0 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .row[data-row="step"][data-state="running"] .name,
+  .row[data-row="branch"][data-state="running"] .name,
+  .app[data-state="starting"] .name {
+    background: none;
+    color: var(--wb-foreground);
+    animation: none;
+  }
+}
+
+/* A dot sits in a 14px box at the row's end, so every mark lines up in one column. */
+.dot {
+  display: grid;
   flex: none;
+  place-items: center;
   width: 14px;
   height: 14px;
 }
 
-/* The open file is marked by its words alone. */
-.item[aria-current="page"] > .row {
-  color: var(--wb-foreground);
-  font-weight: 500;
+/* Builder is working on it: one arc goes round a faint ring, a turn every 900ms. */
+.working {
+  width: 12px;
+  height: 12px;
+  overflow: visible;
+  fill: none;
+  stroke: var(--wb-muted-foreground);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  animation: global(spin) 900ms linear infinite;
 }
 
-/* Builder is writing or drawing it: the library's typing dots, the same ones the chat shows. */
-.writing {
-  display: flex;
-  flex: none;
+.working [data-part="track"] {
+  opacity: 0.25;
+}
+
+.working [data-part="arc"] {
+  stroke: var(--wb-foreground);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .working {
+    animation: none;
+  }
+}
+
+/* Folded Plan's dot stands at the row's end, in the steps' column. */
+.dot[data-at="end"] {
+  margin-inline-start: auto;
 }
 
 /* A row's menu button, for the pointer: it shows on the row being hovered or focused, and while
-   its menu is open. Where nothing hovers it always shows. */
+   its menu is open, in place of the row's mark, so every mark keeps one column. Where nothing
+   hovers it always shows, beside the mark. */
 .more {
   display: grid;
   flex: none;
@@ -383,60 +453,114 @@
   opacity: 1;
 }
 
+@media (hover: hover) {
+  .more {
+    position: absolute;
+    inset-inline-end: 5px;
+    margin: 0;
+  }
+
+  .row:has(.more):is(:hover, :has(.more[data-state="open"])) .dot,
+  .item:focus-visible > .row:has(.more) .dot {
+    visibility: hidden;
+  }
+}
+
 @media (hover: none) {
   .more {
     opacity: 1;
   }
 }
 
-/* A setting's tick keeps its place when the setting is off, so the words line up. */
-.tick {
-  width: 16px;
-  height: 16px;
-  visibility: hidden;
+/* A step's menu: as wide as its longest action, never wider than the sidebar. */
+.menu {
+  min-width: 11rem;
+  max-width: calc(var(--rail-width) - var(--space-4));
 }
 
-.tick[data-checked] {
-  visibility: visible;
+/* Builder will pause for the person before this step starts: two quiet bars, drawn in the
+   steps' column like a dot. */
+.pause {
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: var(--wb-muted-foreground);
+  stroke-width: 1.75;
+  stroke-linecap: round;
 }
 
-/* Live stands level with Plan and Files: the same height, size and colour. */
-.live {
+/* The app's line stands level with Plan: the same height, size and colour. It reads as a status,
+   its dot first, and an arrow at its end says the line opens the app. */
+.app {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  width: 100%;
   height: 2.25rem;
-  padding: 0 var(--space-1) 0 var(--space-2);
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
   color: var(--wb-muted-foreground);
+  font: inherit;
   font-size: var(--text-sm);
   line-height: var(--text-sm--line-height);
+  text-align: start;
+  cursor: pointer;
+  transition:
+    background-color var(--duration-micro) var(--ease-out),
+    color var(--duration-micro) var(--ease-out);
 }
 
-.liveName {
-  flex: none;
-}
-
-/* Where the words run long, the state gives way before Open app does. */
-.live > .note {
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.live[data-current] .liveName {
+.app:hover {
+  background: var(--wb-muted);
   color: var(--wb-foreground);
+}
+
+.app:focus-visible {
+  outline: 2px solid var(--wb-ring);
+  outline-offset: -2px;
+}
+
+/* Up, or could not start: the line reads as plainly as a step that wants a look. */
+.app:is([data-state="running"], [data-state="failed"], [data-current]) {
+  color: var(--wb-foreground);
+}
+
+.app[data-current] {
   font-weight: 500;
 }
 
-/* The state reads as plainly as a file that wants a look when the app is up or could not start. */
-.live > .note:is([data-state="running"], [data-state="failed"]) {
-  color: var(--wb-foreground);
+.appDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--wb-muted-foreground);
 }
 
-/* Small enough to sit in the row without making it taller than its neighbours. */
-.live > [data-slot="button"] {
-  height: 1.75rem;
-  padding-inline: var(--space-2);
-  font-size: var(--wb-text-control);
+.appDot[data-state="running"] {
+  background: var(--wb-proceed);
+}
+
+.appDot[data-state="failed"] {
+  background: var(--destructive);
+}
+
+.go {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  color: var(--wb-muted-foreground);
+  opacity: 0;
+  transition: opacity var(--duration-micro) var(--ease-out);
+}
+
+.app:is(:hover, :focus-visible) .go {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .go {
+    opacity: 1;
+  }
 }

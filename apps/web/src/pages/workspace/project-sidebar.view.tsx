@@ -1,9 +1,9 @@
 /**
- * An open project's sidebar: the project's name, which opens and closes it, then what the project
- * holds: the plan's steps and the project's files, as one tree, and the app's state. Kept at the
- * bottom, smaller and greyer, are the links that leave it: the project's settings and secrets, the
- * other projects, and the workspace's settings and the person's account. Closed, only the project's
- * name stays. Where the room is narrow it is a drawer over the page.
+ * An open project's sidebar: the project's name, which opens and closes it, then the plan's steps
+ * and a line saying how the app stands, which opens it. Kept at the bottom, smaller and greyer, are
+ * the links that leave it: the project's settings and secrets, the other projects, and the
+ * workspace's settings and the person's account. Closed, only the project's name stays. Where the
+ * room is narrow it is a drawer over the page.
  */
 import {
   useEffect,
@@ -16,8 +16,8 @@ import {
   type ReactNode,
 } from "react";
 import {
+  ArrowUpRight,
   Building2,
-  Check,
   ChevronRight,
   CircleUser,
   Ellipsis,
@@ -26,18 +26,10 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
-  Printer,
   Settings,
-  Trash2,
   type LucideIcon,
 } from "lucide-react";
-import {
-  Button,
-  SidebarItem,
-  StatusDot,
-  TypingIndicator,
-  type StatusDotTone,
-} from "@corbits/react-ui";
+import { SidebarItem, StatusDot, type StatusDotTone } from "@corbits/react-ui";
 import {
   Menu,
   MenuContent,
@@ -45,7 +37,7 @@ import {
   MenuTrigger,
 } from "@corbits/react-ui/ui/menu";
 import { wording } from "../../config.ts";
-import { DangerMenuItem, Mark } from "../../components.jsx";
+import { Mark } from "../../components.jsx";
 import styles from "./project-sidebar.module.css";
 
 const words = wording.projectShell;
@@ -84,32 +76,7 @@ export type SidebarPlanGroup = {
   steps: readonly SidebarStep[];
 };
 
-/** Where a file stands, as its row marks it: one mark at most, none when it is ready. */
-export type SidebarFileState =
-  | "ready"
-  | "needs_you"
-  | "writing"
-  | "drawing"
-  | "failed";
-
-export type SidebarFileRow = {
-  id: string;
-  name: string;
-  state: SidebarFileState;
-  /** A version the person has not looked at yet; a ready row shows the new-version dot. */
-  newVersion: boolean;
-};
-
-export type SidebarFile = SidebarFileRow & {
-  /** A written document, which its row's menu prints. */
-  printable: boolean;
-  /** An attached file, which its row's menu removes from the project. */
-  removable: boolean;
-  /** The rows under it, such as the design's mockup, its draft and its concepts. */
-  parts: readonly SidebarFileRow[];
-};
-
-/** How the project's app stands, as the Live row says it. */
+/** How the project's app stands, as its line says it. */
 export type SidebarAppState =
   | "not_built"
   | "starting"
@@ -124,16 +91,10 @@ export type ProjectSidebarViewProps = {
   /** The room is narrow, so the open sidebar lies over the page. */
   drawer: boolean;
   plan: readonly SidebarPlanGroup[];
-  files: readonly SidebarFile[];
-  /** The file or part on the page; its row is marked. */
-  selectedFile: string | null;
   app: SidebarAppState;
-  /** The app is on the page; the Live row is marked. */
+  /** The app is on the page; its line is marked. */
   appOpen: boolean;
   onToggleSidebar: () => void;
-  onOpenFile: (fileId: string) => void;
-  onPrintFile: (fileId: string) => void;
-  onRemoveFile: (fileId: string) => void;
   onAskFirst: (stepId: string, askFirst: boolean) => void;
   onDecline: (stepId: string, declined: boolean) => void;
   onOpenApp: () => void;
@@ -150,14 +111,9 @@ export function ProjectSidebarView({
   open,
   drawer,
   plan,
-  files,
-  selectedFile,
   app,
   appOpen,
   onToggleSidebar,
-  onOpenFile,
-  onPrintFile,
-  onRemoveFile,
   onAskFirst,
   onDecline,
   onOpenApp,
@@ -216,18 +172,13 @@ export function ProjectSidebarView({
       <div className={styles.room}>
         <div id={bodyId} className={styles.panel} inert={!open}>
           <div className={styles.body}>
-            <ProjectTree
+            <PlanTree
               label={project}
               plan={plan}
-              files={files}
-              selectedFile={selectedFile}
-              onOpenFile={onOpenFile}
-              onPrintFile={onPrintFile}
-              onRemoveFile={onRemoveFile}
               onAskFirst={onAskFirst}
               onDecline={onDecline}
             />
-            <Live app={app} open={appOpen} onOpen={onOpenApp} />
+            <AppLine app={app} open={appOpen} onOpen={onOpenApp} />
             <div className={styles.utilities}>
               <Links label={words.groups.thisProject}>
                 <Link icon={Settings} onClick={onProjectSettings}>
@@ -271,10 +222,10 @@ function Links({ label, children }: { label: string; children: ReactNode }) {
 }
 
 /**
- * The app's state, and Open app once there is an app to open. Its words change as the app starts,
- * runs or stops, so they are read out as they change.
+ * One line saying how the app stands, which opens it. Until there is an app there is no line. Its
+ * words change as the app starts, runs or stops, so they are read out as they change.
  */
-function Live({
+function AppLine({
   app,
   open,
   onOpen,
@@ -283,18 +234,30 @@ function Live({
   open: boolean;
   onOpen: () => void;
 }) {
+  if (app === "not_built") return null;
   return (
-    <div className={styles.live} data-current={open ? "" : undefined}>
-      <span className={styles.liveName}>{words.live}</span>
-      <span className={styles.note} data-state={app} aria-live="polite">
+    <button
+      type="button"
+      className={styles.app}
+      data-state={app}
+      data-current={open ? "" : undefined}
+      title={words.openApp}
+      onClick={onOpen}
+    >
+      {/* The library's success tone is the brand's orange, so the app's dot is drawn here, green
+          while the app is up. Starting, it turns and its words shimmer as a running step's do. */}
+      <span className={styles.dot}>
+        {app === "starting" ? (
+          <Working />
+        ) : (
+          <span className={styles.appDot} data-state={app} />
+        )}
+      </span>
+      <span className={styles.name} aria-live="polite">
         {words.appState[app]}
       </span>
-      {app === "not_built" ? null : (
-        <Button type="button" variant="outline" size="sm" onClick={onOpen}>
-          {words.openApp}
-        </Button>
-      )}
-    </div>
+      <ArrowUpRight className={styles.go} aria-hidden="true" />
+    </button>
   );
 }
 
@@ -320,22 +283,17 @@ function Link({
   );
 }
 
-const PLAN = "plan" as const;
-const FILES = "files" as const;
-type Branch = typeof PLAN | typeof FILES;
+const PLAN = "plan";
 
 const stepKey = (stepId: string) => `step:${stepId}`;
-const fileKey = (fileId: string) => `file:${fileId}`;
 
-/** A row of the tree, whether or not a fold hides it. */
+/** A row of the tree, whether or not the fold hides it. */
 type TreeRow = {
   key: string;
-  /** The row it sits under; null for Plan and Files. */
+  /** The row it sits under; null for Plan. */
   parent: string | null;
   /** What a typed letter matches. */
   name: string;
-  /** The branch it is, or sits in, which folds it away. */
-  branch: Branch;
   /** What Enter or Space does on it. */
   activate: (() => void) | null;
   /** It has a menu, which Shift+F10 or the context-menu key opens. */
@@ -348,54 +306,36 @@ type TreeItemProps = Required<
 >;
 
 /**
- * Plan and Files as one tree with a single tab stop, after the WAI-ARIA tree view pattern: the
- * arrows move between rows and fold Plan and Files, Home and End jump, a letter finds the next row
- * starting with it, Enter or Space opens a file, folds a branch or opens a step's menu, and
- * Shift+F10 or the context-menu key opens a row's menu. Folding and menus only change the look, so
- * they are held here.
+ * The plan as a tree with a single tab stop, after the WAI-ARIA tree view pattern: the arrows move
+ * between rows and fold Plan, Home and End jump, a letter finds the next row starting with it,
+ * Enter or Space folds Plan or opens a step's menu, and Shift+F10 or the context-menu key opens a
+ * step's menu. Folding and menus only change the look, so they are held here.
  */
-function ProjectTree({
+function PlanTree({
   label,
   plan,
-  files,
-  selectedFile,
-  onOpenFile,
-  onPrintFile,
-  onRemoveFile,
   onAskFirst,
   onDecline,
 }: {
   label: string;
   plan: readonly SidebarPlanGroup[];
-  files: readonly SidebarFile[];
-  selectedFile: string | null;
-  onOpenFile: (fileId: string) => void;
-  onPrintFile: (fileId: string) => void;
-  onRemoveFile: (fileId: string) => void;
   onAskFirst: (stepId: string, askFirst: boolean) => void;
   onDecline: (stepId: string, declined: boolean) => void;
 }) {
-  // The row whose menu is open, and what to do once it has closed and handed focus back.
+  // The row whose menu is open.
   const [menu, setMenu] = useState<string | null>(null);
-  const afterMenu = useRef<(() => void) | null>(null);
-  const [folded, setFolded] = useState<ReadonlySet<Branch>>(new Set());
-  const toggle = (branch: Branch) => {
-    const next = new Set(folded);
-    if (!next.delete(branch)) next.add(branch);
-    setFolded(next);
-  };
+  const [folded, setFolded] = useState(false);
   const steps = plan.flatMap((group) => group.steps);
-  const folds = { [PLAN]: steps.length > 0, [FILES]: files.length > 0 };
-  const branchRow = (branch: Branch, name: string): TreeRow => ({
-    key: branch,
-    parent: null,
-    name,
-    branch,
-    activate: folds[branch] ? () => toggle(branch) : null,
-    menu: false,
-  });
+  const folds = steps.length > 0;
+  const toggle = () => setFolded(!folded);
   const allRows: TreeRow[] = [
-    branchRow(PLAN, words.plan),
+    {
+      key: PLAN,
+      parent: null,
+      name: words.plan,
+      activate: folds ? toggle : null,
+      menu: false,
+    },
     ...steps.map((step): TreeRow => {
       const key = stepKey(step.id);
       const menu = stepHasMenu(step);
@@ -403,42 +343,21 @@ function ProjectTree({
         key,
         parent: PLAN,
         name: step.name,
-        branch: PLAN,
         activate: menu ? () => setMenu(key) : null,
         menu,
       };
     }),
-    branchRow(FILES, words.files),
-    ...files.flatMap((file) =>
-      [file, ...file.parts].map((row): TreeRow => ({
-        key: fileKey(row.id),
-        parent: row === file ? FILES : fileKey(file.id),
-        name: row.name,
-        branch: FILES,
-        activate: () => onOpenFile(row.id),
-        menu: row === file && fileHasMenu(file),
-      })),
-    ),
   ];
-  const rows = allRows.filter(
-    (row) => row.parent === null || !folded.has(row.branch),
-  );
+  const rows = folded ? allRows.slice(0, 1) : allRows;
   const items = useRef(new Map<string, HTMLElement>());
   const [focused, setFocused] = useState<string | null>(null);
   // A fold from the keyboard happens at once; one from the pointer slides.
   const [byKey, setByKey] = useState(false);
-  // A row folded away hands its place to its branch.
-  const placeOf = (key: string | null) => {
-    const row = allRows.find((each) => each.key === key);
-    if (row === undefined) return undefined;
-    return rows.includes(row) ? row.key : row.branch;
-  };
-  // Tab enters at the row last focused, else the open file, else the first row.
+  // A step folded away hands its place to Plan; Tab enters at the row last focused, else Plan.
   const tabStop =
-    placeOf(focused) ??
-    placeOf(selectedFile === null ? null : fileKey(selectedFile)) ??
-    rows[0]?.key ??
-    null;
+    focused !== null && rows.some((row) => row.key === focused)
+      ? focused
+      : PLAN;
   const focus = (key: string) => {
     setFocused(key);
     items.current.get(key)?.focus();
@@ -458,7 +377,7 @@ function ProjectTree({
     const row = rows[index];
     if (row === undefined || event.altKey || event.metaKey || event.ctrlKey)
       return;
-    const branch = row.parent === null && folds[row.branch] ? row.branch : null;
+    const branch = row.parent === null && folds;
     const move = (to: TreeRow | undefined) => {
       if (to !== undefined) focus(to.key);
     };
@@ -476,12 +395,11 @@ function ProjectTree({
         move(rows.at(-1));
         break;
       case "ArrowRight":
-        if (branch !== null && folded.has(branch)) toggle(branch);
-        else if (branch !== null) move(rows[index + 1]);
-        else if (rows[index + 1]?.parent === row.key) move(rows[index + 1]);
+        if (branch && folded) toggle();
+        else if (branch) move(rows[index + 1]);
         break;
       case "ArrowLeft":
-        if (branch !== null && !folded.has(branch)) toggle(branch);
+        if (branch && !folded) toggle();
         else if (row.parent !== null) focus(row.parent);
         break;
       case "Enter":
@@ -523,12 +441,7 @@ function ProjectTree({
     label: words.rowMenu(name),
     open: menu === key,
     onOpenChange: (open) => setMenu(open ? key : null),
-    onClosed: () => {
-      focus(key);
-      const then = afterMenu.current;
-      afterMenu.current = null;
-      then?.();
-    },
+    onClosed: () => focus(key),
   });
   const many = plan.length > 1;
   const headings = useId();
@@ -544,8 +457,15 @@ function ProjectTree({
       <BranchItem
         name={words.plan}
         empty={words.noPlan}
-        open={folds[PLAN] ? !folded.has(PLAN) : null}
-        onToggle={() => toggle(PLAN)}
+        open={folds ? !folded : null}
+        busy={
+          steps.some((each) => each.state === "needs_you")
+            ? "needs_you"
+            : steps.some((each) => each.state === "running")
+              ? "running"
+              : null
+        }
+        onToggle={toggle}
         {...itemProps(PLAN)}
       >
         {plan.map((group, index) => {
@@ -583,66 +503,20 @@ function ProjectTree({
           );
         })}
       </BranchItem>
-      <BranchItem
-        name={words.files}
-        empty={words.noFiles}
-        open={folds[FILES] ? !folded.has(FILES) : null}
-        onToggle={() => toggle(FILES)}
-        {...itemProps(FILES)}
-      >
-        <ul role="group" className={styles.rows}>
-          {files.map((file) => (
-            <FileItem
-              key={file.id}
-              row={file}
-              level={2}
-              selected={file.id === selectedFile}
-              onOpen={() => onOpenFile(file.id)}
-              menu={
-                fileHasMenu(file) ? (
-                  <FileMenu
-                    file={file}
-                    menu={menuOf(fileKey(file.id), file.name)}
-                    // Printed once the menu has gone, so the menu is not printed with it.
-                    onPrint={() => {
-                      afterMenu.current = () => onPrintFile(file.id);
-                    }}
-                    onRemove={() => onRemoveFile(file.id)}
-                  />
-                ) : null
-              }
-              {...itemProps(fileKey(file.id))}
-            >
-              {file.parts.length === 0 ? null : (
-                <ul role="group" className={styles.parts}>
-                  {file.parts.map((part) => (
-                    <FileItem
-                      key={part.id}
-                      row={part}
-                      level={3}
-                      selected={part.id === selectedFile}
-                      onOpen={() => onOpenFile(part.id)}
-                      {...itemProps(fileKey(part.id))}
-                    />
-                  ))}
-                </ul>
-              )}
-            </FileItem>
-          ))}
-        </ul>
-      </BranchItem>
     </ul>
   );
 }
 
 /**
- * Plan or Files: a row that folds what it lists, or, while it lists nothing, says so and does
- * nothing. `open` is null while there is nothing to fold.
+ * Plan: a row that folds its steps, or, while there are none, says so and does nothing. `open` is
+ * null while there is nothing to fold. Folded, it still says what its steps would: it shimmers and
+ * turns while one runs, and carries the dot while one waits on the person.
  */
 function BranchItem({
   name,
   empty,
   open,
+  busy,
   onToggle,
   children,
   ...item
@@ -650,6 +524,7 @@ function BranchItem({
   name: string;
   empty: string;
   open: boolean | null;
+  busy: "running" | "needs_you" | null;
   onToggle: () => void;
   children: ReactNode;
 } & TreeItemProps) {
@@ -664,7 +539,9 @@ function BranchItem({
       >
         <span className={styles.row} data-row="branch" data-empty="">
           <span className={styles.name}>{name}</span>
-          <span className={styles.note}>{empty}</span>
+        </span>
+        <span className={styles.empty} aria-hidden="true">
+          {empty}
         </span>
       </li>
     );
@@ -678,9 +555,23 @@ function BranchItem({
       data-open={open ? "" : undefined}
       {...item}
     >
-      <span className={styles.row} data-row="branch" onClick={onToggle}>
+      <span
+        className={styles.row}
+        data-row="branch"
+        data-state={open ? undefined : (busy ?? undefined)}
+        onClick={onToggle}
+      >
         <span className={styles.name}>{name}</span>
         <ChevronRight className={styles.chevron} aria-hidden="true" />
+        {open || busy === null ? null : (
+          <span className={styles.dot} data-at="end">
+            {busy === "running" ? (
+              <Working />
+            ) : (
+              <StatusDot label="" size="xs" tone="emphasis" />
+            )}
+          </span>
+        )}
       </span>
       <div className={styles.fold}>
         <div className={styles.folded}>{children}</div>
@@ -689,12 +580,18 @@ function BranchItem({
   );
 }
 
-// The row's name already says the state, so its mark carries no words of its own.
+// Where a step stands is said by its words: finished steps are quiet, the one being worked on
+// shimmers and turns, and only a step that waits on the person or failed carries a dot.
 const stepTone: Partial<Record<SidebarStepState, StatusDotTone>> = {
   needs_you: "emphasis",
   failed: "danger",
 };
 
+/**
+ * A step's row shows what will happen to it as well as where it stands: a skipped step is struck
+ * through, and one that will pause for the person before it starts carries a pause mark, so neither
+ * setting hides in its menu.
+ */
 function StepItem({
   step,
   menu,
@@ -702,107 +599,69 @@ function StepItem({
 }: { step: SidebarStep; menu: ReactNode } & TreeItemProps) {
   const { state } = step;
   const tone = stepTone[state];
+  const skipped = state === "declined" || step.declined === true;
+  const pauses = state === "to_do" && !skipped && step.askFirst === true;
+  const said = [
+    step.name,
+    skipped ? words.skipped : words.stepState[state],
+    ...(pauses ? [words.pausesFirst] : []),
+  ].join(", ");
   return (
     <li
       role="treeitem"
       aria-level={2}
       aria-haspopup={menu === null ? undefined : "menu"}
-      aria-label={`${step.name}, ${words.stepState[state]}`}
+      aria-label={said}
       className={styles.item}
       title={step.name}
       {...item}
     >
-      <span className={styles.row} data-row="step" data-state={state}>
+      <span
+        className={styles.row}
+        data-row="step"
+        data-state={skipped ? "declined" : state}
+      >
         <span className={styles.name}>{step.name}</span>
         {state === "running" ? (
-          <span className={styles.writing} aria-hidden="true">
-            <TypingIndicator label={words.stepState.running} />
+          <span className={styles.dot}>
+            <Working />
           </span>
-        ) : state === "done" ? (
-          <Check className={styles.done} aria-hidden="true" />
-        ) : tone === undefined ? null : (
-          <StatusDot label="" size="xs" tone={tone} />
-        )}
+        ) : tone !== undefined ? (
+          <span className={styles.dot}>
+            <StatusDot label="" size="xs" tone={tone} />
+          </span>
+        ) : pauses ? (
+          <span className={styles.dot} title={words.pausesFirst}>
+            <svg
+              className={styles.pause}
+              viewBox="0 0 12 12"
+              aria-hidden="true"
+            >
+              <path d="M4 2.5v7M8 2.5v7" />
+            </svg>
+          </span>
+        ) : null}
         {menu}
       </span>
     </li>
   );
 }
 
-const fileTone: Partial<Record<SidebarFileState, StatusDotTone>> = {
-  needs_you: "emphasis",
-  failed: "danger",
-};
-
-function FileItem({
-  row,
-  level,
-  selected,
-  onOpen,
-  menu = null,
-  children,
-  ...item
-}: {
-  row: SidebarFileRow;
-  level: 2 | 3;
-  selected: boolean;
-  onOpen: () => void;
-  menu?: ReactNode;
-  children?: ReactNode;
-} & TreeItemProps) {
-  const { state } = row;
-  // The new-version dot shows only on a ready row; any other mark says more.
-  const fresh = state === "ready" && row.newVersion && !selected;
-  const said =
-    state !== "ready"
-      ? words.fileState[state]
-      : fresh
-        ? wording.documentUnread
-        : null;
-  const tone = fresh ? "emphasis" : fileTone[state];
+/**
+ * Builder is working on it: a faint ring with one arc turning round it, drawn here at the size of
+ * a row's dot so it sits in the same column.
+ */
+function Working() {
   return (
-    <li
-      role="treeitem"
-      aria-level={level}
-      aria-current={selected ? "page" : undefined}
-      aria-haspopup={menu === null ? undefined : "menu"}
-      aria-label={said === null ? row.name : `${row.name}, ${said}`}
-      className={styles.item}
-      title={row.name}
-      {...item}
-    >
-      <span
-        className={styles.row}
-        data-row="file"
-        data-state={state}
-        onClick={(event) => {
-          // A click in the row's menu, drawn elsewhere on the page, still passes through here.
-          if (
-            event.target instanceof Node &&
-            event.currentTarget.contains(event.target)
-          )
-            onOpen();
-        }}
-      >
-        <span className={styles.name}>{row.name}</span>
-        {state === "writing" || state === "drawing" ? (
-          <span className={styles.writing} aria-hidden="true">
-            <TypingIndicator label={words.fileState[state]} />
-          </span>
-        ) : tone === undefined ? null : (
-          <StatusDot label="" size="xs" tone={tone} />
-        )}
-        {menu}
-      </span>
-      {children}
-    </li>
+    <svg className={styles.working} viewBox="0 0 14 14" aria-hidden="true">
+      <circle cx="7" cy="7" r="5" data-part="track" />
+      <path d="M7 2a5 5 0 0 1 5 5" data-part="arc" />
+    </svg>
   );
 }
 
 const stepHasMenu = (step: SidebarStep) =>
   step.askFirst !== null || step.declined !== null;
-
-const fileHasMenu = (file: SidebarFile) => file.printable || file.removable;
 
 type RowMenuProps = {
   label: string;
@@ -813,7 +672,7 @@ type RowMenuProps = {
 };
 
 /**
- * A row's menu, from its button or the keyboard. The button is for the pointer only: the row
+ * A step's menu, from its button or the keyboard. The button is for the pointer only: the row
  * itself holds focus and says it has a menu, which Shift+F10 opens.
  */
 function RowMenu({
@@ -837,8 +696,10 @@ function RowMenu({
           <Ellipsis />
         </button>
       </MenuTrigger>
+      {/* Opened under its button and kept to the sidebar's width, so it never spills onto the page. */}
       <MenuContent
-        align="start"
+        align="end"
+        className={styles.menu}
         aria-label={label}
         onCloseAutoFocus={(event) => {
           event.preventDefault();
@@ -848,32 +709,6 @@ function RowMenu({
         {children}
       </MenuContent>
     </Menu>
-  );
-}
-
-/** A setting in a row's menu, ticked while it is on. */
-function CheckItem({
-  checked,
-  onSelect,
-  children,
-}: {
-  checked: boolean;
-  onSelect: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <MenuItem
-      role="menuitemcheckbox"
-      aria-checked={checked}
-      onSelect={onSelect}
-    >
-      <Check
-        className={styles.tick}
-        data-checked={checked ? "" : undefined}
-        aria-hidden="true"
-      />
-      {children}
-    </MenuItem>
   );
 }
 
@@ -888,66 +723,19 @@ function StepMenu({
   onAskFirst: (askFirst: boolean) => void;
   onDecline: (declined: boolean) => void;
 }) {
+  // Each item says what choosing it will do, so the row, not the menu, shows how things stand.
   const { askFirst, declined } = step;
   return (
     <RowMenu {...menu}>
-      {askFirst === null ? null : (
-        <CheckItem checked={askFirst} onSelect={() => onAskFirst(!askFirst)}>
-          {wording.conversation.plan.askFirst}
-        </CheckItem>
+      {askFirst === null || declined === true ? null : (
+        <MenuItem onSelect={() => onAskFirst(!askFirst)}>
+          {askFirst ? words.stepMenu.dontPause : words.stepMenu.pause}
+        </MenuItem>
       )}
       {declined === null ? null : (
-        <CheckItem checked={declined} onSelect={() => onDecline(!declined)}>
-          {words.decline}
-        </CheckItem>
-      )}
-    </RowMenu>
-  );
-}
-
-/** Print for a written document; Remove from project for an attached file, which asks first. */
-function FileMenu({
-  file,
-  menu,
-  onPrint,
-  onRemove,
-}: {
-  file: SidebarFile;
-  menu: RowMenuProps;
-  onPrint: () => void;
-  onRemove: () => void;
-}) {
-  // Removing takes two choices, both in the menu: the second only exists after the first.
-  const [confirming, setConfirming] = useState(false);
-  return (
-    <RowMenu
-      {...menu}
-      onOpenChange={(open) => {
-        setConfirming(false);
-        menu.onOpenChange(open);
-      }}
-    >
-      {file.printable ? (
-        <MenuItem onSelect={onPrint}>
-          <Printer size={16} aria-hidden="true" />
-          {wording.printDocument}
+        <MenuItem onSelect={() => onDecline(!declined)}>
+          {declined ? words.stepMenu.keep : words.stepMenu.skip}
         </MenuItem>
-      ) : null}
-      {!file.removable ? null : confirming ? (
-        <DangerMenuItem onSelect={onRemove}>
-          <Trash2 size={16} aria-hidden="true" />
-          {wording.removeAttachment.confirm}
-        </DangerMenuItem>
-      ) : (
-        <DangerMenuItem
-          onSelect={(event) => {
-            event.preventDefault();
-            setConfirming(true);
-          }}
-        >
-          <Trash2 size={16} aria-hidden="true" />
-          {words.removeFromProject}
-        </DangerMenuItem>
       )}
     </RowMenu>
   );

@@ -162,7 +162,8 @@ export const EscapeCloses: Story = {
   args: { ...whileWorking, chatStart: { defaultState: "open" } },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(canvas.getByRole("log")).toBeVisible();
+    // The room's page fades in as it mounts, so the chat is looked for once the fade is done.
+    await waitFor(() => expect(canvas.getByRole("log")).toBeVisible());
     await userEvent.keyboard("{Escape}");
     await expect(
       canvasElement.querySelector('[data-slot="chat-history"]'),
@@ -182,7 +183,10 @@ export const PressToOpen: Story = {
       canvasElement.querySelector<HTMLElement>('[data-slot="pill"]');
     if (pillButton === null) throw new Error("No pill");
     await userEvent.click(pillButton);
-    await expect(within(canvasElement).getByRole("log")).toBeVisible();
+    // Shown once the room's page has faded in and the sheet has begun to open.
+    await waitFor(() =>
+      expect(within(canvasElement).getByRole("log")).toBeVisible(),
+    );
   },
 };
 
@@ -223,7 +227,10 @@ export const ReadyWithChat: Story = {
     );
     if (handle === null) throw new Error("No handle");
     await userEvent.click(handle);
-    await expect(within(canvasElement).getByRole("log")).toBeVisible();
+    // Shown once the room's page has faded in and the sheet has begun to open.
+    await waitFor(() =>
+      expect(within(canvasElement).getByRole("log")).toBeVisible(),
+    );
   },
 };
 

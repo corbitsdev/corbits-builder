@@ -56,6 +56,13 @@ function Room(args: RoomViewProps) {
     setProjectOpen(true);
   };
   const onScreen = projectOpen ? shown : null;
+  // What the project view shows, by name, as the room's model names it.
+  const shownName =
+    onScreen === LIVE_TAB
+      ? wording.projectShell.appTab
+      : (outlineOf(pane)
+          .files.flatMap((file) => [file, ...file.parts])
+          .find((row) => row.id === onScreen)?.name ?? null);
   return (
     <div style={{ height: "100vh", display: "flex", flexDirection: "column" }}>
       <RoomView
@@ -70,20 +77,12 @@ function Room(args: RoomViewProps) {
             ? { ...dock, text, onTextChange: setText }
             : dock
         }
+        shownName={shownName}
         sidebar={{
           ...sidebar,
           open: sidebarOpen,
-          selectedFile: onScreen === LIVE_TAB ? null : onScreen,
           appOpen: onScreen === LIVE_TAB,
           onToggleSidebar: () => setSidebarOpen(!sidebarOpen),
-          onOpenFile: (id) => {
-            // A design not filed yet opens what is being drawn under it.
-            const drawing = sidebar.files.find(
-              (file) => file.id === id && file.state === "drawing",
-            );
-            open(drawing?.parts[0]?.id ?? id);
-            sidebar.onOpenFile(id);
-          },
           onOpenApp: () => {
             open(LIVE_TAB);
             sidebar.onOpenApp();
@@ -102,13 +101,13 @@ function Room(args: RoomViewProps) {
   );
 }
 
-// The sidebar as the room's model would hand it over for what the project view shows.
-function sidebarOf(
+// The project's outline as the room's model reads it from what the project view shows.
+function outlineOf(
   pane: Partial<ArtifactPaneProps>,
   plan: PlanView["steps"] = planning.plan,
   app?: OutlineAppState,
-): RoomContent["sidebar"] {
-  const outline = projectOutline({
+) {
+  return projectOutline({
     plan,
     documents: (pane.documents ?? []).map((item) => ({
       ...item,
@@ -122,18 +121,22 @@ function sidebarOf(
     manual: (pane.manual ?? null) !== null,
     app: { shown: (pane.liveApp ?? null) !== null, state: app },
   });
+}
+
+// The sidebar as the room's model would hand it over for what the project view shows.
+function sidebarOf(
+  pane: Partial<ArtifactPaneProps>,
+  plan: PlanView["steps"] = planning.plan,
+  app?: OutlineAppState,
+): RoomContent["sidebar"] {
+  const outline = outlineOf(pane, plan, app);
   return {
     project: "Bakery orders",
     open: true,
     plan: outline.plan,
-    files: outline.files,
-    selectedFile: null,
     app: outline.app,
     appOpen: false,
     onToggleSidebar: fn(),
-    onOpenFile: fn(),
-    onPrintFile: fn(),
-    onRemoveFile: fn(),
     onAskFirst: fn(),
     onDecline: fn(),
     onOpenApp: fn(),
@@ -209,6 +212,7 @@ const meta = {
     ...paneOf(),
     tabStatus: [],
     sidebar: sidebarOf({}, []),
+    shownName: null,
     paneRef: createRef(),
     waiting: null,
     space: null,
@@ -602,20 +606,19 @@ export const SidebarClosedProjectOpen: Story = {
 };
 
 /**
- * A file row opens the project view over the conversation, and what the person had half typed
+ * Open project brings the project view over the conversation, and what the person had half typed
  * stays in the box.
  */
-export const OpenFileKeepsMessage: Story = {
+export const OpenProjectKeepsMessage: Story = {
   args: {
     ...withDocuments,
     dock: { ...composer, text: "Also take orders by" },
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    const brief = canvas.getByRole("treeitem", { name: briefName });
-    // The row is clicked where a pointer clicks it, on its name.
-    await userEvent.click(within(brief).getByText(briefName));
-    await expect(brief).toHaveAttribute("aria-current", "page");
+    await userEvent.click(
+      canvas.getByRole("button", { name: wording.conversation.openProject }),
+    );
     await expect(
       canvasElement.querySelector('[data-slot="room-project"]'),
     ).not.toHaveAttribute("hidden");
@@ -780,23 +783,26 @@ export const NarrowDrawerDark: Story = {
   globals: { ...Narrow.globals, mode: "dark" },
 };
 
-/** Choosing a file in the drawer puts the drawer away and opens the file. */
-export const NarrowDrawerOpensFile: Story = {
-  ...Narrow,
+/** Opening the app from the drawer puts the drawer away and shows the app. */
+export const NarrowDrawerOpensApp: Story = {
+  args: { ...appArgs, sidebar: appSidebar("running") },
+  globals: { viewport: { value: "mobile1" } },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(
       canvas.getByRole("button", { name: /Bakery orders/, expanded: false }),
     );
-    const brief = canvas.getByRole("treeitem", {
-      name: briefName,
-    });
-    // The row is clicked where a pointer clicks it, on its name.
-    await userEvent.click(within(brief).getByText(briefName));
+    await userEvent.click(
+      canvas.getByRole("button", {
+        name: wording.projectShell.appState.running,
+      }),
+    );
     await expect(
       canvas.getByRole("button", { name: /Bakery orders/, expanded: false }),
     ).toBeInTheDocument();
-    await expect(brief).toHaveAttribute("aria-current", "page");
+    await expect(
+      canvasElement.querySelector('[data-slot="room-project"]'),
+    ).not.toHaveAttribute("hidden");
   },
 };
 

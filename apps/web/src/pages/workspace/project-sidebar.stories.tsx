@@ -5,16 +5,12 @@ import { wording } from "../../config.ts";
 import {
   ProjectSidebarView,
   type ProjectSidebarViewProps,
-  type SidebarFile,
-  type SidebarFileRow,
-  type SidebarFileState,
   type SidebarPlanGroup,
   type SidebarStep,
   type SidebarStepState,
 } from "./project-sidebar.view.tsx";
 
-const tab = wording.documentTab;
-const designName = tab["design"] ?? "design";
+const words = wording.projectShell;
 
 /**
  * A step not yet started can be set to ask first; once it runs, neither setting changes. Only an
@@ -39,38 +35,6 @@ const onePart = (steps: readonly SidebarStep[]): SidebarPlanGroup[] => [
   { id: "plan", name: "Plan", steps },
 ];
 
-const row = (
-  id: string,
-  state: SidebarFileState = "ready",
-  name: string = tab[id] ?? id,
-  newVersion = false,
-): SidebarFileRow => ({ id, name, state, newVersion });
-
-/** The documents written as prose, which print. */
-const written = new Set([
-  "problem_brief",
-  "constraints",
-  "approaches",
-  "product_requirements",
-  "build_plan",
-]);
-
-const file = (
-  id: string,
-  state: SidebarFileState = "ready",
-  options: {
-    name?: string;
-    newVersion?: boolean;
-    parts?: readonly SidebarFileRow[];
-    attached?: boolean;
-  } = {},
-): SidebarFile => ({
-  ...row(id, state, options.name, options.newVersion),
-  printable: written.has(id),
-  removable: options.attached ?? false,
-  parts: options.parts ?? [],
-});
-
 const planning = onePart([
   step("brief", "Write the brief", "done"),
   step("constraints", "List the constraints", "done"),
@@ -81,35 +45,6 @@ const planning = onePart([
   step("build", "Build the app"),
 ]);
 
-const planningFiles = [
-  file("problem_brief"),
-  file("constraints", "ready", { newVersion: true }),
-  file("approaches", "writing"),
-];
-
-/** The design and its rows: the mockup while it is drawn, the draft, and two concepts. */
-const design = (mockup: SidebarFileState) =>
-  file("design", "ready", {
-    parts: [
-      row("mockup", mockup, wording.design.mockupTab),
-      row("draft", "ready", wording.design.draftBadge),
-      row("concept-bold", "ready", wording.design.conceptTab(1, "Bold"), true),
-      row("concept-calm", "drawing", wording.design.conceptTab(2, "Calm")),
-    ],
-  });
-
-const buildingFiles = [
-  file("problem_brief"),
-  file("constraints"),
-  file("approaches"),
-  file("product_requirements"),
-  file("build_plan"),
-  design("ready"),
-  file("approval_package"),
-  file("menu.pdf", "ready", { name: "Spring menu.pdf", attached: true }),
-  file("user_manual", "writing"),
-];
-
 const building = onePart([
   step("brief", "Write the brief", "done"),
   step("requirements", "Write the requirements", "done"),
@@ -118,31 +53,23 @@ const building = onePart([
   step("manual", "Write the user manual", "running"),
 ]);
 
-// Holds what the page would: the file or app on the page and whether the sidebar is out, so a
+// Holds what the page would: whether the app is on the page and whether the sidebar is out, so a
 // story can be clicked through.
 function Clickable(args: ProjectSidebarViewProps) {
-  const [selected, setSelected] = useState(args.selectedFile);
   const [appOpen, setAppOpen] = useState(args.appOpen);
   const [open, setOpen] = useState(args.open);
   return (
     <ProjectSidebarView
       {...args}
-      selectedFile={selected}
       appOpen={appOpen}
       open={open}
       onOpenApp={() => {
-        setSelected(null);
         setAppOpen(true);
         args.onOpenApp();
       }}
       onToggleSidebar={() => {
         setOpen(!open);
         args.onToggleSidebar();
-      }}
-      onOpenFile={(fileId) => {
-        setSelected(fileId);
-        setAppOpen(false);
-        args.onOpenFile(fileId);
       }}
     />
   );
@@ -182,14 +109,9 @@ const meta = {
     open: true,
     drawer: false,
     plan: planning,
-    files: planningFiles,
-    selectedFile: "problem_brief",
     app: "not_built",
     appOpen: false,
     onToggleSidebar: fn(),
-    onOpenFile: fn(),
-    onPrintFile: fn(),
-    onRemoveFile: fn(),
     onAskFirst: fn(),
     onDecline: fn(),
     onOpenApp: fn(),
@@ -211,22 +133,19 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 /**
- * While planning: Plan lists its steps with where each stands, and Files the documents written so
- * far, one with a version not yet looked at and one still being written.
+ * While planning: the finished steps are quiet, the one being worked on is the brightest row and
+ * turns, and the steps ahead are fainter. There is no app yet.
  */
 export const Planning: Story = {};
 
+export const PlanningDark: Story = { globals: { mode: "dark" } };
+
 const buildingArgs = {
   plan: building,
-  files: buildingFiles,
-  selectedFile: "build_plan",
   app: "running",
 } satisfies Partial<ProjectSidebarViewProps>;
 
-/**
- * While building: under the design, its mockup, its draft and its concepts, one still being drawn;
- * an attached file is a row of its own.
- */
+/** While building: two steps run at once, and the app is up. */
 export const Building: Story = { args: buildingArgs };
 
 export const BuildingDark: Story = {
@@ -234,17 +153,14 @@ export const BuildingDark: Story = {
   globals: { mode: "dark" },
 };
 
-/** The app is starting: Live says so, and Open app shows it starting. */
+/** The app is starting: its line turns until it is up. */
 export const AppStarting: Story = {
   args: { ...buildingArgs, app: "starting" },
 };
 
-/**
- * The app is running and on the page: Live is marked as the open file would be. Open app puts it
- * on the page from wherever the person is.
- */
+/** The app is running and on the page: its line is marked. */
 export const AppOpen: Story = {
-  args: { ...buildingArgs, selectedFile: null, appOpen: true },
+  args: { ...buildingArgs, appOpen: true },
 };
 
 /** Nothing runs the app right now; opening it starts it again. */
@@ -258,25 +174,29 @@ export const AppFailedDark: Story = {
   globals: { mode: "dark" },
 };
 
-/** Open app puts the app on the page and marks Live; no file stays marked. */
+/** The app's line opens the app and is marked once it is on the page. */
 export const OpenApp: Story = {
   args: buildingArgs,
   play: async ({ canvasElement, args }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(
-      canvas.getByRole("button", { name: wording.projectShell.openApp }),
-    );
+    const line = canvas.getByRole("button", { name: words.appState.running });
+    await expect(line).toHaveAttribute("title", words.openApp);
+    await userEvent.click(line);
     await expect(args.onOpenApp).toHaveBeenCalled();
-    await expect(
-      canvas.getByRole("treeitem", { name: tab["build_plan"] ?? "" }),
-    ).not.toHaveAttribute("aria-current");
+    await expect(line).toHaveAttribute("data-current");
   },
 };
 
-/** A new project: no steps and no files yet, and no app. */
-export const NewProject: Story = {
-  args: { plan: [], files: [], selectedFile: null },
+/** Before there is an app there is no line for it: the plan is all the sidebar holds. */
+export const NoApp: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.queryByTitle(words.openApp)).toBeNull();
+  },
 };
+
+/** A new project: no steps yet, and no app. */
+export const NewProject: Story = { args: { plan: [] } };
 
 /** A plan in more than one part: each part's name heads its steps. */
 export const PlanInParts: Story = {
@@ -307,7 +227,7 @@ export const PlanInParts: Story = {
   },
 };
 
-/** Every state a step takes: to do, running, waiting on the person, done, failed, declined. */
+/** Every state a step takes: done, running, waiting on the person, failed, declined, to do. */
 export const StepStates: Story = {
   args: {
     plan: onePart([
@@ -321,31 +241,12 @@ export const StepStates: Story = {
   },
 };
 
-/**
- * Every state a file row takes: ready, open, a new version, waiting on the person, being written,
- * being drawn, failed.
- */
-export const FileStates: Story = {
-  args: {
-    files: [
-      file("problem_brief"),
-      file("constraints"),
-      file("approaches", "ready", { newVersion: true }),
-      file("product_requirements", "needs_you"),
-      file("build_plan", "writing"),
-      design("drawing"),
-      file("user_manual", "failed"),
-    ],
-    selectedFile: "constraints",
-  },
-};
-
-export const FileStatesDark: Story = {
-  args: { ...FileStates.args },
+export const StepStatesDark: Story = {
+  args: { ...StepStates.args },
   globals: { mode: "dark" },
 };
 
-/** A long file, step and project name are cut short with an ellipsis rather than wrapping. */
+/** A long step and project name are cut short with an ellipsis rather than wrapping. */
 export const LongNames: Story = {
   args: {
     project: "Bakery orders and wholesale delivery scheduling",
@@ -355,18 +256,38 @@ export const LongNames: Story = {
         "Interview the Saturday market stall owners about their orders",
         "running",
       ),
+      step(
+        "pricing",
+        "Set wholesale pricing tiers for cafés and restaurants",
+        "needs_you",
+      ),
     ]),
-    files: [
-      file("problem_brief"),
-      file("notes", "needs_you", {
-        name: "Interview notes from the Saturday market stall owners",
-      }),
-      file("pricing", "ready", {
-        name: "Wholesale pricing tiers for cafés and restaurants",
-        newVersion: true,
-      }),
-    ],
-    selectedFile: "pricing",
+  },
+};
+
+/**
+ * A long plan scrolls under the project's name, and the links stay below it, at the foot of what
+ * scrolls.
+ */
+export const LongPlan: Story = {
+  args: {
+    ...buildingArgs,
+    plan: onePart([
+      step("brief", "Write the brief", "done"),
+      step("constraints", "List the constraints", "done"),
+      step("approaches", "Compare approaches", "done"),
+      step("requirements", "Write the requirements", "done"),
+      step("research", "Research other bakeries", "declined"),
+      step("design", "Design the screens", "done"),
+      step("review", "Review the design", "done"),
+      step("build", "Build the app", "running"),
+      step("orders", "Add online cake orders"),
+      step("allergies", "Flag allergies on every order"),
+      step("ready", "Tell customers when a cake is ready"),
+      step("test", "Test the app with the counter staff"),
+      step("manual", "Write the user manual"),
+      step("launch", "Launch for the Saturday market"),
+    ]),
   },
 };
 
@@ -377,37 +298,63 @@ export const LongNames: Story = {
 export const Closed: Story = { args: { ...buildingArgs, open: false } };
 
 /**
- * Plan and Files are one tree with one tab stop, which lands on the open file. The arrows move
- * between rows; Left steps out to the file a part sits under, then to Files, then folds it.
+ * The plan is a tree with one tab stop, which lands on Plan. The arrows move between steps; Left
+ * steps out to Plan, then folds it, and Right opens it again.
  */
 export const Keyboard: Story = {
-  args: { ...buildingArgs, selectedFile: "mockup" },
+  args: buildingArgs,
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    const mockup = canvas.getByRole("treeitem", {
-      name: wording.design.mockupTab,
-    });
-    while (document.activeElement !== mockup) await userEvent.tab();
-    await userEvent.keyboard("{ArrowDown}");
+    const plan = canvas.getByRole("treeitem", { name: words.plan });
+    while (document.activeElement !== plan) await userEvent.tab();
+    await userEvent.keyboard("{ArrowDown}{ArrowDown}");
     await expect(
-      canvas.getByRole("treeitem", { name: wording.design.draftBadge }),
+      canvas.getByRole("treeitem", { name: /^Write the requirements/ }),
     ).toHaveFocus();
     await userEvent.keyboard("{ArrowLeft}");
-    await expect(
-      canvas.getByRole("treeitem", { name: designName }),
-    ).toHaveFocus();
-    await userEvent.keyboard("{ArrowLeft}{ArrowLeft}");
-    const files = canvas.getByRole("treeitem", {
-      name: wording.projectShell.files,
-    });
-    await expect(files).toHaveFocus();
-    await expect(files).toHaveAttribute("aria-expanded", "false");
+    await expect(plan).toHaveFocus();
+    await userEvent.keyboard("{ArrowLeft}");
+    await expect(plan).toHaveAttribute("aria-expanded", "false");
+    await userEvent.keyboard("{ArrowRight}");
+    await expect(plan).toHaveAttribute("aria-expanded", "true");
   },
 };
 
 /**
- * A step's menu, opened from the keyboard: Enter on a step opens it. Ask me first is ticked on a
- * step set to ask; Decline shows only on an optional step.
+ * Folded, Plan still says what its steps would: it shimmers while a step runs, and carries the dot
+ * while one waits on the person, which says more.
+ */
+export const FoldedPlan: Story = {
+  args: { ...buildingArgs },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const plan = canvas.getByRole("treeitem", { name: words.plan });
+    await userEvent.click(within(plan).getByText(words.plan));
+    await expect(plan).toHaveAttribute("aria-expanded", "false");
+    await expect(plan.querySelector('[data-row="branch"]')).toHaveAttribute(
+      "data-state",
+      "running",
+    );
+  },
+};
+
+export const FoldedPlanNeedsYou: Story = {
+  args: { ...PlanInParts.args },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const plan = canvas.getByRole("treeitem", { name: words.plan });
+    await userEvent.click(within(plan).getByText(words.plan));
+    await expect(plan.querySelector('[data-row="branch"]')).toHaveAttribute(
+      "data-state",
+      "needs_you",
+    );
+  },
+};
+
+/**
+ * A step's row shows what will happen to it: a step set to pause carries the pause mark, a skipped
+ * step is struck through. Its menu, from Enter on the row, says what each choice will do: on a step
+ * that pauses, Don't pause; Skip shows only on an optional step.
  */
 export const StepMenu: Story = {
   play: async ({ canvasElement, args }) => {
@@ -415,49 +362,57 @@ export const StepMenu: Story = {
     const requirements = canvas.getByRole("treeitem", {
       name: /^Write the requirements/,
     });
+    await expect(requirements).toHaveAccessibleName(
+      `Write the requirements, ${words.stepState.to_do}, ${words.pausesFirst}`,
+    );
     await expect(requirements).toHaveAttribute("aria-haspopup", "menu");
     requirements.focus();
     await userEvent.keyboard("{Enter}");
     const page = within(document.body);
-    const askFirst = await page.findByRole("menuitemcheckbox", {
-      name: wording.conversation.plan.askFirst,
+    const dontPause = await page.findByRole("menuitem", {
+      name: words.stepMenu.dontPause,
     });
-    await expect(askFirst).toHaveAttribute("aria-checked", "true");
     await expect(
-      page.queryByRole("menuitemcheckbox", {
-        name: wording.projectShell.decline,
-      }),
+      page.queryByRole("menuitem", { name: words.stepMenu.skip }),
     ).toBeNull();
-    await userEvent.click(askFirst);
+    await userEvent.click(dontPause);
     await expect(args.onAskFirst).toHaveBeenCalledWith("requirements", false);
     await expect(requirements).toHaveFocus();
   },
 };
 
-/**
- * An attached file's menu, opened by Shift+F10: Remove from project asks once more before it
- * removes. A written document's menu prints it instead.
- */
-export const FileMenu: Story = {
-  args: buildingArgs,
+/** An optional step's menu offers to skip it; once skipped, it offers to keep it. */
+export const SkipMenu: Story = {
+  args: {
+    plan: onePart([
+      step("brief", "Write the brief", "done"),
+      step("research", "Research other bakeries", "to_do", { declined: false }),
+      step("visit", "Visit the market stalls", "to_do", { declined: true }),
+    ]),
+  },
   play: async ({ canvasElement, args }) => {
     const canvas = within(canvasElement);
-    const attached = canvas.getByRole("treeitem", { name: "Spring menu.pdf" });
-    attached.focus();
-    await userEvent.keyboard("{Shift>}{F10}{/Shift}");
+    const visit = canvas.getByRole("treeitem", {
+      name: `Visit the market stalls, ${words.skipped}`,
+    });
+    visit.focus();
+    await userEvent.keyboard("{Enter}");
     const page = within(document.body);
     await userEvent.click(
-      await page.findByRole("menuitem", {
-        name: wording.projectShell.removeFromProject,
-      }),
+      await page.findByRole("menuitem", { name: words.stepMenu.keep }),
     );
-    await expect(args.onRemoveFile).not.toHaveBeenCalled();
+    await expect(args.onDecline).toHaveBeenCalledWith("visit", false);
+    const research = canvas.getByRole("treeitem", {
+      name: /^Research other bakeries/,
+    });
+    research.focus();
+    await userEvent.keyboard("{Enter}");
     await expect(
-      page.getByRole("menuitem", { name: wording.removeAttachment.confirm }),
+      await page.findByRole("menuitem", { name: words.stepMenu.skip }),
     ).toBeVisible();
     await expect(
-      page.queryByRole("menuitem", { name: wording.printDocument }),
-    ).toBeNull();
+      page.getByRole("menuitem", { name: words.stepMenu.pause }),
+    ).toBeVisible();
   },
 };
 
