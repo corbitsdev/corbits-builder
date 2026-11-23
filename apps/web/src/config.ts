@@ -476,29 +476,25 @@ export const wording = {
       failed: "failed",
       declined: "declined",
     },
-    /** A row's menu: a step's settings, or what can be done with a file. */
+    /** A step's menu: what can be done to it, each said as what choosing it will do. */
     rowMenu: (name: string) => `More for ${name}`,
-    decline: "Decline",
-    removeFromProject: "Remove from project…",
-    files: "Files",
-    noFiles: "None yet",
-    live: "Live",
-    /** How the project's app stands, beside Live. */
+    stepMenu: {
+      pause: "Pause before this step",
+      dontPause: "Don't pause",
+      skip: "Skip this step",
+      keep: "Keep this step",
+    },
+    /** Read after a step's name, and shown on its pause mark. */
+    pausesFirst: "pauses for you before it starts",
+    skipped: "skipped",
+    /** How the project's app stands, as the line under the plan says it. */
     appState: {
-      not_built: "Not built",
-      starting: "Starting…",
-      running: "Running",
-      stopped: "Stopped",
-      failed: "Failed",
+      starting: "App starting",
+      running: "App running",
+      stopped: "App stopped",
+      failed: "App failed to start",
     },
     openApp: "Open app",
-    /** Read after a file's name where its mark says more than the name does. */
-    fileState: {
-      needs_you: "needs you",
-      writing: "being written",
-      drawing: "being drawn",
-      failed: "could not be written",
-    },
     projectSettings: "Project settings",
     allProjects: "All projects",
     workspaceSettings: "Workspace settings",

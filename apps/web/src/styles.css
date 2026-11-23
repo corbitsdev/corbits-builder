@@ -332,7 +332,7 @@ button[aria-disabled="true"] {
    does not shift the page. In rem, as the library sizes its own rail, so it
    grows with the reader's text size. */
 :root {
-  --rail-width: 16.25rem;
+  --rail-width: 14rem;
 }
 
 [data-slot="sidebar"]:not([data-collapsed="true"]) {
