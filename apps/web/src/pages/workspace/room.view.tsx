@@ -296,6 +296,7 @@ export function RoomView({
     // height stays set between renders so the view's foot never jumps while it is read again.
     if (box === null || box === undefined) {
       page.style.removeProperty("--box-height");
+      page.style.removeProperty("--dock-height");
       return;
     }
     // The box at rest: while the chat is pulled up over the view, the view keeps the foot it had.
@@ -305,10 +306,22 @@ export function RoomView({
       )
         return;
       page.style.setProperty("--box-height", `${String(box.offsetHeight)}px`);
+      // The box with the pill or handle standing above it, which the running app ends above, as it
+      // cannot run on beneath them the way a page does.
+      const grip = box.querySelector<HTMLElement>('[data-slot="chat-grip"]');
+      const top = box.getBoundingClientRect().top;
+      const reach =
+        grip === null ? 0 : Math.max(0, top - grip.getBoundingClientRect().top);
+      page.style.setProperty(
+        "--dock-height",
+        `${String(Math.ceil(box.offsetHeight + reach))}px`,
+      );
     };
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(box);
+    const grip = box.querySelector('[data-slot="chat-grip"]');
+    if (grip !== null) observer.observe(grip);
     return () => observer.disconnect();
   });
   const leaveDrawer =

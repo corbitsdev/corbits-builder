@@ -146,6 +146,15 @@ summary.checklistRow:hover {
   overflow: auto;
 }
 
+/* The running app ends above the prompt box and what stands on it, so none of it is ever covered;
+   the box sits on the view's ground beneath it. */
+.app > [data-slot="device-preview"][data-fill] {
+  margin-bottom: calc(var(--dock-height, 0px) + var(--space-2));
+  border-bottom: 1px solid var(--wb-border);
+  /* Nothing floats over it, so its bar centres on the whole frame. */
+  --box-height: 0px;
+}
+
 .app > [data-slot="sketching"] {
   justify-content: safe center;
   padding-bottom: calc(var(--space-6) + var(--box-height, 0px));
