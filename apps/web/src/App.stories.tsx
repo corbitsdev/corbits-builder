@@ -1,45 +1,13 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { fn } from "storybook/test";
+import { expect, fn, userEvent, within } from "storybook/test";
+import { wording } from "./config.ts";
 import {
   AppView,
   BootView,
   NoProjectOpen,
   ProjectLoadFailure,
   WhatsNewDialog,
-  type RailProject,
 } from "./App.view.tsx";
-import {
-  ProjectMenuView,
-  type ProjectMenuViewProps,
-} from "./pages/project-menu.view.tsx";
-import { WorkspaceMenuView } from "./workspace-menu.view.tsx";
-
-const project = (id: string, title: string, open = false): RailProject => ({
-  id,
-  title,
-  open,
-});
-
-const projects = [
-  project("bakery", "Bakery orders"),
-  project("clinic", "Clinical trial intake"),
-  project("dispatch", "Field service dispatch"),
-  project("habits", "Habit tracker"),
-];
-
-const menu: Omit<ProjectMenuViewProps, "trigger"> = {
-  align: "start",
-  archived: false,
-  shipped: false,
-  onShowInfo: fn(),
-  onRename: fn(),
-  onExport: fn(),
-  onToggleShipped: fn(),
-  onToggleArchived: fn(),
-  onDelete: fn(),
-  infoDialog: null,
-  exportDialog: null,
-};
 
 const meta = {
   title: "Screens/Shell/App",
@@ -48,30 +16,18 @@ const meta = {
   args: {
     current: "newProject",
     roomOpen: false,
-    rail: {
-      collapsed: false,
-      onToggleCollapsed: fn(),
+    sidebar: {
+      name: "Acme product team",
+      open: true,
+      drawer: false,
+      needsProvider: false,
+      onToggleSidebar: fn(),
       onNewProject: fn(),
-      onLibrary: fn(),
-      onBack: fn(),
-      onSettings: fn(),
-      projects,
-      onOpenProject: fn(),
+      onConnectModel: fn(),
+      onAllProjects: fn(),
+      onWorkspaceSettings: fn(),
+      onAccount: fn(),
     },
-    workspaceMenu: (
-      <WorkspaceMenuView
-        name="Acme product team"
-        workspaces={[
-          { id: "acme", name: "Acme product team", open: true },
-          { id: "side", name: "Side projects", open: false },
-        ]}
-        onOpen={fn()}
-        onCreate={fn()}
-      />
-    ),
-    projectMenu: (_projectId, trigger) => (
-      <ProjectMenuView {...menu} trigger={trigger} />
-    ),
     hub: { state: "answering" },
     setupFault: null,
     page: <p>The page on screen.</p>,
@@ -84,27 +40,16 @@ type Story = StoryObj<typeof meta>;
 
 export const SignedIn: Story = {};
 
-/** An empty workspace, and any workspace whose list is unread or could not be read: the rail draws them the same. */
-export const NoProjects: Story = {
-  args: { rail: { ...meta.args.rail, projects: [] } },
-};
+export const SignedInDark: Story = { globals: { mode: "dark" } };
 
-export const ProjectOpen: Story = {
-  args: {
-    current: "project",
-    rail: {
-      ...meta.args.rail,
-      projects: [
-        project("bakery", "Bakery orders", true),
-        ...projects.slice(1),
-      ],
-    },
-  },
+/** No model is connected yet, so the first steps offer to connect one. */
+export const NeedsModel: Story = {
+  args: { sidebar: { ...meta.args.sidebar, needsProvider: true } },
 };
 
 /**
- * A project's room on the page draws its own sidebar where the rail would be, so the rail steps
- * aside and the canvas is only the ground the room stands on.
+ * A project's room on the page draws its own sidebar, so the workspace's steps aside and the
+ * canvas is only the ground the room stands on.
  */
 export const RoomOpen: Story = {
   args: { current: "project", roomOpen: true },
@@ -112,25 +57,40 @@ export const RoomOpen: Story = {
 
 export const Library: Story = { args: { current: "library" } };
 
-/** Settings adds a way back to where it was opened from. */
 export const Settings: Story = { args: { current: "settings" } };
 
-export const RailCollapsed: Story = {
-  args: { rail: { ...meta.args.rail, collapsed: true } },
+/** Put away, the sidebar leaves only its name, and the page starts below it. */
+export const SidebarClosed: Story = {
+  args: { sidebar: { ...meta.args.sidebar, open: false } },
 };
 
-/** A phone-width window starts with the icon rail, so the page keeps the screen. */
+/** A narrow window: the sidebar waits as a drawer behind its name. */
 export const Narrow: Story = {
-  ...RailCollapsed,
-  globals: { viewport: "mobile1" },
+  args: { sidebar: { ...meta.args.sidebar, open: false, drawer: true } },
+  globals: { viewport: { value: "mobile1" } },
 };
 
-/** Opened at phone width, the full rail lies over the page. */
-export const NarrowRailOpen: Story = {
-  globals: { viewport: "mobile1" },
+/** Opened in a narrow window, the sidebar lies over the page. */
+export const NarrowDrawer: Story = {
+  args: { sidebar: { ...meta.args.sidebar, open: true, drawer: true } },
+  globals: { viewport: { value: "mobile1" } },
 };
 
-/** The hub stopped answering; the rail keeps the list it last read. */
+/** What's new opens from the first steps. */
+export const OpensWhatsNew: Story = {
+  play: async ({ canvasElement }) => {
+    await userEvent.click(
+      within(canvasElement).getByRole("button", {
+        name: new RegExp(wording.shell.whatsNew),
+      }),
+    );
+    await expect(
+      await within(document.body).findByRole("dialog"),
+    ).toBeInTheDocument();
+  },
+};
+
+/** The hub stopped answering. */
 export const HubNotAnswering: Story = {
   args: { hub: { state: "notAnswering" } },
 };

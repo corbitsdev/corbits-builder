@@ -442,12 +442,17 @@ export const wording = {
     noProjectTitle: "No project open",
     noProjectLead:
       "Pick a project from the list. Its outputs open from the conversation.",
+    /** The sidebar outside a project, as a screen reader names it. */
+    sidebar: "Workspace",
+    /** The first steps in Builder, under the new project. */
+    getStarted: "Get started",
+    connectModel: "Connect a model",
   },
   /** What frames an open project: its name and sidebar top left. */
   projectShell: {
-    /** The project's name opens and closes its sidebar; the shortcut does the same. */
-    openSidebar: "Open the project sidebar",
-    closeSidebar: "Close the project sidebar",
+    /** The sidebar's name opens and closes it; the shortcut does the same. */
+    openSidebar: "Open the sidebar",
+    closeSidebar: "Close the sidebar",
     shortcut: { mac: "⌘\\", other: "Ctrl+\\" },
     sidebar: "Project",
     groups: {

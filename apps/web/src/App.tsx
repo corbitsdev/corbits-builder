@@ -16,11 +16,9 @@ import { Auth } from "./pages/auth.jsx";
 import { InvitationAccept } from "./pages/invite-accept.jsx";
 import { ModelSetup } from "./pages/model-setup.tsx";
 import { ProjectLibrary } from "./pages/project-library.jsx";
-import { ProjectMenu } from "./pages/project-menu.jsx";
 import { Projects } from "./pages/projects.jsx";
 import { Settings } from "./pages/settings/settings.jsx";
 import { StageWorkspace } from "./pages/workspace/index.tsx";
-import { WorkspaceMenu } from "./workspace-menu.tsx";
 
 export function App() {
   const { resolvedMode } = useTheme();
@@ -42,14 +40,6 @@ export function App() {
     <>
       <AppView
         {...app.view}
-        workspaceMenu={<WorkspaceMenu onOpen={app.onOpenWorkspace} />}
-        projectMenu={(projectId, trigger) => (
-          <ProjectMenu
-            {...app.menuOf(projectId)}
-            align="start"
-            trigger={trigger}
-          />
-        )}
         page={app.page === null ? null : shellPage(app.page)}
       />
       {/* Outside the .app grid: its section would otherwise take the canvas's row. */}

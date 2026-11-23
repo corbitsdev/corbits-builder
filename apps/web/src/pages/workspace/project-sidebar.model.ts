@@ -25,16 +25,12 @@ import type {
 } from "../project-menu.model.ts";
 import type { PaneDocument } from "./artifact-pane.tsx";
 import type { DesignConcept } from "./design-concept.ts";
+import { SIDEBAR_KEY, parseSidebarOpen } from "../../sidebar-setting.ts";
 import { humanFault } from "./human-fault.ts";
 import { liveAppQuery } from "./live-app.model.ts";
 import { projectOutline } from "./project-outline.ts";
 import type { ProjectSidebarViewProps } from "./project-sidebar.view.tsx";
 import { LIVE_TAB } from "./tab-follow.ts";
-
-const OPEN_KEY = "builder-project-sidebar";
-
-const parseOpen = (raw: string): "open" | "closed" | null =>
-  raw === "open" || raw === "closed" ? raw : null;
 
 /** Where the sidebar leads outside the room. */
 export type SidebarWays = {
@@ -78,7 +74,8 @@ export function useProjectSidebar(input: ProjectSidebarInput): {
   projectSettings: ProjectInfoDialogProps | null;
 } {
   const { projectId, shown } = input;
-  const open = useStoredPreference(OPEN_KEY, parseOpen, "open") === "open";
+  const open =
+    useStoredPreference(SIDEBAR_KEY, parseSidebarOpen, "open") === "open";
   const [settingsOpen, setSettingsOpen] = useState(false);
   const app = useQuery({ ...liveAppQuery(projectId), enabled: input.appShown });
   const outline = projectOutline({
@@ -122,7 +119,7 @@ export function useProjectSidebar(input: ProjectSidebarInput): {
       app: outline.app,
       appOpen: shown === LIVE_TAB,
       onToggleSidebar: () =>
-        writeStoredPreference(OPEN_KEY, open ? "closed" : "open"),
+        writeStoredPreference(SIDEBAR_KEY, open ? "closed" : "open"),
       onAskFirst: (stepId, askFirst) =>
         void change(() => setPlanStepAskFirst(projectId, stepId, askFirst)),
       onDecline: (stepId, declined) =>

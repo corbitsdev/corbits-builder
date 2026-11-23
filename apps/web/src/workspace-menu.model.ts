@@ -26,18 +26,21 @@ export type WorkspaceMenuProps = {
   onOpen: (workspaceId: string) => void;
 };
 
+/** The person's workspaces and which one is open, as the menu and the sidebar read them. */
+export const workspacesQuery = {
+  queryKey: keys.workspaces,
+  queryFn: async () => ({
+    list: await listWorkspaces(),
+    openId: await workspaceTenantId(),
+  }),
+};
+
 export function useWorkspaceMenu({ onOpen }: WorkspaceMenuProps): {
   view: WorkspaceMenuViewProps;
   /** What the dialog that names a new workspace needs while it is up. */
   createDialog: CreateWorkspaceProps | null;
 } {
-  const read = useQuery({
-    queryKey: keys.workspaces,
-    queryFn: async () => ({
-      list: await listWorkspaces(),
-      openId: await workspaceTenantId(),
-    }),
-  });
+  const read = useQuery(workspacesQuery);
   const [naming, setNaming] = useState(false);
   const listed = read.data;
   const open = listed?.list.find((workspace) => workspace.id === listed.openId);

@@ -785,7 +785,7 @@ export const NarrowDrawerDark: Story = {
 
 /** Opening the app from the drawer puts the drawer away and shows the app. */
 export const NarrowDrawerOpensApp: Story = {
-  args: { ...appArgs, sidebar: appSidebar("running") },
+  args: { ...withDocuments, ...appArgs, sidebar: appSidebar("running") },
   globals: { viewport: { value: "mobile1" } },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);

@@ -1,34 +1,12 @@
 /**
- * The app shell as it looks: the rail on the left, and beside it the canvas
- * with its notices and the page on screen. The rail carries navigation only:
- * what the project is doing shows in the workspace. The parts that read the
- * hub (the workspace menu, each project's options and the page) arrive as
- * slots, so any state of the shell can be drawn without one.
+ * The app shell as it looks: outside a project the workspace sidebar on the
+ * left, and beside it the canvas with its notices and the page on screen. A
+ * project's room draws its own sidebar. The page, which reads the hub, arrives
+ * as a slot, so any state of the shell can be drawn without one.
  */
-import { useState, type ReactElement, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { toast } from "sonner";
-import {
-  ArrowLeft,
-  Ellipsis,
-  LayoutGrid,
-  Plus,
-  Settings as SettingsIcon,
-} from "lucide-react";
-import {
-  Avatar,
-  Badge,
-  BootScreen,
-  Button as UiButton,
-  Sidebar,
-  SidebarCollapseToggle,
-  SidebarContent,
-  SidebarFooter,
-  SidebarHeader,
-  SidebarItem,
-  SidebarItemRow,
-  SidebarSection,
-  Tabs,
-} from "@corbits/react-ui";
+import { BootScreen, Button as UiButton, Tabs } from "@corbits/react-ui";
 import {
   Dialog,
   DialogBody,
@@ -39,44 +17,24 @@ import {
 import { wording } from "./config.ts";
 import styles from "./App.module.css";
 import { Banner, Button, InlineNote, Mark } from "./components.jsx";
-
-/** A project in progress, as its row in the rail. */
-export type RailProject = {
-  id: string;
-  title: string;
-  /** The project on screen; its row is marked. */
-  open: boolean;
-};
+import {
+  WorkspaceSidebarView,
+  type WorkspaceSidebarViewProps,
+} from "./workspace-sidebar.view.tsx";
 
 /** Whether the hub is answering. */
 export type HubHealth = { state: "answering" | "notAnswering" };
 
 export type AppViewProps = {
   /**
-   * The place on screen: its rail entry is marked, and an open project fills
+   * The place on screen: its sidebar row is marked, and an open project fills
    * the canvas. Null when the address names none of them.
    */
   current: "newProject" | "library" | "project" | "settings" | null;
-  /** A project's room is on the page, and its own sidebar stands where the rail would. */
+  /** A project's room is on the page, and its own sidebar stands where the workspace's would. */
   roomOpen: boolean;
-  rail: {
-    /** An icon rail that keeps every control and its name. */
-    collapsed: boolean;
-    onToggleCollapsed: () => void;
-    onNewProject: () => void;
-    onLibrary: () => void;
-    /** Leaves Settings for where it was opened from; offered while Settings is on screen. */
-    onBack: () => void;
-    /** The gear: opens Settings, and leaves it when it is already on screen. */
-    onSettings: () => void;
-    /** The projects still in progress, most recent first. */
-    projects: readonly RailProject[];
-    onOpenProject: (projectId: string) => void;
-  };
-  /** The rail's top: the open workspace and the person's others. */
-  workspaceMenu: ReactNode;
-  /** A rail project's options menu, opened by the trigger the rail draws for it. */
-  projectMenu: (projectId: string, trigger: ReactElement) => ReactNode;
+  /** The sidebar outside a project, all but its marked row and What's new, which the shell keeps. */
+  sidebar: Omit<WorkspaceSidebarViewProps, "current" | "onWhatsNew">;
   hub: HubHealth;
   /** Why setting up the workspace did not finish. */
   setupFault: string | null;
@@ -89,9 +47,7 @@ export type AppViewProps = {
 export function AppView({
   current,
   roomOpen,
-  rail,
-  workspaceMenu,
-  projectMenu,
+  sidebar,
   hub,
   setupFault,
   page,
@@ -102,12 +58,10 @@ export function AppView({
     <>
       <div className={styles.app} data-room={roomOpen ? "" : undefined}>
         {roomOpen ? null : (
-          <Rail
-            current={current}
-            rail={rail}
-            workspaceMenu={workspaceMenu}
-            projectMenu={projectMenu}
-            onOpenWhatsNew={() => setWhatsNewOpen(true)}
+          <WorkspaceSidebarView
+            {...sidebar}
+            current={current === "project" ? null : current}
+            onWhatsNew={() => setWhatsNewOpen(true)}
           />
         )}
 
@@ -145,139 +99,6 @@ function HubNotice({ hub }: { hub: HubHealth }) {
   if (hub.state === "notAnswering")
     return <Banner tone="error" title={wording.hub.notAnswering} />;
   return null;
-}
-
-// The library's collapsed-rail label class: a project row's name hides
-// in the icon rail exactly as a SidebarItem's does.
-const RAIL_LABEL_CLASS = "group-data-[collapsed=true]/sidebar:sr-only";
-
-/**
- * The rail down the left.
- *
- * A new project and the Projects page, then, under a rule, the projects still
- * in progress, with the open one marked and its options menu on it, above;
- * Settings, which holds the account, below.
- * Collapsed, it is an icon rail that keeps every control and its name.
- */
-function Rail({
-  current,
-  rail: {
-    collapsed,
-    onToggleCollapsed,
-    onNewProject,
-    onLibrary,
-    onBack,
-    onSettings,
-    projects,
-    onOpenProject,
-  },
-  workspaceMenu,
-  projectMenu,
-  onOpenWhatsNew,
-}: Pick<AppViewProps, "current" | "rail" | "workspaceMenu" | "projectMenu"> & {
-  onOpenWhatsNew: () => void;
-}) {
-  const inSettings = current === "settings";
-  return (
-    <Sidebar id="app-sidebar" className={styles.sidebar} collapsed={collapsed}>
-      <SidebarHeader>
-        {workspaceMenu}
-        <SidebarCollapseToggle
-          collapsed={collapsed}
-          onToggle={onToggleCollapsed}
-        />
-      </SidebarHeader>
-      <SidebarContent>
-        <ul className={styles.list}>
-          <SidebarItem
-            asChild
-            active={current === "newProject"}
-            icon={<Plus />}
-          >
-            <button
-              type="button"
-              className={styles.newProject}
-              onClick={onNewProject}
-            >
-              {wording.shell.newProject}
-            </button>
-          </SidebarItem>
-          <SidebarItem
-            asChild
-            active={current === "library"}
-            icon={<LayoutGrid />}
-          >
-            <button type="button" onClick={onLibrary}>
-              {wording.shell.projects}
-            </button>
-          </SidebarItem>
-          {inSettings ? (
-            <SidebarItem asChild icon={<ArrowLeft />}>
-              <button type="button" onClick={onBack}>
-                {wording.shell.back}
-              </button>
-            </SidebarItem>
-          ) : null}
-        </ul>
-        {projects.length > 0 ? (
-          <SidebarSection
-            label={wording.shell.inProgress}
-            className={styles.projects}
-          >
-            {projects.map((item) => (
-              <SidebarItemRow
-                key={item.id}
-                selected={item.open}
-                onSelect={() => onOpenProject(item.id)}
-                leading={
-                  <Avatar
-                    className={styles.initial}
-                    initials={item.title.trim().charAt(0)}
-                    label={item.title}
-                    shape="square"
-                    size="xs"
-                  />
-                }
-                name={<span className={RAIL_LABEL_CLASS}>{item.title}</span>}
-                action={projectMenu(
-                  item.id,
-                  <UiButton
-                    variant="ghost"
-                    size="icon"
-                    className={styles.rowMenu}
-                    aria-label={wording.shell.projectOptions(item.title)}
-                  >
-                    <Ellipsis aria-hidden="true" />
-                  </UiButton>,
-                )}
-              />
-            ))}
-          </SidebarSection>
-        ) : null}
-      </SidebarContent>
-      <SidebarFooter>
-        <ul className={styles.list}>
-          <SidebarItem asChild>
-            <button type="button" onClick={onOpenWhatsNew}>
-              <span className={styles.whatsNewItem}>
-                <span>{wording.shell.whatsNew}</span>
-                <Badge tone="neutral">{wording.shell.whatsNewBadge}</Badge>
-              </span>
-            </button>
-          </SidebarItem>
-          <SidebarItem asChild active={inSettings} icon={<SettingsIcon />}>
-            <button
-              type="button"
-              aria-pressed={inSettings}
-              onClick={onSettings}
-            >
-              {wording.shell.settings}
-            </button>
-          </SidebarItem>
-        </ul>
-      </SidebarFooter>
-    </Sidebar>
-  );
 }
 
 export type BootViewProps = {

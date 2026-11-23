@@ -18,12 +18,11 @@ import {
   type ComponentProps,
 } from "react";
 import { toast } from "sonner";
-import { wording } from "./config.ts";
+import { productName, wording } from "./config.ts";
 import { notify } from "./notice.ts";
 import {
   ensureWorkspace,
   getHubSession,
-  openWorkspace,
   signOutHub,
   workspaceTenantId,
   type HubUser,
@@ -35,12 +34,10 @@ import { queryClient } from "./queries/client.ts";
 import { keys } from "./queries/keys.ts";
 import { firstRunScreen, type HubAuthState } from "./first-run.ts";
 import {
-  clearModelSetupDeferral,
   modelSetupDeferred,
   needsModelSetup,
 } from "./pages/model-setup.model.ts";
 import type { ProjectLibraryProps } from "./pages/project-library.model.ts";
-import type { ProjectMenuHost } from "./pages/project-menu.model.ts";
 import type { ProjectsProps } from "./pages/projects.model.ts";
 import type { SettingsProps } from "./pages/settings/settings.model.ts";
 import type { SettingsTab } from "./pages/settings/settings.view.tsx";
@@ -53,6 +50,7 @@ import {
   writeProjectUrl,
 } from "./routes.ts";
 import { useSidebar } from "./sidebar-setting.ts";
+import { workspacesQuery } from "./workspace-menu.model.ts";
 import { singleFlight } from "./single-flight.ts";
 import type {
   AppViewProps,
@@ -77,11 +75,7 @@ export type AppScreen =
   | { screen: "invite"; invitationId: string }
   | {
       screen: "shell";
-      view: Omit<AppViewProps, "workspaceMenu" | "projectMenu" | "page">;
-      /** What the options menu of a project in the rail needs. */
-      menuOf: (projectId: string) => ProjectMenuHost;
-      /** Makes another of the person's workspaces the open one. */
-      onOpenWorkspace: (workspaceId: string) => void;
+      view: Omit<AppViewProps, "page">;
       /** Null when the address names no page. */
       page: ShellPage | null;
     };
@@ -186,12 +180,7 @@ export function useApp(): AppScreen {
     writeProjectUrl(next === "project" ? selected : null);
     setShownView(next);
   };
-  // Where Settings was opened from, so its back control and the gear's
-  // toggle-to-close return there rather than always landing on the projects
-  // list.
-  const [settingsFrom, setSettingsFrom] = useState<View>("projects");
   const openSettings = (tab?: SettingsTab, focusId?: string) => {
-    setSettingsFrom(view === "settings" ? settingsFrom : view);
     setView("settings");
     if (typeof window !== "undefined" && tab !== undefined) {
       const url = new URL(window.location.href);
@@ -214,11 +203,6 @@ export function useApp(): AppScreen {
     if (next === "settings") openSettings();
     else setView(next);
   };
-  const closeSettings = () => {
-    setSettingsTab(undefined);
-    setFocusPreference(undefined);
-    setView(settingsFrom === "settings" ? "projects" : settingsFrom);
-  };
 
   const sidebar = useSidebar();
   const [auth, setAuth] = useState<HubAuthState>("unknown");
@@ -239,6 +223,11 @@ export function useApp(): AppScreen {
     queryKey: keys.projects,
     queryFn: readProjects,
     refetchInterval: FOLD_POLL_MS,
+    enabled: auth === "signed-in",
+  });
+  // The open workspace's name heads the sidebar outside a project.
+  const workspacesRead = useQuery({
+    ...workspacesQuery,
     enabled: auth === "signed-in",
   });
   const projects = projectsRead.data?.projects ?? NO_PROJECTS;
@@ -319,17 +308,6 @@ export function useApp(): AppScreen {
       ),
     );
   }, []);
-
-  // Another workspace is another tenant: nothing read under the last one
-  // holds, and its own first-run setup (a model key) is asked for again.
-  const switchWorkspace = (workspaceId: string) => {
-    openWorkspace(workspaceId);
-    clearModelSetupDeferral();
-    setSetupLater(false);
-    setSelected(null);
-    setView("projects");
-    void queryClient.resetQueries();
-  };
 
   useEffect(() => {
     const readSession = async () => {
@@ -463,34 +441,6 @@ export function useApp(): AppScreen {
   if (view === "invite" && urlInvite !== null)
     return { screen: "invite", invitationId: urlInvite };
 
-  const inProject = view === "project" && openProjectSummary !== null;
-  // A shipped project stays listed while open, so its options menu stays reachable. An archived
-  // one lives only under Projects; its workspace banner restores it.
-  const listed = projects
-    .filter(
-      (item) =>
-        !item.archivedAt &&
-        (item.stage !== "shipped" ||
-          (inProject && item.id === openProjectSummary.id)),
-    )
-    .sort((a, b) => b.lastActivityAt.localeCompare(a.lastActivityAt));
-
-  const menuOf = (projectId: string): ProjectMenuHost => ({
-    project: listed.find((item) => item.id === projectId)!,
-    onChanged: () => void refresh(),
-    onError: reportProjectError,
-    onNotice: notify,
-    ...(inProject && projectId === openProjectSummary.id
-      ? {
-          onDeleted: () => {
-            setSelected(null);
-            navigate("projects");
-            void refresh();
-          },
-        }
-      : {}),
-  });
-
   const page = (): ShellPage | null => {
     if (view === "projects")
       return {
@@ -568,34 +518,37 @@ export function useApp(): AppScreen {
     view: {
       current: PLACES[view],
       roomOpen: shown?.name === "project",
-      rail: {
-        collapsed: sidebar.collapsed,
-        onToggleCollapsed: sidebar.toggle,
+      sidebar: {
+        name:
+          workspacesRead.data?.list.find(
+            (workspace) => workspace.id === workspacesRead.data.openId,
+          )?.name ?? productName,
+        open: sidebar.open,
+        drawer: sidebar.drawer,
+        needsProvider:
+          providersRead.data !== undefined && needsModelSetup(providers),
+        onToggleSidebar: sidebar.toggle,
         onNewProject: () => {
           sidebar.leave();
           navigate("projects");
         },
-        onLibrary: () => {
+        // Back to the first-run screen that connects a model.
+        onConnectModel: () => {
+          sidebar.leave();
+          setSetupLater(false);
+        },
+        onAllProjects: () => {
           sidebar.leave();
           navigate("library");
         },
-        onBack: () => {
+        onWorkspaceSettings: () => {
           sidebar.leave();
-          closeSettings();
+          openSettings();
         },
-        onSettings: () => {
+        // The account is at the foot of Preferences.
+        onAccount: () => {
           sidebar.leave();
-          if (view === "settings") closeSettings();
-          else navigate("settings");
-        },
-        projects: listed.map((item) => ({
-          id: item.id,
-          title: item.title,
-          open: inProject && item.id === openProjectSummary.id,
-        })),
-        onOpenProject: (projectId) => {
-          sidebar.leave();
-          openProject(projectId);
+          openSettings("preferences");
         },
       },
       hub: { state: offline ? "notAnswering" : "answering" },
@@ -606,8 +559,6 @@ export function useApp(): AppScreen {
           preferenceId ?? wording.whatsNew.features.approvals.id,
         ),
     },
-    menuOf,
-    onOpenWorkspace: switchWorkspace,
     page: shown,
   };
 }
