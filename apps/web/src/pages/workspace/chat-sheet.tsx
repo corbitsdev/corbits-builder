@@ -28,7 +28,9 @@ const copy = wording.promptBox;
 /** How far a slow pull has to travel before letting go leaves the chat open. */
 const OPENS_AT_PX = 48;
 /** A flick this fast, in pixels per millisecond, settles the way it was going however short it was. */
-const FLICK_PX_PER_MS = 0.3;
+const FLICK_PX_PER_MS = 0.11;
+/** A flick's speed is taken over this many milliseconds of the pull, not from one jittery pair of moves. */
+const FLICK_WINDOW_MS = 80;
 /** Less movement than this is a press, not a pull. */
 const PRESS_PX = 4;
 /** How much of the conversation fades out under the sheet's top edge while it is shorter than its content. */
@@ -357,7 +359,7 @@ export function ChatSheet({
     const from = moving ? height.current : state === "open" ? openHeight() : 0;
     stopSpring();
     let moved = false;
-    let last = { y: startY, t: event.timeStamp };
+    const recent = [{ y: startY, t: event.timeStamp }];
     let velocity = 0;
     setHeld(true);
     // On the window, not the button: the pill or handle that started the pull is swapped out as
@@ -372,13 +374,19 @@ export function ChatSheet({
         // Now, not on React's next pass: the pull is painted below, onto a sheet already moving.
         flushSync(() => setMoving(true));
       }
-      const dt = next.timeStamp - last.t;
+      recent.push({ y: next.clientY, t: next.timeStamp });
+      while (
+        recent.length > 2 &&
+        next.timeStamp - (recent[0]?.t ?? 0) > FLICK_WINDOW_MS
+      )
+        recent.shift();
+      const first = recent[0] ?? { y: startY, t: event.timeStamp };
+      const dt = next.timeStamp - first.t;
       if (dt > 0)
         velocity = Math.max(
           -MAX_PX_PER_MS,
-          Math.min(MAX_PX_PER_MS, (last.y - next.clientY) / dt),
+          Math.min(MAX_PX_PER_MS, (first.y - next.clientY) / dt),
         );
-      last = { y: next.clientY, t: next.timeStamp };
       paint(resist(from + travel));
     };
     const end = (next: globalThis.PointerEvent) => {
@@ -388,6 +396,9 @@ export function ChatSheet({
       window.removeEventListener("pointercancel", end);
       setHeld(false);
       if (!moved) return;
+      // Held still before letting go, the pull has no speed left to hand on.
+      const lastMove = recent.at(-1)?.t ?? next.timeStamp;
+      if (next.timeStamp - lastMove > FLICK_WINDOW_MS) velocity = 0;
       // The click that follows a pull is not a press; a pull that ends off the button has none.
       const swallow = (click: Event) => click.preventDefault();
       window.addEventListener("click", swallow, { once: true, capture: true });
