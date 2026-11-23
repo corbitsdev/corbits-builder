@@ -168,6 +168,8 @@ const PlanStepState = type({
   // The latest run or check record for the step.
   "runId?": "string > 0",
   "checkId?": "string > 0",
+  // The kinds of document the step files, as its action's returns name them for its input.
+  "files?": "string[]",
 });
 const PlanViewChild = StoredPlanChild.merge(PlanStepState);
 // The plan as read, each step with where it stands: no steps and no time when none was ever saved.

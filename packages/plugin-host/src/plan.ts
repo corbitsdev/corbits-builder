@@ -9,7 +9,7 @@ import {
   type Catalog,
 } from "./catalog.ts";
 import { gateOf, makersIn, type Run } from "./coordinator.ts";
-import { holds, resolveFacts, unmet } from "./facts.ts";
+import { holds, patternFact, resolveFacts, unmet } from "./facts.ts";
 import { missingTexts, unfinishedText } from "./text.ts";
 
 /**
@@ -92,6 +92,8 @@ export type PlanStepView = PlanStep & {
   endedAt?: string;
   runId?: string;
   checkId?: string;
+  // The kinds of document the step files, as its action's returns name them for its input.
+  files?: string[];
 };
 
 /** A group with where it stands, worked out from its steps. */
@@ -229,6 +231,11 @@ export function planState(
     const ready = own.length === 0 && goAhead.length === 0;
     const returns = resolveFacts(action.builder.returns ?? [], step.input);
     const missing = returns.filter((fact) => !holds(fact, facts));
+    const files = returns.flatMap((fact) => {
+      const filed = patternFact(fact);
+      return filed?.state === "filed" ? [filed.kind] : [];
+    });
+    if (files.length > 0) view.files = files;
     const done = run?.status === "completed" && missing.length === 0;
     const asked = records.questions.some(
       (each) => each.plugin === step.plugin && each.action === step.action,
