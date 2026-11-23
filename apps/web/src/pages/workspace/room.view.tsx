@@ -201,8 +201,6 @@ export type RoomContent = {
   dock: RoomDock;
   /** The project's sidebar: its plan, its app and the ways out of the room. */
   sidebar: Omit<ProjectSidebarViewProps, "drawer">;
-  /** What the project view shows, by name; null while it shows nothing. */
-  shownName: string | null;
   /** What the prompt box holds for the person to deal with; null while nothing waits. */
   waiting: BoxWaiting | null;
   /**
@@ -233,7 +231,6 @@ export function RoomView({
   conversation,
   dock,
   sidebar,
-  shownName,
   waiting,
   space,
   documentPane,
@@ -386,16 +383,18 @@ export function RoomView({
       answersShell={shell.answers}
     />
   );
-  // Taken full screen, the chat names what it hides for the way back: the plugin's screen in the
-  // sheet, or the file or app the project view shows.
-  const hidden = dockInSheet ? (space?.title ?? null) : shownName;
+  // Full screen is the room's own conversation: what the chat was pulled up over is put away.
   const roomDock = (
     <RoomDockView
       dock={dock}
       ports={ports}
       waiting={card}
       chat={chat}
-      chatStart={hidden === null ? undefined : { returnTo: { title: hidden } }}
+      chatStart={{
+        onFullScreen: dockInSheet
+          ? closeSheet
+          : () => onProjectOpenChange(false),
+      }}
       answersShell={shell.answers}
     />
   );
@@ -600,7 +599,7 @@ type AnswersShell = (text: string) => boolean;
 /** Where the chat sheet starts, before the person moves it. */
 type ChatStart = Pick<
   ChatSheetProps,
-  "defaultState" | "defaultPull" | "returnTo"
+  "defaultState" | "defaultPull" | "onFullScreen"
 >;
 
 /**

@@ -490,8 +490,6 @@ export const wording = {
       failed: "App failed to start",
     },
     openApp: "Open app",
-    /** The app as the full-screen chat names it on the way back. */
-    appTab: "App",
     projectSettings: "Project settings",
     allProjects: "All projects",
     workspaceSettings: "Workspace settings",
@@ -671,8 +669,6 @@ export const wording = {
       title: "Chat",
       fullScreen: "Full screen",
       putBack: "Put the chat back",
-      /** In full screen, the way back to the page the person left, named. */
-      backTo: (page: string) => `Back to ${page}`,
     },
   },
   speaker: {

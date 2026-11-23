@@ -43,8 +43,7 @@ const ready = {
   },
 } satisfies Args["dock"];
 
-// A stand-in for the page the box sits under: a document in the room's own page, which hides
-// everything but the box while the chat is full screen.
+// A stand-in for the page the box sits under: a document in the room's own page.
 function Page({ children }: { children: ReactNode }) {
   return (
     <div style={{ position: "relative", height: "100vh" }}>
@@ -103,8 +102,6 @@ function Page({ children }: { children: ReactNode }) {
 
 type Args = Parameters<typeof RoomDockView>[0];
 
-const brief = { title: "Problem brief", version: "Version 2" };
-
 function Screen(args: Args) {
   const dock = args.dock.kind === "composer" ? args.dock : composer;
   const [text, setText] = useState(dock.text);
@@ -113,8 +110,8 @@ function Screen(args: Args) {
       <RoomDockView
         {...args}
         dock={{ ...dock, text, onTextChange: setText }}
-        // Full screen names the page above, from whichever state it was taken to.
-        chatStart={{ returnTo: brief, ...args.chatStart }}
+        // In the room, full screen puts the page away for the room's own conversation.
+        chatStart={{ onFullScreen: fn(), ...args.chatStart }}
       />
     </Page>
   );
@@ -147,14 +144,6 @@ export const MidPull: Story = {
 /** Chat open: the newest message is the work in progress. Pull it down and the pill comes back. */
 export const ChatOpen: Story = {
   args: { ...whileWorking, chatStart: { defaultState: "open" } },
-};
-
-/** Full screen: only the way back down, and the page the person left named at the top. */
-export const FullScreen: Story = {
-  args: {
-    ...whileWorking,
-    chatStart: { defaultState: "full" },
-  },
 };
 
 /** Escape puts the chat back and the pill returns. */

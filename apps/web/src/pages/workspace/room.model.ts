@@ -1838,7 +1838,7 @@ export function useRoom({
   const paneDocuments = paneDeliverables.map((item) =>
     paneDocument(item, seen),
   );
-  const { sidebar, shownName, projectSettings } = useProjectSidebar({
+  const { sidebar, projectSettings } = useProjectSidebar({
     projectId,
     title: projectTitle,
     project: menuProject,
@@ -1896,7 +1896,6 @@ export function useRoom({
       },
       dock: dock(),
       sidebar,
-      shownName,
       waiting: promptBox.waiting,
       space: promptBox.space,
       documentPane: {

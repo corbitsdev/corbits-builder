@@ -68,8 +68,6 @@ export type ProjectSidebarProps = Omit<ProjectSidebarViewProps, "drawer">;
 
 export function useProjectSidebar(input: ProjectSidebarInput): {
   sidebar: ProjectSidebarProps;
-  /** What the project view shows, by name, for the full-screen chat's way back; null with nothing. */
-  shownName: string | null;
   /** Project settings, while open. */
   projectSettings: ProjectInfoDialogProps | null;
 } {
@@ -104,14 +102,6 @@ export function useProjectSidebar(input: ProjectSidebarInput): {
     }
   };
   return {
-    shownName:
-      shown === LIVE_TAB
-        ? wording.projectShell.appTab
-        : shown === null
-          ? null
-          : (outline.files
-              .flatMap((file) => [file, ...file.parts])
-              .find((row) => row.id === shown)?.name ?? null),
     sidebar: {
       project: input.title,
       open,

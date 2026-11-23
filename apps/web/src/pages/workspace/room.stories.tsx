@@ -56,13 +56,6 @@ function Room(args: RoomViewProps) {
     setProjectOpen(true);
   };
   const onScreen = projectOpen ? shown : null;
-  // What the project view shows, by name, as the room's model names it.
-  const shownName =
-    onScreen === LIVE_TAB
-      ? wording.projectShell.appTab
-      : (outlineOf(pane)
-          .files.flatMap((file) => [file, ...file.parts])
-          .find((row) => row.id === onScreen)?.name ?? null);
   return (
     <div style={{ height: "100vh", display: "flex", flexDirection: "column" }}>
       <RoomView
@@ -77,7 +70,6 @@ function Room(args: RoomViewProps) {
             ? { ...dock, text, onTextChange: setText }
             : dock
         }
-        shownName={shownName}
         sidebar={{
           ...sidebar,
           open: sidebarOpen,
@@ -212,7 +204,6 @@ const meta = {
     ...paneOf(),
     tabStatus: [],
     sidebar: sidebarOf({}, []),
-    shownName: null,
     paneRef: createRef(),
     waiting: null,
     space: null,
@@ -557,9 +548,6 @@ export const DrawingTheDesign: Story = {
   },
 };
 
-// The brief's row, as the sidebar names it.
-const briefName = wording.documentTab["problem_brief"] ?? "";
-
 const appArgs = paneOf(appAndManual.args);
 const appSidebar = (state: OutlineAppState) =>
   sidebarOf(appArgs.documentPane, planning.plan, state);
@@ -701,9 +689,15 @@ export const ChatSheetOverDesign: Story = {
   },
 };
 
-/** Full screen, the chat hides the page and names it for the way back. */
+/**
+ * Full screen is the room's own conversation: the project view is put away and the box, with what
+ * was typed, is back under the turns. Project opens the view again.
+ */
 export const ChatSheetFullScreen: Story = {
-  args: chatBehindBox,
+  args: {
+    ...chatBehindBox,
+    dock: { ...composer, text: "Also take orders by" },
+  },
   play: async ({ canvasElement }) => {
     await openChat(canvasElement);
     await userEvent.click(
@@ -711,11 +705,14 @@ export const ChatSheetFullScreen: Story = {
         name: wording.promptBox.chat.fullScreen,
       }),
     );
-    await expect(
-      await within(canvasElement).findByRole("button", {
-        name: wording.promptBox.chat.backTo(briefName),
-      }),
-    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        canvasElement.querySelector('[data-slot="room-project"]'),
+      ).toHaveAttribute("hidden"),
+    );
+    await expect(within(canvasElement).getByRole("textbox")).toHaveValue(
+      "Also take orders by",
+    );
   },
 };
 
