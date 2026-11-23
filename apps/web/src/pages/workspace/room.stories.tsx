@@ -1204,6 +1204,33 @@ export const CommentWritingDark: Story = {
   globals: { mode: "dark" },
 };
 
+/**
+ * A press anywhere else, with nothing written, puts the card away and lets the passage go; with
+ * words written, the card stays.
+ */
+export const CommentPutAway: Story = {
+  args: { ...CommentsOnPage.args },
+  play: async (context) => {
+    await CommentWriting.play?.(context);
+    const { canvasElement } = context;
+    const writing = () =>
+      canvasElement.ownerDocument.querySelector<HTMLElement>(
+        '[data-slot="comment-card"][data-state="writing"]',
+      );
+    const heading = await within(canvasElement).findByRole("heading", {
+      name: "A good Saturday",
+    });
+    await userEvent.click(heading);
+    await waitFor(() => expect(writing()).toBeNull());
+
+    await CommentWriting.play?.(context);
+    const field = within(writing() ?? canvasElement).getByRole("textbox");
+    await userEvent.type(field, "Say how many orders");
+    await userEvent.click(heading);
+    await expect(writing()).not.toBeNull();
+  },
+};
+
 /** While the coordinator's question is open, the comments wait and the box says what comes first. */
 export const CommentsWaitOnQuestion: Story = {
   args: {

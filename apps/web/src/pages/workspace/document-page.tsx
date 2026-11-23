@@ -77,6 +77,14 @@ const MARGIN_INSET = 32 + 24;
 // The underline sits below the line's box, so a press just under the words still reaches it.
 const UNDERLINE_REACH = 8;
 // Each state is its own highlight, named as the stylesheet paints it.
+/**
+ * A card opened from its passage closes on a press or focus elsewhere, except one being written:
+ * its field decides, putting away a comment with nothing written and keeping one with words.
+ */
+function putAway<Card extends { place: PassagePlace }>(was: Card | null) {
+  return was?.place.state === "selected" ? was : null;
+}
+
 const HIGHLIGHTS: Readonly<Record<PassageState | "commented", string>> = {
   commented: "document-passage",
   selected: "document-passage-selected",
@@ -231,7 +239,7 @@ export function DocumentPage({
   >({
     open: card !== null,
     onOpenChange: (open) => {
-      if (!open) setCard(null);
+      if (!open) setCard(putAway);
     },
   });
 
@@ -584,7 +592,12 @@ export function DocumentPage({
         if (jumping.current === null) chosen.current = undefined;
         else settleJump();
         follow();
-        setCard(null);
+        // A comment being written rides along with its line rather than closing on its words.
+        setCard((was) => {
+          if (was?.place.state !== "selected") return null;
+          const line = ranges.current.get(was.place.id)?.getClientRects()[0];
+          return line === undefined ? was : { ...was, line };
+        });
       }}
       onWheel={scrollOn}
       onTouchMove={scrollOn}
@@ -683,7 +696,7 @@ export function DocumentPage({
                   event.relatedTarget !== null &&
                   !event.currentTarget.contains(event.relatedTarget)
                 )
-                  setCard(null);
+                  setCard(putAway);
               }}
             >
               {margin(card.place)}

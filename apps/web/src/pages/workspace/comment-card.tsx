@@ -195,6 +195,28 @@ function CommentField({
     field.setSelectionRange(field.value.length, field.value.length);
   }, []);
 
+  // A press anywhere else puts the comment away, and its passage with it, while doing so loses
+  // nothing: the field is empty, or still holds the comment it opened with. Words written stay.
+  const latest = useRef({ draft, onCancel });
+  useLayoutEffect(() => {
+    latest.current = { draft, onCancel };
+  });
+  useEffect(() => {
+    const away = (event: PointerEvent) => {
+      const card =
+        fieldRef.current?.closest('[data-slot="comment-card"]') ?? null;
+      if (
+        card === null ||
+        (event.target instanceof Node && card.contains(event.target))
+      )
+        return;
+      const { draft: now, onCancel: cancel } = latest.current;
+      if (now.trim() === "" || now === initial) cancel?.();
+    };
+    document.addEventListener("pointerdown", away, true);
+    return () => document.removeEventListener("pointerdown", away, true);
+  }, [initial]);
+
   useLayoutEffect(() => {
     const field = fieldRef.current;
     if (field === null) return;
