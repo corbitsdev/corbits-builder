@@ -1,17 +1,10 @@
 /**
  * The sidebar outside a project, on the new project page, the projects and Settings: the project
- * sidebar's frame and foot, holding only what starts work. A new project, then while the person is
- * new to Builder the first steps: connecting a model while none is, and what's new.
+ * sidebar's frame and foot, holding only what starts or resumes work. A new project, connecting a
+ * model while none is, and the projects last worked on, to go straight back to one.
  */
-import {
-  Building2,
-  CircleUser,
-  Folder,
-  Plus,
-  Sparkles,
-  Unplug,
-} from "lucide-react";
-import { Badge, SidebarItem } from "@corbits/react-ui";
+import { Building2, CircleUser, Folder, Plus, Unplug } from "lucide-react";
+import { SidebarItem } from "@corbits/react-ui";
 import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { wording } from "./config.ts";
@@ -34,12 +27,14 @@ export type WorkspaceSidebarViewProps = {
   drawer: boolean;
   /** The page on screen, whose row is marked. */
   current: "newProject" | "library" | "settings" | null;
-  /** No model is connected yet, so the first steps offer to connect one. */
+  /** No model is connected yet, so the sidebar offers to connect one. */
   needsProvider: boolean;
+  /** The projects last worked on, latest first; empty, the list is not shown. */
+  recent: readonly { id: string; title: string }[];
   onToggleSidebar: () => void;
   onNewProject: () => void;
   onConnectModel: () => void;
-  onWhatsNew: () => void;
+  onOpenProject: (projectId: string) => void;
   onAllProjects: () => void;
   onWorkspaceSettings: () => void;
   onAccount: () => void;
@@ -51,10 +46,11 @@ export function WorkspaceSidebarView({
   drawer,
   current,
   needsProvider,
+  recent,
   onToggleSidebar,
   onNewProject,
   onConnectModel,
-  onWhatsNew,
+  onOpenProject,
   onAllProjects,
   onWorkspaceSettings,
   onAccount,
@@ -75,23 +71,31 @@ export function WorkspaceSidebarView({
         >
           {wording.shell.newProject}
         </Row>
-      </ul>
-      <section className={styles.group} aria-label={wording.shell.getStarted}>
-        <h2 className={styles.heading}>{wording.shell.getStarted}</h2>
-        <ul className={styles.rows}>
-          {needsProvider ? (
-            <Row icon={Unplug} onClick={onConnectModel}>
-              {wording.shell.connectModel}
-            </Row>
-          ) : null}
-          <Row icon={Sparkles} onClick={onWhatsNew}>
-            <span className={styles.label}>
-              {wording.shell.whatsNew}
-              <Badge tone="neutral">{wording.shell.whatsNewBadge}</Badge>
-            </span>
+        {needsProvider ? (
+          <Row icon={Unplug} onClick={onConnectModel}>
+            {wording.shell.connectModel}
           </Row>
-        </ul>
-      </section>
+        ) : null}
+      </ul>
+      {recent.length === 0 ? null : (
+        <section className={styles.group} aria-label={wording.shell.recent}>
+          <h2 className={styles.heading}>{wording.shell.recent}</h2>
+          <ul className={styles.rows}>
+            {recent.map((project) => (
+              <li key={project.id}>
+                <button
+                  type="button"
+                  className={styles.project}
+                  title={project.title}
+                  onClick={() => onOpenProject(project.id)}
+                >
+                  {project.title}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       <SidebarFoot>
         <SidebarLinks label={words.groups.projects}>
           <SidebarLink

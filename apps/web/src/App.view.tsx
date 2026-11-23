@@ -6,17 +6,10 @@
  */
 import { useState, type ReactNode } from "react";
 import { toast } from "sonner";
-import { BootScreen, Button as UiButton, Tabs } from "@corbits/react-ui";
-import {
-  Dialog,
-  DialogBody,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@corbits/react-ui/ui/dialog";
+import { BootScreen } from "@corbits/react-ui";
 import { wording } from "./config.ts";
 import styles from "./App.module.css";
-import { Banner, Button, InlineNote, Mark } from "./components.jsx";
+import { Banner, Button, Mark } from "./components.jsx";
 import {
   WorkspaceSidebarView,
   type WorkspaceSidebarViewProps,
@@ -33,15 +26,13 @@ export type AppViewProps = {
   current: "newProject" | "library" | "project" | "settings" | null;
   /** A project's room is on the page, and its own sidebar stands where the workspace's would. */
   roomOpen: boolean;
-  /** The sidebar outside a project, all but its marked row and What's new, which the shell keeps. */
-  sidebar: Omit<WorkspaceSidebarViewProps, "current" | "onWhatsNew">;
+  /** The sidebar outside a project, all but its marked row, which the shell keeps. */
+  sidebar: Omit<WorkspaceSidebarViewProps, "current">;
   hub: HubHealth;
   /** Why setting up the workspace did not finish. */
   setupFault: string | null;
   /** The page on screen. */
   page: ReactNode;
-  /** The person followed What's new to a preference in Settings. */
-  onOpenPreferences: (preferenceId?: string) => void;
 };
 
 export function AppView({
@@ -51,47 +42,33 @@ export function AppView({
   hub,
   setupFault,
   page,
-  onOpenPreferences,
 }: AppViewProps) {
-  const [whatsNewOpen, setWhatsNewOpen] = useState(false);
   return (
-    <>
-      <div className={styles.app} data-room={roomOpen ? "" : undefined}>
-        {roomOpen ? null : (
-          <WorkspaceSidebarView
-            {...sidebar}
-            current={current === "project" ? null : current}
-            onWhatsNew={() => setWhatsNewOpen(true)}
-          />
-        )}
-
-        <main className={styles.canvas}>
-          <div
-            className={styles.canvasBody}
-            data-fill={current === "project" ? "" : undefined}
-          >
-            <HubNotice hub={hub} />
-
-            {hub.state === "answering" && setupFault ? (
-              <Banner tone="error" title={wording.workspace.setupIncomplete}>
-                {setupFault}
-              </Banner>
-            ) : null}
-
-            {page}
-          </div>
-        </main>
-      </div>
-      {whatsNewOpen ? (
-        <WhatsNewDialog
-          onClose={() => setWhatsNewOpen(false)}
-          onOpenPreferences={(preferenceId) => {
-            setWhatsNewOpen(false);
-            onOpenPreferences(preferenceId);
-          }}
+    <div className={styles.app} data-room={roomOpen ? "" : undefined}>
+      {roomOpen ? null : (
+        <WorkspaceSidebarView
+          {...sidebar}
+          current={current === "project" ? null : current}
         />
-      ) : null}
-    </>
+      )}
+
+      <main className={styles.canvas}>
+        <div
+          className={styles.canvasBody}
+          data-fill={current === "project" ? "" : undefined}
+        >
+          <HubNotice hub={hub} />
+
+          {hub.state === "answering" && setupFault ? (
+            <Banner tone="error" title={wording.workspace.setupIncomplete}>
+              {setupFault}
+            </Banner>
+          ) : null}
+
+          {page}
+        </div>
+      </main>
+    </div>
   );
 }
 
@@ -198,76 +175,5 @@ export function ProjectLoadFailure({
         </Button>
       </details>
     </div>
-  );
-}
-
-export type WhatsNewTab = keyof typeof wording.whatsNew.tabs;
-
-const WHATS_NEW_TABS: readonly { id: WhatsNewTab; label: string }[] = [
-  { id: "slideDecks", label: wording.whatsNew.tabs.slideDecks },
-  { id: "approvals", label: wording.whatsNew.tabs.approvals },
-];
-
-/**
- * Highlights new workspace features in a tabbed dialog and links directly to Settings → Preferences.
- */
-export function WhatsNewDialog({
-  open = true,
-  initialTab = "slideDecks",
-  onClose,
-  onOpenPreferences,
-}: {
-  open?: boolean;
-  initialTab?: WhatsNewTab;
-  onClose: () => void;
-  onOpenPreferences: (preferenceId?: string) => void;
-}) {
-  const copy = wording.whatsNew;
-  const [activeTab, setActiveTab] = useState<WhatsNewTab>(initialTab);
-  const renderFeatureTab = (tabId: WhatsNewTab) => {
-    if (tabId === "approvals") {
-      const feature = copy.features.approvals;
-      return (
-        <div className={styles.whatsNewPanel}>
-          <p className={styles.whatsNewCopy}>{feature.description}</p>
-          <div className={styles.whatsNewActions}>
-            <InlineNote as="span">{feature.statusNote}</InlineNote>
-            <UiButton
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => onOpenPreferences(feature.id)}
-            >
-              {feature.actionLabel}
-            </UiButton>
-          </div>
-        </div>
-      );
-    }
-    const feature = copy.features.slideDecks;
-    return (
-      <div className={styles.whatsNewPanel}>
-        <p className={styles.whatsNewCopy}>{feature.description}</p>
-      </div>
-    );
-  };
-  return (
-    <Dialog open={open} onOpenChange={(next) => (next ? undefined : onClose())}>
-      <DialogContent aria-label={copy.title}>
-        <DialogHeader>
-          <DialogTitle>{copy.title}</DialogTitle>
-        </DialogHeader>
-        <DialogBody>
-          <Tabs
-            tabs={WHATS_NEW_TABS}
-            active={activeTab}
-            onChange={setActiveTab}
-            label={copy.sections}
-          >
-            {renderFeatureTab}
-          </Tabs>
-        </DialogBody>
-      </DialogContent>
-    </Dialog>
   );
 }

@@ -181,26 +181,3 @@
   font-family: var(--wb-font-mono);
   font-size: 0.8125rem;
 }
-
-.whatsNewPanel {
-  padding-top: 0.75rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.875rem;
-  font-family: var(--font-sans);
-}
-
-.whatsNewCopy {
-  margin: 0;
-  font-size: 0.875rem;
-  line-height: 1.55;
-  color: var(--fg);
-}
-
-.whatsNewActions {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  padding-top: 0.25rem;
-}

@@ -435,8 +435,6 @@ export const wording = {
     projectOptions: (title: string) => `Options for ${title}`,
     projects: "Projects",
     inProgress: "Projects in progress",
-    whatsNew: "What's new",
-    whatsNewBadge: "New",
     settings: "Settings",
     untitledProject: "Project",
     noProjectTitle: "No project open",
@@ -444,9 +442,9 @@ export const wording = {
       "Pick a project from the list. Its outputs open from the conversation.",
     /** The sidebar outside a project, as a screen reader names it. */
     sidebar: "Workspace",
-    /** The first steps in Builder, under the new project. */
-    getStarted: "Get started",
     connectModel: "Connect a model",
+    /** The projects last worked on, under the new project. */
+    recent: "Recent",
   },
   /** What frames an open project: its name and sidebar top left. */
   projectShell: {
@@ -494,32 +492,6 @@ export const wording = {
     allProjects: "All projects",
     workspaceSettings: "Workspace settings",
     account: "Account",
-  },
-  whatsNew: {
-    title: "What's new",
-    sections: "What's new features",
-    tabs: {
-      slideDecks: "Slide decks",
-      approvals: "Approvals",
-    },
-    features: {
-      slideDecks: {
-        id: "slide_decks",
-        title: "Slide decks",
-        experimental: false,
-        description:
-          "Ask the coordinator to present your project for an audience — such as a CEO, CTO, investor, or client — to generate a tailored 16:9 slide deck (.pptx and .pdf) from the project's work and preview it beside the chat.",
-      },
-      approvals: {
-        id: "experimental_approvals",
-        title: "Approvals",
-        experimental: true,
-        statusNote: "Experimental — off by default",
-        actionLabel: "Enable in Settings",
-        description:
-          "Share approval packages with reviewers, track their decisions, and pull their feedback straight into your prompt with one click.",
-      },
-    },
   },
   projectLoadFailure: {
     title: "This project could not be opened",

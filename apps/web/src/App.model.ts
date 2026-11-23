@@ -84,6 +84,17 @@ export type AppScreen =
 const FOLD_POLL_MS = 30_000;
 
 const NO_PROJECTS: ProjectSummary[] = [];
+
+/** How many of the projects last worked on the sidebar lists outside a project. */
+const RECENT_PROJECTS = 5;
+
+/** The projects still being worked on, the latest first, as many as the sidebar lists. */
+export const recentProjects = (projects: readonly ProjectSummary[]) =>
+  projects
+    .filter((project) => project.archivedAt === null)
+    .toSorted((a, b) => b.lastActivityAt.localeCompare(a.lastActivityAt))
+    .slice(0, RECENT_PROJECTS)
+    .map(({ id, title }) => ({ id, title }));
 const NO_PROVIDERS: ModelProvider[] = [];
 
 const readProjects = singleFlight(async () => ({
@@ -527,6 +538,7 @@ export function useApp(): AppScreen {
         drawer: sidebar.drawer,
         needsProvider:
           providersRead.data !== undefined && needsModelSetup(providers),
+        recent: recentProjects(projects),
         onToggleSidebar: sidebar.toggle,
         onNewProject: () => {
           sidebar.leave();
@@ -536,6 +548,10 @@ export function useApp(): AppScreen {
         onConnectModel: () => {
           sidebar.leave();
           setSetupLater(false);
+        },
+        onOpenProject: (projectId) => {
+          sidebar.leave();
+          openProject(projectId);
         },
         onAllProjects: () => {
           sidebar.leave();
@@ -553,11 +569,6 @@ export function useApp(): AppScreen {
       },
       hub: { state: offline ? "notAnswering" : "answering" },
       setupFault: error,
-      onOpenPreferences: (preferenceId) =>
-        openSettings(
-          "preferences",
-          preferenceId ?? wording.whatsNew.features.approvals.id,
-        ),
     },
     page: shown,
   };

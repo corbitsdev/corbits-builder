@@ -1,12 +1,10 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, userEvent, within } from "storybook/test";
-import { wording } from "./config.ts";
 import {
   AppView,
   BootView,
   NoProjectOpen,
   ProjectLoadFailure,
-  WhatsNewDialog,
 } from "./App.view.tsx";
 
 const meta = {
@@ -21,9 +19,15 @@ const meta = {
       open: true,
       drawer: false,
       needsProvider: false,
+      recent: [
+        { id: "bakery", title: "Bakery orders" },
+        { id: "walks", title: "Dog walking bookings" },
+        { id: "rota", title: "Café staff rota" },
+      ],
       onToggleSidebar: fn(),
       onNewProject: fn(),
       onConnectModel: fn(),
+      onOpenProject: fn(),
       onAllProjects: fn(),
       onWorkspaceSettings: fn(),
       onAccount: fn(),
@@ -31,7 +35,6 @@ const meta = {
     hub: { state: "answering" },
     setupFault: null,
     page: <p>The page on screen.</p>,
-    onOpenPreferences: fn(),
   },
 } satisfies Meta<typeof AppView>;
 
@@ -42,7 +45,7 @@ export const SignedIn: Story = {};
 
 export const SignedInDark: Story = { globals: { mode: "dark" } };
 
-/** No model is connected yet, so the first steps offer to connect one. */
+/** No model is connected yet, so the sidebar offers to connect one. */
 export const NeedsModel: Story = {
   args: { sidebar: { ...meta.args.sidebar, needsProvider: true } },
 };
@@ -76,18 +79,19 @@ export const NarrowDrawer: Story = {
   globals: { viewport: { value: "mobile1" } },
 };
 
-/** What's new opens from the first steps. */
-export const OpensWhatsNew: Story = {
-  play: async ({ canvasElement }) => {
+/** A recent project opens from the sidebar. */
+export const OpensRecentProject: Story = {
+  play: async ({ args, canvasElement }) => {
     await userEvent.click(
-      within(canvasElement).getByRole("button", {
-        name: new RegExp(wording.shell.whatsNew),
-      }),
+      within(canvasElement).getByRole("button", { name: "Café staff rota" }),
     );
-    await expect(
-      await within(document.body).findByRole("dialog"),
-    ).toBeInTheDocument();
+    await expect(args.sidebar.onOpenProject).toHaveBeenCalledWith("rota");
   },
+};
+
+/** A new workspace has no projects yet, so there is nothing to list. */
+export const NoRecentProjects: Story = {
+  args: { sidebar: { ...meta.args.sidebar, recent: [] } },
 };
 
 /** The hub stopped answering. */
@@ -115,20 +119,6 @@ export const ProjectLoadFailed: Story = {
       />
     ),
   },
-};
-
-export const WhatsNew: Story = {
-  render: () => <WhatsNewDialog onClose={fn()} onOpenPreferences={fn()} />,
-};
-
-export const WhatsNewApprovals: Story = {
-  render: () => (
-    <WhatsNewDialog
-      initialTab="approvals"
-      onClose={fn()}
-      onOpenPreferences={fn()}
-    />
-  ),
 };
 
 /** Before the hub has said who is signed in. */
