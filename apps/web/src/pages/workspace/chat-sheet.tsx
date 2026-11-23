@@ -409,7 +409,7 @@ export function ChatSheet({
         aria-hidden="true"
       />
       {grip === null || (shown && !(moving && status !== null)) ? null : (
-        <div ref={gripRef} className={styles.grip} data-slot="chat-grip">
+        <div ref={gripRef} className={styles.grip}>
           {grip}
         </div>
       )}
