@@ -40,8 +40,6 @@
   /* Below the project's name, which floats over the panel's top. */
   padding-block-start: 60px;
   background: var(--card);
-  /* A hairline on its edge, so the canvas beside it never runs into it, whatever ground that shows. */
-  box-shadow: inset -1px 0 0 var(--wb-border);
   transition: visibility 0s;
 }
 
