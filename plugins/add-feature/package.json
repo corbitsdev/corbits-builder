@@ -9,6 +9,7 @@
   "builder": {
     "handle": "add-feature",
     "runs": "plan",
+    "name": "New feature",
     "groups": [
       "build",
       "plan"

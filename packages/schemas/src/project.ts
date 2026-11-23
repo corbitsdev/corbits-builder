@@ -168,8 +168,9 @@ const PlanStepState = type({
   // The latest run or check record for the step.
   "runId?": "string > 0",
   "checkId?": "string > 0",
-  // The kinds of document the step files, as its action's returns name them for its input.
-  "files?": "string[]",
+  // What the step makes, as its action's returns name it for its input: the kinds of document it
+  // files, and "app" for the app.
+  "makes?": "string[]",
 });
 const PlanViewChild = StoredPlanChild.merge(PlanStepState);
 // The plan as read, each step with where it stands: no steps and no time when none was ever saved.
@@ -178,6 +179,8 @@ const PlanViewGroup = type({
   id: PlanStepId,
   title: text,
   "plan?": readyPlan,
+  // What the ready-made plan it was added as makes, in a few words, when its manifest says.
+  "name?": "string > 0",
   state: PlanStepStateName,
   "needs?": "string[]",
   steps: PlanViewChild.array(),

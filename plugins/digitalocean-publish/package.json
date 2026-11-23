@@ -13,6 +13,7 @@
   "builder": {
     "handle": "publish-to-digitalocean",
     "runs": "plan",
+    "name": "Published on DigitalOcean",
     "groups": [
       "publish",
       "plan"

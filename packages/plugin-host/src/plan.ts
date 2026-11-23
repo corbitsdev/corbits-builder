@@ -12,6 +12,9 @@ import { gateOf, makersIn, type Run } from "./coordinator.ts";
 import { holds, patternFact, resolveFacts, unmet } from "./facts.ts";
 import { missingTexts, unfinishedText } from "./text.ts";
 
+// The fact that holds once the project has its app, which the work of the step that makes it returns.
+const APP_FACT = "app_exists";
+
 /**
  * The ready-made plans a project's catalog installs, in their manifests' words, each take-down with
  * what its action tells the person it removes.
@@ -92,8 +95,9 @@ export type PlanStepView = PlanStep & {
   endedAt?: string;
   runId?: string;
   checkId?: string;
-  // The kinds of document the step files, as its action's returns name them for its input.
-  files?: string[];
+  // What the step makes, as its action's returns name it for its input: the kinds of document it
+  // files, and "app" for the app.
+  makes?: string[];
 };
 
 /** A group with where it stands, worked out from its steps. */
@@ -101,6 +105,7 @@ export type PlanGroupView = {
   id: string;
   title: string;
   plan?: string;
+  name?: string;
   state: StepState;
   needs?: string[];
   steps: PlanStepView[];
@@ -231,11 +236,12 @@ export function planState(
     const ready = own.length === 0 && goAhead.length === 0;
     const returns = resolveFacts(action.builder.returns ?? [], step.input);
     const missing = returns.filter((fact) => !holds(fact, facts));
-    const files = returns.flatMap((fact) => {
+    const makes = returns.flatMap((fact) => {
+      if (fact === APP_FACT) return ["app"];
       const filed = patternFact(fact);
       return filed?.state === "filed" ? [filed.kind] : [];
     });
-    if (files.length > 0) view.files = files;
+    if (makes.length > 0) view.makes = makes;
     const done = run?.status === "completed" && missing.length === 0;
     const asked = records.questions.some(
       (each) => each.plugin === step.plugin && each.action === step.action,
@@ -283,6 +289,10 @@ export function planState(
       steps: children,
     };
     if (step.plan) view.plan = step.plan;
+    const name = catalog.plugins
+      .filter(isReadyPlan)
+      .find(({ builder }) => builder.handle === step.plan)?.builder.name;
+    if (name !== undefined) view.name = name;
     const any = (state: StepState) =>
       children.some((child) => child.state === state);
     const next = children.find((child) => !settled(child));

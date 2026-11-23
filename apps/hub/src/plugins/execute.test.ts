@@ -547,7 +547,7 @@ test("a step held with no input is done once its run files what the run was give
   expect(view?.state).toBe("done");
 });
 
-test("a step says which documents it files, as its action's returns name them for its input", () => {
+test("a step says what it makes, as its action's returns name it for its input", () => {
   const records = {
     facts: new Set<string>(),
     personFacts: new Set<string>(),
@@ -562,16 +562,68 @@ test("a step says which documents it files, as its action's returns name them fo
       [{ id, title: id, plugin: "writer", action, input, askFirst: false }],
       records,
     )[0];
-  const files = (view: ReturnType<typeof step>) =>
-    view && "files" in view ? view.files : undefined;
-  expect(files(step("requirements", "write-requirements", {}))).toEqual([
+  const makes = (view: ReturnType<typeof step>) =>
+    view && "makes" in view ? view.makes : undefined;
+  expect(makes(step("requirements", "write-requirements", {}))).toEqual([
     "product_requirements",
   ]);
-  expect(files(step("manual", "write", { kind: "user_manual" }))).toEqual([
+  expect(makes(step("manual", "write", { kind: "user_manual" }))).toEqual([
     "user_manual",
   ]);
-  expect(files(step("review", "review", { kind: "user_manual" }))).toBe(
+  expect(makes(step("review", "review", { kind: "user_manual" }))).toBe(
     undefined,
+  );
+  expect(
+    makes(
+      planState(
+        CATALOG,
+        [
+          {
+            id: "build",
+            title: "Build the app",
+            plugin: "coder",
+            action: "build",
+            input: {},
+            askFirst: false,
+          },
+        ],
+        records,
+      )[0],
+    ),
+  ).toEqual(["app"]);
+});
+
+test("a ready-made plan's group carries what the plan makes, as its manifest names it", () => {
+  const [group] = planState(
+    CATALOG,
+    [
+      {
+        id: "publish",
+        title: "Cloudflare: a secure (https) web address of its own.",
+        plan: "publish-to-cloudflare",
+        steps: [
+          {
+            id: "live",
+            title: "Confirm the saved version is the one live",
+            plugin: "cloudflare",
+            action: "live",
+            input: {},
+            askFirst: false,
+          },
+        ],
+      },
+    ],
+    {
+      facts: new Set(),
+      personFacts: new Set(),
+      asksApprovals: true,
+      checks: [],
+      runs: [],
+      questions: [],
+    },
+  );
+  expect(group && "name" in group ? group.name : undefined).toBe(
+    "Published on Cloudflare",
   );
 });
 

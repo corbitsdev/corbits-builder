@@ -13,6 +13,7 @@
   "builder": {
     "handle": "publish-to-cloudflare",
     "runs": "plan",
+    "name": "Published on Cloudflare",
     "groups": [
       "publish",
       "plan"
