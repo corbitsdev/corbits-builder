@@ -1033,7 +1033,7 @@ export const AppWorking: Story = {
   },
 };
 
-/** The app is up with nothing waiting: the pill says so behind a live dot. */
+/** The app is up with nothing waiting: the pill says so behind a breathing green ring. */
 export const AppLive: Story = {
   args: {
     ...AppBuilt.args,
@@ -1048,7 +1048,7 @@ export const AppLive: Story = {
   play: async ({ canvasElement }) => {
     await waitFor(() => expect(foldLine(canvasElement)).not.toBeNull());
     await expect(
-      foldLine(canvasElement)?.querySelector('[data-slot="live-dot"]'),
+      foldLine(canvasElement)?.querySelector('[data-slot="bloom-ring"]'),
     ).not.toBeNull();
   },
 };
