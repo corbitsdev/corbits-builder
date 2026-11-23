@@ -201,7 +201,10 @@
 
 /* The box shrunk to a pill over the app: what it says opens the box. */
 .foldLine {
+  display: inline-flex;
   flex: 1;
+  align-items: center;
+  gap: var(--space-2);
   min-width: 0;
   align-self: center;
   overflow: hidden;
@@ -214,9 +217,14 @@
   font-size: var(--text-sm);
   line-height: 24px;
   text-align: start;
-  text-overflow: ellipsis;
   white-space: nowrap;
   cursor: pointer;
+}
+
+.foldWords {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .foldLine[data-muted] {

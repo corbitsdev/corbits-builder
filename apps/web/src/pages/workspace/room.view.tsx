@@ -71,7 +71,7 @@ import {
   ProjectSidebarView,
   type ProjectSidebarViewProps,
 } from "./project-sidebar.view.tsx";
-import type { StatusPillContent } from "./status-pill.tsx";
+import { StatusMark, type StatusPillContent } from "./status-pill.tsx";
 import { StageView } from "./stage-view.tsx";
 import { RoomThread, type RoomThreadContent } from "./transcript.tsx";
 import styles from "./index.module.css";
@@ -961,7 +961,12 @@ function RoomComposerView({
                 data-muted={fold === null && status === null ? "" : undefined}
                 onClick={unfold}
               >
-                {fold ?? status?.label ?? ports.placeholder ?? placeholder}
+                {fold === null && status !== null ? (
+                  <StatusMark state={status.state} />
+                ) : null}
+                <span className={styles.foldWords}>
+                  {fold ?? status?.label ?? ports.placeholder ?? placeholder}
+                </span>
               </button>
             ) : null}
             {/* Attach leads the row; what is sent with the words follows it, then the words. */}

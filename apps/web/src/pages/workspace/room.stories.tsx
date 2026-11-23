@@ -1033,6 +1033,31 @@ export const AppWorking: Story = {
   },
 };
 
+/** The app is up with nothing waiting: the pill says so behind a live dot. */
+export const AppLive: Story = {
+  args: {
+    ...AppBuilt.args,
+    dock: {
+      ...composer,
+      status: {
+        state: "running",
+        label: wording.promptBox.status.appRunning,
+      },
+    },
+  },
+  play: async ({ canvasElement }) => {
+    await waitFor(() => expect(foldLine(canvasElement)).not.toBeNull());
+    await expect(
+      foldLine(canvasElement)?.querySelector('[data-slot="live-dot"]'),
+    ).not.toBeNull();
+  },
+};
+
+export const AppLiveDark: Story = {
+  ...AppLive,
+  globals: { mode: "dark" },
+};
+
 /**
  * The pill opens the box with the cursor in it; a press outside, with nothing written, shrinks it
  * again.

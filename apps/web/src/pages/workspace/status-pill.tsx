@@ -31,6 +31,27 @@ export type StatusPillContent = {
   onAction?: () => void;
 };
 
+/**
+ * What leads the line: the chat's thinking dots while work runs, and a live dot while the app is
+ * up, the green the sidebar marks it with. Any other state's words already say it, so a tick or a
+ * still dot would only repeat them.
+ */
+export function StatusMark({ state }: { state: StatusPillState }) {
+  if (state === "working" || state === "commentsWorking")
+    return (
+      <span className={styles.lead} aria-hidden="true">
+        <TypingIndicator />
+      </span>
+    );
+  if (state === "running")
+    return (
+      <span className={styles.lead} aria-hidden="true">
+        <span className={styles.live} data-slot="live-dot" />
+      </span>
+    );
+  return null;
+}
+
 export function StatusPill({
   state,
   label,
@@ -52,13 +73,7 @@ export function StatusPill({
 }) {
   const content = (
     <>
-      {/* Only running work leads with a mark, the dots the chat shows; any other state's words
-          already say it, so a tick or a dot would only repeat them. */}
-      {state === "working" || state === "commentsWorking" ? (
-        <span className={styles.lead} aria-hidden="true">
-          <TypingIndicator />
-        </span>
-      ) : null}
+      <StatusMark state={state} />
       <span className={styles.label} data-state={state} role="status">
         {label}
       </span>
