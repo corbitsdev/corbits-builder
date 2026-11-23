@@ -593,7 +593,7 @@ test("a step says what it makes, as its action's returns name it for its input",
   ).toEqual(["app"]);
 });
 
-test("a ready-made plan's group carries what the plan makes, as its manifest names it", () => {
+test("a ready-made plan's group carries what the plan makes and its outcome, as its manifest says", () => {
   const [group] = planState(
     CATALOG,
     [
@@ -624,6 +624,9 @@ test("a ready-made plan's group carries what the plan makes, as its manifest nam
   );
   expect(group && "name" in group ? group.name : undefined).toBe(
     "Published on Cloudflare",
+  );
+  expect(group && "outcome" in group ? group.outcome : undefined).toBe(
+    "published",
   );
 });
 

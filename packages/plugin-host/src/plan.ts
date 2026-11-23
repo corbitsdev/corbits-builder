@@ -106,6 +106,7 @@ export type PlanGroupView = {
   title: string;
   plan?: string;
   name?: string;
+  outcome?: "published";
   state: StepState;
   needs?: string[];
   steps: PlanStepView[];
@@ -289,10 +290,11 @@ export function planState(
       steps: children,
     };
     if (step.plan) view.plan = step.plan;
-    const name = catalog.plugins
+    const ready = catalog.plugins
       .filter(isReadyPlan)
-      .find(({ builder }) => builder.handle === step.plan)?.builder.name;
-    if (name !== undefined) view.name = name;
+      .find(({ builder }) => builder.handle === step.plan)?.builder;
+    if (ready?.name !== undefined) view.name = ready.name;
+    if (ready?.outcome !== undefined) view.outcome = ready.outcome;
     const any = (state: StepState) =>
       children.some((child) => child.state === state);
     const next = children.find((child) => !settled(child));
