@@ -3,7 +3,6 @@ import { randomUUID } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 import JSZip from "jszip";
-import { createArtifact } from "@corbits/artifacts";
 import { toolConsumer } from "@intx/authz";
 import { createNoopCredentialCipher } from "@intx/crypto";
 import { createRunTokenStore } from "@intx/db";
@@ -36,18 +35,7 @@ async function project(
   const seeded = await hub.seedProject(title);
   if (Object.keys(values).length > 0)
     await hub.call("POST", `${seeded.path}/values`, { values });
-  const content = JSON.stringify({ files });
-  await hub.db.transaction((tx) =>
-    createArtifact(tx, {
-      scope: seeded.person,
-      ownerPrincipalId: seeded.person.principalId,
-      kind: "app",
-      title: "App",
-      content,
-      source: { origin: "workflow" },
-      metadata: { source: "import", bytes: Buffer.byteLength(content) },
-    }),
-  );
+  await hub.seedApp(seeded.path, files);
   return seeded;
 }
 

@@ -3,7 +3,6 @@ import { randomUUID } from "node:crypto";
 import { cp, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { sql } from "drizzle-orm";
-import { createArtifact } from "@corbits/artifacts";
 import { toolConsumer } from "@intx/authz";
 import { createNoopCredentialCipher } from "@intx/crypto";
 import { createRunTokenStore } from "@intx/db";
@@ -44,22 +43,9 @@ afterAll(async () => {
     await rm(join(ROOT, "plugins", folder), { recursive: true, force: true });
 });
 
-// A project with a saved app, as a coder's passing check files it.
 async function savedApp() {
   const seeded = await hub.seedProject("Publish");
-  const { person } = seeded;
-  const content = JSON.stringify({ files: { "package.json": "{}" } });
-  await hub.db.transaction((tx) =>
-    createArtifact(tx, {
-      scope: person,
-      title: "App",
-      content,
-      metadata: { source: "check", bytes: Buffer.byteLength(content) },
-      ownerPrincipalId: person.principalId,
-      kind: "app",
-      source: { origin: "workflow" },
-    }),
-  );
+  await hub.seedApp(seeded.path, { "package.json": "{}" });
   return seeded;
 }
 

@@ -164,6 +164,15 @@ export async function startInProcessHub(settings: Record<string, string> = {}) {
       return { cookie: memberCookie };
     },
 
+    // The project's saved app holding these files, filed through the hub as a person's import.
+    async seedApp(path: string, files: Record<string, string>) {
+      await call("POST", `${path}/artifacts`, {
+        kind: "app",
+        title: "App",
+        content: JSON.stringify({ files }),
+      });
+    },
+
     // A run of the role in the project under its own workflow principal, deployed by the person:
     // ended a minute ago or, with running, still running, and where the local sidecar keeps its
     // workspace.
