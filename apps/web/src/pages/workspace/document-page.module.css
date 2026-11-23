@@ -243,7 +243,20 @@
   position: fixed;
   z-index: 60;
   width: min(var(--card-width), calc(100vw - 16px));
-  animation: global(fade-in) 150ms ease-out;
+  transform-origin: top left;
+  animation: grow-in 150ms ease-out;
+}
+
+/* It grows from the passage it was opened from: down from the line, or up when it opens above. */
+.card[data-side="above"] {
+  transform-origin: bottom left;
+}
+
+@keyframes grow-in {
+  from {
+    opacity: 0;
+    scale: 0.97;
+  }
 }
 
 /* The card brings its comment in itself, so the comment does not settle in a second time. */
