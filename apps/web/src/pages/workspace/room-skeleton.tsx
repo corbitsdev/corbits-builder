@@ -49,7 +49,8 @@ export function RoomSkeleton({
       <div
         className={styles.room}
         data-slot="room-skeleton"
-        data-beside={sidebar.open && !sidebar.drawer ? "" : undefined}
+        data-beside={sidebar.drawer ? undefined : ""}
+        data-open={sidebar.open ? "" : undefined}
       >
         <SidebarFrame
           title={title}
