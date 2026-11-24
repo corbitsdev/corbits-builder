@@ -207,8 +207,8 @@ type Story = StoryObj<typeof meta>;
 
 /**
  * While a ready-made plan runs: its steps, with no row for the plan itself. The finished steps
- * are quiet, the one being worked on is the brightest row and turns, and the steps ahead are
- * fainter. There is no app yet.
+ * are quiet, the one being worked on is the brightest row with its circle half filled, and the
+ * steps ahead are fainter. There is no app yet.
  */
 export const Planning: Story = {};
 
@@ -250,7 +250,7 @@ export const DocumentWaitsOnYouDark: Story = {
   globals: { mode: "dark" },
 };
 
-/** The app is starting: its row turns until it is up. */
+/** The app is starting: its row says so until it is up. */
 export const AppStarting: Story = {
   args: { ...buildingArgs, app: "starting" },
 };

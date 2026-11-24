@@ -312,18 +312,19 @@
   background: var(--wb-foreground);
 }
 
-.step[data-state="needs_you"] .circle::before {
-  border-color: var(--wb-proceed);
-  background: var(--wb-proceed);
+/* In progress, at work or waiting on the person: half filled. */
+.step:is([data-state="running"], [data-state="needs_you"]) .circle::before {
+  border-color: var(--wb-foreground);
+  background: linear-gradient(
+    to right,
+    var(--wb-foreground) 50%,
+    transparent 50%
+  );
 }
 
 .step[data-state="failed"] .circle::before {
   border-color: var(--destructive);
   background: var(--destructive);
-}
-
-.step[data-state="running"] .circle::before {
-  content: none;
 }
 
 /* A step that has made something opens it; the one whose document is on the page is shaded, as a
@@ -374,10 +375,9 @@
   white-space: nowrap;
 }
 
-/* What waits on the person reads as plainly as the step's name. */
+/* What waits on the person is said in the text's own colour: the line, not the mark, tells them. */
 .doing[data-tone="you"] {
   color: var(--wb-foreground);
-  font-weight: 500;
 }
 
 /* A dot sits in a 14px box, so every mark lines up in one column. */

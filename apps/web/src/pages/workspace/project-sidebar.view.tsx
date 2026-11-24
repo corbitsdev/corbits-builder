@@ -543,9 +543,7 @@ function PlanRow({
       onClick={onOpen ?? undefined}
       {...item}
     >
-      <span className={styles.circle}>
-        {state === "running" ? <Working /> : null}
-      </span>
+      <span className={styles.circle} />
       <span className={styles.text}>
         <span className={styles.name}>{row.name}</span>
         {line}
