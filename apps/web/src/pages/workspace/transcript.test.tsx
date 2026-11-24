@@ -646,7 +646,7 @@ describe("conversation transcript", () => {
     expect(steps?.[0]?.output).toBe("3 pass");
   });
 
-  test("a coordinator stretch has one header, its words first and its cards last", () => {
+  test("a coordinator stretch is unnamed on the page, its words first and its cards last", () => {
     const html = renderToStaticMarkup(
       <RoomThread
         standing={standing}
@@ -667,7 +667,9 @@ describe("conversation transcript", () => {
         ]}
       />,
     );
-    expect(html.split(`>${wording.speaker.coordinator}<`)).toHaveLength(3);
+    expect(html).not.toContain(`>${wording.speaker.coordinator}<`);
+    expect(html).not.toContain(`>${wording.speaker.you}<`);
+    expect(html).toContain(`aria-label="${wording.speaker.coordinator}"`);
     const order = [
       "Start",
       "First words.",

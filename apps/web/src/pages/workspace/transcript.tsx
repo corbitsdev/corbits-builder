@@ -712,18 +712,16 @@ export function RoomThread({
       {steps.flatMap((step) => started(step) ?? []).map(specialistRow)}
     </>
   );
-  // Under a coordinator header, a coordinator's approval card does not repeat the name.
-  const renderCard = (card: ShownCard, position: string, headed: boolean) => {
+  // The coordinator and the person are told apart by where their words sit, so neither is named on
+  // the page; a screen reader hears the name from each message's label.
+  const renderCard = (card: ShownCard, position: string) => {
     if (card.kind === "units")
       return (
         <ConversationItem
           key={`units:${card.units[0]?.key ?? position}`}
           itemId={`units:${card.units[0]?.key ?? position}`}
         >
-          <Message from="agent">
-            {headed ? null : (
-              <MessageHeader name={wording.speaker.coordinator} />
-            )}
+          <Message from="agent" aria-label={wording.speaker.coordinator}>
             {card.units.map(specialistRow)}
           </Message>
         </ConversationItem>
@@ -760,10 +758,7 @@ export function RoomThread({
           );
         return (
           <ConversationItem key={signalName} itemId={`questions:${signalName}`}>
-            <Message from="agent">
-              {headed ? null : (
-                <MessageHeader name={wording.speaker.coordinator} />
-              )}
+            <Message from="agent" aria-label={wording.speaker.coordinator}>
               <QuestionEntry signalName={signalName}>{shown}</QuestionEntry>
             </Message>
           </ConversationItem>
@@ -771,10 +766,7 @@ export function RoomThread({
       }
       return (
         <ConversationItem key={signalName} itemId={`questions:${signalName}`}>
-          <Message from="agent">
-            {headed ? null : (
-              <MessageHeader name={wording.speaker.coordinator} />
-            )}
+          <Message from="agent" aria-label={wording.speaker.coordinator}>
             <QuestionEntry signalName={signalName}>
               <QuestionsCard question={question} disabled onAnswer={settled} />
             </QuestionEntry>
@@ -782,7 +774,7 @@ export function RoomThread({
         </ConversationItem>
       );
     }
-    return renderApproval(card.approval, position, headed);
+    return renderApproval(card.approval, position);
   };
   const renderUpdates = (group: UpdateGroup, subject: string | undefined) => (
     <SpecialistUpdatesView key={group.key} row={updatesRow(group, subject)} />
@@ -813,21 +805,21 @@ export function RoomThread({
         onNo={decided}
       />
     );
-  const renderApproval = (
-    approval: DocumentApproval,
-    position: string,
-    headed: boolean,
-  ) => (
+  const renderApproval = (approval: DocumentApproval, position: string) => (
     <ConversationItem
       key={approval.approvalId}
       itemId={`document-decision:${approval.at === undefined ? position : String(approval.at)}`}
     >
-      <Message from="agent">
+      {/* A package decision is the coder's, which the conversation does name. */}
+      <Message
+        from="agent"
+        {...(approval.packages
+          ? {}
+          : { "aria-label": wording.speaker.coordinator })}
+      >
         {approval.packages ? (
           <MessageHeader name={wording.speaker.coder} />
-        ) : headed ? null : (
-          <MessageHeader name={wording.speaker.coordinator} />
-        )}
+        ) : null}
         {decisionCard(approval)}
       </Message>
     </ConversationItem>
@@ -845,8 +837,14 @@ export function RoomThread({
         status={
           streaming ? "streaming" : turn.sending === true ? "sending" : "sent"
         }
+        {...(turn.role === "participant"
+          ? {}
+          : { "aria-label": turnLabel(turn) })}
       >
-        <MessageHeader name={turnLabel(turn)} />
+        {/* Only a specialist speaking in the conversation is named, as it is not the coordinator. */}
+        {turn.role === "participant" ? (
+          <MessageHeader name={turnLabel(turn)} />
+        ) : null}
         <MessageParts
           parts={visible}
           streaming={streaming}
@@ -877,12 +875,10 @@ export function RoomThread({
   // footer when its words end the conversation, so its copy action takes the line's place when the
   // turn ends, else on its own under the last card. A run above a card is not the bottom.
   const last = sections.at(-1);
-  let headedLast = false;
-  let wordsLast = false;
-  if (last?.kind === "coordinator") {
-    headedLast = last.turns.some(({ turn }) => shownParts(turn).length > 0);
-    wordsLast = headedLast && last.cards.length === 0;
-  }
+  const wordsLast =
+    last?.kind === "coordinator" &&
+    last.cards.length === 0 &&
+    last.turns.some(({ turn }) => shownParts(turn).length > 0);
   return (
     // The view follows the reply to its end once the person sends, and stays put when they scroll
     // away, so a long answer is read without chasing it.
@@ -901,7 +897,7 @@ export function RoomThread({
             const visible = section.turns.flatMap(({ turn }) =>
               shownParts(turn),
             );
-            const headed = first !== undefined && visible.length > 0;
+            const said = first !== undefined && visible.length > 0;
             const streaming = section.turns.some(
               ({ turn }) => turn.streaming === true,
             );
@@ -913,7 +909,7 @@ export function RoomThread({
                     : turnItemId(first.turn, first.index)
                 }
               >
-                {headed
+                {said
                   ? renderMessage(
                       turnItemId(first.turn, first.index),
                       first.turn,
@@ -923,7 +919,7 @@ export function RoomThread({
                     )
                   : null}
                 {foldUpdates(liveLast(section.cards, live)).map((card, at) =>
-                  renderCard(card, `${String(position)}:${String(at)}`, headed),
+                  renderCard(card, `${String(position)}:${String(at)}`),
                 )}
               </Fragment>
             );
@@ -961,11 +957,11 @@ export function RoomThread({
         })}
         {thinkingShown && !wordsLast ? (
           <ConversationItem itemId="colleague-thinking">
-            <Message from="agent" status="streaming">
-              {/* Under the coordinator's words, as its cards are, the name isn't repeated. */}
-              {headedLast ? null : (
-                <MessageHeader name={wording.speaker.coordinator} />
-              )}
+            <Message
+              from="agent"
+              status="streaming"
+              aria-label={wording.speaker.coordinator}
+            >
               <ThinkingLine />
             </Message>
           </ConversationItem>

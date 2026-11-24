@@ -9,7 +9,6 @@
 import {
   Message,
   MessageContent,
-  MessageHeader,
   PromptInput,
   PromptInputSubmit,
   PromptInputTextarea,
@@ -72,12 +71,18 @@ export function RoomSkeleton({
             <Shapes />
           ) : (
             <div className={styles.thread} data-opening="">
-              <Message from="own" status="sent">
-                <MessageHeader name={wording.speaker.you} />
+              <Message
+                from="own"
+                status="sent"
+                aria-label={wording.speaker.you}
+              >
                 <MessageContent text={opening} />
               </Message>
-              <Message from="agent" status="streaming">
-                <MessageHeader name={wording.speaker.coordinator} />
+              <Message
+                from="agent"
+                status="streaming"
+                aria-label={wording.speaker.coordinator}
+              >
                 <ShimmerText>{wording.activity.thinkingNow}</ShimmerText>
               </Message>
             </div>
