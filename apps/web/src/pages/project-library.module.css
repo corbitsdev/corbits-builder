@@ -88,6 +88,10 @@
   font-size: 0.8125rem;
 }
 
+.grid:not([data-menu]) .cardMeta {
+  padding-right: 0;
+}
+
 .cardMenu {
   position: absolute;
   right: var(--space-2);

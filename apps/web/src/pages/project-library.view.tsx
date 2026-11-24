@@ -167,6 +167,8 @@ export type ProjectCardsProps = {
   onCoverNear: (projectId: string) => void;
   /** A card's options menu, opened by the trigger given; without it a card has no menu. */
   menu?: ((projectId: string, trigger: ReactElement) => ReactNode) | undefined;
+  /** Whether each card shows its stage; the Projects page filters by it, elsewhere it is noise. */
+  stages?: boolean | undefined;
   className?: string | undefined;
 };
 
@@ -177,6 +179,7 @@ export function ProjectCards({
   onOpen,
   onCoverNear,
   menu,
+  stages = true,
   className,
 }: ProjectCardsProps) {
   return (
@@ -185,6 +188,8 @@ export function ProjectCards({
         className === undefined ? styles.grid : `${styles.grid} ${className}`
       }
       data-view={layout}
+      // Without a menu, a card's last line has the corner the menu would take.
+      data-menu={menu === undefined ? undefined : ""}
     >
       {projects.map((project) => {
         const cover = coverOf(project.id);
@@ -205,9 +210,11 @@ export function ProjectCards({
               <span className={styles.cardBody}>
                 <span className={styles.cardTitle}>{project.title}</span>
                 <span className={styles.cardMeta}>
-                  <Badge tone={STAGE_TONE[project.stage]}>
-                    {wording.library.filter[project.stage]}
-                  </Badge>
+                  {stages ? (
+                    <Badge tone={STAGE_TONE[project.stage]}>
+                      {wording.library.filter[project.stage]}
+                    </Badge>
+                  ) : null}
                   <time dateTime={project.lastActivityAt}>
                     {wording.library.lastActivity(project.lastActive)}
                   </time>

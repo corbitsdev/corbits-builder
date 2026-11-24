@@ -280,6 +280,7 @@ export function ProjectsView({
               className={styles.recentCards}
               projects={recent}
               layout="grid"
+              stages={false}
               onOpen={onOpenProject}
               onCoverNear={onCoverNear}
             />
