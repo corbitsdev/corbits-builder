@@ -223,11 +223,18 @@ function boxPlaceholder(
   return question.custom ? undefined : text.replyInstead;
 }
 
-/** Option `index` picked: the only choice on a pick-one question, toggled on a pick-any one. */
+/**
+ * Option `index` picked: the only choice on a pick-one question, toggled on a pick-any one.
+ * Picking a pick-one question's choice again takes it back, so the box answers in words again.
+ */
 function pick(question: Question, answer: Answer, index: number): Answer {
   const value = question.options[index]?.label;
   if (value === undefined) return answer;
-  if (!question.multiple) return { chosen: [value], own: "" };
+  if (!question.multiple)
+    return {
+      chosen: chosenOf(question, answer).includes(value) ? [] : [value],
+      own: "",
+    };
   return {
     ...answer,
     chosen: answer.chosen.includes(value)
@@ -248,10 +255,13 @@ export function enterAnswer(
   answer: Answer,
   focused: number,
 ): Answer {
+  const aimed = question.options[focused]?.label;
+  // Enter on the option already picked goes on with it; only a click or its key takes it back.
   if (
     question.multiple ||
     answer.own.trim() !== "" ||
-    question.options[focused] === undefined
+    aimed === undefined ||
+    answer.chosen.includes(aimed)
   )
     return answer;
   return pick(question, answer, focused);
@@ -440,8 +450,12 @@ function Choices({
                   checked={checked}
                   aria-keyshortcuts={String(index + 1)}
                   onChange={() => onPick(index)}
-                  // Safari leaves focus where it was on a click; the card's keys need it here.
-                  onClick={(event) => event.currentTarget.focus()}
+                  onClick={(event) => {
+                    // Safari leaves focus where it was on a click; the card's keys need it here.
+                    event.currentTarget.focus();
+                    // A checked radio fires no change, so a click on it reaches the pick here.
+                    if (!multi && checked) onPick(index);
+                  }}
                 />
                 {multi ? <Check aria-hidden="true" /> : null}
               </span>

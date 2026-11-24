@@ -297,6 +297,8 @@ describe("question keys", () => {
       chosen: ["Just me"],
       own: "",
     });
+    // Enter on the option already picked goes on with it and does not take it back.
+    expect(enterAnswer(single!, recommended, 0)).toBe(recommended);
     // Focus on the own-words field or a button keeps the answer as it is.
     expect(enterAnswer(single!, recommended, 2)).toBe(recommended);
     expect(enterAnswer(single!, recommended, -1)).toBe(recommended);
