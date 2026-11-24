@@ -6,6 +6,9 @@ import {
   NoProjectOpen,
   ProjectLoadFailure,
 } from "./App.view.tsx";
+import projects from "./pages/projects.stories.tsx";
+import { ProjectsView } from "./pages/projects.view.tsx";
+import { productName } from "./config.ts";
 import settings from "./pages/settings/settings.stories.tsx";
 import { SettingsView } from "./pages/settings/settings.view.tsx";
 
@@ -45,13 +48,18 @@ type Story = StoryObj<typeof meta>;
 export const SignedIn: Story = {};
 
 /**
- * The new project page stands alone: no sidebar, and Workspace settings and Account in its
- * corner. Its own recent projects list sits under the prompt.
+ * The new project page stands alone: no sidebar, the product's mark and name in one top corner,
+ * and Workspace settings and Account in the other. Its own recent projects list sits under the
+ * prompt.
  */
 export const Home: Story = {
-  args: { current: "newProject" },
+  args: {
+    current: "newProject",
+    page: <ProjectsView {...projects.args} />,
+  },
   play: async ({ args, canvasElement }) => {
     const canvas = within(canvasElement);
+    await expect(canvas.getByText(productName)).toBeVisible();
     await expect(
       canvas.queryByRole("complementary", { name: "Workspace" }),
     ).toBeNull();

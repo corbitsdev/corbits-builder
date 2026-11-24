@@ -2,16 +2,16 @@
  * The app shell as it looks: outside a project the workspace sidebar on the
  * left, and beside it the canvas with its notices and the page on screen. A
  * project's room draws its own sidebar. The new project page has none: it is
- * the prompt alone, with Workspace settings and Account in its top right
- * corner. Settings has none either: its way back stands beside its title. The
- * page, which reads the hub, arrives as a slot, so any state of the shell can
- * be drawn without one.
+ * the prompt alone, with the product's mark and name in its top left corner
+ * and Workspace settings and Account in its top right. Settings has none
+ * either: its way back stands beside its title. The page, which reads the hub,
+ * arrives as a slot, so any state of the shell can be drawn without one.
  */
 import { useState, type ReactNode } from "react";
 import { Building2, CircleUser } from "lucide-react";
 import { toast } from "sonner";
 import { BootScreen, Button as UiButton } from "@corbits/react-ui";
-import { wording } from "./config.ts";
+import { productName, wording } from "./config.ts";
 import styles from "./App.module.css";
 import { Banner, Button, Mark } from "./components.jsx";
 import {
@@ -65,6 +65,12 @@ export function AppView({
       <main className={styles.canvas}>
         {/* Floats over the page, so it stands outside the page's own column. */}
         <HubNotice hub={hub} />
+        {home ? (
+          <p className={styles.brand}>
+            <Mark size={22} />
+            <span>{productName}</span>
+          </p>
+        ) : null}
         {home ? (
           <nav className={styles.corner} aria-label={wording.shell.corner}>
             <UiButton
