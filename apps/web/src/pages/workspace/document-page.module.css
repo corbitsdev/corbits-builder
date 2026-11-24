@@ -57,7 +57,8 @@
   /* Level with the page's top edge, and held there as the page scrolls past. */
   top: 8px;
   align-self: start;
-  padding: 8px var(--space-8) 0 var(--space-4);
+  /* Below the project's name, where the closed sidebar leaves it over this corner. */
+  padding: calc(8px + var(--corner-clear, 0px)) var(--space-8) 0 var(--space-4);
 }
 
 .column {

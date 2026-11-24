@@ -613,11 +613,23 @@ export const SidebarClosedPlanUnderWay: Story = {
   args: { sidebar: { ...sidebarOf({}, coordinatorPlan.plan), open: false } },
 };
 
-/** Put away beside the open project view, whose header leaves the corner to the toggle. */
+/**
+ * Put away beside the open project view, whose header leaves the corner to the toggle. The page's
+ * contents keep the margin left of it, so the plan's card gives way to them.
+ */
 export const SidebarClosedProjectOpen: Story = {
   args: {
     ...ProjectOpen.args,
     sidebar: { ...withDocuments.sidebar, open: false },
+  },
+  play: async ({ canvasElement }) => {
+    await waitFor(() =>
+      expect(
+        canvasElement.querySelector('[data-slot="document-contents"]'),
+      ).not.toBeNull(),
+    );
+    const glance = canvasElement.querySelector('[data-slot="plan-glance"]');
+    if (glance !== null) await expect(glance).not.toBeVisible();
   },
 };
 
