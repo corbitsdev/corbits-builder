@@ -9,7 +9,7 @@
  */
 import type {
   ConversationEvents,
-  QuestionAnswer,
+  GivenQuestionAnswer,
 } from "@corbits-builder/schemas/conversation";
 import { wording } from "../config.ts";
 import { productClient } from "./transport.ts";
@@ -109,7 +109,7 @@ export function isInputPark(event: ConversationEvent): boolean {
 export async function answerQuestion(
   projectId: string,
   signalName: string,
-  answer: QuestionAnswer,
+  answer: GivenQuestionAnswer,
 ): Promise<void> {
   await productClient().answerQuestion(
     await workspaceTenantId(),

@@ -11,6 +11,7 @@ import {
   enterAnswer,
   isRecommended,
   keyIntent,
+  sentAnswer,
   shownLabel,
   withWords,
 } from "./questions-card.tsx";
@@ -372,10 +373,22 @@ describe("words sent from the prompt box", () => {
       own: "",
       details: "Mostly at weekends",
     });
-    expect(answerLabels(audience!, answer!)).toEqual([
-      "Just me",
-      "Mostly at weekends",
-    ]);
+    // The hub takes one label for a pick-one question, so the details travel beside it.
+    expect(
+      sentAnswer([
+        { question: audience!, answer: answer! },
+        {
+          question: firstVersion!,
+          answer: { chosen: ["Track tasks"], own: "" },
+        },
+      ]),
+    ).toEqual({
+      answers: {
+        [audience!.id]: ["Just me"],
+        [firstVersion!.id]: ["Track tasks"],
+      },
+      details: { [audience!.id]: "Mostly at weekends" },
+    });
   });
 
   test("with nothing picked they are the person's own answer where the question takes one", () => {

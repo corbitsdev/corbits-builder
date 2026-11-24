@@ -27,7 +27,7 @@ import {
 } from "@corbits-builder/plugin-ui/screen-actions";
 import type {
   PromptQuestion,
-  QuestionAnswer,
+  GivenQuestionAnswer,
 } from "@corbits-builder/schemas/conversation";
 import { type } from "arktype";
 import { useUnsent } from "../../unsent.ts";
@@ -91,7 +91,7 @@ const startingProgress = (questions: readonly Question[]): Progress => ({
 export function useAnswer<Draft>(
   key: string,
   read: (saved: unknown) => Draft | undefined,
-  onAnswer: (answer: QuestionAnswer) => Promise<boolean>,
+  onAnswer: (answer: GivenQuestionAnswer) => Promise<boolean>,
 ) {
   const [saved, setSaved] = useUnsent(key);
   const parse = useCallback(
@@ -121,7 +121,7 @@ export function useAnswer<Draft>(
       setSaved((raw) => JSON.stringify(next(parse(raw)))),
     sending,
     /** Whether the hub took the answer. */
-    send: async (answer: QuestionAnswer) => {
+    send: async (answer: GivenQuestionAnswer) => {
       if (inFlight.current) return false;
       inFlight.current = true;
       setSending(true);
@@ -162,20 +162,43 @@ function chosenOf(question: Question, answer: Answer): readonly string[] {
   return !question.multiple && answer.own.trim() !== "" ? [] : answer.chosen;
 }
 
-/** The answer as it is sent: the options that count, then the person's own words, then details. */
+/** The answer as it is sent: the options that count, then the person's own words. */
 export function answerLabels(question: Question, answer: Answer): string[] {
   const chosen = chosenOf(question, answer);
   const labels = question.options
     .filter((option) => chosen.includes(option.label))
     .map((option) => option.label);
-  return [labels, answer.own.trim(), answer.details?.trim() ?? ""]
-    .flat()
-    .filter((label) => label !== "");
+  const own = answer.own.trim();
+  return own === "" ? labels : [...labels, own];
+}
+
+/** The whole card as it is sent: each question's answer, and the details given beside any. */
+export function sentAnswer(
+  card: readonly { question: Question; answer: Answer }[],
+): GivenQuestionAnswer {
+  const given = card.map(({ question, answer }) => ({
+    id: question.id,
+    labels: answerLabels(question, answer),
+    details: answer.details?.trim() ?? "",
+  }));
+  const details = given.filter((each) => each.details !== "");
+  const sent = {
+    answers: Object.fromEntries(given.map(({ id, labels }) => [id, labels])),
+  };
+  return details.length === 0
+    ? sent
+    : {
+        answers: sent.answers,
+        details: Object.fromEntries(
+          details.map((each) => [each.id, each.details]),
+        ),
+      };
 }
 
 /**
  * Words sent from the prompt box as this question's answer: details beside a pick, else the
- * person's own answer where the question takes one; undefined where it takes neither.
+ * person's own answer where the question takes one; undefined where it takes neither, which
+ * leaves them to the conversation as a reply.
  */
 export function withWords(
   question: Question,
@@ -187,6 +210,17 @@ export function withWords(
   if (question.custom || question.options.length === 0)
     return { chosen: [], own: words };
   return undefined;
+}
+
+/** What the prompt box asks for under the open question; undefined leaves the box's own line. */
+function boxPlaceholder(
+  question: Question,
+  picked: readonly string[],
+): string | undefined {
+  if (question.options.length === 0) return text.typed;
+  if (picked.length > 0)
+    return text.addDetails(picked.map(shownLabel).join(", "));
+  return question.custom ? undefined : text.replyInstead;
 }
 
 /** Option `index` picked: the only choice on a pick-one question, toggled on a pick-any one. */
@@ -441,7 +475,7 @@ function OpenCard({
   sending: boolean;
   /** The last answer did not reach the hub. */
   fault: string | undefined;
-  onSend: (answer: QuestionAnswer) => void;
+  onSend: (answer: GivenQuestionAnswer) => void;
   step: number;
   answers: readonly Answer[];
   onStep: (to: number) => void;
@@ -468,11 +502,7 @@ function OpenCard({
   // The person's own words go in the prompt box, the one place to type, even where there is
   // nothing to pick: then the box asks for the answer itself.
   usePromptPlaceholder(
-    question !== undefined && question.options.length === 0
-      ? text.typed
-      : picked.length === 0
-        ? undefined
-        : text.addDetails(picked.map(shownLabel).join(", ")),
+    question === undefined ? undefined : boxPlaceholder(question, picked),
   );
   usePromptSend(
     question !== undefined && !blocked && !sending
@@ -517,19 +547,19 @@ function OpenCard({
     onStep(Math.max(0, Math.min(to, questions.length - 1)));
     onFocusFollows();
   };
-  const deliver = (answer: QuestionAnswer) => {
+  const deliver = (answer: GivenQuestionAnswer) => {
     onFocusFollows();
     onSend(answer);
   };
   const send = (current: Answer) =>
-    deliver({
-      answers: Object.fromEntries(
-        questions.map((item, index) => [
-          item.id,
-          answerLabels(item, index === step ? current : answerOf(index)),
-        ]),
+    deliver(
+      sentAnswer(
+        questions.map((item, index) => ({
+          question: item,
+          answer: index === step ? current : answerOf(index),
+        })),
       ),
-    });
+    );
   /** On to the next question with `current` as this one's answer, or send on the last. */
   const next = (current: Answer) => {
     if (disabled || !answered(current)) return;
@@ -540,7 +570,8 @@ function OpenCard({
   // Send in the prompt box carries what it holds with the pick, then moves on as Continue does.
   function takeWords(words: string): boolean {
     if (question === undefined) return false;
-    const current = withWords(question, answer, words);
+    // Enter on an empty box goes forward as Continue does, with the details already given.
+    const current = words === "" ? answer : withWords(question, answer, words);
     if (current === undefined) return false;
     next(current);
     return true;
@@ -691,7 +722,7 @@ export function QuestionsCard({
   /** Closed to answers for now, such as while another message is sending. */
   disabled: boolean;
   /** Sends each question's answer under its id; whether the hub took it. */
-  onAnswer: (answer: QuestionAnswer) => Promise<boolean>;
+  onAnswer: (answer: GivenQuestionAnswer) => Promise<boolean>;
 }) {
   const { signalName, asked } = question;
   const outcome = useQuestionOutcome(signalName);

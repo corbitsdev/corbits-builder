@@ -1888,8 +1888,7 @@ export function useRoom({
         onRemove: (id) =>
           setFiles((current) => current.filter((held) => held.id !== id)),
       },
-      sendFault:
-        questionFault(outcomes) ?? (sendFailed && sendFault ? sendFault : null),
+      sendFault: sendFailed && sendFault ? sendFault : null,
       restarts: promptBox.restarts,
       status: promptBox.status,
       onStop: promptBox.onStop,
@@ -2046,13 +2045,4 @@ function lastSentAt(
   const wrote = turns.findLast((turn) => turn.role === "person")?.at;
   if (wrote === undefined) return awaitingSince;
   return awaitingSince === null ? wrote : Math.max(wrote, awaitingSince);
-}
-
-function questionFault(
-  outcomes: ReadonlyMap<string, AnswerOutcome>,
-): string | null {
-  const latest = Array.from(outcomes.values()).at(-1);
-  if (latest !== undefined && "fault" in latest && latest.fault !== undefined)
-    return latest.fault;
-  return null;
 }
