@@ -20,7 +20,7 @@
 .handle {
   position: absolute;
   top: calc((100% - var(--box-height, 0px)) / 2);
-  right: var(--space-3);
+  right: var(--space-4);
   margin: 0;
   transform: translateY(-50%);
 }
@@ -31,7 +31,7 @@
   bottom: auto;
   flex-direction: column;
   max-width: none;
-  max-height: calc(100% - var(--box-height, 0px) - 2 * var(--space-3));
+  max-height: calc(100% - var(--box-height, 0px) - 2 * var(--space-4));
 }
 
 .bar[data-floating] > .rule {
@@ -131,8 +131,8 @@
    take presses. */
 .anchor {
   position: absolute;
-  inset: var(--space-3) var(--space-3)
-    calc(var(--space-3) + var(--box-height, 0px));
+  inset: var(--space-4) var(--space-4)
+    calc(var(--space-4) + var(--box-height, 0px));
   z-index: 3;
   display: flex;
   flex-direction: row;

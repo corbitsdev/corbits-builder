@@ -306,8 +306,8 @@
    reads as a control over the view rather than part of the page beneath. */
 .close {
   position: absolute;
-  top: var(--space-3);
-  right: var(--space-3);
+  top: var(--space-4);
+  right: var(--space-4);
   z-index: 5;
   border: 1px solid var(--wb-border);
   border-radius: 999px;
@@ -319,20 +319,19 @@
   color: var(--wb-foreground);
 }
 
-/* Over a written page it stands just beyond the page's top right corner, level with its top edge,
-   so it reads as closing the page. The page is 768px at the window's middle, as the document lays
-   it; where the window leaves no room beside it, the button keeps to the corner. */
+/* Over a written page it stands just beyond the page's top right corner, so it reads as closing
+   the page. The page is 768px at the window's middle, as the document lays it; where the window
+   leaves no room beside it, the button keeps to the corner. */
 .page:has(
     > [data-slot="artifact-pane"]
       [data-slot="panel-pane"][data-state="active"]
       [data-slot="document-page"]
   )
   > .close {
-  top: 14px;
   right: auto;
   left: min(
     50% + min(768px, 100% - 2 * var(--space-4)) / 2 + var(--space-3),
-    100% - 36px - var(--space-3)
+    100% - 36px - var(--space-4)
   );
 }
 

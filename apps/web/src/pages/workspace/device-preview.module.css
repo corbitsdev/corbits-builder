@@ -29,6 +29,9 @@
   flex: 1;
   min-height: 0;
   padding: calc(var(--framed) * var(--space-3));
+  /* Framed, the column at its right holds the bar of actions and the way back to the chat, a
+     44px bar or a 36px button with a margin either side, clear of the frame and its scrollbar. */
+  padding-inline-end: calc(var(--framed) * (2.75rem + 2 * var(--space-4)));
 }
 
 .preview[data-fill] > .bezel {
