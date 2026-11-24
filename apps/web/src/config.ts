@@ -679,7 +679,7 @@ export const wording = {
     comments: (count: number) =>
       count === 1 ? "1 comment" : `${String(count)} comments`,
     /** The placeholder beside that token: Send sends the comments, with any words typed after them. */
-    commentsPlaceholder: "Add a message…",
+    commentsPlaceholder: "Add to your comments…",
     /** The token's name and what it does: opens the page the comments are on. */
     showComments: (count: number) =>
       count === 1 ? "Show the comment" : `Show the ${String(count)} comments`,

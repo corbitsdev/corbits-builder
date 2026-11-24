@@ -1079,7 +1079,8 @@ function RoomComposerView({
               placeholder={
                 needsProvider
                   ? wording.conversation.enableAiFirst
-                  : commentsReady && ports.placeholder === undefined
+                  : // Words typed beside comments go with them, so the box asks for more, not instead.
+                    comments > 0
                     ? wording.promptBox.commentsPlaceholder
                     : (ports.placeholder ?? placeholder)
               }
