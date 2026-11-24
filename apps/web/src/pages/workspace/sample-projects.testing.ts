@@ -152,6 +152,7 @@ const quietFacts: RoomStatusFacts = {
   documents: [],
   app: null,
   deciding: false,
+  projectOpen: false,
 };
 
 /** What is happening in each sample project, as the status line reads it. */
@@ -243,6 +244,12 @@ export const statusRooms = {
       { id: "build_plan", title: "Build plan", version: 1, seen: true },
     ],
     app: "running",
+  },
+  /** The app running, seen from the open project. */
+  appRunningOpen: {
+    ...quietFacts,
+    app: "running",
+    projectOpen: true,
   },
   /** The app could not start. */
   appFailed: { ...quietFacts, app: "failed" },

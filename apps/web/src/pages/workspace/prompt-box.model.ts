@@ -106,6 +106,8 @@ export type PromptBoxRoom = {
   seen: SeenVersions;
   /** The project has an app to run. */
   hasApp: boolean;
+  /** The project fills the window. */
+  projectOpen: boolean;
   onOpenDocument: (id: string) => void;
   onOpenApp: () => void;
   /** Sends a message as the person, such as asking to try again. */
@@ -359,6 +361,7 @@ export function usePromptBox(room: PromptBoxRoom): PromptBox {
       })),
     app: room.hasApp ? (app?.state ?? null) : null,
     deciding: decides,
+    projectOpen: room.projectOpen,
   };
   const line = room.archived ? null : roomStatus(facts);
   const status: StatusPillContent | null =

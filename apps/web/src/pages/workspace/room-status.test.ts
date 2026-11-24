@@ -101,6 +101,10 @@ describe("what the status line says", () => {
     });
   });
 
+  test("the open project hears nothing that only opens it", () => {
+    expect(roomStatus(rooms.appRunningOpen)).toBeNull();
+  });
+
   test("an app that did not start opens to say why", () => {
     expect(roomStatus(rooms.appFailed)).toEqual({
       state: "failed",

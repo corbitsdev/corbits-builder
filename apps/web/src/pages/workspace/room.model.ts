@@ -1821,6 +1821,7 @@ export function useRoom({
     documents: paneDeliverables,
     seen,
     hasApp: liveApp !== null,
+    projectOpen: projectOpen && !nothingYet,
     onOpenDocument: openDocument,
     onOpenApp: () => openProject(LIVE_TAB),
     onSend: (message) => void deliver(message),

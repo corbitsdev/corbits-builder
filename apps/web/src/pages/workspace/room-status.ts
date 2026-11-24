@@ -34,6 +34,8 @@ export type RoomStatusFacts = {
   app: "running" | "starting" | "failed" | "stopped" | "not_built" | null;
   /** The box asks the person to accept something, and its screen opens what it asks about. */
   deciding: boolean;
+  /** The project fills the window, so its documents and app are already in reach. */
+  projectOpen: boolean;
 };
 
 /** What the line's one button does; the model gives each its handler. */
@@ -160,7 +162,13 @@ export const rules: readonly { name: string; rule: Rule }[] = [
 export function roomStatus(facts: RoomStatusFacts): RoomStatus | null {
   for (const { rule } of rules) {
     const status = rule(facts);
-    if (status !== undefined) return status;
+    if (status === undefined) continue;
+    // Over the open project, a line pointing into it points at what is already on screen.
+    if (facts.projectOpen && opensProject(status)) continue;
+    return status;
   }
   return null;
 }
+
+const opensProject = ({ action }: RoomStatus) =>
+  action?.kind === "openDocument" || action?.kind === "openApp";
