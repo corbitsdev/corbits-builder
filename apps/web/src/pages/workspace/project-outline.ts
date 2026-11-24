@@ -30,10 +30,7 @@ export type OutlineStep = {
   declined: boolean | null;
 };
 
-/**
- * One entry of the plan: a step, or a ready-made plan's group with its steps under it. A step that
- * makes nothing is a row as much as one that makes something.
- */
+/** One step of the plan. A step that makes nothing is a row as much as one that makes something. */
 export type OutlineRow = {
   id: string;
   name: string;
@@ -42,10 +39,8 @@ export type OutlineRow = {
   app: boolean;
   /** The tab of what it made, once the project has it; null while there is nothing to show. */
   opens: string | null;
-  /** The step it is, whose settings its menu changes; none for a group, whose steps have theirs. */
+  /** The step it is, whose settings its menu changes. */
   steps: OutlineStep[];
-  /** A group's steps, in the plan's order; none for a step. */
-  children: OutlineRow[];
 };
 
 export type OutlineAppState =
@@ -72,10 +67,7 @@ export type Outline = {
   app: OutlineAppState;
 };
 
-function stepState(step: {
-  state: PlanChild["state"];
-  declined?: PlanChild["declined"] | undefined;
-}): OutlineStepState {
+function stepState(step: PlanChild): OutlineStepState {
   if (step.declined !== undefined) return "declined";
   switch (step.state) {
     case "done":
@@ -116,8 +108,9 @@ export function outlineStep(step: PlanChild): OutlineStep {
 }
 
 /**
- * The plan as the coordinator saved it, in its order: a step outside a group is a row of its own, and
- * a group is a row with its steps under it. A step links to the first thing it makes that the
+ * The plan's steps as the coordinator saved them, in its order, each a row of its own: a ready-made
+ * plan's group adds its steps and no row for itself, since the steps say what is happening. A step
+ * links to the first thing it makes that the
  * project has: the app once it can be shown, or a document the project view can open.
  */
 export function outlinePlan(
@@ -137,21 +130,10 @@ export function outlinePlan(
       app: made.includes("app"),
       opens: makes === null ? null : makes === "app" ? LIVE_TAB : makes,
       steps: [outlineStep(step)],
-      children: [],
     };
   };
-  return plan.map((entry) =>
-    "steps" in entry
-      ? {
-          id: entry.id,
-          name: entry.title,
-          state: stepState({ state: entry.state }),
-          app: false,
-          opens: null,
-          steps: [],
-          children: entry.steps.map(stepRow),
-        }
-      : stepRow(entry),
+  return plan.flatMap((entry) =>
+    "steps" in entry ? entry.steps.map(stepRow) : [stepRow(entry)],
   );
 }
 

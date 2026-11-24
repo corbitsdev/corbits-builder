@@ -188,12 +188,6 @@
   list-style: none;
 }
 
-/* A group's steps sit under it, set in, so the group reads as theirs. */
-.tree .tree {
-  margin-block-start: 2px;
-  padding-inline-start: var(--space-4);
-}
-
 /* The tree item holds focus; its row draws the ring. */
 .item:focus-visible {
   outline: none;

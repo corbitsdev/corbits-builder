@@ -85,7 +85,6 @@ describe("the plan", () => {
       ["Build the order import tool", "to_do"],
       ["Try the tool on last week's orders", "to_do"],
     ]);
-    expect(rows.every((row) => row.children.length === 0)).toBe(true);
   });
 
   test("a step that makes nothing is a row of its own, opening nothing", () => {
@@ -107,17 +106,9 @@ describe("the plan", () => {
     expect(rows[4]!.steps[0]!.declined).toBe(false);
   });
 
-  test("a ready-made plan's group is a row with its steps under it, in order", () => {
-    const [group, ...rest] = projectOutline(planning).plan;
-    expect(rest).toEqual([]);
-    expect(group).toMatchObject({
-      id: "web-app",
-      name: "Build a web app",
-      state: "running",
-      steps: [],
-      opens: null,
-    });
-    expect(group!.children.map((row) => [row.id, row.state])).toEqual([
+  test("a ready-made plan's steps are listed in order, with no row for the plan itself", () => {
+    const rows = projectOutline(planning).plan;
+    expect(rows.map((row) => [row.id, row.state])).toEqual([
       ["brief", "done"],
       ["constraints", "done"],
       ["approaches", "running"],
@@ -126,14 +117,13 @@ describe("the plan", () => {
     ]);
   });
 
-  test("a group and steps outside it keep the plan's order", () => {
+  test("a group's steps and steps outside it keep the plan's order", () => {
     const rows = outlinePlan([
       planStep("first", "done"),
       planGroup("group", "A group", [planStep("inside", "running")]),
       planStep("last", "not_started"),
     ]);
-    expect(rows.map((row) => row.id)).toEqual(["first", "group", "last"]);
-    expect(rows[1]!.children.map((row) => row.id)).toEqual(["inside"]);
+    expect(rows.map((row) => row.id)).toEqual(["first", "inside", "last"]);
   });
 
   test("a step opens what it made once the project has it, and not before", () => {

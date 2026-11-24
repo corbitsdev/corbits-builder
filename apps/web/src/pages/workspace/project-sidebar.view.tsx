@@ -70,10 +70,7 @@ export type SidebarStep = {
   declined: boolean | null;
 };
 
-/**
- * One entry of the plan: a step, or a ready-made plan's group with its steps under it. A step that
- * makes nothing is listed as much as one that makes something.
- */
+/** One step of the plan. A step that makes nothing is listed as much as one that makes something. */
 export type SidebarRow = {
   id: string;
   name: string;
@@ -82,15 +79,9 @@ export type SidebarRow = {
   app: boolean;
   /** The tab of what it made, which the row opens; null while there is nothing to show. */
   opens: string | null;
-  /** The step it is, whose settings its menu changes; none for a group. */
+  /** The step it is, whose settings its menu changes. */
   steps: readonly SidebarStep[];
-  /** A group's steps; none for a step. */
-  children: readonly SidebarRow[];
 };
-
-/** Every row of the plan, a group's steps after it. */
-const everyRow = (plan: readonly SidebarRow[]): SidebarRow[] =>
-  plan.flatMap((row) => [row, ...row.children]);
 
 /** How the project's app stands, as its line says it. */
 export type SidebarAppState =
@@ -163,7 +154,7 @@ export function ProjectSidebarView({
         onOpenStep={onOpenStep}
       />
       {/* The app has its own line only where no step of the plan makes it. */}
-      {everyRow(plan).some((row) => row.app) ? null : (
+      {plan.some((row) => row.app) ? null : (
         <AppLine app={app} open={appOpen} onOpen={onOpenApp} />
       )}
       <SidebarFoot>
@@ -371,8 +362,6 @@ type TreeRow = {
   activate: (() => void) | null;
   /** It has a menu, which Shift+F10 or the context-menu key opens. */
   menu: boolean;
-  /** The group it is under, which the left arrow moves to; null at the top. */
-  parent: string | null;
 };
 
 /** What every row of the tree takes to hold the tree's one tab stop. */
@@ -381,10 +370,9 @@ type TreeItemProps = Required<
 >;
 
 /**
- * The plan, as a tree two levels deep with a single tab stop, after the WAI-ARIA tree view pattern:
- * a group's steps always show under it; the up and down arrows move through every row, the left
- * arrow goes from a step to its group, Home and End jump, a letter finds the next row starting with
- * it, Enter or Space opens what a row made or else the row's menu, and Shift+F10 or the
+ * The plan's steps, as a tree of one level with a single tab stop, after the WAI-ARIA tree view
+ * pattern: the arrows move between rows, Home and End jump, a letter finds the next row starting
+ * with it, Enter or Space opens what a row made or else the row's menu, and Shift+F10 or the
  * context-menu key opens a row's menu.
  */
 function PlanTree({
@@ -408,19 +396,16 @@ function PlanTree({
   const [menu, setMenu] = useState<string | null>(null);
   const opener = ({ opens }: SidebarRow) =>
     opens === null ? null : () => onOpenStep(opens);
-  const rows = plan.flatMap((top) =>
-    [top, ...top.children].map((row): TreeRow => {
-      const key = rowKey(row.id);
-      const menu = row.steps.some(stepHasMenu);
-      return {
-        key,
-        name: row.name,
-        activate: opener(row) ?? (menu ? () => setMenu(key) : null),
-        menu,
-        parent: row === top ? null : rowKey(top.id),
-      };
-    }),
-  );
+  const rows = plan.map((row): TreeRow => {
+    const key = rowKey(row.id);
+    const menu = row.steps.some(stepHasMenu);
+    return {
+      key,
+      name: row.name,
+      activate: opener(row) ?? (menu ? () => setMenu(key) : null),
+      menu,
+    };
+  });
   const items = useRef(new Map<string, HTMLElement>());
   const [focused, setFocused] = useState<string | null>(null);
   // Tab enters at the row last focused, else the first.
@@ -458,10 +443,6 @@ function PlanTree({
         break;
       case "ArrowUp":
         move(rows[index - 1]);
-        break;
-      case "ArrowLeft":
-        if (row.parent === null) return;
-        focus(row.parent);
         break;
       case "Home":
         move(rows[0]);
@@ -516,46 +497,32 @@ function PlanTree({
       className={styles.tree}
       onKeyDown={onKeyDown}
     >
-      {plan.map((top) => {
-        const planRow = (row: SidebarRow, level: 1 | 2, under?: ReactNode) => (
-          <PlanRow
-            key={row.id}
-            row={row}
-            level={level}
-            app={row.app ? app : null}
-            current={row.opens !== null && row.opens === shown}
-            onOpen={opener(row)}
-            menu={
-              row.steps.some(stepHasMenu) ? (
-                <RowStepsMenu
-                  steps={row.steps.filter(stepHasMenu)}
-                  menu={menuOf(rowKey(row.id), row.name)}
-                  onAskFirst={onAskFirst}
-                  onDecline={onDecline}
-                />
-              ) : null
-            }
-            {...itemProps(rowKey(row.id))}
-          >
-            {under}
-          </PlanRow>
-        );
-        return planRow(
-          top,
-          1,
-          top.children.length === 0 ? undefined : (
-            <ul role="group" className={styles.tree}>
-              {top.children.map((row) => planRow(row, 2))}
-            </ul>
-          ),
-        );
-      })}
+      {plan.map((row) => (
+        <PlanRow
+          key={row.id}
+          row={row}
+          app={row.app ? app : null}
+          current={row.opens !== null && row.opens === shown}
+          onOpen={opener(row)}
+          menu={
+            row.steps.some(stepHasMenu) ? (
+              <RowStepsMenu
+                steps={row.steps.filter(stepHasMenu)}
+                menu={menuOf(rowKey(row.id), row.name)}
+                onAskFirst={onAskFirst}
+                onDecline={onDecline}
+              />
+            ) : null
+          }
+          {...itemProps(rowKey(row.id))}
+        />
+      ))}
     </ul>
   );
 }
 
 /**
- * One step of the plan, or a group with its steps under it: its name alone, with no icon. Where it
+ * One step of the plan: its name alone, with no icon. Where it
  * stands is said by its words and colour: done ones are quiet, ones still ahead fainter, the one at
  * work shimmers, and one that failed is red. One that waits on the person is shaded. A step that
  * will not happen is struck through, and one that will pause for the person first carries a pause
@@ -564,16 +531,13 @@ function PlanTree({
  */
 function PlanRow({
   row,
-  level,
   app,
   current,
   onOpen,
   menu,
-  children,
   ...item
 }: {
   row: SidebarRow;
-  level: 1 | 2;
   /** How the app stands, on the row that makes it; null on every other. */
   app: SidebarAppState | null;
   /** What it made is on the page. */
@@ -581,8 +545,6 @@ function PlanRow({
   /** Opens what it made; null while there is nothing to show. */
   onOpen: (() => void) | null;
   menu: ReactNode;
-  /** A group's steps, as a group of the tree. */
-  children?: ReactNode;
 } & TreeItemProps) {
   const { state } = row;
   const next = row.steps.find(
@@ -600,8 +562,7 @@ function PlanRow({
   return (
     <li
       role="treeitem"
-      aria-level={level}
-      aria-expanded={row.children.length === 0 ? undefined : true}
+      aria-level={1}
       aria-haspopup={menu === null ? undefined : "menu"}
       aria-label={said}
       aria-current={current ? "page" : undefined}
@@ -611,12 +572,10 @@ function PlanRow({
         onOpen === null
           ? undefined
           : (event) => {
-              // The row's menu button and the menu it opens are not the row, nor are a group's steps.
+              // The row's menu button and the menu it opens are not the row.
               if (
                 event.target instanceof Element &&
-                (event.target.closest("button, [role='menu']") !== null ||
-                  event.target.closest("[role='treeitem']") !==
-                    event.currentTarget)
+                event.target.closest("button, [role='menu']") !== null
               )
                 return;
               onOpen();
@@ -627,7 +586,6 @@ function PlanRow({
       <span
         className={styles.row}
         data-row="step"
-        data-group={row.children.length === 0 ? undefined : ""}
         data-state={state}
         data-opens={onOpen === null ? undefined : ""}
       >
@@ -652,7 +610,6 @@ function PlanRow({
         ) : null}
         {menu}
       </span>
-      {children}
     </li>
   );
 }
