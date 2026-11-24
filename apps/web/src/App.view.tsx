@@ -1,12 +1,15 @@
 /**
  * The app shell as it looks: outside a project the workspace sidebar on the
  * left, and beside it the canvas with its notices and the page on screen. A
- * project's room draws its own sidebar. The page, which reads the hub, arrives
- * as a slot, so any state of the shell can be drawn without one.
+ * project's room draws its own sidebar. The new project page has none: it is
+ * the prompt alone, with Workspace settings and Account in its top right
+ * corner. The page, which reads the hub, arrives as a slot, so any state of
+ * the shell can be drawn without one.
  */
 import { useState, type ReactNode } from "react";
+import { Building2, CircleUser } from "lucide-react";
 import { toast } from "sonner";
-import { BootScreen } from "@corbits/react-ui";
+import { BootScreen, Button as UiButton } from "@corbits/react-ui";
 import { wording } from "./config.ts";
 import styles from "./App.module.css";
 import { Banner, Button, Mark } from "./components.jsx";
@@ -43,9 +46,14 @@ export function AppView({
   setupFault,
   page,
 }: AppViewProps) {
+  const home = current === "newProject";
   return (
-    <div className={styles.app} data-room={roomOpen ? "" : undefined}>
-      {roomOpen ? null : (
+    <div
+      className={styles.app}
+      data-room={roomOpen ? "" : undefined}
+      data-bare={home ? "" : undefined}
+    >
+      {roomOpen || home ? null : (
         <WorkspaceSidebarView
           {...sidebar}
           current={current === "project" ? null : current}
@@ -53,6 +61,30 @@ export function AppView({
       )}
 
       <main className={styles.canvas}>
+        {home ? (
+          <nav className={styles.corner} aria-label={wording.shell.corner}>
+            <UiButton
+              type="button"
+              variant="ghost"
+              size="sm"
+              className={styles.cornerLink}
+              onClick={sidebar.onWorkspaceSettings}
+            >
+              <Building2 aria-hidden="true" />
+              {wording.projectShell.workspaceSettings}
+            </UiButton>
+            <UiButton
+              type="button"
+              variant="ghost"
+              size="sm"
+              className={styles.cornerLink}
+              onClick={sidebar.onAccount}
+            >
+              <CircleUser aria-hidden="true" />
+              {wording.projectShell.account}
+            </UiButton>
+          </nav>
+        ) : null}
         <div
           className={styles.canvasBody}
           data-fill={current === "project" ? "" : undefined}

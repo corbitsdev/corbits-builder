@@ -12,7 +12,7 @@ const meta = {
   component: AppView,
   parameters: { layout: "fullscreen" },
   args: {
-    current: "newProject",
+    current: "settings",
     roomOpen: false,
     sidebar: {
       name: "Acme product team",
@@ -28,7 +28,6 @@ const meta = {
       onNewProject: fn(),
       onConnectModel: fn(),
       onOpenProject: fn(),
-      onAllProjects: fn(),
       onWorkspaceSettings: fn(),
       onAccount: fn(),
     },
@@ -42,6 +41,31 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const SignedIn: Story = {};
+
+/**
+ * The new project page stands alone: no sidebar, and Workspace settings and Account in its
+ * corner. Its own recent projects list sits under the prompt.
+ */
+export const Home: Story = {
+  args: { current: "newProject" },
+  play: async ({ args, canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(
+      canvas.queryByRole("complementary", { name: "Workspace" }),
+    ).toBeNull();
+    await userEvent.click(
+      canvas.getByRole("button", { name: "Workspace settings" }),
+    );
+    await expect(args.sidebar.onWorkspaceSettings).toHaveBeenCalled();
+    await userEvent.click(canvas.getByRole("button", { name: "Account" }));
+    await expect(args.sidebar.onAccount).toHaveBeenCalled();
+  },
+};
+
+export const HomeDark: Story = {
+  args: { current: "newProject" },
+  globals: { mode: "dark" },
+};
 
 export const SignedInDark: Story = { globals: { mode: "dark" } };
 

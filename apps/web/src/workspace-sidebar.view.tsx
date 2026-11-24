@@ -1,9 +1,10 @@
 /**
- * The sidebar outside a project, on the new project page, the projects and Settings: the project
- * sidebar's frame and foot, holding only what starts or resumes work. A new project, connecting a
- * model while none is, and the projects last worked on, to go straight back to one.
+ * The sidebar outside a project, on the projects and Settings, not on the new project page, which
+ * stands alone: the project sidebar's frame and foot, holding only what starts or resumes work. A
+ * new project, connecting a model while none is, and the projects last worked on, to go straight
+ * back to one.
  */
-import { Building2, CircleUser, Folder, Plus, Unplug } from "lucide-react";
+import { Building2, CircleUser, Plus, Unplug } from "lucide-react";
 import { SidebarItem } from "@corbits/react-ui";
 import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
@@ -35,7 +36,6 @@ export type WorkspaceSidebarViewProps = {
   onNewProject: () => void;
   onConnectModel: () => void;
   onOpenProject: (projectId: string) => void;
-  onAllProjects: () => void;
   onWorkspaceSettings: () => void;
   onAccount: () => void;
 };
@@ -51,7 +51,6 @@ export function WorkspaceSidebarView({
   onNewProject,
   onConnectModel,
   onOpenProject,
-  onAllProjects,
   onWorkspaceSettings,
   onAccount,
 }: WorkspaceSidebarViewProps) {
@@ -97,15 +96,6 @@ export function WorkspaceSidebarView({
         </section>
       )}
       <SidebarFoot>
-        <SidebarLinks label={words.groups.projects}>
-          <SidebarLink
-            icon={Folder}
-            current={current === "library"}
-            onClick={onAllProjects}
-          >
-            {words.allProjects}
-          </SidebarLink>
-        </SidebarLinks>
         <SidebarLinks label={words.groups.workspace}>
           <SidebarLink
             icon={Building2}

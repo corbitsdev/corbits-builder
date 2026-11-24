@@ -52,6 +52,9 @@ export type ProjectsViewProps = {
   onProfileChange: (profile: string) => void;
   /** No model provider is connected, so the page offers to connect one first. */
   needsProvider: boolean;
+  /** The projects last worked on, latest first, with how long ago; empty, none are listed. */
+  recent: readonly { id: string; title: string; lastActive: string }[];
+  onOpenProject: (projectId: string) => void;
   onConnectProvider: () => void;
   onImportFile: (file: File) => void;
   /** Opens the browser's own folder picker; null where it has none, and the page lists a folder's files instead. */
@@ -82,6 +85,8 @@ export function ProjectsView({
   profile,
   onProfileChange,
   needsProvider,
+  recent,
+  onOpenProject,
   onConnectProvider,
   onImportFile,
   onPickFolder,
@@ -226,6 +231,30 @@ export function ProjectsView({
           </Banner>
         )}
         {folder === null ? null : <FolderBanner {...folder} busy={busy} />}
+        {recent.length === 0 ? null : (
+          <section className={styles.recent} aria-labelledby="recent-title">
+            <h2 id="recent-title" className={styles.recentTitle}>
+              {wording.shell.recent}
+            </h2>
+            <ul className={styles.recentList}>
+              {recent.map((project) => (
+                <li key={project.id}>
+                  <button
+                    type="button"
+                    className={styles.recentRow}
+                    title={project.title}
+                    onClick={() => onOpenProject(project.id)}
+                  >
+                    <span className={styles.recentName}>{project.title}</span>
+                    <span className={styles.recentWhen}>
+                      {project.lastActive}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
       </section>
     </div>
   );

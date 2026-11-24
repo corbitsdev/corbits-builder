@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
-import { fn } from "storybook/test";
+import { expect, fn, userEvent, within } from "storybook/test";
 import { ProjectsView, type ProjectsViewProps } from "./projects.view.tsx";
 
 // Holds what the page asks its host to keep: the idea being typed and the profile picked.
@@ -45,6 +45,25 @@ const meta = {
     profile: "balanced",
     onProfileChange: fn(),
     needsProvider: false,
+    recent: [
+      {
+        id: "calculator",
+        title:
+          "Can you build me a calculator and a way to track daily spending",
+        lastActive: "2 hours ago",
+      },
+      {
+        id: "calories",
+        title: "Create a calorie tracking app",
+        lastActive: "yesterday",
+      },
+      {
+        id: "landing",
+        title: "I wanna build a personal landing page",
+        lastActive: "3 days ago",
+      },
+    ],
+    onOpenProject: fn(),
     onConnectProvider: fn(),
     onImportFile: fn(),
     onPickFolder: fn(),
@@ -62,6 +81,21 @@ const IDEA =
   "An order list for a small bakery, so phone orders stop getting lost on busy Saturdays.";
 
 export const Empty: Story = {};
+
+/** A recent project under the prompt opens it. */
+export const OpensRecentProject: Story = {
+  play: async ({ args, canvasElement }) => {
+    await userEvent.click(
+      within(canvasElement).getByRole("button", {
+        name: /Create a calorie tracking app/,
+      }),
+    );
+    await expect(args.onOpenProject).toHaveBeenCalledWith("calories");
+  },
+};
+
+/** A new workspace has no projects yet, so the prompt stands alone. */
+export const NoRecentProjects: Story = { args: { recent: [] } };
 
 export const WithIdea: Story = { args: { idea: IDEA } };
 

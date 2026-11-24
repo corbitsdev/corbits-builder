@@ -6,6 +6,7 @@
  * then a refresh, so what the interface shows is what the hub durably holds
  * rather than an optimistic guess.
  */
+import { formatRelativeTime } from "@corbits/react-ui";
 import { ProductApiError } from "@corbits-builder/client";
 import type { ModelProvider } from "@corbits-builder/schemas/models";
 import { useQuery } from "@tanstack/react-query";
@@ -85,16 +86,20 @@ const FOLD_POLL_MS = 30_000;
 
 const NO_PROJECTS: ProjectSummary[] = [];
 
-/** How many of the projects last worked on the sidebar lists outside a project. */
+/** How many of the projects last worked on are listed outside a project. */
 const RECENT_PROJECTS = 5;
 
-/** The projects still being worked on, the latest first, as many as the sidebar lists. */
+/** The projects still being worked on, the latest first, as many as are listed, each with when. */
 export const recentProjects = (projects: readonly ProjectSummary[]) =>
   projects
     .filter((project) => project.archivedAt === null)
     .toSorted((a, b) => b.lastActivityAt.localeCompare(a.lastActivityAt))
     .slice(0, RECENT_PROJECTS)
-    .map(({ id, title }) => ({ id, title }));
+    .map(({ id, title, lastActivityAt }) => ({
+      id,
+      title,
+      lastActive: formatRelativeTime(lastActivityAt),
+    }));
 const NO_PROVIDERS: ModelProvider[] = [];
 
 const readProjects = singleFlight(async () => ({
@@ -461,6 +466,7 @@ export function useApp(): AppScreen {
           onChanged: refresh,
           needsProvider:
             providersRead.data !== undefined && needsModelSetup(providers),
+          recent: recentProjects(projects),
         },
       };
     if (view === "library")
@@ -552,10 +558,6 @@ export function useApp(): AppScreen {
         onOpenProject: (projectId) => {
           sidebar.leave();
           openProject(projectId);
-        },
-        onAllProjects: () => {
-          sidebar.leave();
-          navigate("library");
         },
         onWorkspaceSettings: () => {
           sidebar.leave();

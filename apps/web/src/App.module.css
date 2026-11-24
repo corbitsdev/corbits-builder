@@ -30,69 +30,46 @@
   overflow: hidden;
 }
 
-/* In a project's room the room draws its own sidebar and page, so the canvas is the whole window. */
-.app[data-room] {
+/* In a project's room the room draws its own sidebar and page, and the new project page has none,
+   so the canvas is the whole window. */
+.app:is([data-room], [data-bare]) {
   grid-template-columns: minmax(0, 1fr);
 }
 
-.app[data-room] > .canvas {
+.app:is([data-room], [data-bare]) > .canvas {
   grid-column: 1;
+}
+
+/* The new project page's corner: Workspace settings and Account, quiet as the room's own top row. */
+.canvas {
+  position: relative;
+}
+
+.corner {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-3);
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.cornerLink {
+  color: var(--wb-muted-foreground);
+}
+
+.cornerLink:hover {
+  color: var(--wb-foreground);
 }
 
 .app[data-room] .canvasBody {
   background: transparent;
 }
 
-/* Closed, the sidebar leaves its name over the page's corner, so the page starts below it. The home
-   page's prompt stands clear of the corner, so it stays where it is. */
-.app:has(> [data-slot="project-sidebar"]:not([data-open]))
-  .canvasBody:not(:has(> [data-slot="home-page"]:first-child)) {
+/* Closed, the sidebar leaves its name over the page's corner, so the page starts below it. */
+.app:has(> [data-slot="project-sidebar"]:not([data-open])) .canvasBody {
   padding-block-start: 3.5rem;
-}
-
-/* How far open the sidebar beside the page is, from 0 to 1, run with its width at its speeds, so
-   the home page can keep its place in the window as the sidebar opens and closes. */
-@property --sidebar-open {
-  syntax: "<number>";
-  inherits: true;
-  initial-value: 0;
-}
-
-/* 1 where the sidebar stands beside the page when open, 0 where it is a drawer over it. */
-@property --sidebar-beside {
-  syntax: "<number>";
-  inherits: true;
-  initial-value: 0;
-}
-
-.app {
-  transition: --sidebar-open var(--duration-standard) var(--ease-out);
-}
-
-.app:has(> [data-slot="project-sidebar"]:not([data-drawer])) {
-  --sidebar-beside: 1;
-}
-
-.app:has(> [data-slot="project-sidebar"][data-open]:not([data-drawer])) {
-  --sidebar-open: 1;
-
-  transition-duration: var(--duration-large);
-}
-
-.app:has(> [data-slot="project-sidebar"][data-instant]) {
-  transition: none;
-}
-
-/* The sidebar takes its room from the window's edge: the home page moves back by half of what the
-   sidebar takes from the canvas, so it stays centred in the window, and is never wider than the
-   window leaves beside an open sidebar on both sides, so it never grows or shrinks either. */
-.canvasBody > [data-slot="home-page"] {
-  position: relative;
-  inset-inline-start: calc(var(--rail-width) * var(--sidebar-open) / -2);
-  max-width: min(
-    1080px,
-    100% + var(--rail-width) * (var(--sidebar-open) - 2 * var(--sidebar-beside))
-  );
 }
 
 /* Everything beside the sidebar. Scrolls, except where a surface fills instead. */

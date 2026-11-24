@@ -37,6 +37,8 @@ export type ProjectsProps = {
   onChanged: () => void;
   /** No model provider holds a usable key, so a project cannot start yet. */
   needsProvider: boolean;
+  /** The projects last worked on, latest first, each with when; empty, none are listed. */
+  recent: ProjectsViewProps["recent"];
 };
 
 // A folder read as a project, with the files the reading suggests leaving out, ticked from the
@@ -94,6 +96,7 @@ export function useProjects({
   onOpen,
   onChanged,
   needsProvider,
+  recent,
 }: ProjectsProps): {
   view: ProjectsViewProps;
   /** The dialog the page's offer to connect a provider opens. */
@@ -246,6 +249,8 @@ export function useProjects({
       profile,
       onProfileChange: setPicked,
       needsProvider,
+      recent,
+      onOpenProject: (projectId) => onOpen(projectId),
       onConnectProvider: () => setConnecting(true),
       onImportFile: (file) => void chooseImport(file),
       onPickFolder: canPickDirectory() ? () => void pickFolder() : null,
