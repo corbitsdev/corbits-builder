@@ -1067,6 +1067,22 @@ function RoomComposerView({
             ) : null}
             <PromptInputTextarea
               ref={inputRef}
+              // Enter on an empty box goes to what waits in it, as Continue's tooltip says: a pick
+              // goes forward as Continue would take it.
+              onKeyDown={(event) => {
+                if (
+                  event.key !== "Enter" ||
+                  event.shiftKey ||
+                  event.altKey ||
+                  event.ctrlKey ||
+                  event.metaKey ||
+                  event.nativeEvent.isComposing ||
+                  typed ||
+                  busy
+                )
+                  return;
+                if (ports.take?.("") === true) event.preventDefault();
+              }}
               // A picture on the clipboard attaches like a chosen file, while attaching is
               // offered at all; text, and anything else, pastes as the browser would.
               onPaste={(event) => {

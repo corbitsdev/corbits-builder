@@ -188,6 +188,17 @@ export const QuestionLater: Story = {
 export const QuestionPicked: Story = {
   args: asking,
   beforeEach: questionAt(1, ["Freelancers"]),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    // Enter in the empty box goes on, as Continue's tooltip says.
+    await userEvent.click(canvas.getByRole("textbox", { name: "Message" }));
+    await userEvent.keyboard("{Enter}");
+    await waitFor(() =>
+      expect(canvas.getByRole("heading")).toHaveTextContent(
+        "Where will people order from?",
+      ),
+    );
+  },
 };
 
 /**
