@@ -1,32 +1,190 @@
-.skeleton {
-  flex: 1;
+/* The room while it loads keeps the loaded room's measures: the sidebar beside a canvas, the
+   conversation 48rem wide in the middle of the window, and the prompt box on the turns' measure at
+   the canvas's foot. */
+.room {
+  --chat-shift: 0px;
+
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
   min-height: 0;
+  overflow: hidden;
+  background: var(--wb-background);
+}
+
+/* Open beside the page, the sidebar takes its width from the canvas; the chat moves back by half of
+   it, so it stands in the middle of the window, where the room will keep it. */
+.room[data-beside] {
+  --chat-shift: calc(var(--rail-width) / 2);
+}
+
+.main {
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  container: canvas / inline-size;
+}
+
+.thread,
+.foot {
+  position: relative;
+  inset-inline-start: calc(-1 * var(--chat-shift));
+  box-sizing: border-box;
+  width: 100%;
+  margin-inline: auto;
+}
+
+/* The turns that are on their way, too faint to be read as content. They come in only once the
+   wait is long enough to notice, so a quick open never flashes them. */
+.thread {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--space-8);
+  max-width: min(48rem, 100cqw - 2 * var(--space-5));
+  min-height: 0;
+  padding: calc(2.75rem + var(--space-5)) var(--space-4) 0;
+  overflow: hidden;
+  opacity: 0;
+  animation: arrive 240ms var(--ease-out) 200ms forwards;
+}
+
+.mine,
+.name,
+.line,
+.dot,
+.bar {
+  display: block;
+  /* A tint of the text colour, so the shapes read the same on the canvas and the sidebar's grey. */
+  background: color-mix(in oklab, var(--wb-foreground) 7%, transparent);
+  animation: breathe 1.6s ease-in-out infinite;
+}
+
+/* The person's message, a bubble at the end of the column. */
+.mine {
+  align-self: flex-end;
+  min-width: 7rem;
+  height: 2.5rem;
+  border-radius: var(--radius-xl);
+}
+
+/* The reply beneath it: who answers, then its lines of text. */
+.reply {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  padding: var(--space-4);
 }
 
-.status {
+.name {
+  width: 5.5rem;
+  height: 0.75rem;
+  margin-bottom: var(--space-1);
+  border-radius: 999px;
+}
+
+.line {
+  width: 100%;
+  height: 0.75rem;
+  border-radius: 999px;
+}
+
+/* The prompt box on the turns' measure, the line saying what is opening read out above it. */
+.foot {
+  flex: none;
+  max-width: min(46rem + 2 * var(--space-4), 100cqw - 2 * var(--space-5));
+}
+
+.said {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* The plan's steps in the sidebar, as the plan will list them: a mark and a name. */
+.plan {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  list-style: none;
+  opacity: 0;
+  animation: arrive 240ms var(--ease-out) 200ms forwards;
+}
+
+.step {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  min-height: 32px;
-  margin: 0;
-  padding: var(--space-2) var(--space-4);
-  color: var(--wb-muted-foreground);
-  font-size: 0.8125rem;
-  line-height: 1.6;
+  height: 2rem;
 }
 
-.panes {
-  flex: 1;
-  min-height: 0;
+.dot {
+  flex: none;
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 999px;
 }
 
-.pane {
-  min-height: 16rem;
-  height: 100%;
+.bar {
+  height: 0.625rem;
+  border-radius: 999px;
+}
+
+/* Each shape breathes a little after the one above it, so the wait reads as going on. */
+.reply .line:nth-child(3),
+.step:nth-child(2) > span {
+  animation-delay: 120ms;
+}
+
+.reply .line:nth-child(4),
+.step:nth-child(3) > span {
+  animation-delay: 240ms;
+}
+
+.step:nth-child(4) > span {
+  animation-delay: 360ms;
+}
+
+.step:nth-child(5) > span {
+  animation-delay: 480ms;
+}
+
+@keyframes arrive {
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes breathe {
+  50% {
+    opacity: 0.55;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .thread,
+  .plan {
+    opacity: 1;
+    animation: none;
+  }
+
+  .mine,
+  .name,
+  .line,
+  .dot,
+  .bar {
+    animation: none;
+  }
 }
 
 .fault {

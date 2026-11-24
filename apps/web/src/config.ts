@@ -1150,7 +1150,7 @@ export const wording = {
     coordinatorStopped: "The coordinator stopped before it replied.",
     coordinatorNotStarted: "The coordinator for this project did not start.",
     projectNotOpened: "The project could not be opened.",
-    projectLoading: "Loading this project…",
+    projectLoading: (title: string) => `Opening ${title}…`,
     projectEmpty:
       "Describe what you want to make or change to start a project.",
     stepFailed: "That step could not finish.",

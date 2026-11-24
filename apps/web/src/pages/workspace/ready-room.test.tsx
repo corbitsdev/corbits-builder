@@ -54,7 +54,9 @@ const emptyRoom: RoomSnapshot = {
 describe("project room", () => {
   test("an unread room is loading, with the room's other reads already under way", () => {
     const queryClient = client();
-    expect(room(queryClient)).toContain(wording.message.projectLoading);
+    expect(room(queryClient)).toContain(
+      wording.message.projectLoading("Weather"),
+    );
     for (const key of [
       keys.projectActivity.of(projectId),
       keys.projectRunStates.of(projectId),
@@ -66,7 +68,7 @@ describe("project room", () => {
     const loaded = client();
     loaded.setQueryData(keys.projectRoom.of(projectId), emptyRoom);
     const read = room(loaded);
-    expect(read).not.toContain(wording.message.projectLoading);
+    expect(read).not.toContain(wording.message.projectLoading("Weather"));
     expect(read).toContain(wording.archivedProject.conversationTitle);
   });
 
@@ -108,10 +110,10 @@ describe("project room", () => {
       reloaded.getQueryData(keys.openDecisions.of(projectId)),
     ).toBeUndefined();
     const same = opened(reloaded, projectId);
-    expect(same).not.toContain(wording.message.projectLoading);
+    expect(same).not.toContain(wording.message.projectLoading(projectId));
     expect(same).toContain("Hello from the weather app");
     const other = opened(reloaded, "project-2");
-    expect(other).toContain(wording.message.projectLoading);
+    expect(other).toContain(wording.message.projectLoading("project-2"));
     expect(other).not.toContain("Hello from the weather app");
   });
 

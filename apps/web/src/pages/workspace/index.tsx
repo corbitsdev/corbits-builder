@@ -16,6 +16,7 @@ import {
   type ReadyRoomProps,
   type StageWorkspaceProps,
 } from "./room.model.ts";
+import { useSidebar } from "../../sidebar-setting.ts";
 import { RoomFault, RoomSkeleton } from "./room-skeleton.tsx";
 import { RoomView } from "./room.view.tsx";
 import { RoomThread } from "./transcript.tsx";
@@ -24,7 +25,18 @@ import { WrittenDocument } from "./written-document.tsx";
 /** The room shows its loading or fault state until its first read is in hand. */
 export function StageWorkspace(props: StageWorkspaceProps) {
   const gate = useRoomGate(props);
-  if (gate.state === "loading") return <RoomSkeleton />;
+  const sidebar = useSidebar();
+  if (gate.state === "loading")
+    return (
+      <RoomSkeleton
+        title={props.projectTitle}
+        sidebar={{
+          open: sidebar.open,
+          drawer: sidebar.drawer,
+          onToggleSidebar: sidebar.toggle,
+        }}
+      />
+    );
   if (gate.state === "failed") return <RoomFault onRetry={gate.onRetry} />;
   return <ReadyRoom {...props} {...gate.room} />;
 }
