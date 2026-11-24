@@ -10,8 +10,15 @@
  * `SettingsRow`s. The sections that read the hub arrive as slots.
  */
 import { wording } from "../../config.ts";
-import { Section, Tabs, type ThemeMode } from "@corbits/react-ui";
-import type { ReactNode } from "react";
+import {
+  Button as UiButton,
+  Section,
+  Tabs,
+  type ThemeMode,
+} from "@corbits/react-ui";
+import { Tooltip } from "@corbits/react-ui/ui/tooltip";
+import { ArrowLeft } from "lucide-react";
+import { useEffect, type ReactNode } from "react";
 import { SettingsRow, SettingsRowValue } from "./settings-row.tsx";
 import {
   SettingsGroup,
@@ -86,6 +93,8 @@ export type SettingsViewProps = SettingsSlots & {
   appearance: AppearanceProps;
   /** Who is signed in; null when nobody is, and the Account section is left out. */
   account: AccountProps | null;
+  /** Where Settings was opened; the arrow and Escape return there. */
+  back?: { to: string; onBack: () => void };
 };
 
 export function SettingsView({
@@ -99,7 +108,9 @@ export function SettingsView({
   preferencesLoad,
   appearance,
   account,
+  back,
 }: SettingsViewProps) {
+  useEscapeBack(back?.onBack);
   const renderTabContent = (active: SettingsTab) => {
     if (active === "providers") {
       return providers;
@@ -147,7 +158,24 @@ export function SettingsView({
   };
   return (
     <div className={styles.page} data-slot="settings-page">
-      <h1>{wording.settings.title}</h1>
+      <header className={styles.header}>
+        {back ? (
+          <Tooltip label={wording.settings.backKeys(back.to)}>
+            <UiButton
+              type="button"
+              variant="ghost"
+              size="icon"
+              className={styles.back}
+              aria-label={wording.settings.backTo(back.to)}
+              aria-keyshortcuts="Escape"
+              onClick={back.onBack}
+            >
+              <ArrowLeft aria-hidden="true" />
+            </UiButton>
+          </Tooltip>
+        ) : null}
+        <h1>{wording.settings.title}</h1>
+      </header>
       <Tabs
         tabs={SETTINGS_TABS}
         active={tab}
@@ -159,6 +187,35 @@ export function SettingsView({
       </Tabs>
     </div>
   );
+}
+
+/**
+ * Escape goes back, unless a dialog, menu or list on the page takes it first, or a field is being
+ * typed in.
+ */
+function useEscapeBack(onBack: (() => void) | undefined) {
+  useEffect(() => {
+    if (onBack === undefined) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        (target.isContentEditable ||
+          target.closest("input, textarea, select") !== null)
+      )
+        return;
+      if (
+        document.querySelector(
+          '[role="dialog"], [role="menu"], [role="listbox"]',
+        )
+      )
+        return;
+      onBack();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onBack]);
 }
 
 function Appearance({

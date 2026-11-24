@@ -10,7 +10,24 @@
   gap: var(--space-4);
 }
 
-.page > h1 {
+/* The title, led by the way back when there is one. */
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* Pulled into the gutter by its own padding, so the arrow's stroke lines up with the tabs. */
+.back {
+  margin-inline-start: -10px;
+  color: var(--wb-muted-foreground);
+}
+
+.back:hover {
+  color: var(--wb-foreground);
+}
+
+.header > h1 {
   margin: 0;
   font-size: 21px;
   font-weight: 600;

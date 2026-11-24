@@ -507,6 +507,15 @@ export function useApp(): AppScreen {
           ...(settingsTab !== undefined ? { requestedTab: settingsTab } : {}),
           ...(focusPreference !== undefined ? { focusPreference } : {}),
           focusSeq,
+          back: {
+            to:
+              settingsFrom === "project"
+                ? (openProjectSummary?.title ?? wording.shell.untitledProject)
+                : settingsFrom === "library"
+                  ? wording.shell.projects
+                  : wording.shell.newProject,
+            onBack: leaveSettings,
+          },
         },
       };
     if (view !== "project") return null;
@@ -587,7 +596,6 @@ export function useApp(): AppScreen {
       },
       hub: { state: offline ? "notAnswering" : "answering" },
       setupFault: error,
-      onLeaveSettings: leaveSettings,
     },
     page: shown,
   };

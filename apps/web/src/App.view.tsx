@@ -3,12 +3,12 @@
  * left, and beside it the canvas with its notices and the page on screen. A
  * project's room draws its own sidebar. The new project page has none: it is
  * the prompt alone, with Workspace settings and Account in its top right
- * corner. Settings has none either, only a way back to where it was opened
- * from. The page, which reads the hub, arrives as a slot, so any state of the
- * shell can be drawn without one.
+ * corner. Settings has none either: its way back stands beside its title. The
+ * page, which reads the hub, arrives as a slot, so any state of the shell can
+ * be drawn without one.
  */
 import { useState, type ReactNode } from "react";
-import { ArrowLeft, Building2, CircleUser } from "lucide-react";
+import { Building2, CircleUser } from "lucide-react";
 import { toast } from "sonner";
 import { BootScreen, Button as UiButton } from "@corbits/react-ui";
 import { wording } from "./config.ts";
@@ -37,8 +37,6 @@ export type AppViewProps = {
   setupFault: string | null;
   /** The page on screen. */
   page: ReactNode;
-  /** Settings' Back, to the page it was opened from. */
-  onLeaveSettings?: () => void;
 };
 
 export function AppView({
@@ -48,7 +46,6 @@ export function AppView({
   hub,
   setupFault,
   page,
-  onLeaveSettings,
 }: AppViewProps) {
   const home = current === "newProject";
   const bare = home || current === "settings";
@@ -91,18 +88,6 @@ export function AppView({
               {wording.projectShell.account}
             </UiButton>
           </nav>
-        ) : null}
-        {current === "settings" && onLeaveSettings ? (
-          <UiButton
-            type="button"
-            variant="ghost"
-            size="sm"
-            className={styles.back}
-            onClick={onLeaveSettings}
-          >
-            <ArrowLeft aria-hidden="true" />
-            {wording.shell.back}
-          </UiButton>
         ) : null}
         <div
           className={styles.canvasBody}

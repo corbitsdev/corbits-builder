@@ -36,7 +36,6 @@ const meta = {
     hub: { state: "answering" },
     setupFault: null,
     page: <p>The page on screen.</p>,
-    onLeaveSettings: fn(),
   },
 } satisfies Meta<typeof AppView>;
 
@@ -86,21 +85,22 @@ export const RoomOpen: Story = {
 };
 
 /**
- * Settings stands alone, as the new project page does: no sidebar, only Back to the page it was
- * opened from.
+ * Settings stands alone, as the new project page does: no sidebar, only the arrow beside its
+ * title.
  */
 export const Settings: Story = {
   args: {
     current: "settings",
     page: <SettingsView {...settings.args} />,
   },
-  play: async ({ args, canvasElement }) => {
+  play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(
       canvas.queryByRole("complementary", { name: "Workspace" }),
     ).toBeNull();
-    await userEvent.click(canvas.getByRole("button", { name: "Back" }));
-    await expect(args.onLeaveSettings).toHaveBeenCalled();
+    await expect(
+      canvas.getByRole("button", { name: "Back to Bakery orders" }),
+    ).toBeVisible();
   },
 };
 

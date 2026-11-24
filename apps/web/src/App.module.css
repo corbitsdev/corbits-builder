@@ -68,19 +68,6 @@
   color: var(--wb-foreground);
 }
 
-/* Settings' way back, in the corner the sidebar's name holds elsewhere. */
-.back {
-  position: absolute;
-  top: var(--space-2);
-  left: var(--space-3);
-  z-index: 1;
-  color: var(--wb-muted-foreground);
-}
-
-.back:hover {
-  color: var(--wb-foreground);
-}
-
 .app[data-room] .canvasBody {
   background: transparent;
 }

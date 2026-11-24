@@ -1429,6 +1429,9 @@ export const wording = {
   },
   settings: {
     title: "Settings",
+    /** The arrow beside the title, named for where it returns. */
+    backTo: (place: string) => `Back to ${place}`,
+    backKeys: (place: string) => `Back to ${place} (Esc)`,
     sections: "Settings sections",
     tab: {
       providers: "Providers",
