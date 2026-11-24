@@ -332,12 +332,13 @@
   cursor: pointer;
 }
 
-.step[data-opens]:hover,
-.step[aria-current] {
+.step[data-opens]:hover {
   background: var(--wb-muted);
 }
 
+/* The open card is near the muted grey, so the selected row takes the selection's tint instead. */
 .step[aria-current] {
+  background: var(--wb-selected);
   font-weight: 500;
 }
 
