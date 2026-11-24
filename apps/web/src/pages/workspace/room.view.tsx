@@ -14,7 +14,6 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
-import { flushSync } from "react-dom";
 import {
   FolderOpen,
   MessageSquare,
@@ -94,24 +93,6 @@ export type RoomSlots = {
   /** The project's own menu, opened from its name in the sidebar; absent, the name is just shown. */
   projectMenu?: ((trigger: ReactElement) => ReactNode) | undefined;
 };
-
-/**
- * Puts away what covers the conversation, or brings the project view back over it, as one motion:
- * the chat's surface grows from the sheet to the page or shrinks from the page into the box, the
- * lines and the box keep their place, and the view fades under it. The parts are named only while
- * it runs, in index.module.css.
- */
-function swapCover(to: "chat" | "project", update: () => void) {
-  const root = document.documentElement;
-  if (
-    typeof document.startViewTransition !== "function" ||
-    matchMedia("(prefers-reduced-motion: reduce)").matches
-  )
-    return update();
-  root.dataset.roomMorph = to;
-  const transition = document.startViewTransition(() => flushSync(update));
-  void transition.finished.finally(() => delete root.dataset.roomMorph);
-}
 
 /** The box the person writes to the coordinator in. */
 export type RoomComposer = {
@@ -470,11 +451,7 @@ export function RoomView({
       chatStart={{
         // The conversation is out of sight behind the project, so the pill says what is running.
         saysWork: true,
-        onFullScreen: () =>
-          swapCover(
-            "chat",
-            dockInSheet ? closeSheet : () => onProjectOpenChange(false),
-          ),
+        onFullScreen: dockInSheet ? closeSheet : closeProject,
       }}
       answersShell={shell.answers}
     />
@@ -539,9 +516,7 @@ export function RoomView({
                       className={styles.control}
                       aria-label={wording.conversation.openProject}
                       title={wording.conversation.openProjectHint}
-                      onClick={() =>
-                        swapCover("project", () => onProjectOpenChange(true))
-                      }
+                      onClick={() => onProjectOpenChange(true)}
                     >
                       <FolderOpen size={16} aria-hidden="true" />
                       <span className={styles.label}>
@@ -565,7 +540,7 @@ export function RoomView({
               data-slot="room-project"
               hidden={!projectOpen}
             >
-              <BackToChat onClose={() => swapCover("chat", closeProject)} />
+              <BackToChat onClose={closeProject} />
               <SketchingShown value={showSketch}>
                 <ArtifactPane
                   {...documentPane}
