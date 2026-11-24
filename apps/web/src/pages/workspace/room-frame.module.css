@@ -19,8 +19,12 @@
   background: var(--wb-background);
 }
 
+/* The wider column stops at 80rem, so a preview does not stretch across a very wide window. */
 .frame[data-side="hidden"] {
-  grid-template-columns: var(--frame-left) minmax(0, 1fr) var(--frame-left);
+  grid-template-columns:
+    minmax(var(--frame-left), 1fr)
+    minmax(0, 80rem)
+    minmax(var(--frame-left), 1fr);
 }
 
 .column {
