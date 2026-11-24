@@ -33,8 +33,7 @@ const meta = {
       onNewProject: fn(),
       onConnectModel: fn(),
       onOpenProject: fn(),
-      onWorkspaceSettings: fn(),
-      onAccount: fn(),
+      onSettings: fn(),
     },
     hub: { state: "answering" },
     setupFault: null,
@@ -49,7 +48,7 @@ export const SignedIn: Story = {};
 
 /**
  * The new project page stands alone: no sidebar, the product's mark and name in one top corner,
- * and Workspace settings and Account in the other. Its own recent projects list sits under the
+ * and Settings in the other. Its own recent projects list sits under the
  * prompt.
  */
 export const Home: Story = {
@@ -63,12 +62,8 @@ export const Home: Story = {
     await expect(
       canvas.queryByRole("complementary", { name: "Workspace" }),
     ).toBeNull();
-    await userEvent.click(
-      canvas.getByRole("button", { name: "Workspace settings" }),
-    );
-    await expect(args.sidebar.onWorkspaceSettings).toHaveBeenCalled();
-    await userEvent.click(canvas.getByRole("button", { name: "Account" }));
-    await expect(args.sidebar.onAccount).toHaveBeenCalled();
+    await userEvent.click(canvas.getByRole("button", { name: "Settings" }));
+    await expect(args.sidebar.onSettings).toHaveBeenCalled();
   },
 };
 

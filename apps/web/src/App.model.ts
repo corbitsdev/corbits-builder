@@ -586,14 +586,9 @@ export function useApp(): AppScreen {
           sidebar.leave();
           openProject(projectId);
         },
-        onWorkspaceSettings: () => {
+        onSettings: () => {
           sidebar.leave();
           openSettings();
-        },
-        // The account is at the foot of Preferences.
-        onAccount: () => {
-          sidebar.leave();
-          openSettings("preferences");
         },
       },
       hub: { state: offline ? "notAnswering" : "answering" },

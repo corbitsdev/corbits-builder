@@ -514,8 +514,6 @@ export const wording = {
     menu: "Menu",
     backToProjects: "Back to projects",
     settings: "Settings",
-    workspaceSettings: "Workspace settings",
-    account: "Account",
   },
   projectLoadFailure: {
     title: "This project could not be opened",

@@ -3,12 +3,12 @@
  * left, and beside it the canvas with its notices and the page on screen. A
  * project's room draws its own sidebar. The new project page has none: it is
  * the prompt alone, with the product's mark and name in its top left corner
- * and Workspace settings and Account in its top right. Settings has none
+ * and Settings in its top right. Settings has none
  * either: its way back stands beside its title. The page, which reads the hub,
  * arrives as a slot, so any state of the shell can be drawn without one.
  */
 import { useState, type ReactNode } from "react";
-import { Building2, CircleUser } from "lucide-react";
+import { Settings } from "lucide-react";
 import { toast } from "sonner";
 import { BootScreen, Button as UiButton } from "@corbits/react-ui";
 import { productName, wording } from "./config.ts";
@@ -78,20 +78,10 @@ export function AppView({
               variant="ghost"
               size="sm"
               className={styles.cornerLink}
-              onClick={sidebar.onWorkspaceSettings}
+              onClick={sidebar.onSettings}
             >
-              <Building2 aria-hidden="true" />
-              {wording.projectShell.workspaceSettings}
-            </UiButton>
-            <UiButton
-              type="button"
-              variant="ghost"
-              size="sm"
-              className={styles.cornerLink}
-              onClick={sidebar.onAccount}
-            >
-              <CircleUser aria-hidden="true" />
-              {wording.projectShell.account}
+              <Settings aria-hidden="true" />
+              {wording.projectShell.settings}
             </UiButton>
           </nav>
         ) : null}

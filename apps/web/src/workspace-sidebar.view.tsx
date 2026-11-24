@@ -29,9 +29,7 @@ export type WorkspaceSidebarViewProps = {
   onNewProject: () => void;
   onConnectModel: () => void;
   onOpenProject: (projectId: string) => void;
-  onWorkspaceSettings: () => void;
-  /** The home page's corner leads here; the sidebar itself does not. */
-  onAccount: () => void;
+  onSettings: () => void;
 };
 
 export function WorkspaceSidebarView({
@@ -45,7 +43,7 @@ export function WorkspaceSidebarView({
   onNewProject,
   onConnectModel,
   onOpenProject,
-  onWorkspaceSettings,
+  onSettings,
 }: WorkspaceSidebarViewProps) {
   return (
     <SidebarFrame
@@ -55,7 +53,7 @@ export function WorkspaceSidebarView({
       drawer={drawer}
       onToggleSidebar={onToggleSidebar}
       onHome={onNewProject}
-      onSettings={onWorkspaceSettings}
+      onSettings={onSettings}
     >
       <ul className={styles.rows}>
         <Row
