@@ -10,15 +10,18 @@ import {
 } from "./catalog.ts";
 import { gateOf, makersIn, type Run } from "./coordinator.ts";
 import {
-  endedState,
-  leftToDo,
-  stepFinished,
-  type PlanStepStateName,
-  type PlanViewChild,
-  type PlanViewGroup,
-  type PlanViewStep,
-  type StoredPlanChild,
-  type StoredPlanStep,
+  awaitsGoAhead,
+  groupEndState,
+  isFinished,
+  isLeftToDo,
+} from "@corbits-builder/plan";
+import type {
+  PlanStepStateName,
+  PlanViewChild,
+  PlanViewGroup,
+  PlanViewStep,
+  StoredPlanChild,
+  StoredPlanStep,
 } from "@corbits-builder/schemas/plan";
 import { holds, resolveFacts, unmet } from "./facts.ts";
 import { missingTexts, unfinishedText } from "./text.ts";
@@ -195,12 +198,12 @@ export function planState(
       if (run && !done) return "failed";
       if (ready && isScreenAction(action) && asked) return "needs_you";
       if (done) return "done";
-      if (ready && step.askFirst && !step.goAhead) return "needs_you";
+      if (ready && awaitsGoAhead(step)) return "needs_you";
       if (!ready) return "waiting";
       return "not_started";
     };
     view.state = state();
-    view.finished = stepFinished(view.state);
+    view.finished = isFinished(view.state);
     if (step.declined && !step.cancelled) view.summary = DECLINED_SUMMARY;
     if (view.state === "failed" && run?.status === "completed")
       view.summary = unfinishedText(missing, catalog.factText);
@@ -214,7 +217,7 @@ export function planState(
   return steps.map((step) => {
     if (!("steps" in step)) return stepView(step);
     const children = step.steps.map(stepView);
-    const firstLeft = children.find(leftToDo);
+    const firstLeft = children.find(isLeftToDo);
     const view: PlanViewGroup = {
       id: step.id,
       title: step.title,
@@ -228,7 +231,7 @@ export function planState(
     if (has("failed")) view.state = "failed";
     else if (has("needs_you")) view.state = "needs_you";
     else if (has("running")) view.state = "running";
-    else if (firstLeft === undefined) view.state = endedState(children);
+    else if (firstLeft === undefined) view.state = groupEndState(children);
     else {
       view.state = firstLeft.state;
       if (firstLeft.needs) view.needs = firstLeft.needs;

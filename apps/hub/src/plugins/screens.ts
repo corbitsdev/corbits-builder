@@ -18,6 +18,7 @@ import type {
   AskedScreen,
   ShownScreen,
 } from "@corbits-builder/schemas/project";
+import { readyPlanGroups } from "@corbits-builder/plan";
 import type { PlanView } from "@corbits-builder/schemas/plan";
 import {
   readProjectValues,
@@ -83,11 +84,11 @@ export function projectRead(catalog: Catalog, read: ReadProject): ProjectRead {
         ? step.steps.map((child) => statusOf(child, step.plan))
         : [statusOf(step, undefined)],
     ),
-    planned: read.steps.flatMap((step) =>
-      "steps" in step && step.plan !== undefined
-        ? [{ plan: step.plan, state: step.state, finished: step.finished }]
-        : [],
-    ),
+    planned: readyPlanGroups(read.steps).map(({ plan, state, finished }) => ({
+      plan,
+      state,
+      finished,
+    })),
     now: read.now,
     app: { version: read.appVersion },
     coordinator: read.coordinator,

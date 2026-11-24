@@ -35,10 +35,16 @@ import {
   unmet,
 } from "./facts.ts";
 import {
+  actionSteps,
+  awaitsGoAhead,
+  isLeftToDo,
+  isUnstartedOptional,
+  readyPlanGroups,
+  stepIds,
+  stepsForAction,
+} from "@corbits-builder/plan";
+import {
   Approval,
-  leftToDo,
-  planActionSteps,
-  unstartedOptional,
   type PlanChildWrite,
   type PlanGroupWrite,
   type PlanStepWrite,
@@ -428,12 +434,7 @@ function readiness(
 
 // The plan's action steps for this action whose gate still holds: a finished step's gate is spent.
 const gatingSteps = (action: Action, steps: readonly PlanViewStep[]) =>
-  planActionSteps(steps).filter(
-    (step) =>
-      step.plugin === action.plugin &&
-      step.action === action.action &&
-      !step.finished,
-  );
+  stepsForAction(steps, action).filter((step) => !step.finished);
 
 // The installed action that a plugin's handle and an action's name pick out.
 const installedAction = (
@@ -574,7 +575,7 @@ export async function discoverFor(
     ...found.map((plugin) => listing(catalog, plugin, state)),
     ...choices,
     projectValuesText(catalog.values, values),
-    planLine(planActionSteps(state.plan.steps)),
+    planLine(actionSteps(state.plan.steps)),
     DISCOVER_OWN_PLAN,
     DISCOVER_MORE,
   ].join("\n\n");
@@ -694,12 +695,10 @@ function stepsFor(
 ) {
   const returns = action.builder.returns ?? [];
   const making = resolveFacts(returns, input);
-  return planActionSteps(steps).filter(
+  return stepsForAction(steps, action).filter(
     (step) =>
-      step.plugin === action.plugin &&
-      step.action === action.action &&
-      (isEmpty(step.input) ||
-        isDeepStrictEqual(resolveFacts(returns, step.input), making)),
+      isEmpty(step.input) ||
+      isDeepStrictEqual(resolveFacts(returns, step.input), making),
   );
 }
 
@@ -787,9 +786,7 @@ async function executing(
   const doing = stepsFor(action, checked.input, plan.steps);
   const declined = doing.find((step) => step.declined !== undefined);
   if (declined) return { refused: stepDeclined(action.name, declined.title) };
-  const asking = doing.find(
-    (step) => step.askFirst && step.goAhead === undefined,
-  );
+  const asking = doing.find(awaitsGoAhead);
   if (asking) return { refused: stepAwaitsGoAhead(action.name, asking.title) };
   // A step id is a hint for tying the run to the plan, never a reason to hold work back: one that
   // names none of the steps this start would do falls back to the one of them still open. Every open
@@ -1261,7 +1258,7 @@ function planIdProblems(
 ) {
   const children = saved.flatMap((step) => ("steps" in step ? step.steps : []));
   const all = [...saved, ...children];
-  const ids = all.map(({ id }) => id);
+  const ids = stepIds(saved);
   const listed =
     all.length === 0
       ? "the plan has no steps yet"
@@ -1402,10 +1399,7 @@ function removed(plan: PlanStepWrite[], ids: readonly string[]) {
 
 // The plan as the model reads it, without the finished marks: each step's state already says it.
 function planForModel(saved: { steps: readonly PlanViewStep[] }) {
-  const steps = new Set<unknown>([
-    ...saved.steps,
-    ...planActionSteps(saved.steps),
-  ]);
+  const steps = new Set<unknown>([...saved.steps, ...actionSteps(saved.steps)]);
   return JSON.stringify(
     saved,
     function (this: unknown, key: string, value: unknown) {
@@ -1419,10 +1413,10 @@ async function planAnswer(
   saved: { steps: readonly PlanViewStep[] },
   project: Project,
 ) {
-  const steps = planActionSteps(saved.steps);
+  const steps = actionSteps(saved.steps);
   const answer = `${planForModel(saved)}\n\n${PLAN_STEP_REMINDER}`;
-  const optionalToOffer = steps.filter(unstartedOptional);
-  if (optionalToOffer.length === 0 || steps.some(leftToDo)) return answer;
+  const optionalToOffer = steps.filter(isUnstartedOptional);
+  if (optionalToOffer.length === 0 || steps.some(isLeftToDo)) return answer;
   const { asksApprovals } = await project.state();
   return `${answer}\n\n${optionalLeft(
     optionalToOffer.map(({ title }) => title),
@@ -1465,8 +1459,8 @@ export async function managePlan(
     const { steps: saved } = await project.plan();
     if (
       readyPlan &&
-      saved.some(
-        (step) => "steps" in step && step.plan === readyPlan.builder.handle,
+      readyPlanGroups(saved).some(
+        ({ plan }) => plan === readyPlan.builder.handle,
       )
     )
       return { content: readyPlanFollowing(readyPlan.builder.handle) };
@@ -1484,9 +1478,7 @@ export async function managePlan(
   await project.savePlan(steps);
   const saved = await project.plan();
   await project.setFollowing(
-    saved.steps.flatMap((step) =>
-      "steps" in step && step.plan !== undefined ? [step.plan] : [],
-    ),
+    readyPlanGroups(saved.steps).map(({ plan }) => plan),
   );
   const plan = await planAnswer(saved, project);
   if (!readyPlan) return { content: plan };

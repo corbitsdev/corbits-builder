@@ -86,7 +86,7 @@
     },
     // Where the plan's rules for when its work is finished are defined.
     {
-      "files": ["packages/schemas/src/plan.ts"],
+      "files": ["packages/plan/src/**"],
       "rules": {
         "corbits-builder/no-plan-state-check": "off"
       }

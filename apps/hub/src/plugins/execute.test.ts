@@ -1,9 +1,9 @@
 import { expect, test } from "bun:test";
 import type { RuntimeCapabilities } from "@intx/types/runtime-capabilities";
 import { planState, type PlanRecords } from "@corbits-builder/plugin-host/plan";
+import { isFinished } from "@corbits-builder/plan";
 import {
   PlanWrite,
-  stepFinished,
   type PlanChildWrite,
   type PlanStepWrite,
   type PlanViewChild,
@@ -713,7 +713,7 @@ test("the plan offers the optional steps nobody started only once nothing else i
     askFirst: false,
     optional,
     state,
-    finished: stepFinished(state),
+    finished: isFinished(state),
     kind: "workflow",
   });
   const tried = step("tried", "failed", true);

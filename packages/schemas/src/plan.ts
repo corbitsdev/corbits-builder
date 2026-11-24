@@ -8,6 +8,8 @@ import { AskedScreen, ShownScreen, text } from "./project.ts";
  * - Stored: as saved, with the person's marks on it.
  * - Write: as a caller saves it; a new step has no id yet, and the hub gives it one.
  * - View: as read, with where it stands, worked out from the project's records on every read.
+ *
+ * Only the shapes live here; the rules for where plan work stands are in @corbits-builder/plan.
  */
 
 // ---- Building blocks ----
@@ -64,7 +66,7 @@ export type PlanChildWrite = typeof PlanChildWrite.infer;
 const PlanViewChild = StoredPlanChild.merge({
   "+": "reject",
   state: PlanStepStateName,
-  // Nothing more will happen to it unless the plan changes. See stepFinished.
+  // Nothing more will happen to it unless the plan changes.
   finished: "boolean",
   kind: "'workflow' | 'screen' | 'check'",
   // One plain line: the check's summary, the run's last activity, or why it failed.
@@ -105,7 +107,7 @@ const PlanViewGroup = type({
   title: text,
   "plan?": ReadyPlanHandle,
   state: PlanStepStateName,
-  // Nothing in it is left to do. See leftToDo.
+  // Nothing in it is left to do.
   finished: "boolean",
   "needs?": "string[]",
   steps: PlanViewChild.array(),
@@ -141,45 +143,3 @@ export const PlanView = type({
 });
 export type PlanView = typeof PlanView.infer;
 export type PlanViewStep = PlanView["steps"][number];
-
-// ---- Rules: where plan work stands, decided here and read everywhere else ----
-
-/** Every action step of a plan, groups opened up. */
-export const planActionSteps = <Step extends object>(
-  steps: readonly (Step | { steps: readonly Step[] })[],
-) => steps.flatMap((step) => ("steps" in step ? step.steps : [step]));
-
-export const stepFinished = (state: PlanStepStateName) =>
-  state === "done" || state === "skipped" || state === "cancelled";
-
-type StepStanding = Pick<
-  PlanViewChild,
-  "state" | "finished" | "optional" | "runId"
->;
-
-/**
- * An optional step nobody started leaves nothing to do: it does not hold its group open, and the
- * coordinator offers it once the rest is done. One that started keeps its group open.
- */
-export const unstartedOptional = (step: Omit<StepStanding, "finished">) =>
-  step.optional === true &&
-  step.runId === undefined &&
-  (step.state === "not_started" || step.state === "waiting");
-
-/** A step that still holds its group open. */
-export const leftToDo = (step: StepStanding) =>
-  !step.finished && !unstartedOptional(step);
-
-/** Where a group stands once nothing in it is left to do. */
-export function endedState(
-  steps: readonly Pick<StepStanding, "state" | "finished">[],
-): "done" | "cancelled" {
-  const ended = steps.filter((step) => step.finished);
-  const allCancelled =
-    ended.length > 0 && ended.every((step) => step.state === "cancelled");
-  return allCancelled ? "cancelled" : "done";
-}
-
-/** Whether the person can still drop a step: a done step stays as the record of the work. */
-export const droppable = (state: PlanStepStateName) =>
-  state !== "done" && state !== "cancelled";

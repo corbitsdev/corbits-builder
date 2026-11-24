@@ -90,12 +90,23 @@ module.exports = {
     {
       name: "schemas-stay-at-the-bottom",
       comment:
-        "Schemas hold the shapes and rules every layer reads, such as the plan and when its work is finished, so they depend on nothing but other schemas.",
+        "Schemas hold the shapes every layer reads, such as the plan's, so they depend on nothing but other schemas.",
       severity: "error",
       from: { path: "^packages/schemas/" },
       to: {
         path: "^(apps|packages|plugins|workflows)/",
         pathNot: "^packages/schemas/",
+      },
+    },
+    {
+      name: "plan-rules-above-schemas-only",
+      comment:
+        "The plan's rules, such as when its work is finished, are read by every layer above the schemas, so they depend on nothing but the plan's shapes.",
+      severity: "error",
+      from: { path: "^packages/plan/" },
+      to: {
+        path: "^(apps|packages|plugins|workflows)/",
+        pathNot: "^packages/(plan|schemas)/",
       },
     },
     {

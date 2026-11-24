@@ -1,15 +1,20 @@
 import { eq } from "drizzle-orm";
 import type { DB, DBExecutor } from "@intx/db";
 import { isLiveWorkflowRunStatus, principal } from "@intx/db/schema";
-import { droppable } from "@corbits-builder/plugin";
 import {
-  planActionSteps,
-  type PlanChildWrite,
-  type PlanStepWrite,
-  type StoredPlan,
-  type StoredPlanChild,
-  type StoredPlanGroup,
-  type StoredPlanStep,
+  actionSteps,
+  canDrop,
+  stepById,
+  stepIds,
+  stepsForAction,
+} from "@corbits-builder/plan";
+import type {
+  PlanChildWrite,
+  PlanStepWrite,
+  StoredPlan,
+  StoredPlanChild,
+  StoredPlanGroup,
+  StoredPlanStep,
 } from "@corbits-builder/schemas/plan";
 import type { ScreenQuestion } from "@corbits-builder/schemas/conversation";
 import type { Catalog } from "@corbits-builder/plugin-host/catalog";
@@ -68,7 +73,7 @@ function savedPlanStep(
 }
 // A project with no plan saved yet has no steps.
 const savedActionSteps = (plan: StoredPlan | null | undefined) =>
-  planActionSteps(plan?.steps ?? []);
+  actionSteps(plan?.steps ?? []);
 const newPlanStepId = () => crypto.randomUUID().slice(0, 12);
 
 // The plan as stored, with its project row locked until the transaction ends so that no other write
@@ -131,9 +136,7 @@ export function createPlanService(
         runs: await artifacts.stepRuns(
           actor,
           projectId,
-          plan.steps.flatMap((step) =>
-            "steps" in step ? step.steps.map(({ id }) => id) : [step.id],
-          ),
+          actionSteps(plan.steps).map(({ id }) => id),
         ),
         questions: asking,
       };
@@ -185,10 +188,7 @@ export function createPlanService(
           if (step.plan) group.plan = step.plan;
           return group;
         });
-        const ids = saved.flatMap((step) => [
-          step.id,
-          ...("steps" in step ? step.steps : []).map(({ id }) => id),
-        ]);
+        const ids = stepIds(saved);
         const repeated = ids.find((id, at) => ids.indexOf(id) !== at);
         if (repeated !== undefined)
           throw new ProjectError(400, "repeated_plan_step", { id: repeated });
@@ -237,7 +237,7 @@ export function createPlanService(
         throw new ProjectError(403, "only_a_person_declines");
       const { plan, title, changed } = await rawDB.transaction(async (tx) => {
         const plan = await lockedPlan(tx, projectId);
-        const step = savedActionSteps(plan).find(({ id }) => id === stepId);
+        const step = stepById(plan?.steps ?? [], stepId);
         if (!plan || !step)
           throw new ProjectError(404, "plan_step_not_found", { id: stepId });
         if (!step.optional)
@@ -273,7 +273,7 @@ export function createPlanService(
     async cancelPlanSteps(
       actor: Actor,
       projectId: string,
-      stepIds: readonly string[],
+      cancelling: readonly string[],
       catalog: Catalog,
     ) {
       await authorizeProject(rawDB, actor, projectId, "manage");
@@ -286,8 +286,8 @@ export function createPlanService(
       // The screens open in front of the person are left out: an open one only shows a step that has
       // not run as needing them, and that step may be dropped either way.
       const { read } = await this.readPlan(actor, projectId, catalog, []);
-      const cancelled = planActionSteps(read.steps).filter(
-        ({ id, state }) => stepIds.includes(id) && droppable(state),
+      const cancelled = actionSteps(read.steps).filter(
+        ({ id, state }) => cancelling.includes(id) && canDrop(state),
       );
       // The jobs stop before the steps are marked, so an answer retried after a failed stop still
       // finds them.
@@ -329,13 +329,8 @@ export function createPlanService(
       await authorizeProject(rawDB, actor, projectId, "manage");
       await rawDB.transaction(async (tx) => {
         const plan = await lockedPlan(tx, projectId);
-        const step = savedActionSteps(plan).find(
-          (each) =>
-            each.plugin === screen.plugin &&
-            each.action === screen.action &&
-            !each.answered &&
-            !each.declined &&
-            !each.cancelled,
+        const step = stepsForAction(plan?.steps ?? [], screen).find(
+          (each) => !each.answered && !each.declined && !each.cancelled,
         );
         if (!plan || !step) return;
         const at = new Date().toISOString();
@@ -374,7 +369,7 @@ export function createPlanService(
           added.goAhead = mark;
           plan.steps.push(added);
         } else
-          for (const each of planActionSteps(plan.steps))
+          for (const each of actionSteps(plan.steps))
             if (told.goAhead.includes(each.id)) each.goAhead = mark;
         plan.updatedAt = at;
         await writePlan(tx, projectId, plan);
@@ -425,7 +420,7 @@ export function createPlanService(
         throw new ProjectError(403, "only_a_person_decides");
       const { plan, note } = await rawDB.transaction(async (tx) => {
         const plan = await lockedPlan(tx, projectId);
-        const step = savedActionSteps(plan).find(({ id }) => id === stepId);
+        const step = stepById(plan?.steps ?? [], stepId);
         if (!plan || !step)
           throw new ProjectError(404, "plan_step_not_found", { id: stepId });
         let note: string;

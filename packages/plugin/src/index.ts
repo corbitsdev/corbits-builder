@@ -17,14 +17,13 @@ import type {
 } from "@corbits-builder/schemas/project";
 import {
   Approval,
-  droppable,
   type PlanStepStateName,
   type PlanViewChild,
   type PlanViewGroup,
 } from "@corbits-builder/schemas/plan";
 import { SpecialistInstruction } from "@corbits-builder/schemas/native-specialist";
 
-export { droppable };
+export { canDrop } from "@corbits-builder/plan";
 export type { ReadyPlanOffer, Removes, ScreenStatus };
 
 /** The value an arktype type checked, or undefined when the check failed. */

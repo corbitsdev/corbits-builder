@@ -10,10 +10,10 @@ import {
   type PointerEvent,
 } from "react";
 import { PanelRightClose } from "lucide-react";
-import {
-  planActionSteps,
-  type PlanViewChild,
-  type PlanViewStep,
+import { actionSteps, awaitsGoAhead, stepById } from "@corbits-builder/plan";
+import type {
+  PlanViewChild,
+  PlanViewStep,
 } from "@corbits-builder/schemas/plan";
 import { Button, Switch } from "@corbits/react-ui";
 import {
@@ -80,7 +80,7 @@ function markOf(step: PlanViewChild): PlanMark {
 export function planProgress(steps: readonly PlanViewStep[]) {
   if (steps.length === 0) return null;
   // Finished without being done means it will not happen: neither done nor still to do.
-  const counted = planActionSteps(steps).filter(
+  const counted = actionSteps(steps).filter(
     ({ finished, state }) => !finished || state === "done",
   );
   const marks = counted.map((step) => ({ id: step.id, mark: markOf(step) }));
@@ -152,8 +152,7 @@ export function StepControls({
 }) {
   const words = wording.conversation.plan;
   const declined = step.declined !== undefined;
-  const waitingOnGo =
-    step.askFirst && step.goAhead === undefined && step.state === "needs_you";
+  const waitingOnGo = awaitsGoAhead(step) && step.state === "needs_you";
   const mayAsk =
     !declined &&
     step.cancelled === undefined &&
@@ -250,7 +249,7 @@ export function PlanPanel({
     }
   };
   const stepAction = (step: StepFields) => {
-    const saved = planActionSteps(steps).find(({ id }) => id === step.id);
+    const saved = stepById(steps, step.id);
     if (saved === undefined) return null;
     return (
       <StepControls
