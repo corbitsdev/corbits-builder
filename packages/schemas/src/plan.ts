@@ -131,7 +131,6 @@ export type PlanStepWrite = typeof PlanStepWrite.infer;
 export const PlanWrite = type({ "+": "reject", steps: PlanStepWrite.array() });
 export type PlanWrite = typeof PlanWrite.infer;
 
-/** A step is finished once it is done, skipped or cancelled. */
 export const stepFinished = (state: PlanStepStateName) =>
   state === "done" || state === "skipped" || state === "cancelled";
 
@@ -148,7 +147,7 @@ export const unstartedOptional = (step: {
   step.runId === undefined &&
   (step.state === "not_started" || step.state === "waiting");
 
-/** Whether a plan step still holds its group open: unfinished, and not an optional step nobody started. */
+/** A step that still holds its group open. */
 export const leftToDo = (step: {
   finished: boolean;
   optional?: boolean;
@@ -156,10 +155,7 @@ export const leftToDo = (step: {
   state: PlanStepStateName;
 }) => !step.finished && !unstartedOptional(step);
 
-/**
- * Where a finished group stands: "cancelled" when every finished step in it was cancelled, else
- * "done".
- */
+/** Where a group stands once nothing in it is left to do. */
 export const endedState = (
   steps: readonly { state: PlanStepStateName; finished: boolean }[],
 ): "done" | "cancelled" => {

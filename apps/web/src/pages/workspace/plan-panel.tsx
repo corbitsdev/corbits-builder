@@ -72,8 +72,7 @@ function markOf(step: PlanChild): PlanMark {
   return "open";
 }
 
-// A step the hub calls finished without it being done will not happen, so it is neither done nor
-// still to do.
+// Finished without being done means it will not happen: neither done nor still to do.
 const dropped = (step: PlanChild) => step.finished && step.state !== "done";
 
 const actionSteps = (steps: readonly PlanStep[]): PlanChild[] =>
