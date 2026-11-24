@@ -257,7 +257,8 @@ export function SidebarFrame({
         <span className={styles.project}>{title}</span>
         <Icon aria-hidden="true" />
       </button>
-      {open || drawer ? null : glance}
+      {/* Kept while open, out of sight, so it can fade as the panel takes its place. */}
+      {drawer ? null : glance}
       <div className={styles.room}>
         <div id={bodyId} className={styles.panel} inert={!open}>
           <div className={styles.body}>{children}</div>

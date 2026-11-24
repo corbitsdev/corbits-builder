@@ -39,13 +39,19 @@
   height: 100%;
   /* Below the project's name, which floats over the panel's top. */
   padding-block-start: 56px;
-  transition: visibility 0s;
+  transition:
+    opacity var(--speed) var(--ease-out),
+    visibility 0s;
 }
 
-/* Hidden once it has closed, so nothing in it takes focus or is read out. */
+/* Closing, the rows fade as the edge passes over them, while the plan's card comes in under the
+   name; hidden once closed, so nothing in it takes focus or is read out. */
 .sidebar:not([data-open]) .panel {
   visibility: hidden;
-  transition: visibility 0s var(--speed);
+  opacity: 0;
+  transition:
+    opacity var(--duration-micro) var(--ease-out),
+    visibility 0s var(--speed);
 }
 
 .sidebar[data-drawer] {
@@ -142,8 +148,8 @@
 }
 
 /* Closed beside the page, the plan stays in sight in a card under the project's name, on the same
-   ground as the name, its rows as the sidebar draws them. It comes in once the sidebar has gone, and
-   long plans scroll inside it. */
+   ground as the name, its rows as the sidebar draws them. It comes in as the sidebar's rows fade, so
+   the plan never leaves the corner, and long plans scroll inside it. */
 .glance {
   position: absolute;
   inset-block-start: calc(var(--space-2) * 2 + 2.5rem + var(--space-2));
@@ -157,25 +163,33 @@
   padding: var(--space-2) var(--space-1) var(--space-1);
   border-radius: var(--radius-lg);
   background: var(--card);
-  animation: glance-in var(--duration-standard) var(--ease-out)
-    var(--duration-standard) both;
+  transition:
+    opacity var(--duration-standard) var(--ease-out)
+      calc(var(--duration-micro) / 2),
+    translate var(--duration-standard) var(--ease-out)
+      calc(var(--duration-micro) / 2),
+    visibility 0s;
+}
+
+/* Open, the panel holds the plan, so the card gives way to it, quicker than it came. */
+.sidebar[data-open] .glance {
+  visibility: hidden;
+  opacity: 0;
+  translate: 0 calc(-1 * var(--space-1));
+  transition:
+    opacity var(--duration-micro) var(--ease-out),
+    translate var(--duration-micro) var(--ease-out),
+    visibility 0s var(--duration-micro);
 }
 
 .sidebar[data-instant] .glance {
-  animation: none;
+  transition: none;
 }
 
 /* Where the page has no room beside its middle for the card, the name alone stays. */
 @container room (max-width: 80rem) {
   .glance {
     display: none;
-  }
-}
-
-@keyframes glance-in {
-  from {
-    opacity: 0;
-    translate: 0 calc(-1 * var(--space-1));
   }
 }
 
