@@ -714,6 +714,11 @@ export function RoomThread({
         <WorkUnitStepView
           {...row}
           steps={shows.specialistSteps ? row.steps : []}
+          document={shows.specialistDocument ? row.document : undefined}
+          instruction={
+            shows.specialistInstruction ? row.instruction : undefined
+          }
+          report={shows.specialistReport ? row.report : undefined}
           run={specialistRun}
         />
       </ConversationItem>

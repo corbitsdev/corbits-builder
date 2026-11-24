@@ -23,8 +23,11 @@ const megabytes = (bytes: number) =>
 /** Which pieces of the agents' activity the conversation draws, each switched on its own. */
 export const ACTIVITY_SHOWN = {
   coordinatorSteps: false,
-  specialists: true,
-  specialistSteps: true,
+  specialists: false,
+  specialistSteps: false,
+  specialistDocument: false,
+  specialistInstruction: false,
+  specialistReport: false,
   thinking: true,
 };
 export type ActivityShown = typeof ACTIVITY_SHOWN;

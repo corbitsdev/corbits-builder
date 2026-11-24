@@ -8,7 +8,11 @@ import {
   maxTurnText,
 } from "@corbits-builder/schemas/conversation";
 import { HUB_NOTE_LEAD } from "@corbits-builder/schemas/conversation";
-import { IMPORTED_PROJECT_LEAD, wording } from "../../config.ts";
+import {
+  type ActivityShown,
+  IMPORTED_PROJECT_LEAD,
+  wording,
+} from "../../config.ts";
 import { Markdown } from "@corbits-builder/plugin-ui/markdown";
 import { DocumentDecision } from "./document-decision.tsx";
 import {
@@ -64,12 +68,32 @@ const standing = (unit: WorkUnit) =>
     seen: new Map(),
   });
 
-const ALL_SHOWN = {
-  coordinatorSteps: true,
-  specialists: true,
-  specialistSteps: true,
-  thinking: true,
-};
+type Piece = keyof ActivityShown;
+const PIECES: Piece[] = [
+  "coordinatorSteps",
+  "specialists",
+  "specialistSteps",
+  "specialistDocument",
+  "specialistInstruction",
+  "specialistReport",
+  "thinking",
+];
+const without = (gone: readonly Piece[]): ActivityShown => ({
+  coordinatorSteps: !gone.includes("coordinatorSteps"),
+  specialists: !gone.includes("specialists"),
+  specialistSteps: !gone.includes("specialistSteps"),
+  specialistDocument: !gone.includes("specialistDocument"),
+  specialistInstruction: !gone.includes("specialistInstruction"),
+  specialistReport: !gone.includes("specialistReport"),
+  thinking: !gone.includes("thinking"),
+});
+const ALL_SHOWN = without([]);
+const IN_ROW: Piece[] = [
+  "specialistSteps",
+  "specialistDocument",
+  "specialistInstruction",
+  "specialistReport",
+];
 
 describe("conversation transcript", () => {
   test("each piece of the agents' activity is hidden by its own switch and no other", () => {
@@ -80,20 +104,41 @@ describe("conversation transcript", () => {
       status: "output-available" as const,
       input: {},
     };
-    const drawn = (shows: typeof ALL_SHOWN) => {
+    const instruction = "Write the limits.";
+    const report = "Filed the limits.";
+    const drawn = (shows: ActivityShown) => {
       const html = renderToStaticMarkup(
         <RoomThread
           shows={shows}
           thinking
-          standing={(unit) =>
-            workUnitStanding(unit, {
+          standing={(unit) => {
+            const row = workUnitStanding(unit, {
               artifacts: [],
               inFlight: [],
               failed: [],
               seen: new Map(),
               steps: new Map([["run-writer", [lookUp]]]),
-            })
-          }
+            });
+            return {
+              unitKey: row.unitKey,
+              status: row.status,
+              label: row.label,
+              steps: row.steps,
+              preview: undefined,
+              instruction: row.instruction,
+              report,
+              document: {
+                kind: "constraints",
+                title: "The limits",
+                version: 1,
+                summary: "One tablet.",
+                onOpen: () => {},
+              },
+              onOpenDocument: row.onOpenDocument,
+              watch: row.watch,
+              stop: row.stop,
+            };
+          }}
           results={
             new Map([
               [
@@ -121,7 +166,7 @@ describe("conversation transcript", () => {
                   input: {
                     plugin: "writer",
                     action: "write",
-                    input: { kind: "constraints" },
+                    input: { kind: "constraints", instruction },
                   },
                 },
               ],
@@ -134,45 +179,18 @@ describe("conversation transcript", () => {
         coordinatorSteps: html.includes('data-slot="activity-trigger"'),
         specialists: html.includes('data-item-id="work:call-writer"'),
         specialistSteps: row.includes(wording.activity.run(1)),
+        specialistDocument: row.includes("One tablet."),
+        specialistInstruction: row.includes(instruction),
+        specialistReport: row.includes(report),
         thinking: html.includes(`>${wording.activity.thinkingNow}<`),
       };
     };
     expect(drawn(ALL_SHOWN)).toEqual(ALL_SHOWN);
-    const noSteps = {
-      coordinatorSteps: false,
-      specialists: true,
-      specialistSteps: true,
-      thinking: true,
-    };
-    expect(drawn(noSteps)).toEqual(noSteps);
-    const noInnerSteps = {
-      coordinatorSteps: true,
-      specialists: true,
-      specialistSteps: false,
-      thinking: true,
-    };
-    expect(drawn(noInnerSteps)).toEqual(noInnerSteps);
-    const noThinking = {
-      coordinatorSteps: true,
-      specialists: true,
-      specialistSteps: true,
-      thinking: false,
-    };
-    expect(drawn(noThinking)).toEqual(noThinking);
-    // A specialist's own steps live in its row, so they go with it.
-    expect(
-      drawn({
-        coordinatorSteps: true,
-        specialists: false,
-        specialistSteps: true,
-        thinking: true,
-      }),
-    ).toEqual({
-      coordinatorSteps: true,
-      specialists: false,
-      specialistSteps: false,
-      thinking: true,
-    });
+    for (const off of PIECES) {
+      // What sits inside a specialist's row goes with the row.
+      const gone = off === "specialists" ? [off, ...IN_ROW] : [off];
+      expect(drawn(without([off]))).toEqual(without(gone));
+    }
   });
 
   test("turns render through MessageParts and keep the conversation log name", () => {
@@ -510,6 +528,7 @@ describe("conversation transcript", () => {
     const html = renderToStaticMarkup(
       <RoomThread
         standing={standing}
+        shows={ALL_SHOWN}
         live={() => true}
         turns={[
           { role: "person", text: "Start", at: 1 },
