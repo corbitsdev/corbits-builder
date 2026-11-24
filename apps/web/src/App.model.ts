@@ -477,6 +477,7 @@ export function useApp(): AppScreen {
         props: {
           onOpen: openProject,
           onChanged: refresh,
+          onOpenSettings: openSettings,
           needsProvider:
             providersRead.data !== undefined && needsModelSetup(providers),
           recent: recentProjects(projects),

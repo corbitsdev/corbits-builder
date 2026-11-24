@@ -109,7 +109,8 @@ export type ProjectSidebarViewProps = {
   onOpenApp: () => void;
   /** Opens what a step made, on its tab. */
   onOpenStep: (tab: string) => void;
-  onProjectSettings: () => void;
+  /** Absent while the project is still being made, when its settings have nothing to show yet. */
+  onProjectSettings?: (() => void) | undefined;
   onNewProject: () => void;
   onWorkspaceSettings: () => void;
   onAccount: () => void;
@@ -413,7 +414,8 @@ export function SidebarLink({
 }: {
   icon: LucideIcon;
   current?: boolean;
-  onClick: () => void;
+  /** Absent, the link stands disabled. */
+  onClick?: (() => void) | undefined;
   children: ReactNode;
 }) {
   return (
@@ -425,6 +427,7 @@ export function SidebarLink({
       <button
         type="button"
         aria-current={current ? "page" : undefined}
+        disabled={onClick === undefined}
         onClick={onClick}
       >
         {children}

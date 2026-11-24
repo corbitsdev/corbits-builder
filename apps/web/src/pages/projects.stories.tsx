@@ -34,6 +34,11 @@ const meta = {
     onIdeaChange: fn(),
     followUp: "",
     onFollowUpChange: fn(),
+    startingWays: {
+      onNewProject: fn(),
+      onWorkspaceSettings: fn(),
+      onAccount: fn(),
+    },
     onStart: fn(),
     profiles: [
       {
@@ -110,7 +115,8 @@ export const WithIdea: Story = { args: { idea: IDEA } };
 /**
  * Sent, the page becomes the room the project opens into: the sidebar beside it, the person's
  * words at the top with the coordinator thinking under them, and the box at the foot saying the
- * project is starting.
+ * project is starting. The sidebar is the room's own, its plan empty and its links working, all
+ * but the project's settings, which wait for the project.
  */
 // The room fills the window's height, as the app's canvas gives it.
 const fullHeight: NonNullable<Story["decorators"]> = [
@@ -124,7 +130,7 @@ const fullHeight: NonNullable<Story["decorators"]> = [
 export const Starting: Story = {
   args: { idea: IDEA, activity: "starting" },
   decorators: fullHeight,
-  play: async ({ canvasElement }) => {
+  play: async ({ canvasElement, args }) => {
     const canvas = within(canvasElement);
     // The person's words are their message, and the project's name until it has one.
     await expect(canvas.getAllByText(IDEA)).toHaveLength(2);
@@ -139,6 +145,15 @@ export const Starting: Story = {
     await expect(box).toHaveValue("Keep it short");
     await userEvent.keyboard("{Enter}");
     await expect(box).toHaveValue("Keep it short");
+    await expect(
+      canvas.getByRole("button", {
+        name: wording.projectShell.projectSettings,
+      }),
+    ).toBeDisabled();
+    await userEvent.click(
+      canvas.getByRole("button", { name: wording.shell.newProject }),
+    );
+    await expect(args.startingWays.onNewProject).toHaveBeenCalled();
   },
 };
 

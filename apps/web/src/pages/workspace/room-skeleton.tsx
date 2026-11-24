@@ -4,7 +4,8 @@
  * prompt box where it will stand, saying the project is opening. Each stands where the loaded
  * room puts it, so nothing moves when the room arrives; only the faint shapes give way to what
  * they stood for. The shapes are not announced; the box's line is. A project just started has
- * the person's own first words in place of the shapes, with the coordinator thinking under them.
+ * the person's own first words in place of the shapes, with the coordinator thinking under them,
+ * and the sidebar the room will have: its plan still empty and its links already working.
  */
 import {
   Message,
@@ -19,7 +20,11 @@ import { useEffect, useRef } from "react";
 import { Composer } from "../../composer.tsx";
 import { Fault } from "../../components.jsx";
 import { wording } from "../../config.ts";
-import { SidebarFrame } from "./project-sidebar.view.tsx";
+import {
+  ProjectSidebarView,
+  SidebarFrame,
+  type ProjectSidebarViewProps,
+} from "./project-sidebar.view.tsx";
 import styles from "./room-skeleton.module.css";
 import { StageView } from "./stage-view.tsx";
 
@@ -28,12 +33,19 @@ const PLAN_ROWS = ["72%", "58%", "80%", "50%", "66%"];
 
 const nothing = () => {};
 
+/** Where the sidebar's links lead while a project just started is being made. */
+export type StartingWays = Pick<
+  ProjectSidebarViewProps,
+  "onNewProject" | "onWorkspaceSettings" | "onAccount"
+>;
+
 export function RoomSkeleton({
   title,
   sidebar,
   opening,
   status,
   draft,
+  ways,
 }: {
   /** The project's name, as the project list has it. */
   title: string;
@@ -45,6 +57,11 @@ export function RoomSkeleton({
   status?: string | undefined;
   /** What is typed into the box, kept for the room; without it the box takes nothing. */
   draft?: { value: string; onValueChange: (value: string) => void } | undefined;
+  /**
+   * For a project just started, whose plan is known to be empty: the sidebar is the room's own,
+   * and its links lead where they will. Absent, the plan is drawn as faint rows.
+   */
+  ways?: StartingWays | undefined;
 }) {
   const said = status ?? wording.message.projectLoading(title);
   const boxRef = useRef<HTMLTextAreaElement>(null);
@@ -64,21 +81,35 @@ export function RoomSkeleton({
         data-beside={sidebar.drawer ? undefined : ""}
         data-open={sidebar.open ? "" : undefined}
       >
-        <SidebarFrame
-          title={title}
-          open={sidebar.open}
-          drawer={sidebar.drawer}
-          onToggleSidebar={sidebar.onToggleSidebar}
-        >
-          <ul className={styles.plan} aria-hidden="true">
-            {PLAN_ROWS.map((width, index) => (
-              <li key={index} className={styles.step}>
-                <span className={styles.dot} />
-                <span className={styles.bar} style={{ width }} />
-              </li>
-            ))}
-          </ul>
-        </SidebarFrame>
+        {ways === undefined ? (
+          <SidebarFrame
+            title={title}
+            open={sidebar.open}
+            drawer={sidebar.drawer}
+            onToggleSidebar={sidebar.onToggleSidebar}
+          >
+            <ul className={styles.plan} aria-hidden="true">
+              {PLAN_ROWS.map((width, index) => (
+                <li key={index} className={styles.step}>
+                  <span className={styles.dot} />
+                  <span className={styles.bar} style={{ width }} />
+                </li>
+              ))}
+            </ul>
+          </SidebarFrame>
+        ) : (
+          <ProjectSidebarView
+            project={title}
+            {...sidebar}
+            plan={[]}
+            app="not_built"
+            appOpen={false}
+            shown={null}
+            onOpenApp={nothing}
+            onOpenStep={nothing}
+            {...ways}
+          />
+        )}
         <div className={styles.main}>
           {opening === undefined ? (
             <Shapes />

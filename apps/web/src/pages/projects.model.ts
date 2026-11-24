@@ -4,7 +4,7 @@
  * becomes the project's first conversation message once the coordinator
  * binds, which the workspace sends on arrival.
  */
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { toast } from "sonner";
 import type { ProjectImport } from "@corbits-builder/schemas/project-import";
@@ -33,11 +33,13 @@ import { composerKey, moveUnsent, useUnsent } from "../unsent.ts";
 import { canStartProject } from "./home-view.ts";
 import { useNewProjectProfiles } from "./new-project-profiles.model.ts";
 import type { AddProviderDialogProps } from "./settings/add-provider-dialog.model.ts";
+import type { SettingsTab } from "./settings/settings.view.tsx";
 import type { FolderReading, ProjectsViewProps } from "./projects.view.tsx";
 
 export type ProjectsProps = {
   onOpen: (projectId: string, openingMessage?: string) => void;
   onChanged: () => void;
+  onOpenSettings: (tab?: SettingsTab) => void;
   /** No model provider holds a usable key, so a project cannot start yet. */
   needsProvider: boolean;
   /** The projects last worked on, latest first, each with when; empty, none are listed. */
@@ -102,6 +104,7 @@ const failure = (cause: unknown) =>
 export function useProjects({
   onOpen,
   onChanged,
+  onOpenSettings,
   needsProvider,
   recent,
 }: ProjectsProps): {
@@ -121,6 +124,21 @@ export function useProjects({
   const [picked, setPicked] = useState<string>();
   const profile = picked ?? profiles.preferred;
 
+  // The start the starting room stands for. Leaving the room lets it go: the project is still
+  // made, and listed, but the person is not taken into it.
+  const shownStart = useRef<symbol | null>(null);
+  useEffect(
+    () => () => {
+      shownStart.current = null;
+    },
+    [],
+  );
+  const leaveStart = () => {
+    shownStart.current = null;
+    setIdea("");
+    setActivity("idle");
+  };
+
   const start = async () => {
     if (activity !== "idle") return;
     if (!canStartProject(idea)) {
@@ -137,22 +155,31 @@ export function useProjects({
         flushSync(() => setActivity("starting")),
       );
     else setActivity("starting");
+    const shown = Symbol("start");
+    shownStart.current = shown;
+    const opening = idea.trim();
     try {
-      const opening = idea.trim();
       const created = await createProject({
         problemStatement: opening,
         ...(profile === undefined ? {} : { profile }),
       });
-      setIdea("");
       moveUnsent(STARTING_KEY, composerKey(created.projectId));
       onChanged();
+      if (shownStart.current !== shown) return;
+      setIdea("");
       // The hub mailed the opening sentence to the coordinator; the workspace
       // shows it until the conversation records it.
       onOpen(created.projectId, opening);
     } catch (cause) {
       toast.error(failure(cause));
+      // Left before it failed, the idea goes back in the box, unless something new is there.
+      if (shownStart.current !== shown)
+        setIdea((now) => (now === "" ? opening : now));
     } finally {
-      setActivity("idle");
+      if (shownStart.current === shown) {
+        shownStart.current = null;
+        setActivity("idle");
+      }
     }
   };
 
@@ -271,6 +298,18 @@ export function useProjects({
       onIdeaChange: setIdea,
       followUp,
       onFollowUpChange: setFollowUp,
+      startingWays: {
+        onNewProject: leaveStart,
+        onWorkspaceSettings: () => {
+          leaveStart();
+          onOpenSettings();
+        },
+        // The account is at the foot of Preferences.
+        onAccount: () => {
+          leaveStart();
+          onOpenSettings("preferences");
+        },
+      },
       onStart: () => void start(),
       profiles: profiles.options,
       profile,

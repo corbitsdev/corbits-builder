@@ -327,6 +327,12 @@
   color: var(--wb-foreground);
 }
 
+.link:disabled {
+  background: transparent;
+  opacity: 0.5;
+  pointer-events: none;
+}
+
 .link > svg {
   flex: none;
   width: 14px;

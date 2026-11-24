@@ -34,6 +34,15 @@ export function StageWorkspace(props: StageWorkspaceProps) {
         title={props.projectTitle}
         opening={props.openingMessage}
         draft={{ value: draft, onValueChange: setDraft }}
+        ways={
+          props.openingMessage === undefined
+            ? undefined
+            : {
+                onNewProject: props.onNewProject,
+                onWorkspaceSettings: () => props.onOpenSettings(),
+                onAccount: () => props.onOpenSettings("preferences"),
+              }
+        }
         sidebar={{
           open: sidebar.open,
           drawer: sidebar.drawer,
