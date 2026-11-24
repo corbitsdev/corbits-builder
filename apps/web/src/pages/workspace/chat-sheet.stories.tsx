@@ -141,12 +141,12 @@ export const MidPull: Story = {
   args: { ...whileWorking, chatStart: { defaultPull: 150 } },
 };
 
-/** Chat open: the newest message is the work in progress. Pull it down and the pill comes back. */
+/** Chat open: the newest message is the work in progress. Pull it down and the handle comes back. */
 export const ChatOpen: Story = {
   args: { ...whileWorking, chatStart: { defaultState: "open" } },
 };
 
-/** Escape puts the chat back and the pill returns. */
+/** Escape puts the chat back and the handle returns. */
 export const EscapeCloses: Story = {
   args: { ...whileWorking, chatStart: { defaultState: "open" } },
   play: async ({ canvasElement }) => {
@@ -157,21 +157,28 @@ export const EscapeCloses: Story = {
     await expect(
       canvasElement.querySelector('[data-slot="chat-history"]'),
     ).not.toBeVisible();
-    // The pill fades back in, so it is looked for once the fade is done.
+    // The handle fades back in, so it is looked for once the fade is done.
     await waitFor(() =>
-      expect(canvasElement.querySelector('[data-slot="pill"]')).toBeVisible(),
+      expect(
+        canvasElement.querySelector('[data-slot="pull-handle"]'),
+      ).toBeVisible(),
     );
   },
 };
 
-/** Pressing the pill opens the chat, and the handle on the sheet puts it back. */
+/**
+ * While work runs the box itself says so, so no pill stands above it repeating that: only the
+ * handle, which opens the chat.
+ */
 export const PressToOpen: Story = {
   args: whileWorking,
   play: async ({ canvasElement }) => {
-    const pillButton =
-      canvasElement.querySelector<HTMLElement>('[data-slot="pill"]');
-    if (pillButton === null) throw new Error("No pill");
-    await userEvent.click(pillButton);
+    await expect(canvasElement.querySelector('[data-slot="pill"]')).toBeNull();
+    const handle = canvasElement.querySelector<HTMLElement>(
+      '[data-slot="pull-handle"]',
+    );
+    if (handle === null) throw new Error("No handle");
+    await userEvent.click(handle);
     // Shown once the room's page has faded in and the sheet has begun to open.
     await waitFor(() =>
       expect(within(canvasElement).getByRole("log")).toBeVisible(),

@@ -1,8 +1,9 @@
 /**
- * The chat behind the prompt box. With nothing running, a pull handle sits on the box's top edge;
- * while work runs the status pill takes its place and does its job. Dragging either up, or
+ * The chat behind the prompt box. A pull handle sits on the box's top edge; dragging it up, or
  * pressing it, grows a sheet up around the box holding the conversation. Pulling it down, or
- * Escape, puts it back and the pill returns.
+ * Escape, puts it back. While work runs the box's own words say so, so nothing above it repeats
+ * them; only something to press, such as Open on a document that is ready, stands above it as a
+ * pill, with the handle beneath.
  */
 import {
   useEffect,
@@ -375,23 +376,18 @@ export function ChatSheet({
     onPointerDown: startPull,
     onKeyDown: keyPull,
   };
+  const handle = hasChat ? <PullHandle {...pullProps} onPress={press} /> : null;
+  // A pill with an action of its own does that when pressed, and is not the chat's control, so
+  // the handle stays beneath it: the chat never waits on the person pressing through actions.
+  const pill = status?.onAction === undefined ? null : status;
   const grip =
-    status === null ? (
-      hasChat ? (
-        <PullHandle {...pullProps} onPress={press} />
-      ) : null
-    ) : status.onAction !== undefined ? (
-      // A pill with an action of its own does that when pressed, and is not the chat's control, so
-      // the handle stays beneath it: the chat never waits on the person pressing through actions.
-      <>
-        <StatusPill {...status} onPress={status.onAction} />
-        {hasChat ? <PullHandle {...pullProps} onPress={press} /> : null}
-      </>
+    pill === null ? (
+      handle
     ) : (
-      <StatusPill
-        {...status}
-        {...(hasChat ? { ...pullProps, onPress: press } : {})}
-      />
+      <>
+        <StatusPill {...pill} onPress={pill.onAction} />
+        {handle}
+      </>
     );
 
   const sheetState = moving ? "moving" : state;
@@ -408,7 +404,7 @@ export function ChatSheet({
         data-slot="chat-sheet-edge"
         aria-hidden="true"
       />
-      {grip === null || (shown && !(moving && status !== null)) ? null : (
+      {grip === null || (shown && !(moving && pill !== null)) ? null : (
         <div ref={gripRef} className={styles.grip} data-slot="chat-grip">
           {grip}
         </div>
