@@ -412,3 +412,32 @@ sandboxTest(
   },
   60_000,
 );
+
+sandboxTest(
+  "a project with a .env at its root installs and keeps it hidden",
+  async () => {
+    await withRunner(
+      {
+        "package.json": JSON.stringify({ name: "t", dependencies: {} }),
+        ".env": "ENV_FILE_SENTINEL=secret",
+      },
+      async (executor) => {
+        const shell = (command: string) =>
+          executor.run(
+            {
+              id: crypto.randomUUID(),
+              name: "run_shell",
+              arguments: { command },
+            },
+            new AbortController().signal,
+          );
+        const install = await shell("bun install");
+        expect(install.content).not.toContain("exit code");
+        const read = await shell("cat .env");
+        expect(read.content).toContain("Operation not permitted");
+        expect(read.content).not.toContain("ENV_FILE_SENTINEL");
+      },
+    );
+  },
+  60_000,
+);

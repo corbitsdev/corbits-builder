@@ -512,7 +512,10 @@ async function createSandboxExecutor(
     shimDirectory = await realpath(await mkdtemp(join(tmpdir(), "sb-shim-")));
     for (const name of ["node", "bun"]) {
       const shim = join(shimDirectory, name);
-      await writeFile(shim, `#!/bin/sh\nexec ${quote(executable)} "$@"\n`);
+      await writeFile(
+        shim,
+        `#!/bin/sh\nexec ${quote(executable)} --no-env-file "$@"\n`,
+      );
       await chmod(shim, 0o755);
     }
     // Resolve workspace packages before isolation: Bun's runtime lookup scans repository paths
