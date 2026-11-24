@@ -366,7 +366,7 @@
   white-space: nowrap;
 }
 
-.row[data-row="step"]:has(.doing) {
+.row[data-row="step"]:is([data-lines], :has(.doing)) {
   align-items: flex-start;
   height: auto;
   min-height: 2rem;
@@ -406,11 +406,6 @@
 
 .row[data-row="step"][data-state="running"] {
   font-weight: 500;
-}
-
-/* A step that will not happen. */
-.row[data-state="declined"] .name {
-  text-decoration: line-through;
 }
 
 /* The step being worked on: a soft band of light passes through its words every two seconds. The
@@ -540,15 +535,82 @@
   max-width: calc(var(--rail-width) - var(--space-4));
 }
 
-/* Builder will pause for the person before this step starts: two quiet bars, drawn in the
-   steps' column like a dot. */
-.pause {
-  width: 12px;
-  height: 12px;
-  fill: none;
-  stroke: var(--wb-muted-foreground);
-  stroke-width: 1.75;
-  stroke-linecap: round;
+/* How long the step at work has run, in figures of one width so the line holds still as it
+   counts. */
+.clock {
+  flex: none;
+  color: var(--wb-foreground);
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+
+.glance .clock {
+  color: var(--wb-muted-foreground);
+  font-size: var(--text-xs);
+}
+
+/* What waits on the person reads as plainly as the step's name. */
+.doing[data-tone="you"] {
+  color: var(--wb-foreground);
+  font-weight: 500;
+}
+
+/* A step's settings before it starts, under its name: two small quiet pills, each lit in the
+   action blue while it is on. */
+.settings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-block: 3px 1px;
+}
+
+.setting {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  height: 20px;
+  padding: 0 7px 0 6px;
+  border: 1px solid var(--wb-border);
+  border-radius: 9999px;
+  background: transparent;
+  color: var(--wb-muted-foreground);
+  font: inherit;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color var(--duration-micro),
+    color var(--duration-micro),
+    border-color var(--duration-micro);
+}
+
+.setting > svg {
+  width: 11px;
+  height: 11px;
+}
+
+.setting:hover {
+  border-color: var(--wb-border-strong);
+  color: var(--wb-foreground);
+}
+
+.setting[data-on] {
+  border-color: color-mix(in oklab, var(--wb-action) 35%, transparent);
+  background: color-mix(in oklab, var(--wb-action) 10%, transparent);
+  color: var(--wb-action);
+}
+
+.setting:active {
+  scale: 0.96;
+}
+
+/* With its settings on the row, the row's menu is for the keyboard alone; its button stays only
+   to place the menu. */
+.row:has(.settings) .more {
+  visibility: hidden;
+  pointer-events: none;
 }
 
 /* The app's line stands level with Plan: the same height, size and colour. It reads as a status,

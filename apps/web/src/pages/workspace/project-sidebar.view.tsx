@@ -23,10 +23,12 @@ import {
   Building2,
   CircleUser,
   Ellipsis,
+  Hand,
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
   Settings,
+  SkipForward,
   type LucideIcon,
 } from "lucide-react";
 import { SidebarItem } from "@corbits/react-ui";
@@ -38,6 +40,7 @@ import {
 } from "@corbits/react-ui/ui/menu";
 import { wording } from "../../config.ts";
 import { Mark } from "../../components.jsx";
+import { clock, useElapsedMs } from "./elapsed.tsx";
 import styles from "./project-sidebar.module.css";
 
 const words = wording.projectShell;
@@ -78,6 +81,10 @@ export type SidebarRow = {
   app: boolean;
   /** The tab of what it made, which the row opens; null while there is nothing to show. */
   opens: string | null;
+  /** When the step started, so a running one counts up from it; null before it has. */
+  startedAt: string | null;
+  /** The run's last activity, or why it failed; null while it has said none. */
+  summary: string | null;
   /** The step it is, whose settings its menu changes. */
   steps: readonly SidebarStep[];
 };
@@ -307,9 +314,12 @@ function PlanGlance({
               {/* Its type says where it stands; a screen reader hears it said. */}
               <span className={styles.said}>, {state}</span>
               {row.state === "running" ? (
-                <span className={styles.dot}>
-                  <Working />
-                </span>
+                <>
+                  <RunningFor since={row.startedAt} />
+                  <span className={styles.dot}>
+                    <Working />
+                  </span>
+                </>
               ) : null}
             </span>
           );
@@ -584,6 +594,8 @@ function PlanTree({
           app={row.app ? app : null}
           current={row.opens !== null && row.opens === shown}
           onOpen={opener(row)}
+          onAskFirst={onAskFirst}
+          onDecline={onDecline}
           menu={
             row.steps.some(stepHasMenu) ? (
               <RowStepsMenu
@@ -602,18 +614,21 @@ function PlanTree({
 }
 
 /**
- * One step of the plan: its name alone, with no icon. Where it
- * stands is said by its words and colour: done ones are quiet, ones still ahead fainter, the one at
- * work shimmers with a ring turning at its end, and one that failed is red. One that waits on the person is shaded. A step that
- * will not happen is struck through, and one that will pause for the person first carries a pause
- * mark, so neither setting hides in its menu. Once a step has made something it opens it; once the
- * app is built, its step says how it runs.
+ * One step of the plan: its name, and under it a line saying where it stands. The one at work
+ * shimmers with a ring turning at its end, and its line counts how long it has run beside what it
+ * is doing; one that waits on the person is shaded and says so; one that failed is red and says
+ * why. Until a step starts, its line holds its settings, Ask me first and, where it is optional,
+ * Skip, each lit while it is on, so how the plan will go is read off the rows rather than hidden
+ * in a menu. Once a step has made something it opens it; once the app is built, its step says how
+ * it runs.
  */
 function PlanRow({
   row,
   app,
   current,
   onOpen,
+  onAskFirst,
+  onDecline,
   menu,
   ...item
 }: {
@@ -624,6 +639,8 @@ function PlanRow({
   current: boolean;
   /** Opens what it made; null while there is nothing to show. */
   onOpen: (() => void) | null;
+  onAskFirst: (stepId: string, askFirst: boolean) => void;
+  onDecline: (stepId: string, declined: boolean) => void;
   menu: ReactNode;
 } & TreeItemProps) {
   const { state } = row;
@@ -639,6 +656,39 @@ function PlanRow({
     ...(doing === null ? [] : [doing]),
     ...(pauses ? [words.pausesFirst] : []),
   ].join(", ");
+  // The settings stand under the name only while they can change and the row is one step's; a row
+  // of several keeps them in its menu, which names each step.
+  const own = row.steps.filter(stepHasMenu);
+  const settings =
+    own.length === 1 && (state === "to_do" || state === "declined")
+      ? own[0]
+      : undefined;
+  const line =
+    state === "running" ? (
+      <span className={styles.doing}>
+        <RunningFor since={row.startedAt} />
+        {" · "}
+        {row.summary ?? words.stepNow.working}
+      </span>
+    ) : state === "needs_you" ? (
+      <span className={styles.doing} data-tone="you">
+        {words.stepNow.needsYou}
+      </span>
+    ) : state === "failed" ? (
+      <span className={styles.doing}>
+        {row.summary ?? words.stepNow.failed}
+      </span>
+    ) : settings !== undefined ? (
+      <StepSettings
+        step={settings}
+        onAskFirst={onAskFirst}
+        onDecline={onDecline}
+      />
+    ) : doing === null ? null : (
+      <span className={styles.doing} aria-live="polite">
+        {doing}
+      </span>
+    );
   return (
     <li
       role="treeitem"
@@ -647,12 +697,12 @@ function PlanRow({
       aria-label={said}
       aria-current={current ? "page" : undefined}
       className={styles.item}
-      title={row.name}
+      title={row.summary === null ? row.name : `${row.name}: ${row.summary}`}
       onClick={
         onOpen === null
           ? undefined
           : (event) => {
-              // The row's menu button and the menu it opens are not the row.
+              // The row's buttons and the menu it opens are not the row.
               if (
                 event.target instanceof Element &&
                 event.target.closest("button, [role='menu']") !== null
@@ -668,34 +718,72 @@ function PlanRow({
         data-row="step"
         data-state={state}
         data-opens={onOpen === null ? undefined : ""}
+        data-lines={line === null ? undefined : "2"}
       >
         <span className={styles.text}>
           <span className={styles.name}>{row.name}</span>
-          {doing === null ? null : (
-            <span className={styles.doing} aria-live="polite">
-              {doing}
-            </span>
-          )}
+          {line}
         </span>
         {state === "running" ? (
           <span className={styles.dot}>
             <Working />
           </span>
         ) : null}
-        {pauses ? (
-          <span className={styles.dot} title={words.pausesFirst}>
-            <svg
-              className={styles.pause}
-              viewBox="0 0 12 12"
-              aria-hidden="true"
-            >
-              <path d="M4 2.5v7M8 2.5v7" />
-            </svg>
-          </span>
-        ) : null}
         {menu}
       </span>
     </li>
+  );
+}
+
+/** How long a step has run, as a clock that counts up each second. */
+function RunningFor({ since }: { since: string | null }) {
+  const seconds = Math.floor(useElapsedMs(since) / 1000);
+  return <span className={styles.clock}>{clock(seconds)}</span>;
+}
+
+/**
+ * A step's settings before it starts, as two small buttons under its name: Ask me first, and Skip
+ * where the step is optional. Each is lit while it is on and a press turns it over. They are for
+ * the pointer; the keyboard reaches the same settings through the row's menu, and the row's name
+ * says how they stand.
+ */
+function StepSettings({
+  step,
+  onAskFirst,
+  onDecline,
+}: {
+  step: SidebarStep;
+  onAskFirst: (stepId: string, askFirst: boolean) => void;
+  onDecline: (stepId: string, declined: boolean) => void;
+}) {
+  const { id, askFirst, declined } = step;
+  return (
+    <span className={styles.settings} aria-hidden="true">
+      {askFirst === null || declined === true ? null : (
+        <button
+          type="button"
+          tabIndex={-1}
+          className={styles.setting}
+          data-on={askFirst ? "" : undefined}
+          onClick={() => onAskFirst(id, !askFirst)}
+        >
+          <Hand aria-hidden="true" />
+          {words.stepSettings.askFirst}
+        </button>
+      )}
+      {declined === null ? null : (
+        <button
+          type="button"
+          tabIndex={-1}
+          className={styles.setting}
+          data-on={declined ? "" : undefined}
+          onClick={() => onDecline(id, !declined)}
+        >
+          <SkipForward aria-hidden="true" />
+          {words.stepSettings.skip}
+        </button>
+      )}
+    </span>
   );
 }
 

@@ -39,6 +39,10 @@ export type OutlineRow = {
   app: boolean;
   /** The tab of what it made, once the project has it; null while there is nothing to show. */
   opens: string | null;
+  /** When the step started, so a running one can say how long it has run; null before it has. */
+  startedAt: string | null;
+  /** The run's last activity, or why it failed, in one plain line; null while it has said none. */
+  summary: string | null;
   /** The step it is, whose settings its menu changes. */
   steps: OutlineStep[];
 };
@@ -129,6 +133,8 @@ export function outlinePlan(
       state: stepState(step),
       app: made.includes("app"),
       opens: makes === null ? null : makes === "app" ? LIVE_TAB : makes,
+      startedAt: step.startedAt ?? null,
+      summary: step.summary ?? null,
       steps: [outlineStep(step)],
     };
   };

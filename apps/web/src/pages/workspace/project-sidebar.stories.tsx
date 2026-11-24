@@ -44,8 +44,16 @@ const row = (
   state,
   app: false,
   opens: null,
+  startedAt: null,
+  summary: null,
   steps: [step(id, name, state, settings)],
   ...fields,
+});
+
+/** A step at work, started the given seconds ago, its run saying what it is doing. */
+const ran = (seconds: number, summary: string | null = null) => ({
+  startedAt: new Date(Date.now() - seconds * 1000).toISOString(),
+  summary,
 });
 
 /** A step that has made a document the project view can open, of the given kind. */
@@ -54,7 +62,13 @@ const made = (kind: string) => ({ opens: kind });
 const planning = [
   row("brief", "Write the brief", "done", {}, made("problem_brief")),
   row("constraints", "List the constraints", "done", {}, made("constraints")),
-  row("approaches", "Compare approaches", "running"),
+  row(
+    "approaches",
+    "Compare approaches",
+    "running",
+    {},
+    ran(94, "Weighing a form, a chat and a calendar"),
+  ),
   row("requirements", "Write the requirements", "to_do", { askFirst: true }),
   row("research", "Research other bakeries", "to_do", { declined: false }),
   row("design", "Design the look"),
@@ -74,7 +88,13 @@ const building = [
   row("design", "Design the look", "done", {}, made("design")),
   row("build_plan", "Plan the build", "done", {}, made("build_plan")),
   row("build", "Build the app", "done", {}, { app: true, opens: LIVE_TAB }),
-  row("manual", "Write the user manual", "running"),
+  row(
+    "manual",
+    "Write the user manual",
+    "running",
+    {},
+    ran(41, "Writing how to take an order"),
+  ),
 ];
 
 /** Published after the build: a second ready-made plan, one of its steps waiting on the person. */
@@ -308,9 +328,23 @@ export const StepStates: Story = {
   args: {
     plan: [
       row("brief", "Write the brief", "done"),
-      row("approaches", "Compare approaches", "running"),
+      row(
+        "approaches",
+        "Compare approaches",
+        "running",
+        {},
+        ran(154, "Weighing a form, a chat and a calendar"),
+      ),
       row("requirements", "Write the requirements", "needs_you"),
-      row("design", "Design the screens", "failed"),
+      row(
+        "design",
+        "Design the screens",
+        "failed",
+        {},
+        {
+          summary: "No colours were chosen",
+        },
+      ),
       row("research", "Research other bakeries", "declined"),
       row("build", "Build the app"),
     ],
@@ -331,6 +365,11 @@ export const LongNames: Story = {
         "interviews",
         "Interview the Saturday market stall owners about their orders",
         "running",
+        {},
+        ran(
+          3725,
+          "Writing up what the stall owners said about Saturday orders",
+        ),
       ),
       row(
         "pricing",
@@ -356,7 +395,7 @@ export const LongPlan: Story = {
       row("research", "Research other bakeries", "declined"),
       row("design", "Design the screens", "done"),
       row("review", "Review the design", "done"),
-      row("build", "Build the app", "running"),
+      row("build", "Build the app", "running", {}, ran(312)),
       row("orders", "Add online cake orders"),
       row("allergies", "Flag allergies on every order"),
       row("ready", "Tell customers when a cake is ready"),
@@ -449,9 +488,9 @@ export const Keyboard: Story = {
 };
 
 /**
- * A step's row shows what will happen to it: a step set to pause carries the pause mark, a skipped
- * step is struck through. Its menu, from Enter on the row, says what each choice will do: on a step
- * that pauses, Don't pause; Skip shows only on an optional step.
+ * A step's row shows what will happen to it: its settings stand under its name, lit while on, and
+ * its name says them too. Its menu, from Enter on the row, is the keyboard's way to them and says
+ * what each choice will do: on a step that pauses, Don't pause; Skip shows only on an optional step.
  */
 export const StepMenu: Story = {
   play: async ({ canvasElement, args }) => {
@@ -476,6 +515,62 @@ export const StepMenu: Story = {
     await expect(args.onAskFirst).toHaveBeenCalledWith("requirements", false);
     await expect(requirements).toHaveFocus();
   },
+};
+
+/**
+ * Before a step starts, its settings are in sight under its name: Ask me first on every step, Skip
+ * on an optional one, each lit while on. A press turns one over.
+ */
+export const StepSettingsInSight: Story = {
+  args: {
+    plan: [
+      row("brief", "Write the brief", "done"),
+      row(
+        "approaches",
+        "Compare approaches",
+        "running",
+        {},
+        ran(94, "Weighing a form, a chat and a calendar"),
+      ),
+      row("requirements", "Write the requirements", "to_do", {
+        askFirst: true,
+      }),
+      row("research", "Research other bakeries", "to_do", { declined: false }),
+      row("visit", "Visit the market stalls", "declined", { declined: true }),
+    ],
+  },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    const requirements = canvas.getByRole("treeitem", {
+      name: /^Write the requirements/,
+    });
+    const ask = within(requirements).getByText(words.stepSettings.askFirst);
+    await expect(ask.closest("button")).toHaveAttribute("data-on");
+    await userEvent.click(ask);
+    await expect(args.onAskFirst).toHaveBeenCalledWith("requirements", false);
+    const research = canvas.getByRole("treeitem", {
+      name: /^Research other bakeries/,
+    });
+    await userEvent.click(within(research).getByText(words.stepSettings.skip));
+    await expect(args.onDecline).toHaveBeenCalledWith("research", true);
+    // A skipped step offers only to take the skip back.
+    const visit = canvas.getByRole("treeitem", {
+      name: /^Visit the market stalls/,
+    });
+    await expect(
+      within(visit).queryByText(words.stepSettings.askFirst),
+    ).toBeNull();
+    await expect(
+      within(
+        canvas.getByRole("treeitem", { name: /^Compare approaches/ }),
+      ).getByText(/^\d+:\d{2}$/),
+    ).toBeVisible();
+  },
+};
+
+export const StepSettingsInSightDark: Story = {
+  args: { ...StepSettingsInSight.args },
+  globals: { mode: "dark" },
 };
 
 /** An optional step's menu offers to skip it; once skipped, it offers to keep it. */

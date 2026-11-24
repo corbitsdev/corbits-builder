@@ -134,6 +134,21 @@ describe("the plan", () => {
     });
   });
 
+  test("a running step carries when it started and what its run last said", () => {
+    const step = planStep("approaches", "running", {
+      startedAt: "2026-11-24T10:00:00Z",
+      summary: "Weighing three ways to take orders",
+    });
+    expect(outlinePlan([step])[0]).toMatchObject({
+      startedAt: "2026-11-24T10:00:00Z",
+      summary: "Weighing three ways to take orders",
+    });
+    expect(outlinePlan([planStep("next", "not_started")])[0]).toMatchObject({
+      startedAt: null,
+      summary: null,
+    });
+  });
+
   test("of several things a step makes, it opens the first the project has", () => {
     const step = planStep("write", "done", { makes: ["plan", "notes"] });
     expect(outlinePlan([step], [filed("notes")])[0]!.opens).toBe("notes");

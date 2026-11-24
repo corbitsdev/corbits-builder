@@ -471,6 +471,17 @@ export const wording = {
       failed: "failed",
       declined: "declined",
     },
+    /** Under a step's name, where it stands; a running one's line starts with how long it has run. */
+    stepNow: {
+      working: "Working",
+      needsYou: "Waiting on you",
+      failed: "Didn't finish",
+    },
+    /** A step's settings, under its name until it starts, each lit while it is on. */
+    stepSettings: {
+      askFirst: "Ask me first",
+      skip: "Skip",
+    },
     /** A step's menu: what can be done to it, each said as what choosing it will do. */
     rowMenu: (name: string) => `More for ${name}`,
     stepMenu: {
