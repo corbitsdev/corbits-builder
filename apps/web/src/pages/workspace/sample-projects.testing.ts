@@ -151,7 +151,7 @@ const quietFacts: RoomStatusFacts = {
   plan: [],
   documents: [],
   app: null,
-  deciding: false,
+  asking: false,
   projectOpen: false,
 };
 
@@ -228,7 +228,15 @@ export const statusRooms = {
     documents: [
       { id: "build_plan", title: "Build plan", version: 3, seen: false },
     ],
-    deciding: true,
+    asking: true,
+  },
+  /** A first draft filed while the box still asks the person a question its writer needs. */
+  answering: {
+    ...quietFacts,
+    documents: [
+      { id: "requirements", title: "Requirements", version: 1, seen: false },
+    ],
+    asking: true,
   },
   /** The first build plan, not yet opened. */
   firstVersion: {

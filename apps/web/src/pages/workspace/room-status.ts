@@ -32,8 +32,11 @@ export type RoomStatusFacts = {
   }[];
   /** How the project's app stands while the project is open; null while there is none to run. */
   app: "running" | "starting" | "failed" | "stopped" | "not_built" | null;
-  /** The box asks the person to accept something, and its screen opens what it asks about. */
-  deciding: boolean;
+  /**
+   * The box waits on the person: a question, a screen or an approval. A document's writer may still
+   * need that answer, and a screen asking for a document's approval opens it itself.
+   */
+  asking: boolean;
   /** The project fills the window, so its documents and app are already in reach. */
   projectOpen: boolean;
 };
@@ -121,10 +124,10 @@ export const rules: readonly { name: string; rule: Rule }[] = [
     },
   },
   {
-    // A screen asking the person to accept a document already opens it, so the line does not.
+    // A version is not ready to read while the box still asks the person something.
     name: "a version the person has not opened",
-    rule: ({ documents, deciding }) => {
-      if (deciding) return undefined;
+    rule: ({ documents, asking }) => {
+      if (asking) return undefined;
       const unseen = documents.findLast((document) => !document.seen);
       if (unseen === undefined) return undefined;
       return {
