@@ -199,17 +199,16 @@
   height: 1.75rem;
 }
 
-/* In the card a done step reads plainly, ticked off, so what is done stands apart from what is
-   still to come, which stays faint. */
+/* In the card the type alone says what is done: a done step is dark and firm, one still to come
+   light and faint, so the two read apart at a glance without a mark. */
 .glance .row[data-row="step"][data-state="done"] {
   color: var(--wb-foreground);
+  font-weight: 500;
 }
 
-.glanceDone {
-  flex: none;
-  width: 14px;
-  height: 14px;
-  color: var(--wb-proceed);
+.glance
+  .row[data-row="step"]:is([data-state="to_do"], [data-state="declined"]) {
+  color: color-mix(in oklab, var(--wb-muted-foreground) 55%, transparent);
 }
 
 .glanceOpen {
