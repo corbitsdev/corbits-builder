@@ -3,19 +3,26 @@ import { randomUUID } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 import JSZip from "jszip";
-import { createArtifact } from "@corbits/artifacts";
 import { toolConsumer } from "@intx/authz";
 import { createNoopCredentialCipher } from "@intx/crypto";
 import { createRunTokenStore } from "@intx/db";
 import { grant } from "@intx/db/schema";
 import { APP_VERSION_HEADER } from "@corbits-builder/schemas/app-files";
 import { startInProcessHub } from "../support/in-process-hub.ts";
+import { toolReplay } from "../support/tool-replay.ts";
 
 let hub: Awaited<ReturnType<typeof startInProcessHub>>;
 
 beforeAll(async () => {
-  hub = await startInProcessHub();
-});
+  hub = await startInProcessHub(
+    {},
+    {
+      toolReplay: toolReplay(
+        join(import.meta.dir, "../../fixtures/tools/app-build"),
+      ),
+    },
+  );
+}, 120_000);
 
 afterAll(() => hub?.close());
 
@@ -36,18 +43,7 @@ async function project(
   const seeded = await hub.seedProject(title);
   if (Object.keys(values).length > 0)
     await hub.call("POST", `${seeded.path}/values`, { values });
-  const content = JSON.stringify({ files });
-  await hub.db.transaction((tx) =>
-    createArtifact(tx, {
-      scope: seeded.person,
-      ownerPrincipalId: seeded.person.principalId,
-      kind: "app",
-      title: "App",
-      content,
-      source: { origin: "workflow" },
-      metadata: { source: "import", bytes: Buffer.byteLength(content) },
-    }),
-  );
+  await hub.seedApp(seeded.path, files);
   return seeded;
 }
 

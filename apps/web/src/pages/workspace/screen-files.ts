@@ -1,6 +1,7 @@
 /**
  * The plugins' screen files and roles, compiled in when the interface is built, so a new plugin
- * folder needs a rebuild. Only the app entry imports this module: import.meta.glob needs Vite.
+ * folder needs a rebuild. Only the app entry and Storybook's preview import this module:
+ * import.meta.glob needs Vite.
  */
 import { installRoles } from "./roles.ts";
 import { installScreens, type ScreenFiles } from "./screens.ts";

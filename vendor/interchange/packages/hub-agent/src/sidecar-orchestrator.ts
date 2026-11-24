@@ -16,6 +16,7 @@ import type { HubTransport } from "@intx/mail-memory";
 import type { SignalKind } from "@intx/types";
 import type {
   DeploymentStoppedFrame,
+  DeploymentWokenFrame,
   HostedIncarnation,
   SidecarCapacity,
 } from "@intx/types/sidecar";
@@ -49,11 +50,6 @@ const log = getLogger(["interchange", "hub-agent", "orchestrator"]);
 
 export type SidecarCryptoOps = {
   generateKeyPair(): Promise<KeyPair>;
-  verifySSHSig(
-    payload: string,
-    signature: string,
-    publicKey: Uint8Array,
-  ): Promise<boolean>;
 };
 
 /**
@@ -101,6 +97,12 @@ export type CreateDeployRouter = (deps: {
     approvalSnapshot?: ApprovalSnapshot;
   }) => void;
   /**
+   * Sink for a run that is about to stop waiting on approvals it registered.
+   * Wired to the hub-link's `releaseSignalCorrelationRegisters`, like
+   * `publishWorkflowSuspension`.
+   */
+  publishWorkflowSuspensionRelease: HubLink["releaseSignalCorrelationRegisters"];
+  /**
    * Sink for a deployment that stopped though the Hub did not stop it. Wired
    * to the hub-link's `sendDeploymentStopped`, like
    * `publishWorkflowSuspension`.
@@ -108,6 +110,11 @@ export type CreateDeployRouter = (deps: {
   publishDeploymentStopped: (
     report: Omit<DeploymentStoppedFrame, "type">,
   ) => void;
+  /**
+   * Sink for reports that an input woke a deployment in standby. Wired to the
+   * hub-link's `sendDeploymentWoken`, like `publishDeploymentStopped`.
+   */
+  publishDeploymentWoken: (report: Omit<DeploymentWokenFrame, "type">) => void;
 }) => DeployRouter;
 
 export type SidecarOrchestratorConfig = {
@@ -152,11 +159,11 @@ export type SidecarOrchestratorConfig = {
    */
   createDeployRouter: CreateDeployRouter;
   /**
-   * Optional pre-fallback mail dispatcher the link consults on every
+   * Optional mail dispatcher the link consults on every
    * inbound `mail.inbound` frame. Production wires this against the
    * sidecar's multi-step deployment mail handler registry so a
    * deployment-address inbound flows into the supervisor's mail-bus
-   * subscription instead of the legacy session path. The orchestrator
+   * subscription. The orchestrator
    * forwards the binding unchanged to `createHubLink`.
    */
   mailInboundRouter?: MailInboundRouter;
@@ -299,7 +306,6 @@ export function createSidecarOrchestrator(
   const keyStore = createAgentKeyStore({
     dataDir,
     generateKeyPair: cryptoOps.generateKeyPair,
-    verifySSHSig: cryptoOps.verifySSHSig,
   });
 
   // Sink the multi-step deploy path routes a spawned child's verified
@@ -331,8 +337,19 @@ export function createSidecarOrchestrator(
     /* replaced after HubLink construction */
   };
 
+  let dispatchSuspensionRelease: HubLink["releaseSignalCorrelationRegisters"] =
+    () => {
+      /* replaced after HubLink construction */
+    };
+
   let dispatchDeploymentStopped: (
     report: Omit<DeploymentStoppedFrame, "type">,
+  ) => void = () => {
+    /* replaced after HubLink construction */
+  };
+
+  let dispatchDeploymentWoken: (
+    report: Omit<DeploymentWokenFrame, "type">,
   ) => void = () => {
     /* replaced after HubLink construction */
   };
@@ -372,8 +389,14 @@ export function createSidecarOrchestrator(
     publishWorkflowSuspension: (registration) => {
       dispatchSuspension(registration);
     },
+    publishWorkflowSuspensionRelease: (release) => {
+      dispatchSuspensionRelease(release);
+    },
     publishDeploymentStopped: (report) => {
       dispatchDeploymentStopped(report);
+    },
+    publishDeploymentWoken: (report) => {
+      dispatchDeploymentWoken(report);
     },
   });
 
@@ -383,7 +406,6 @@ export function createSidecarOrchestrator(
     token,
     transport,
     sessions,
-    keyStore,
     resolveSenderCrypto,
     lookupInboundMailPolicy,
     cacheSenderKey,
@@ -417,7 +439,9 @@ export function createSidecarOrchestrator(
 
   dispatchEvent = hubLink.sendEvent;
   dispatchSuspension = hubLink.sendSignalCorrelationRegister;
+  dispatchSuspensionRelease = hubLink.releaseSignalCorrelationRegisters;
   dispatchDeploymentStopped = hubLink.sendDeploymentStopped;
+  dispatchDeploymentWoken = hubLink.sendDeploymentWoken;
 
   function start(): void {
     hubLink.connect();

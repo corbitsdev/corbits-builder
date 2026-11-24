@@ -7,9 +7,11 @@ import type {
   EnsureSidecarRequest,
   EnsureSidecarResult,
   SidecarProvisioner,
+  SidecarProvisionerHost,
 } from "@intx/hub-sessions";
-import type { AdapterManifest } from "@intx/types";
+import type { AdapterManifest, SidecarView } from "@intx/types";
 import { settle } from "../lib/serial-queue.ts";
+import { errorText } from "../sidecar/error-text.ts";
 import {
   DockerEngineError,
   isThisMachine,
@@ -39,6 +41,7 @@ export const defaultDockerLimits: DockerLimits = {
 
 const Container = type({
   Id: "string",
+  State: "string",
   Labels: {
     [LABEL.hub]: "string",
     [LABEL.allocation]: "string",
@@ -66,6 +69,7 @@ type CreateDockerSidecarProvisionerOpts = {
   readonly sshAllowPrivateAddresses: boolean;
   /** Where containers reach the hub, for a daemon on another machine; unset, the hub's own address with loopback mapped to the Docker host. */
   readonly hubWebSocketUrl?: string;
+  readonly log: (entry: Record<string, unknown>) => void;
 };
 
 function isDestroyedBy(
@@ -121,6 +125,16 @@ async function removeContainer(
   }
 }
 
+/** Removes every sidecar container this hub started, whatever its allocation or image. */
+export async function removeHubSidecars(
+  engine: DockerEngine,
+  hubId: string,
+): Promise<number> {
+  const containers = await listContainers(engine, [`${LABEL.hub}=${hubId}`]);
+  for (const { Id } of containers) await removeContainer(engine, Id);
+  return containers.length;
+}
+
 /**
  * One container per sidecar, with its own anonymous data volume, labelled with
  * this hub, the allocation, the generation and the sidecar id.
@@ -133,6 +147,7 @@ export function createDockerSidecarProvisioner({
   adapterManifest,
   sshAllowPrivateAddresses,
   hubWebSocketUrl,
+  log,
   limits = defaultDockerLimits,
 }: CreateDockerSidecarProvisionerOpts): SidecarProvisioner {
   for (const value of [limits.memoryBytes, limits.pids, limits.nanoCpus])
@@ -143,6 +158,7 @@ export function createDockerSidecarProvisioner({
   const queues = new Map<string, Promise<unknown>>();
   /** Containers being created, which a listing may not show yet. */
   let starting = 0;
+  let caughtUp: Promise<void> = Promise.resolve();
 
   async function list(
     allocationId: string,
@@ -166,6 +182,50 @@ export function createDockerSidecarProvisioner({
       signal,
     );
     return MemTotal - held.length * limits.memoryBytes;
+  }
+
+  // Work on a sidecar nobody reports waits out Interchange's disconnect window, which every hub start re-arms.
+  // Placements wait for this, so no container they start can be mistaken for missing.
+  async function reportVanished(host: SidecarProvisionerHost): Promise<void> {
+    let sidecars: readonly SidecarView[];
+    let present: Set<string>;
+    try {
+      sidecars = await host.listSidecars();
+      // A Docker restart leaves exited containers behind, and nothing restarts them.
+      present = new Set(
+        (await listContainers(engine, [`${LABEL.hub}=${hubId}`]))
+          .filter((container) => container.State === "running")
+          .map((container) => container.Labels[LABEL.sidecar]),
+      );
+    } catch (error) {
+      log({
+        level: "error",
+        msg: "docker_sidecar_catch_up_failed",
+        error: errorText(error),
+      });
+      return;
+    }
+    for (const { sidecarId } of sidecars) {
+      if (present.has(sidecarId)) continue;
+      try {
+        const report = await host.sidecarStopped(sidecarId, {
+          endReconnectWindow: true,
+        });
+        log({
+          level: "info",
+          msg: "docker_sidecar_vanished",
+          sidecarId,
+          report: report.kind,
+        });
+      } catch (error) {
+        log({
+          level: "error",
+          msg: "docker_sidecar_report_failed",
+          sidecarId,
+          error: errorText(error),
+        });
+      }
+    }
   }
 
   async function create(request: EnsureSidecarRequest): Promise<string> {
@@ -258,6 +318,7 @@ export function createDockerSidecarProvisioner({
   async function ensureSidecar(
     request: EnsureSidecarRequest,
   ): Promise<EnsureSidecarResult> {
+    await caughtUp;
     request.signal?.throwIfAborted();
     const containers = await list(request.allocationId, request.signal);
     const observed = Math.max(
@@ -328,6 +389,9 @@ export function createDockerSidecarProvisioner({
       { capability: "network:outbound", state: "available" },
       { capability: "runtime:posix", state: "available" },
     ],
+    attach(host) {
+      caughtUp = reportVanished(host);
+    },
     ensure(request) {
       return serialize(request.allocationId, () => ensureSidecar(request));
     },

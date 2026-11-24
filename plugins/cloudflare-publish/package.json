@@ -4,7 +4,6 @@
   "private": true,
   "description": "Cloudflare: a secure (https) web address of its own. Free to start, and no account needed.",
   "license": "SEE LICENSE IN ../../LICENSE.md",
-  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
   "type": "module",
   "dependencies": {
     "@corbits-builder/plugin": "workspace:*",

@@ -29,9 +29,6 @@
 //   - `mail.address:<address>`       -- every workflow trigger of type
 //                                        `"mail"` (the deployment's
 //                                        right to register and receive)
-//   - `mail.send:<domain>`           -- the trigger address's domain
-//                                        (the deployment's right to
-//                                        send mail as that domain)
 //   - `mail.accept:<relation>`       -- a relational accept marker
 //                                        (`invoker`/`self`/`tenant`/
 //                                        `correspondent`)
@@ -54,10 +51,10 @@
 //
 // Director resolution: the walk calls `effectiveDirectorRef` so the
 // absent-director normalization stays identical between this walk and
-// `getRequiredEnvKeys`. Director factories loaded from pinned tool
-// packages via `interchange.directors` are folded into the registry by
-// the caller; this module does not synthesize that registry itself
-// because the loader is the layer that owns package materialization.
+// `getRequiredEnvKeys`. Director factories from a workflow package's
+// `interchange.directors` are folded into the registry by the caller; this
+// module does not synthesize that registry itself because the definition
+// loader owns importing them.
 // An unresolvable director surfaces on `unresolvedDirectors` rather
 // than raising -- the deploy flow translates that into a deploy-time
 // `"unresolvable director"` failure when it wires this output into
@@ -160,11 +157,10 @@ function freezeDeclarations(
  * Walk a workflow definition and produce per-step grant declarations.
  *
  * The walk visits every step's agent definition once; deployment-wide
- * grants (the trigger-derived `mail.address:` / `mail.send:` axis and the
- * `mail.accept:*` accept axis) are attached to every step because the
- * workflow's mail-receive, mail-send, and mail-accept authority is a
- * deployment-wide property -- any step can be the one whose run consumes
- * inbound mail or generates a reply.
+ * grants (the trigger-derived `mail.address:` axis and the `mail.accept:*`
+ * accept axis) are attached to every step because the workflow's
+ * mail-receive and mail-accept authority is a deployment-wide property --
+ * any step can be the one whose run consumes inbound mail.
  */
 export function walkCapabilities(
   workflow: WorkflowDefinition,
@@ -215,8 +211,7 @@ const EFFECT_GRANT_PREFIX = "effect:";
  *
  * The `tool:` rules carry the bare tool names the walk reads from inline
  * `agent.toolFactories`. They authorize a source-ref tool, which runs under
- * that name; a pinned tool runs as `<bundleId>:<name>` and takes its
- * authority from the sidecar tool-mark floor instead.
+ * that name.
  */
 export function runtimeGrantRules(
   snapshot: Pick<GrantWalkSnapshot, "perStep">,
@@ -292,7 +287,7 @@ export function credentialUseGrantRules(
  * credentials. This is the credential-cap input. It is not part of
  * `CapabilityWalkResult`: those strings are not operator-facing grants.
  * Plugin names are absent. A factory with an empty `definitions` array is
- * still present, because the source arm keys Gate 2 on the factory id.
+ * still present, because Gate 2 is keyed on the factory id.
  */
 export function collectCredentialConsumers(
   workflow: WorkflowDefinition,
@@ -428,7 +423,7 @@ function collectOwnGrants(
     collected.grants.add(grant);
   }
   // Unlike a tool factory, which counts even with empty `definitions`
-  // because the source arm keys Gate 2 on its id, an action counts only when
+  // because Gate 2 is keyed on its id, an action counts only when
   // it carries a `credentials` field: that list is its declared credential
   // surface, so an action without the field consumes nothing.
   if (primitive.kind === "action" && primitive.credentials !== undefined) {
@@ -533,10 +528,6 @@ function collectTriggerGrants(workflow: WorkflowDefinition): string[] {
   for (const trigger of workflow.triggers) {
     if (trigger.type !== "mail") continue;
     grants.add(`mail.address:${trigger.to}`);
-    const domain = extractDomain(trigger.to);
-    if (domain !== null) {
-      grants.add(`mail.send:${domain}`);
-    }
   }
   return [...grants];
 }
@@ -580,14 +571,6 @@ export function collectMailAcceptGrants(
     grants.add(mailAcceptResource("asset", id));
   }
   return [...grants];
-}
-
-function extractDomain(address: string): string | null {
-  const at = address.lastIndexOf("@");
-  if (at < 0 || at === address.length - 1) {
-    return null;
-  }
-  return address.slice(at + 1);
 }
 
 /**

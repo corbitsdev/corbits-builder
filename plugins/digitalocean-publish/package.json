@@ -4,7 +4,6 @@
   "private": true,
   "description": "DigitalOcean: Builder sets up a server for you. From $6 a month, billed by DigitalOcean.",
   "license": "SEE LICENSE IN ../../LICENSE.md",
-  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
   "type": "module",
   "dependencies": {
     "@corbits-builder/plugin": "workspace:*",

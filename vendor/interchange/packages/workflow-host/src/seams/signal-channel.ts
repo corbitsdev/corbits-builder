@@ -41,6 +41,8 @@ import type {
 } from "@intx/hub-sessions/substrate";
 import { subscribeKind } from "@intx/hub-sessions/substrate";
 import type { RunState, SignalChannel } from "@intx/workflow";
+import { appendRunEvents, runEventPath } from "../adapters/on-disk-event";
+import { readRunEventSummary } from "../adapters/repo-store";
 import {
   withRunCommitBarrier,
   type RepoStore as RuntimeRepoStore,
@@ -79,7 +81,7 @@ export type SignalChannelOpts = {
   repoStore: RepoStore;
   /**
    * Runtime store that owns this run's commit chain. `deliver` flushes
-   * its pending buffer before the substrate merge numbers the signal.
+   * its pending buffer before the substrate append numbers the signal.
    * One store serves every run in the deployment; the barrier selects
    * the buffer by `runId`.
    */
@@ -126,6 +128,9 @@ type Awaiter = {
     correlationId?: string;
   }) => void;
   reject: (cause: unknown) => void;
+  // The caller's `onWake`, called before this channel stops counting the
+  // entry that settles the wait.
+  wake: () => void;
   signal?: AbortSignal;
   onAbort?: () => void;
 };
@@ -142,6 +147,13 @@ type NameSubscription = {
 };
 
 export type SignalChannelHandle = SignalChannel & {
+  /**
+   * `deliver`, answering whether a live run holds the signal. A log that
+   * already ended takes none, so nothing is written and the answer is `false`,
+   * also for a `signalId` it took before it ended, which only a read of the
+   * whole log could tell apart. A live log already holds a repeated one.
+   */
+  land(...args: Parameters<SignalChannel["deliver"]>): Promise<boolean>;
   /**
    * Tear down every slot subscription and reject every pending
    * awaiter. Idempotent. After `stop()` the channel holds no
@@ -259,28 +271,25 @@ export function createWorkflowHostSignalChannel(
             // the same slot picks it up via the state-reader path.
             break;
           }
+          const received = {
+            payload: entry.event.payload,
+            signalId: entry.event.signalId,
+            ...(entry.event.correlationId !== undefined
+              ? { correlationId: entry.event.correlationId }
+              : {}),
+          };
+          // Both the teardown and the next pull end this entry's delivery.
+          next.wake();
           if (awaiterCount(slot) === 0) {
             // Resolving the last awaiter on this subscription. Tear
             // down before the resolve so any awaitNext call inside
             // the awaiter's continuation installs a fresh
             // subscription instead of joining a dead one.
             teardown();
-            next.resolve({
-              payload: entry.event.payload,
-              signalId: entry.event.signalId,
-              ...(entry.event.correlationId !== undefined
-                ? { correlationId: entry.event.correlationId }
-                : {}),
-            });
+            next.resolve(received);
             return;
           }
-          next.resolve({
-            payload: entry.event.payload,
-            signalId: entry.event.signalId,
-            ...(entry.event.correlationId !== undefined
-              ? { correlationId: entry.event.correlationId }
-              : {}),
-          });
+          next.resolve(received);
         }
       } finally {
         // Catches the queue-drained natural break, the `stopped`
@@ -303,69 +312,52 @@ export function createWorkflowHostSignalChannel(
     });
   }
 
-  return {
-    async deliver(name, payload, signalId, correlationId) {
+  const handle: SignalChannelHandle = {
+    async deliver(...args) {
+      await handle.land(...args);
+    },
+    async land(name, payload, signalId, correlationId) {
       if (stopped) {
         throw new Error("signal channel: deliver after stop");
       }
       const id = signalId ?? opts.newId();
       const at = opts.clock().toISOString();
-      const prefix = `runs/${opts.runId}/events/`;
+      let landed = true;
       await withRunCommitBarrier(
         { repoStore: opts.runtimeStore },
         opts.runId,
         () =>
-          opts.repoStore.writeTreePreservingPrefix(
-            opts.principal,
-            opts.repoId,
-            opts.ref,
-            {
-              preservePrefix: prefix,
-              merge: async (existing) => {
-                let maxSeq = -1;
-                let duplicate = false;
-                let terminal = false;
-                for (const [filepath, contents] of existing) {
-                  const fname = filepath.slice(prefix.length);
-                  const match = /^(0|[1-9][0-9]*)\.json$/.exec(fname);
-                  if (match === null) continue;
-                  const seqStr = match[1];
-                  if (seqStr === undefined) continue;
-                  const seq = Number.parseInt(seqStr, 10);
-                  if (seq > maxSeq) maxSeq = seq;
-                  try {
-                    const parsed: unknown = JSON.parse(
-                      new TextDecoder().decode(contents),
-                    );
-                    if (isMatchingSignalId(parsed, id)) {
-                      duplicate = true;
-                    }
-                    if (isTerminalOnDiskEvent(parsed)) {
-                      terminal = true;
-                    }
-                  } catch {
-                    // A corrupt blob is rejected by validatePush at write
-                    // time. Treat as non-matching here.
-                  }
-                }
-                const out: Record<string, string> = {};
-                for (const [filepath, contents] of existing) {
-                  out[filepath] = new TextDecoder().decode(contents);
-                }
-                // A repeated signalId and a log that already reached a
-                // terminal event both leave the tree unchanged. Appending
-                // past RunFailed/RunCompleted/RunCancelled would make the
-                // next resume disagree with the terminal result already
-                // reported.
-                if (duplicate || terminal) return out;
-                const nextSeq = maxSeq + 1;
-                // The workflow-run kind handler's `EventEnvelope`
-                // validator requires `seq: number` on every event blob;
-                // the same `nextSeq` we use to mint the filename also
-                // carries into the body so a reader that hydrates the
-                // envelope (state-machine resume, audit reads) sees a
-                // self-describing event without consulting the filename.
-                out[`${prefix}${String(nextSeq)}.json`] = JSON.stringify({
+          appendRunEvents({
+            substrate: opts.repoStore,
+            principal: opts.principal,
+            repoId: opts.repoId,
+            ref: opts.ref,
+            runId: opts.runId,
+            message: `SignalReceived ${id} (${name}) for run ${opts.runId}`,
+            compute: async (existing, prior) => {
+              // A repeated signalId and a log that already reached a
+              // terminal event both leave the log unchanged. Appending
+              // past RunFailed/RunCompleted/RunCancelled would make the
+              // next resume disagree with the terminal result already
+              // reported.
+              const summary = await readRunEventSummary(
+                opts.repoStore,
+                opts.repoId,
+                opts.runId,
+                existing,
+                prior,
+              );
+              landed = !summary.terminal;
+              if (summary.terminal || summary.signalIds.has(id)) return {};
+              const nextSeq = (existing.at(-1)?.seq ?? -1) + 1;
+              // The workflow-run kind handler's `EventEnvelope`
+              // validator requires `seq: number` on every event blob;
+              // the same `nextSeq` we use to mint the filename also
+              // carries into the body so a reader that hydrates the
+              // envelope (state-machine resume, audit reads) sees a
+              // self-describing event without consulting the filename.
+              return {
+                [runEventPath(opts.runId, nextSeq)]: JSON.stringify({
                   type: "SignalReceived",
                   seq: nextSeq,
                   signalName: name,
@@ -373,26 +365,30 @@ export function createWorkflowHostSignalChannel(
                   payload,
                   at,
                   ...(correlationId !== undefined ? { correlationId } : {}),
-                });
-                return out;
-              },
-              message: `SignalReceived ${id} (${name}) for run ${opts.runId}`,
+                }),
+              };
             },
-          ),
+          }),
       );
+      return landed;
     },
-    async awaitNext(name, signal, correlationId) {
+    async awaitNext(name, onWake, signal, correlationId) {
       if (stopped) {
+        onWake();
         throw new Error("signal channel: awaitNext after stop");
       }
       if (signal !== undefined && signal.aborted) {
+        onWake();
         throw new Error("aborted");
       }
       // Drain the state-machine queue first. A signal that was
       // committed before the awaiter subscribed lives in the name
       // queue, or under its correlation, after log replay.
       const queued = peekState(name, correlationId);
-      if (queued !== null) return queued;
+      if (queued !== null) {
+        onWake();
+        return queued;
+      }
 
       const slot = slotOf(name, correlationId);
       return new Promise<{
@@ -403,10 +399,12 @@ export function createWorkflowHostSignalChannel(
         const awaiter: Awaiter = {
           resolve,
           reject,
+          wake: onWake,
           ...(signal !== undefined ? { signal } : {}),
         };
         if (signal !== undefined) {
           const onAbort = (): void => {
+            onWake();
             const list = awaiters.get(slot);
             if (list !== undefined) {
               const idx = list.indexOf(awaiter);
@@ -438,6 +436,7 @@ export function createWorkflowHostSignalChannel(
           if (awaiter.signal !== undefined && awaiter.onAbort !== undefined) {
             awaiter.signal.removeEventListener("abort", awaiter.onAbort);
           }
+          awaiter.wake();
           awaiter.reject(new Error("signal channel stopped"));
         }
       }
@@ -448,22 +447,5 @@ export function createWorkflowHostSignalChannel(
       }
     },
   };
-}
-
-function isTerminalOnDiskEvent(parsed: unknown): boolean {
-  if (typeof parsed !== "object" || parsed === null) return false;
-  const type = (parsed as { type?: unknown }).type;
-  return (
-    type === "RunCompleted" || type === "RunFailed" || type === "RunCancelled"
-  );
-}
-
-function isMatchingSignalId(parsed: unknown, signalId: string): boolean {
-  if (typeof parsed !== "object" || parsed === null) return false;
-  const obj = parsed as {
-    type?: unknown;
-    signalId?: unknown;
-  };
-  if (obj.type !== "SignalReceived") return false;
-  return obj.signalId === signalId;
+  return handle;
 }

@@ -4,7 +4,6 @@
   "private": true,
   "description": "Builder portal (Vite + React). Composes the hub's authenticated APIs.",
   "license": "SEE LICENSE IN ../../LICENSE.md",
-  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
   "type": "module",
   "exports": {
     "./environment": "./environment.ts"

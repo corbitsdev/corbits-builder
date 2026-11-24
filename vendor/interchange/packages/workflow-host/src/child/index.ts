@@ -1,8 +1,10 @@
 export {
   createCredentialsBackedAuthorize,
   createGrantEvaluator,
+  createSnapshotGrantsResolver,
   type CredentialsSnapshotRef,
   type GrantEvaluator,
+  type StepGrantsResolver,
 } from "./credentials-backed-authorize";
 
 export {
@@ -70,7 +72,7 @@ export {
   type DiscoveredRun,
 } from "./self-discovery";
 
-export type { LoadParkedApproval } from "./parked-correlations";
+export type { LoadParkedApproval } from "@intx/workflow";
 
 export {
   createWarmAgentCache,

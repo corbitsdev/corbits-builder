@@ -4,7 +4,6 @@
   "private": true,
   "description": "Publishes a saved app to a Debian or Ubuntu machine over SSH, whoever's machine it is, for the plugins that publish to one.",
   "license": "SEE LICENSE IN ../../LICENSE.md",
-  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
   "type": "module",
   "exports": {
     ".": "./src/index.ts"

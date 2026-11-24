@@ -1,11 +1,16 @@
 export {
   createWorkflowSupervisor,
+  StandbyAbandonedError,
+  StandbyDeferredError,
+  StandbyRefusedError,
   type CancelCommitInfo,
   type CancelRequestOpts,
   type DeliverCredentialsOpts,
   type DeliverSignalOpts,
   type DeliverSourcesOpts,
   type DrainOpts,
+  type StandbyOutcome,
+  type StandbyRestore,
   type RecycleOpts,
   type SpawnOpts,
   type SpawnResult,
@@ -13,17 +18,10 @@ export {
 } from "./supervisor";
 
 export {
-  assembleCredentialsSnapshot,
   isErrnoNotFound,
-  defaultStepRepoId,
   hashGrants,
-  STEP_GRANTS_PATH,
-  STEP_GRANTS_REF,
-  type AssembleCredentialsSnapshotOpts,
   type CredentialsSnapshot,
   type CredentialsSnapshotStep,
-  type DeriveStepAddress,
-  type DeriveStepRepoId,
 } from "./credentials";
 
 export {
@@ -59,18 +57,18 @@ export {
 } from "./recycle";
 
 export type {
-  DeriveMailAuditRef,
   DispatchStructuralCounters,
   DispatchSubstrateLeg,
   DispatchTimingMark,
   InboxPrimitives,
-  MailAuditRef,
   MailBusBindings,
   PrincipalSigner,
+  RecordedStandby,
   SignedPayload,
   SubprocessHandle,
   SubprocessSpawner,
   SuspensionRegistration,
+  SuspensionRelease,
   TerminalEventSource,
   TerminalRunEvent,
   WorkflowSupervisorBindings,

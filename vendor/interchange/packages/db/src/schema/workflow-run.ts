@@ -10,6 +10,8 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 
+import type { WorkflowStandbyState } from "@intx/types";
+
 import { principal } from "./principals";
 import { sidecar } from "./sidecar";
 import { tenant } from "./tenants";
@@ -87,12 +89,15 @@ export const workflowRun = pgTable(
     tenantId: text("tenant_id")
       .notNull()
       .references(() => tenant.id, { onDelete: "cascade" }),
-    // Nullable by design: an internal, workflow-spawned run has no principal of
-    // its own -- it inherits the deployment's grants at read time -- so null is
-    // the honest signal for "this run has no own principal." `onDelete: "set
-    // null"` is deliberate (unlike agent_instance's principal, which uses the
-    // implicit default): deleting a run's principal nulls the column rather than
-    // wedging the run row.
+    // The link to the run's own principal, written by its first grant commit.
+    // Null on a deployment anchor whose first trigger has not committed -- its
+    // run principal already exists from deploy, found by `refId` -- and on an
+    // internal, workflow-spawned run, which has no principal of its own and
+    // inherits the deployment's grants at read time. Find a run's principal by
+    // `refId`, not by this link. `onDelete: "set null"` is deliberate (unlike
+    // agent_instance's principal, which uses the implicit default): deleting a
+    // run's principal nulls the column rather than wedging the run row. The
+    // principals route refuses to delete it while the run exists.
     principalId: text("principal_id").references(() => principal.id, {
       onDelete: "set null",
     }),
@@ -109,16 +114,15 @@ export const workflowRun = pgTable(
     })
       .notNull()
       .default("running"),
-    // Runtime bindings a folded run carries, mirroring `agent_instance`: a
-    // folded run IS the launched instance, so it owns its routing endpoint.
-    // `address` is that endpoint -- nullable because an address-less child run
-    // routes via its deployment (a deployment's anchor run instead carries a
-    // workflow-derived address), but unique among the runs that set it (the
-    // partial unique index below). The folded launch writes `address` and
-    // `modelPreferences`; `publicKey` is persisted when the sidecar acks the
-    // deploy; no code populates `sidecarId`/`kernelId`.
+    // Runtime bindings. `address` is a run's routing endpoint -- a deployment's
+    // anchor run carries a workflow-derived address; nullable because an
+    // address-less child run routes via its deployment, but unique among the
+    // runs that set it (the partial unique index below). A deployment's
+    // signing key lives on its run principal, not here. No code populates
+    // `sidecarId`/`kernelId`, and no code writes `modelPreferences`: only
+    // the retired folded launch route wrote it, and readers parse rows it
+    // left behind.
     address: text("address"),
-    publicKey: text("public_key"),
     sidecarId: text("sidecar_id").references(() => sidecar.id, {
       onDelete: "set null",
     }),
@@ -144,6 +148,20 @@ export const workflowRun = pgTable(
     ),
     cancellationReason: text("cancellation_reason"),
     cancellationDeadline: timestamp("cancellation_deadline"),
+    // Where a deployment anchor's workflow child stands on the way into or out
+    // of standby: `entering` until its sidecar stops the child, `standby` once
+    // the Hub holds the history the child left, `waking` until the child runs
+    // again. Null while the child runs and no standby is asked for.
+    standbyState: text("standby_state").$type<WorkflowStandbyState>(),
+    standbyStateAt: timestamp("standby_state_at"),
+    // The earliest pending timer a child in standby is woken for.
+    standbyWakeAt: timestamp("standby_wake_at"),
+    // Why the standby state last changed other than as requested: the
+    // sidecar refused a standby or wake request, something other than a wake
+    // request woke the child in standby, the sidecar reported the child
+    // running or in standby though none was asked for, the deployment is
+    // being cancelled, or it moved to replacement capacity.
+    standbyReason: text("standby_reason"),
     capacityReleaseAt: timestamp("capacity_release_at"),
     // When unrecoverable capacity loss happened while accepted history could
     // still settle some runs. Set on the anchor instead of failing its live
@@ -172,10 +190,9 @@ export const workflowRun = pgTable(
     // Supports lookups of a definition's runs, the read path folded runs use
     // once `definitionId` is the anchor.
     index("workflow_run_definition_idx").on(t.definitionId),
-    // A folded run owns a unique routing address, exactly like the agent
-    // instance it stands in for; a run that anchors on a deployment instead
-    // leaves `address` null and is not indexed. Partial so the many null-address
-    // rows never collide and are kept out of the index.
+    // A deployment's anchor run owns a unique routing address; a child run
+    // leaves `address` null and is not indexed. Partial so the many
+    // null-address rows never collide and are kept out of the index.
     uniqueIndex("workflow_run_address_idx")
       .on(t.address)
       .where(sql`${t.address} is not null`),

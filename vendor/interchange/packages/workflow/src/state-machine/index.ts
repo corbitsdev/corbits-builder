@@ -7,6 +7,7 @@ export {
   type ChildCancelRequested,
   type ChildCompleted,
   type ChildSpawned,
+  type ConsumedMailIdentity,
   type RunCancelled,
   type RunCompleted,
   type RunFailed,
@@ -30,6 +31,7 @@ export {
 export {
   controlParkKindOf,
   decideTerminalRunFlip,
+  isApprovalPark,
   emptyState,
   isTerminalRunPhase,
   isTerminalStepPhase,

@@ -14,9 +14,10 @@ fail when real behaviour breaks.
 - `test/e2e/support/`: the shared harness. `in-process-hub.ts` is the real hub
   in process, migrated onto a fresh database, never served or started, with a
   signed-up person who calls it and helpers that seed projects and runs
-  straight into its database. `hub.ts` creates the throwaway database and
-  signs up the person the in-process hub uses. `scripted-project.ts` drives
-  one project through a served hub with every model turn scripted.
+  straight into its database and file a saved app through its route. `hub.ts`
+  creates the throwaway database and signs up the person the in-process hub
+  uses. `scripted-project.ts` drives one project through a served hub with
+  every model turn scripted.
 - `test/e2e/builds/`: tests whose runs build an app in the sandbox; CI runs
   them in their own job, which installs the sandbox's system libraries.
 - `test/seed/`: the dummy projects `bun run dev:seed` files, which the import
@@ -30,12 +31,12 @@ answer, a stored row, a note mailed to the coordinator. It never calls hub
 internals to get past a route.
 
 Most tests start `startInProcessHub()` once in `beforeAll`, seed the project
-and runs they need with `seedProject` and `seedRun`, and close the hub in
-`afterAll`; `test/e2e/project-values.test.ts` is a short example. Because the
-hub is never started, nothing seeded moves on its own, so a test sets up
-exactly the state it asserts on. `settings.test.ts` drives the built web app
-in a browser over the same in-process hub. A test that needs installed
-workflows or a model login builds the hub runtime itself, as
+runs and saved app they need with `seedProject`, `seedRun` and `seedApp`, and
+close the hub in `afterAll`; `test/e2e/project-values.test.ts` is a short
+example. Because the hub is never started, nothing seeded moves on its own, so
+a test sets up exactly the state it asserts on. `settings.test.ts` drives the
+built web app in a browser over the same in-process hub. A test that needs
+installed workflows or a model login builds the hub runtime itself, as
 `custom-provider.test.ts` and `oauth-model-login.test.ts` do.
 
 ## Adding a test

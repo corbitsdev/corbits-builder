@@ -21,13 +21,13 @@ agent repo metadata).
 
 ```ts
 import { createDB } from "@intx/db";
-import { agent } from "@intx/db/schema";
+import { workflowRun } from "@intx/db/schema";
 import { eq } from "drizzle-orm";
 
 const { db } = createDB(process.env);
 
-const row = await db.query.agent.findFirst({
-  where: eq(agent.id, agentId),
+const row = await db.query.workflowRun.findFirst({
+  where: eq(workflowRun.id, runId),
 });
 ```
 
@@ -75,5 +75,5 @@ requirements plus a launch's invoker preferences into an ordered
 failover chain — dereferencing each offering's provider credential to
 the secret. `pricing.resolveActivePrice` selects, per currency, the
 row in effect at a given time from the append-only history, and
-`getDescendantTenants` walks the subtree so a catalog edit can be
-pushed to every affected running instance.
+`getDescendantTenants` walks the subtree so a credential revoke or
+rotation reaches every live deployment in it.

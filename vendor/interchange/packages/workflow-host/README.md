@@ -72,8 +72,6 @@ Public surface (the package barrel re-exports these):
   adapter.
 - `createWorkflowSupervisor` — the per-deployment supervisor
   factory. See "Supervisor" below for the bindings shape.
-- `assembleCredentialsSnapshot` — per-step grant assembly the
-  supervisor uses at spawn time and on every recycle.
 - `commitCancelRequested` — low-level Q3 `CancelRequested` commit
   primitive the supervisor invokes for every cancellation origin.
 
@@ -88,14 +86,15 @@ Plus the relevant options and callback types (`StepEnvBase`,
 with `runLocal` and the real step invoker, with no hub and no sidecar:
 
 - `createWorkflowStepInvoker`, `createToolBearingAgentFactory`,
-  `attachStepTools`, `attachStepCredentialWiring` and
-  `deriveToolMarkFloorGrants` — the step invoker and the step tool builders
+  `attachStepTools` and `attachStepCredentialWiring` — the step invoker and the step tool builders
   the deployed host uses.
-- `createCredentialsBackedAuthorize` and `createGrantEvaluator` — the
-  authorize closure and grant evaluator a run child authorizes with.
-- `createLocalCredentialsSnapshot` and `snapshotStepGrants` — the grants a
-  deployed source-ref run holds, derived from the definition, and their
-  per-step reader for Gate 2.
+- `createCredentialsBackedAuthorize`, `createGrantEvaluator` and
+  `createSnapshotGrantsResolver` (with its `StepGrantsResolver` type) — the
+  authorize closure a run child authorizes with, its grant evaluator, and
+  the per-step grants resolver over a credentials snapshot reference, which
+  also gives Gate 2 a step's grants.
+- `createLocalCredentialsSnapshot` — the grants a deployed source-ref run
+  holds, derived from the definition.
 
 Nothing this entry imports is a Node or Bun module, so it bundles for a
 browser; `tests/workflow/local-runtime-browser-bundle.test.ts` checks that.
@@ -109,9 +108,10 @@ the deploy program read and write the filesystem.
 ## Supervisor
 
 `createWorkflowSupervisor(bindings)` returns a per-deployment
-supervisor that owns one workflow-process child for the lifetime of
-the deployment. The supervisor is host-agnostic library code; the
-host supplies its own concrete bindings.
+supervisor that owns the deployment's workflow-process child: one at a
+time, replaced across recycles and respawns, and none in standby. The
+supervisor is host-agnostic library code; the host supplies its own
+concrete bindings.
 
 ### `WorkflowSupervisorBindings`
 
@@ -138,11 +138,16 @@ The constructor argument shape:
   spawner invokes (resolved by the host via
   `require.resolve` / `import.meta.resolve` against the host's own
   package, `@intx/<host>`).
+- `layoutSteps` — derives the deployment's step ids
+  from the definition the first child reported,
+  once the supervisor has checked it against the approved hash. The
+  supervisor keeps those ids for every later respawn.
+- `onRunStart` — reads a run's credentials snapshot, which the
+  supervisor sends in each `authority.set`.
 - `substrateEnv`, `workflowRunRepoId`, `workflowRunRef`,
-  `anchorRunId`, `deploymentMailAddress`, `readPrincipal`,
-  `deriveStepAddress`, `deriveStepRepoId?`, `ipcKeyPairFactory?` —
-  per-deployment configuration the supervisor needs in its closure
-  state.
+  `anchorRunId`, `deploymentMailAddress`,
+  `ipcKeyPairFactory?` — per-deployment configuration the supervisor
+  needs in its closure state.
 
 ### Deploy routing
 
@@ -150,32 +155,23 @@ The sidecar's deploy router is the single ingress for inbound
 `agent.deploy` frames; its production wiring lives at
 `src/deploy/workflow-host-wiring.ts` in
 `createSidecarDeployRouter`. Every deploy stages through the
-workflow-run substrate, and the router decides between two frame
-shapes:
+workflow-run substrate. The router constructs a fresh per-deployment
+supervisor and drives its `spawn(opts)` lifecycle: key minting, child spawn via
+`subprocessSpawner`, mail-bus registration, and IPC handshake.
 
-- **Provision-step frame (`provisionStep: true`).** The router
-  primes the frame's per-step `agent-state` repo and records the
-  hub key, without constructing a supervisor or spawning a child.
-  The follow-up full-closure deploy pack then applies into the
-  primed repo and verifies against the recorded key.
-- **Workflow frame (carries a `WorkflowDefinition`).** The router
-  constructs a fresh per-deployment supervisor and drives its
-  `spawn(opts)` lifecycle: per-step `agent-state` repo
-  provisioning, key minting, child spawn via `subprocessSpawner`,
-  mail-bus registration, IPC handshake, and `credentialsSnapshot`
-  assembly.
-
-A frame carrying neither shape is rejected -- there is no
-in-process deploy path.
+A frame without a workflow is rejected -- there is no in-process
+deploy path.
 
 ### Lifecycle
 
 `spawn(opts)` performs the IPC handshake (mint channelId, mint HMAC
 key, mint IPC Ed25519 keypair, build spawn-time env, invoke the
-spawner, wait for the child's `ready` frame), assembles the
-`credentialsSnapshot` from each step's `agent-state` repo,
-registers the deployment's mail address, and begins forwarding
-inbound mail as `trigger.fire` control frames. The IPC private key
+spawner, wait for the child's `definition` frame and check its
+projection against the approved hash), derives the step ids from
+that projection through the host's `layoutSteps`, sends
+`authority.set` with the snapshot `onRunStart` returns, registers the deployment's mail address, waits for
+the child's `ready` frame, and begins forwarding inbound mail as
+`trigger.fire` control frames. The IPC private key
 never leaves the supervisor's closure — only the public key (as
 `HOST_PUBKEY`) ships in spawn-time env.
 
@@ -206,9 +202,9 @@ runs to drain per each step's `drainBehavior`; on the drain-timeout it
 escalates to a signed `CancelRequested{origin: "supervisor-drain"}`.
 
 `recycle(opts)` tears the current child down and stands a fresh one up
-against the SAME deploy tree (same materialized source closure, same
-per-step credential repos). A deployment keeps its deploy tree for its
-life; a different tree means a new deployment. Operator,
+against the SAME definition (same materialized source closure). A
+deployment keeps its definition for its life; a different definition
+means a new deployment. Operator,
 supervisor-policy (max-uptime / max-rss / grants-staleness), and
 workflow-process-self-initiated origins all funnel through the same path.
 
@@ -227,11 +223,19 @@ On an unexpected exit the supervisor, with no external intervention:
 
 1. Replays any mail stranded mid-flight — entries the dead child's
    in-flight dispatch left in the per-address `processing/` subtree —
-   back into `inbox/` under their original `<receivedAt>-<messageId>`
+   back into `inbox/` under their original `<receivedAt>-<identity>`
    keys. Those keys sort ahead of any mail that arrived during the
    kill/respawn gap, so the stranded entry is re-dispatched first and
-   FIFO ordering holds across the respawn boundary.
-2. Spawns a fresh workflow-process child against the same deploy tree
+   FIFO ordering holds across the respawn boundary. Mail a live run
+   already took, its start mail or a turn it received, stays in
+   `processing/`: the resumed run carries on with it, and the supervisor
+   consumes it once the run reaches a new park or ends, retrying a failed
+   consume a few times. A park the run only re-enters from its log does
+   not count, so until then the mail stays in `processing/`, never
+   delivered again. A recycle replays the same way, once it has killed the old
+   child, so the child cannot take mail between the check of what its runs
+   took and the replay.
+2. Spawns a fresh workflow-process child against the same definition
    (reusing the recycle path's respawn machinery) and resumes dispatch.
 
 The respawn is bounded so a persistently-broken child cannot saturate
@@ -248,6 +252,8 @@ the host. Every bound is operator-overridable via
 - **Stable-run reset.** Once a crash-respawned child stays up for
   `crashLoopStableResetMs` (60s), the crash counter and the backoff
   reset, so a flap followed by stability does not permanently latch.
+  A stop for standby is no crash: the wait goes on while the child is
+  stopped, and starts over for a child woken before it ends.
 
 `crash-looping` is an in-memory, per-process phase — no external reader
 observes it. The durable, externally-queryable signal is the run's
@@ -258,6 +264,122 @@ other terminal run uses. External automation that watches run status
 sees the crash-loop as a failed run. The commit lands before the latch's
 teardown resolves and before the host hears of the self-termination, so a
 host that reads the stopped deployment's history finds it.
+
+### Failed dispatch
+
+A dispatch can fail after it moved its mail from `inbox/` to
+`processing/`. The dispatch loop then settles that mail itself, with the
+child still running:
+
+- Mail no run took goes back to `inbox/` under its original key, so it is
+  dispatched again ahead of newer mail. That covers a failure before the
+  mail reached the child, such as a failed write of its parts, and mail
+  the child declined for a run that is still live. After a decline the
+  supervisor also asks the child what its runs are parked on, since the
+  declined delivery used up the input channel the dispatch knew.
+- Each failure counts against the mail, and the next try waits first:
+  1 s, then four times longer each time
+  (`dispatchRetryBackoffMs`). The fifth failure rejects the mail with
+  `workflow_dispatch_failed`, which the Hub shows on its dispatch. A wait
+  that ran out because the run stayed busy or parked puts the mail back
+  too, without counting and without a wait.
+- Mail the child was handed and has not answered for stays in
+  `processing/`: the child can still commit it. Its `input.taken` answer
+  settles it, even after the dispatch gave up: committed mail is consumed
+  once the run next parks or ends, and declined mail goes back to the
+  inbox. Newer mail is dispatched meanwhile.
+- A write that fails to put mail back or reject it is tried again after a
+  wait, up to 30 s apart, and the dispatch takes no other mail until it
+  lands.
+
+A respawn's replay still puts back whatever is left, and a standby
+attempt is refused while any such mail is not yet back in the inbox or
+with its run.
+
+### Standby
+
+`enterStandby()` stops the child once every run only waits on input
+from outside, and keeps the deployment: its mail subscription,
+address registration, and history stay as they are.
+
+1. Once nothing the supervisor drives is in flight, it asks the child,
+   with `quiet.request`, to report when it is quiet. Dispatch and signals
+   go on meanwhile, so a busy deployment enters standby at its next quiet
+   moment. An input the child took counts as in flight until the child
+   answers it: `input.taken` answers each `trigger.fire` and
+   `signal.deliver` the supervisor sends, saying whether the child
+   committed the input. A dispatch waiting for its run to park or end
+   does not: its mail stays in `processing/` with the run, as it does
+   across any respawn (see Respawn policy).
+2. The child is quiet when no run loop or step works: every step waits
+   on a signal, a timer, or a nested run, and no input it committed is
+   still on its way to the run that waits for it. A map counts as
+   working until it ends, since resume cannot continue one in flight,
+   and so does a step with a timeout, whose deadline lives only in the
+   child (a gate's timeout is a timer in the log, and does not count),
+   and a step waiting to retry, whose wait resume does not
+   continue. It makes every buffered event durable before it answers,
+   and reports the earliest timer its scheduler has queued.
+3. The supervisor then holds dispatch and signals back and asks once
+   more. If the child is still quiet, the supervisor holds the child's
+   further writes and records the correlations the child is parked on.
+   Mail waiting in the inbox refuses the standby attempt, since it
+   would wake the child as soon as it stopped. So does mail the dispatch
+   took that the child has not committed (one behind a run that waits),
+   since nothing would wake the child for it, mail a failed dispatch
+   left in `processing/` that is not yet back in the inbox or with its
+   run (see Failed dispatch), and mail a failed replay left there, which
+   only a respawn puts back. Otherwise the supervisor sends
+   `shutdown`, and kills the child if it does not exit. A write after
+   the quiet answer means the child is working again: before the stop
+   the standby attempt goes back to waiting for quiet, and after it the
+   child is woken for that work.
+
+Once the child is stopped, and before anything can wake it, the supervisor
+calls the host's `recordStandby` with what a restart needs: the correlations
+the child was parked on, its earliest timer, the tip of the run's history
+ref, read before the child reported its parks, and the definition the first
+child verified. A failure there runs the child again and refuses the standby
+attempt.
+
+`enterStandby()` resolves with the earliest timer the child had queued, if
+any. It rejects with `StandbyRefusedError` when the run ends, mail waits
+in the inbox, for the child to commit it, or in `processing/`, the run's
+history or the inbox cannot be read, the child does not report what it is
+parked on, the standby cannot be recorded, or the child reports that its
+quiet check failed. Its subclass `StandbyAbandonedError` is used when
+`wake()`, `abandonStandby()`, a cancellation or a shutdown calls it off,
+and `StandbyDeferredError` is used while the child is
+starting or restarting, so the host can ask again once it runs.
+`abandonStandby()` does nothing to a finished standby attempt, and runs the
+child again when it comes after the stop began; `wake()` and a cancellation
+that abandon one run the child themselves.
+
+A supervisor in standby respawns its child through the recycle path for mail,
+a signal (delivered to the new child), a cancellation (committed first),
+its earliest pending timer, or `wake()`, and then calls `onWake`, with
+`requested` set when `wake()` started it. That respawn waits for a cancellation being committed, since the new child
+applies it from its log. Mail that reaches the inbox after the last read
+before the stop wakes the child as arriving mail does; a redelivery of mail a
+run already took does not. A hub
+re-establishment while in standby, or while the child stops for it,
+re-registers the correlations the child reported, without asking it.
+
+`restoreInStandby(opts, standby)` restores a deployment its host recorded in
+standby. With no child to report the definition, the recorded one lays the
+steps out, once it hashes to the approved one as a child's report must. While
+the run's history tip is still the recorded one, nothing has changed what the
+runs wait on: the supervisor takes the deployment's mail,
+re-sends the recorded correlations on each hub re-establishment, and arms the
+recorded timer, waking at once for one already due, all without a child. The
+boot replay of `processing/` runs as on a spawn, and mail it puts back or that
+waits in the inbox wakes the child, as does a replay that fails. Mail a live
+run took stays with the run. The first wake starts the child through the
+recycle path, from `standby`, after the boot replay. A tip that moved, from a
+child that ran again or a cancellation committed while it was stopped, a tip
+that cannot be read, or a recorded definition that is not the approved one,
+starts the child as `spawn` does, and the result says why, so the host can
+report the deployment woken.
 
 ### Host wiring
 
@@ -299,21 +421,24 @@ forking a process.
 
 ### Lifecycle
 
-1. Open the control channel and event channel via the IPC primitives.
-2. Construct a `WorkflowRuntimeEnv` from the production adapters
+1. (`runWorkflowChildFromProcessEnv`) Evaluate and verify the
+   closure once, and report the result in a `definition` frame: the
+   inert projection it verified, or why it could not load it.
+2. Open the control channel and event channel via the IPC primitives.
+3. Construct a `WorkflowRuntimeEnv` from the production adapters
    (`createWorkflowRunRepoStore`, `createWorkflowRunBlobSubstrate`)
    and substrate-shaped seams (`createWorkflowHostSignalChannel`,
    plus the host-process scheduler singleton carried on
    `bindings.scheduler`).
-3. Read the first control frame, which must be `authority.set`, and
+4. Read the first control frame, which must be `authority.set`, and
    apply its grants snapshot and credential material.
-4. Self-discover in-flight runs by enumerating `runs/<runId>/` and
+5. Self-discover in-flight runs by enumerating `runs/<runId>/` and
    resuming any whose log lacks a terminal event.
-5. Emit `ready` and then `resumed.runs` on the control channel.
+6. Emit `ready` and then `resumed.runs` on the control channel.
    Every other upstream control frame waits until both are out.
-6. Loop on `trigger.fire`, `authority.set`, `grants-updated`,
-   `credentials-updated`, `drain`, `recycle`, `shutdown`, and
-   `signal.deliver` frames.
+7. Loop on `trigger.fire`, `authority.set`, `grants-updated`,
+   `credentials-updated`, `drain`, `shutdown`, `signal.deliver`, and
+   `quiet.request` frames.
 
 ### Authorize Closure
 
@@ -323,6 +448,21 @@ and a `grants-updated` control frame swaps the snapshot in place, so subsequent 
 without reconstructing the env. The closure looks up the
 originating step's grants by `stepId` and delegates to a
 host-supplied `GrantEvaluator`.
+
+A spawned child run applies its cap to its parent's current grants,
+which it inherits with the credential material (`ChildInheritance`):
+the top-level run's live snapshot for a child of the top-level run,
+and the parent rung's capped grants for a deeper child. The child
+holds what a new spawn of the same body would hold, so a grant the
+top-level run loses, regains, or changes reaches a live child on its
+next tool call or step, once the top-level run's grants update
+arrives (ahead of a signal delivery or a trigger, or in
+`authority.set` on a restart).
+A decision on a call that matched a wildcard `tool:*` `ask` changes
+nothing, because the hub changes only an exact `tool:<name>` grant.
+Two grant sends for one run can arrive out of order, and then the run
+holds the older grants until the next send. The child's grants file is
+not rewritten.
 
 ## Hosting the workflow-process child
 
@@ -399,8 +539,8 @@ await runWorkflowChildFromProcessEnv(createSubstrate, {
 
 The reference in-tree binary imports `createSubstrate` from
 `apps/sidecar/src/workflow-child-bindings.ts`, which closes this
-package's `createSidecarSubstrateFactory` over the app's tool
-materializer and the grant cap from `@intx/workflow-deploy`. The child
+package's `createSidecarSubstrateFactory` over the grant cap from
+`@intx/workflow-deploy`. The child
 binary path is resolved in
 `apps/sidecar/src/workflow-child-spawner.ts`. An alternative host
 follows the same pattern: write a substrate factory against its own

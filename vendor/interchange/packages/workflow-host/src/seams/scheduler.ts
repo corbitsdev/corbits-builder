@@ -8,9 +8,10 @@
 // the host -- workflow-process child, supervisor, sidecar handler --
 // commits `TimerFired`. This single-writer invariant is what makes
 // the recovery story work: at startup the scheduler walks the
-// persisted log for unfired `TimerSet` events and re-queues them,
-// confident that any `TimerFired` it does not find was never
-// committed and is its responsibility to commit now.
+// persisted log for unfired `TimerSet` events and re-queues those
+// something still waits on, confident that any `TimerFired` it does
+// not find was never committed and is its responsibility to commit
+// now. A timer whose step has settled or whose run has ended is left.
 //
 // Recovery semantics:
 //   - One-shot timers (`TimerSet` without a `cron` discriminator) on
@@ -27,20 +28,20 @@
 // The scheduler reads workflow-event blobs at the canonical layout
 // `runs/<runId>/events/<seq>.json` and writes a fresh blob at the
 // next-seq slot for each `TimerFired` commit. The blob envelope is
-// FLAT -- `{ seq, type, ...eventFields }` -- matching the runtime
-// repo-store's `workflowEventToOnDisk` and the workflow-run kind
+// FLAT -- `{ seq, type, ...eventFields }` -- matching
+// `workflowEventToOnDisk` and the workflow-run kind
 // handler's `EventEnvelope` contract: `seq` is the integer that also
 // appears in the filename, `type` is the `subscribeKind` discriminator
 // the scheduler narrows on, and the timer fields (`timerId`, `fireAt`,
 // ...) sit alongside them, NOT under a nested `data` object. The kind
 // handler's `validatePush` enforces that every event blob's body `seq`
 // matches the filename's seq, so the scheduler mints the next seq
-// inside the `writeTreePreservingPrefix` merge step and writes both
-// into the envelope and the filename.
+// inside the append's delta step and writes both into the envelope and
+// the filename.
 //
-// The commit flushes that run's pending buffer before the merge
+// The commit flushes that run's pending buffer before the append
 // numbers `TimerFired`. An already-fired timer, or a log that already
-// holds a terminal event, returns the tree unchanged. This is not the
+// holds a terminal event, leaves the log unchanged. This is not the
 // runtime `commit()`: `handleTimerFired` advances `lastSeq` even when
 // the timer is already gone, so a duplicate would move the tip.
 
@@ -58,14 +59,17 @@ import {
   WORKFLOW_RUN_RUNS_PREFIX,
 } from "@intx/hub-sessions/substrate";
 import {
+  beginDelivery,
   withRunCommitBarrier,
   type RepoStore as RuntimeRepoStore,
 } from "@intx/workflow/runtime";
+import { appendRunEvents, runEventPath } from "../adapters/on-disk-event";
+import { readRunEventSummary } from "../adapters/repo-store";
 
 /**
  * Substrate-shape envelope for the workflow-event blob committed to
  * `runs/<runId>/events/<seq>.json`. The validator covers the two
- * event types the scheduler reads (TimerSet, TimerFired) and the
+ * event types it needs for timers (TimerSet, TimerFired) and the
  * single type it writes (TimerFired). Non-timer blobs at the same
  * path prefix do not match this validator and are skipped silently
  * by the recovery walk. `seq` mirrors the integer in the filename,
@@ -74,7 +78,7 @@ import {
 export const TimerEventEnvelope = type({
   seq: "number >= 0",
   type: "'TimerSet' | 'TimerFired'",
-  // FLAT on-disk shape, matching the runtime repo-store's `workflowEventToOnDisk`
+  // FLAT on-disk shape, matching `workflowEventToOnDisk`
   // ({ seq, type, ...eventFields }) and the substrate's enforced `EventEnvelope`
   // contract -- NOT a nested `data` object. The scheduler was the lone component
   // writing/reading a nested `data` envelope; nothing else parsed it, so a
@@ -87,6 +91,17 @@ export const TimerEventEnvelope = type({
 });
 export type TimerEventEnvelope = typeof TimerEventEnvelope.infer;
 
+// The events that settle a step or end its run. The runtime disposes a timer
+// whose step settled on a sibling event, such as a signal that beat its
+// timeout, without committing anything, so recovery reads these too.
+const SettlingEventEnvelope = type({
+  seq: "number >= 0",
+  type: "'StepCompleted' | 'StepFailed' | 'RunCompleted' | 'RunFailed' | 'RunCancelled'",
+  "stepId?": "string",
+  "+": "ignore",
+});
+type SettlingEventEnvelope = typeof SettlingEventEnvelope.infer;
+
 export type SchedulerOpts = {
   /**
    * Substrate handle the scheduler reads from and writes to. The
@@ -98,7 +113,7 @@ export type SchedulerOpts = {
   repoStore: RepoStore;
   /**
    * Runtime store that owns the commit chain. A timer flushes that
-   * run's pending buffer before the substrate merge numbers
+   * run's pending buffer before the substrate append numbers
    * `TimerFired`. One store serves every run in this process; the
    * barrier selects the buffer by run id.
    */
@@ -163,8 +178,9 @@ type QueuedTimer = {
 export type SchedulerHandle = {
   /**
    * Run start-time recovery against every active deployment. After
-   * the recovery walk completes, every unfired one-shot timer is
-   * queued and every missed cron tick has been skipped per the spec.
+   * the recovery walk completes, every unfired one-shot timer that
+   * something still waits on is queued and every missed cron tick has
+   * been skipped per the spec.
    * Idempotent: a second `start()` is a no-op while the first is
    * still pending.
    */
@@ -186,15 +202,16 @@ export type SchedulerHandle = {
    */
   cancelQueued(runId: string, timerId: string): void;
   /**
-   * Test-visible view of currently-queued timers. The shape is
-   * intentionally narrow: the runtime body never inspects the
-   * scheduler's queue; tests assert on it directly.
+   * The currently-queued timers. The runtime body never inspects the
+   * queue; tests assert on it directly.
    */
   queuedTimers(): readonly {
     runId: string;
     timerId: string;
     fireAtMs: number;
   }[];
+  /** When the earliest queued timer fires, which a child going quiet reports. */
+  earliestQueuedTimer(): Date | undefined;
 };
 
 export function createWorkflowHostScheduler(
@@ -226,9 +243,17 @@ export function createWorkflowHostScheduler(
     const key = queueKey(runId, timerId);
     const entry = queues.get(key);
     if (entry === undefined) return;
+    // A fired timer is input on its way to the run that waits for it, from
+    // the moment it leaves the queue until its commit reaches the
+    // subscriptions that wait for it.
+    const endDelivery = beginDelivery();
     queues.delete(key);
-    if (stopped) return;
-    await commitTimerFired(opts, runId, timerId);
+    try {
+      if (stopped) return;
+      await commitTimerFired(opts, runId, timerId);
+    } finally {
+      endDelivery();
+    }
   }
 
   function enqueue(
@@ -244,6 +269,9 @@ export function createWorkflowHostScheduler(
     const delayMs = Math.max(0, fireAtMs - opts.clock().getTime());
     const cancelTimeout = schedule(() => {
       void fireTimer(runId, timerId).catch((cause) => {
+        // A stop overtook this commit. The timer stays unfired in the log, so
+        // the next child's recovery queues it again.
+        if (stopped) return;
         // The scheduler's commit failed. Surface as unhandled so
         // operators see it; the runtime body's awaiter will hang
         // until restart triggers recovery.
@@ -302,40 +330,67 @@ export function createWorkflowHostScheduler(
 
   async function recoverDeployment(repoId: RepoId): Promise<void> {
     const events = await readAllEvents(opts, repoId);
-    // Build per-(runId, timerId) ledger: a TimerSet without a
-    // matching TimerFired is unfired. The walk is order-insensitive
-    // because the second pass deletes matched entries.
-    const unfired = new Map<
+    // Per-(runId, timerId) ledger. Blobs are listed by name, not by seq, so
+    // the walk collects everything first and compares seqs after.
+    const set = new Map<
       string,
-      { runId: string; timerId: string; fireAtMs: number; cron: boolean }
+      {
+        runId: string;
+        timerId: string;
+        fireAtMs: number;
+        cron: boolean;
+        seq: number;
+        stepId: string | undefined;
+      }
     >();
+    const fired = new Set<string>();
+    const stepSettledAt = new Map<string, number>();
+    const endedRuns = new Set<string>();
     for (const e of events) {
-      if (e.envelope.type === "TimerSet") {
-        const fireAt = e.envelope.fireAt;
+      const envelope = e.envelope;
+      if (envelope.type === "TimerSet") {
+        const fireAt = envelope.fireAt;
         if (fireAt === undefined) {
           throw new Error(
-            `scheduler recovery: TimerSet in ${String(repoId.id)} run ${e.runId} timer ${e.envelope.timerId} missing fireAt`,
+            `scheduler recovery: TimerSet in ${String(repoId.id)} run ${e.runId} timer ${envelope.timerId} missing fireAt`,
           );
         }
         const fireAtMs = Date.parse(fireAt);
         if (Number.isNaN(fireAtMs)) {
           throw new Error(
-            `scheduler recovery: TimerSet in ${String(repoId.id)} run ${e.runId} timer ${e.envelope.timerId} fireAt unparseable: ${fireAt}`,
+            `scheduler recovery: TimerSet in ${String(repoId.id)} run ${e.runId} timer ${envelope.timerId} fireAt unparseable: ${fireAt}`,
           );
         }
-        const cron = e.envelope.cron !== undefined && e.envelope.cron !== null;
-        unfired.set(`${e.runId} ${e.envelope.timerId}`, {
+        set.set(`${e.runId} ${envelope.timerId}`, {
           runId: e.runId,
-          timerId: e.envelope.timerId,
+          timerId: envelope.timerId,
           fireAtMs,
-          cron,
+          cron: envelope.cron !== undefined && envelope.cron !== null,
+          seq: envelope.seq,
+          stepId: envelope.stepId ?? undefined,
         });
-      } else {
-        unfired.delete(`${e.runId} ${e.envelope.timerId}`);
+      } else if (envelope.type === "TimerFired") {
+        fired.add(`${e.runId} ${envelope.timerId}`);
+      } else if (envelope.type.startsWith("Run")) {
+        endedRuns.add(e.runId);
+      } else if (envelope.stepId !== undefined) {
+        const key = `${e.runId} ${envelope.stepId}`;
+        stepSettledAt.set(
+          key,
+          Math.max(stepSettledAt.get(key) ?? -1, envelope.seq),
+        );
       }
     }
     const now = opts.clock().getTime();
-    for (const entry of unfired.values()) {
+    for (const [key, entry] of set) {
+      if (fired.has(key) || endedRuns.has(entry.runId)) continue;
+      // A step that settled after the timer was set no longer waits on it.
+      if (
+        entry.stepId !== undefined &&
+        (stepSettledAt.get(`${entry.runId} ${entry.stepId}`) ?? -1) > entry.seq
+      ) {
+        continue;
+      }
       if (entry.cron && entry.fireAtMs < now) {
         // Spec: missed cron ticks are skipped on resume. The next
         // cron tick will be committed by whoever owns the cron
@@ -398,17 +453,26 @@ export function createWorkflowHostScheduler(
         fireAtMs: t.fireAtMs,
       }));
     },
+    earliestQueuedTimer() {
+      let earliest: number | undefined;
+      for (const timer of queues.values()) {
+        if (earliest === undefined || timer.fireAtMs < earliest) {
+          earliest = timer.fireAtMs;
+        }
+      }
+      return earliest === undefined ? undefined : new Date(earliest);
+    },
   };
 }
 
 type EventReadEntry = {
   runId: string;
-  envelope: TimerEventEnvelope;
+  envelope: TimerEventEnvelope | SettlingEventEnvelope;
 };
 
 /**
- * Read every timer-event blob across every run under the given
- * workflow-run repo. Recovery reconstructs its ledger from committed
+ * Read every timer-event and settling-event blob across every run under the
+ * given workflow-run repo. Recovery reconstructs its ledger from committed
  * state, so `enumerateEventBlobs` reads the git object store at the
  * events ref tip via `openCommittedReads` rather than the materialized
  * working tree, whose non-atomic post-commit checkout can lag the
@@ -425,9 +489,14 @@ async function readAllEvents(
   const entries: EventReadEntry[] = [];
   const records = await enumerateEventBlobs(opts, repoId);
   for (const r of records) {
+    const settling = SettlingEventEnvelope(r.payload);
+    if (!(settling instanceof type.errors)) {
+      entries.push({ runId: r.runId, envelope: settling });
+      continue;
+    }
     const env = TimerEventEnvelope(r.payload);
     if (env instanceof type.errors) {
-      // A non-timer event blob (StepStarted, RunStarted, ...) at the
+      // Any other event blob (StepStarted, RunStarted, ...) at the
       // same path prefix is expected -- the scheduler skips it
       // silently. A timer-shaped blob whose narrow fails is a
       // substrate-level invariant violation; the kind handler's
@@ -493,11 +562,10 @@ async function enumerateEventBlobs(
 
 /**
  * Commit a `TimerFired` event blob to the workflow-run repo. The
- * commit goes through `writeTreePreservingPrefix` so concurrent
- * commits on the same runId's events subtree serialize at the
- * substrate's per-repo lock. Idempotent: if a TimerFired for the
- * same `(runId, timerId)` already exists at the prefix, the merge
- * returns the existing tree unchanged.
+ * append runs under the substrate's per-repo lock, so concurrent
+ * commits on the same runId's events subtree serialize. Idempotent: if
+ * a TimerFired for the same `(runId, timerId)` already exists in the
+ * log, the append leaves it unchanged.
  */
 async function commitTimerFired(
   opts: SchedulerOpts,
@@ -510,74 +578,38 @@ async function commitTimerFired(
       `scheduler commit: cannot find deployment owning run ${runId}`,
     );
   }
-  const prefix = `${WORKFLOW_RUN_RUNS_PREFIX}/${runId}/${WORKFLOW_RUN_EVENTS_DIR}/`;
   await withRunCommitBarrier({ repoStore: opts.runtimeStore }, runId, () =>
-    opts.repoStore.writeTreePreservingPrefix(
-      opts.principal,
-      owningRepoId,
-      opts.ref,
-      {
-        preservePrefix: prefix,
-        merge: async (existing) => {
-          let maxSeq = -1;
-          let alreadyFired = false;
-          let terminal = false;
-          for (const [filepath, contents] of existing) {
-            const name = filepath.slice(prefix.length);
-            const seq = requireEventSeq(name, `${prefix}${name}`);
-            if (seq > maxSeq) maxSeq = seq;
-            try {
-              const parsed: unknown = JSON.parse(
-                new TextDecoder().decode(contents),
-              );
-              if (isMatchingTimerFired(parsed, timerId)) {
-                alreadyFired = true;
-              }
-              if (isTerminalOnDiskEvent(parsed)) {
-                terminal = true;
-              }
-            } catch {
-              // Skip on parse failure -- a corrupt blob would have
-              // been rejected by validatePush at write time; treat as
-              // a non-matching entry.
-            }
-          }
-          const out: Record<string, string> = {};
-          for (const [filepath, contents] of existing) {
-            out[filepath] = new TextDecoder().decode(contents);
-          }
-          // An already-fired timer and a log that already reached a
-          // terminal event both leave the tree unchanged. Appending
-          // past RunFailed, RunCompleted, or RunCancelled would make
-          // the next resume disagree with the terminal result.
-          if (alreadyFired || terminal) return out;
-          const nextSeq = maxSeq + 1;
-          out[`${prefix}${String(nextSeq)}.json`] = JSON.stringify({
+    appendRunEvents({
+      substrate: opts.repoStore,
+      principal: opts.principal,
+      repoId: owningRepoId,
+      ref: opts.ref,
+      runId,
+      message: `TimerFired ${timerId} for run ${runId}`,
+      compute: async (existing, prior) => {
+        // An already-fired timer and a log that already reached a
+        // terminal event both leave the log unchanged. Appending past
+        // RunFailed, RunCompleted, or RunCancelled would make the next
+        // resume disagree with the terminal result.
+        const summary = await readRunEventSummary(
+          opts.repoStore,
+          owningRepoId,
+          runId,
+          existing,
+          prior,
+        );
+        if (summary.terminal || summary.timerFiredIds.has(timerId)) return {};
+        const nextSeq = (existing.at(-1)?.seq ?? -1) + 1;
+        return {
+          [runEventPath(runId, nextSeq)]: JSON.stringify({
             seq: nextSeq,
             type: "TimerFired",
             timerId,
-          });
-          return out;
-        },
-        message: `TimerFired ${timerId} for run ${runId}`,
+          }),
+        };
       },
-    ),
+    }),
   );
-}
-
-function isTerminalOnDiskEvent(parsed: unknown): boolean {
-  if (typeof parsed !== "object" || parsed === null) return false;
-  const type = (parsed as { type?: unknown }).type;
-  return (
-    type === "RunCompleted" || type === "RunFailed" || type === "RunCancelled"
-  );
-}
-
-function isMatchingTimerFired(parsed: unknown, timerId: string): boolean {
-  if (typeof parsed !== "object" || parsed === null) return false;
-  const obj = parsed as { type?: unknown; timerId?: unknown };
-  if (obj.type !== "TimerFired") return false;
-  return obj.timerId === timerId;
 }
 
 async function findOwningDeployment(

@@ -4,7 +4,6 @@
   "private": true,
   "description": "How the coder makes an app ready to publish anywhere: production commands, data folders, accounts, configuration and the README.",
   "license": "SEE LICENSE IN ../../LICENSE.md",
-  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
   "type": "module",
   "builder": {
     "handle": "publish-skills",

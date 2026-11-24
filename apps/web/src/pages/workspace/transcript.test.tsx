@@ -8,7 +8,11 @@ import {
   maxTurnText,
 } from "@corbits-builder/schemas/conversation";
 import { HUB_NOTE_LEAD } from "@corbits-builder/schemas/conversation";
-import { IMPORTED_PROJECT_LEAD, wording } from "../../config.ts";
+import {
+  type ActivityShown,
+  IMPORTED_PROJECT_LEAD,
+  wording,
+} from "../../config.ts";
 import { Markdown } from "@corbits-builder/plugin-ui/markdown";
 import { DocumentDecision } from "./document-decision.tsx";
 import {
@@ -64,11 +68,153 @@ const standing = (unit: WorkUnit) =>
     seen: new Map(),
   });
 
+type Piece = keyof ActivityShown;
+const PIECES: Piece[] = [
+  "coordinatorSteps",
+  "specialists",
+  "specialistSteps",
+  "specialistDocument",
+  "specialistInstruction",
+  "specialistReport",
+  "thinking",
+];
+const without = (gone: readonly Piece[]): ActivityShown => ({
+  coordinatorSteps: !gone.includes("coordinatorSteps"),
+  specialists: !gone.includes("specialists"),
+  specialistSteps: !gone.includes("specialistSteps"),
+  specialistDocument: !gone.includes("specialistDocument"),
+  specialistInstruction: !gone.includes("specialistInstruction"),
+  specialistReport: !gone.includes("specialistReport"),
+  thinking: !gone.includes("thinking"),
+});
+const ALL_SHOWN = without([]);
+const IN_ROW: Piece[] = [
+  "specialistSteps",
+  "specialistDocument",
+  "specialistInstruction",
+  "specialistReport",
+];
+
 describe("conversation transcript", () => {
+  test("each piece of the agents' activity is hidden by its own switch and no other", () => {
+    const lookUp = {
+      kind: "tool-trace" as const,
+      toolCallId: "call-look",
+      name: "discover",
+      status: "output-available" as const,
+      input: {},
+    };
+    const instruction = "Write the limits.";
+    const report = "Filed the limits.";
+    const drawn = (shows: ActivityShown) => {
+      const html = renderToStaticMarkup(
+        <RoomThread
+          shows={shows}
+          thinking
+          runs={[
+            {
+              at: 3,
+              dispatch: {
+                key: "run-coder",
+                call: "run-coder",
+                tool: "execute",
+                role: "coder",
+                kind: "build",
+                pending: false,
+              },
+            },
+          ]}
+          standing={(unit) => {
+            const row = workUnitStanding(unit, {
+              artifacts: [],
+              inFlight: [],
+              failed: [],
+              seen: new Map(),
+              steps: new Map([["run-writer", [lookUp]]]),
+            });
+            return {
+              unitKey: row.unitKey,
+              status: row.status,
+              label: row.label,
+              steps: row.steps,
+              preview: undefined,
+              instruction: row.instruction,
+              report,
+              document: {
+                kind: "constraints",
+                title: "The limits",
+                version: 1,
+                summary: "One tablet.",
+                onOpen: () => {},
+              },
+              onOpenDocument: row.onOpenDocument,
+              watch: row.watch,
+              stop: row.stop,
+            };
+          }}
+          results={
+            new Map([
+              [
+                "call-writer",
+                {
+                  content: JSON.stringify({ runs: [{ runId: "run-writer" }] }),
+                  isError: false,
+                },
+              ],
+            ])
+          }
+          turns={[
+            { role: "person", text: "Start", at: 1 },
+            {
+              role: "assistant",
+              text: "",
+              at: 2,
+              parts: [
+                lookUp,
+                {
+                  kind: "tool-trace",
+                  toolCallId: "call-writer",
+                  name: "execute",
+                  status: "output-available",
+                  input: {
+                    plugin: "writer",
+                    action: "write",
+                    input: { kind: "constraints", instruction },
+                  },
+                },
+              ],
+            },
+          ]}
+        />,
+      );
+      // A run with no hand-off in view is a row too, and goes by the same switch.
+      expect(html.includes('data-item-id="work:run-coder"')).toBe(
+        shows.specialists,
+      );
+      const row = html.slice(html.indexOf('data-item-id="work:call-writer"'));
+      return {
+        coordinatorSteps: html.includes('data-slot="activity-trigger"'),
+        specialists: html.includes('data-item-id="work:call-writer"'),
+        specialistSteps: row.includes(wording.activity.run(1)),
+        specialistDocument: row.includes("One tablet."),
+        specialistInstruction: row.includes(instruction),
+        specialistReport: row.includes(report),
+        thinking: html.includes(`>${wording.activity.thinkingNow}<`),
+      };
+    };
+    expect(drawn(ALL_SHOWN)).toEqual(ALL_SHOWN);
+    for (const off of PIECES) {
+      // What sits inside a specialist's row goes with the row.
+      const gone = off === "specialists" ? [off, ...IN_ROW] : [off];
+      expect(drawn(without([off]))).toEqual(without(gone));
+    }
+  });
+
   test("turns render through MessageParts and keep the conversation log name", () => {
     const html = renderToStaticMarkup(
       <RoomThread
         standing={standing}
+        shows={ALL_SHOWN}
         turns={[
           { role: "person", text: "What is the weather?", at: 1 },
           {
@@ -329,6 +475,7 @@ describe("conversation transcript", () => {
       const html = renderToStaticMarkup(
         <RoomThread
           standing={standing}
+          shows={ALL_SHOWN}
           turns={
             live === null
               ? [person]
@@ -392,13 +539,13 @@ describe("conversation transcript", () => {
     );
   });
 
-  test("a started specialist is a step of the coordinator's list and a long run of lone reports folds", () => {
+  test("a started specialist is a row of its own and a long run of lone reports folds", () => {
     const summary =
       "Wrote the limits for your weather app, covering offline use and units.";
     const html = renderToStaticMarkup(
       <RoomThread
         standing={standing}
-        // The writer is still at work, so the coordinator's list stays open on it.
+        shows={ALL_SHOWN}
         live={() => true}
         turns={[
           { role: "person", text: "Start", at: 1 },
@@ -453,21 +600,15 @@ describe("conversation transcript", () => {
         ]}
       />,
     );
-    // Not a card of its own: the row is its own item, for the map, inside the coordinator's list.
+    // Not a card of its own, and in no list of the coordinator's: the row is its own item, for the map.
     expect(html).not.toContain('data-item-id="units:');
-    expect(html.indexOf('data-item-id="work:call-1"')).toBeGreaterThan(
-      html.indexOf('data-slot="activity-content"'),
-    );
+    expect(html).toContain('data-item-id="work:call-1"');
+    expect(html).not.toContain('data-slot="activity-content"');
     const row = wording.dispatch.row(
       roleLabel("writer"),
       "Writing the constraints",
     );
-    // The list's header counts its one row rather than saying it again.
     expect(html.split(row)).toHaveLength(2);
-    expect(html).toContain(wording.activity.run(1));
-    expect(html.indexOf('data-slot="activity-content"')).toBeLessThan(
-      html.indexOf(row),
-    );
     expect(html).not.toContain('data-slot="update-names">Constraints<');
     expect(html).toContain(wording.updatesFolded(4));
     expect(html).toContain(`data-slot="update-names">${wording.buildSubject}<`);
@@ -510,10 +651,10 @@ describe("conversation transcript", () => {
       ],
     });
     const parts = findElement(thread, MessageParts);
-    const renderStep = parts?.props["renderStep"] as (
-      step: typeof build,
+    const renderActivity = parts?.props["renderActivity"] as (
+      steps: readonly (typeof build)[],
     ) => ReactNode;
-    const row = findElement(renderStep(build), WorkUnitStepView);
+    const row = findElement(renderActivity([build]), WorkUnitStepView);
     const run = row?.props["run"] as (steps: readonly PartTool[]) => ReactNode;
     const activity = findElement(run([shell]), Activity);
     const steps = activity?.props["steps"] as readonly PartTool[] | undefined;

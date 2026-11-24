@@ -805,12 +805,21 @@ export type Offer<Output> = {
 };
 
 export type StepStatus = {
+  id: string;
+  title: string;
   plugin: string;
   action: string;
   plan: string | undefined;
   state: PlanStepStateName;
   summary: string | undefined;
 };
+
+/**
+ * Whether the person's yes can still drop a plan step: one done stays as the record of the work, and
+ * one cancelled is dropped already.
+ */
+export const droppable = (state: PlanStepStateName) =>
+  state !== "done" && state !== "cancelled";
 
 // A run the coordinator started for a plugin action, as a screen reads it.
 export type RunRead = {
@@ -907,6 +916,9 @@ export type Screen<In, Out, Data, Prepared> = {
   // What the answer approves, each at the version the person was shown; the manifest's returns
   // says which facts that may make true.
   approves?: (output: Type<Out>["infer"]) => readonly Shown[];
+  // The ids of the plan steps the answer cancels, each read from ProjectRead's plan; a step that is
+  // done stays as it is.
+  cancels?: (output: Type<Out>["infer"]) => readonly string[];
   decision?: Decision<Type<Out>["infer"]>;
 };
 

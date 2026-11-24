@@ -1,12 +1,17 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createMiddleware } from "hono/factory";
-import { matchPattern } from "@intx/authz";
+import { type } from "arktype";
+import {
+  createConditionEvaluator,
+  HUB_CONDITION_REGISTRY,
+  matchPattern,
+} from "@intx/authz";
 import type {
   GrantRule,
   GrantStore,
   ConditionRegistry,
 } from "@intx/types/authz";
-import { HUB_CONDITION_REGISTRY, type AppEnv } from "@intx/hub-api";
+import type { AppEnv } from "@intx/hub-api";
 
 type BoundaryEnv = {
   Variables: AppEnv["Variables"] & { "git-token-claims"?: unknown };
@@ -43,8 +48,11 @@ export function createGitTokenBoundary(native: GrantStore) {
   };
   const conditionRegistry: ConditionRegistry = {
     ...HUB_CONDITION_REGISTRY,
-    [condition]: (resource, context) =>
-      typeof resource === "string" && matchPattern(resource, context.resource),
+    [condition]: createConditionEvaluator(
+      condition,
+      type("string"),
+      (resource, context) => matchPattern(resource, context.resource),
+    ),
   };
   return {
     middleware: createMiddleware<BoundaryEnv>((context, next) =>

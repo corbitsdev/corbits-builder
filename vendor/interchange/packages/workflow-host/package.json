@@ -52,11 +52,15 @@
     "@intx/mail-memory": "workspace:*",
     "@intx/mailbox": "workspace:*",
     "@intx/mime": "workspace:*",
+    "@intx/pack-transport": "workspace:*",
     "@intx/storage-isogit": "workspace:*",
     "@intx/types": "workspace:*",
     "@intx/workflow": "workspace:*",
     "@intx/workflow-deploy": "workspace:*",
     "arktype": "catalog:"
+  },
+  "devDependencies": {
+    "isomorphic-git": "catalog:"
   },
   "files": [
     "dist",

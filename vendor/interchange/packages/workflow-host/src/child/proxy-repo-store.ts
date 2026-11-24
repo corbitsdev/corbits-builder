@@ -2,11 +2,11 @@
 //
 // Wraps a bare read-only substrate handle (the child constructs one
 // against the shared on-disk data dir for `getRepoDir` + other read
-// paths) and intercepts `writeTreePreservingPrefix` so the write is
-// proxied over the control IPC into the supervisor's substrate. The
-// supervisor is the sole writer of the workflow-run repo's ref; the
-// child has no write authority and would race the supervisor's
-// claim-check writes if it opened its own.
+// paths) and intercepts `writeTreePreservingPrefix` and `writeTreeDelta`
+// so each write is proxied over the control IPC into the supervisor's
+// substrate. The supervisor is the sole writer of the workflow-run
+// repo's ref; the child has no write authority and would race the
+// supervisor's claim-check writes if it opened its own.
 //
 // Subscription fan-out: `RepoStore.subscribe` is a local-process
 // in-memory subscriber pattern; the bare-store's `subscribe` only
@@ -20,12 +20,12 @@
 // up with a tree read (via `subscribeKind`'s `getRepoDir` +
 // `readBlobAtCommit` path) see the prospective tree's bytes.
 //
-// Methods that mutate state via paths other than
-// `writeTreePreservingPrefix` (`initRepo`, `writeTree`, `receivePack`)
-// throw on call. The workflow-host runtime body and adapters do not
-// invoke these against the workflow-run repo proxy today; a future
-// caller that tries to surfaces a structured failure rather than a
-// silent disk write that would corrupt the single-writer invariant.
+// Methods that mutate state via other paths (`initRepo`, `writeTree`,
+// `receivePack`) throw on call. The workflow-host runtime body and
+// adapters do not invoke these against the workflow-run repo proxy
+// today; a future caller that tries to surfaces a structured failure
+// rather than a silent disk write that would corrupt the single-writer
+// invariant.
 
 import type {
   InitRepoOpts,
@@ -36,6 +36,8 @@ import type {
   WriteResult,
 } from "@intx/hub-sessions/substrate";
 
+import { beginDelivery } from "@intx/workflow/runtime";
+
 import type { ChildSubstrateWriteBridge } from "./substrate-write-bridge";
 
 type WriteTreeArgs = Parameters<RepoStore["writeTree"]>[3];
@@ -43,6 +45,7 @@ type WriteTreePreservingPrefixArgs = Parameters<
   RepoStore["writeTreePreservingPrefix"]
 >[3];
 type WriteTreeDeltaArgs = Parameters<RepoStore["writeTreeDelta"]>[3];
+type PriorDeltaReads = Parameters<WriteTreeDeltaArgs["computeDelta"]>[1];
 
 type SubscribeOpts = Parameters<RepoStore["subscribe"]>[3];
 
@@ -53,9 +56,9 @@ export interface CreateProxyWorkflowRunRepoStoreOpts {
    * substrate's local state -- `getRepoDir` (path computation, no
    * I/O), `resolveRef`, `listRefs`, `resolveHead`, `openCommittedReads`,
    * `openCommittedReadsAtCommit`, `createPack`. The bare store is never
-   * used as a writer here; its
-   * `writeTreePreservingPrefix` / `writeTree` / `receivePack` are not
-   * reachable through this proxy.
+   * used as a writer here; its write methods are not reachable through
+   * this proxy. A proxied `writeTreeDelta` reads its parent commit
+   * through it.
    */
   bareStore: RepoStore;
   /**
@@ -79,7 +82,21 @@ type SubscriberState = {
     | null;
   closed: boolean;
   signal: AbortSignal;
+  // A commit is on its way to this subscriber's consumer while an entry is
+  // buffered, or handed out and the consumer has not come back for the next.
+  handedOut: boolean;
+  endDelivery: (() => void) | null;
 };
+
+function noteDelivery(sub: SubscriberState): void {
+  const delivering = !sub.closed && (sub.buffer.length > 0 || sub.handedOut);
+  if (delivering && sub.endDelivery === null) {
+    sub.endDelivery = beginDelivery();
+  } else if (!delivering && sub.endDelivery !== null) {
+    sub.endDelivery();
+    sub.endDelivery = null;
+  }
+}
 
 export function createProxyWorkflowRunRepoStore(
   opts: CreateProxyWorkflowRunRepoStoreOpts,
@@ -132,14 +149,79 @@ export function createProxyWorkflowRunRepoStore(
       if (sub.waiter !== null) {
         const w = sub.waiter;
         sub.waiter = null;
+        sub.handedOut = true;
+        noteDelivery(sub);
         w({ value: entry, done: false });
         continue;
       }
       sub.buffer.push(entry);
+      noteDelivery(sub);
     }
   }
 
   const lastRefSeq = new Map<string, number>();
+
+  async function proxiedWrite(
+    principal: Principal,
+    repoId: RepoId,
+    ref: string,
+    method: string,
+    submit: () => Promise<{ commitSha: string }>,
+  ): Promise<WriteResult> {
+    if (
+      repoId.kind !== workflowRunRepoId.kind ||
+      repoId.id !== workflowRunRepoId.id
+    ) {
+      throw new Error(
+        `workflow-child proxy substrate: ${method} targeting ${repoId.kind}/${repoId.id} is not supported (proxy services ${workflowRunRepoId.kind}/${workflowRunRepoId.id})`,
+      );
+    }
+    const key = refKey(repoId, ref);
+    const priorSha = lastSha.has(key)
+      ? (lastSha.get(key) ?? null)
+      : await bareStore.resolveRef(principal, repoId, ref);
+    const result = await submit();
+    lastSha.set(key, result.commitSha);
+    notifyRefUpdate(repoId, ref, priorSha, result.commitSha);
+    // The terminal signal is consumed supervisor-side (where the real
+    // substrate write happens); the child-proxied result carries only
+    // the commit, so report no terminal runs to the runtime body.
+    return { commitSha: result.commitSha, newlyTerminalRuns: [] };
+  }
+
+  // The supervisor holds its repo lock at `parentCommitSha` while the
+  // child computes a delta, and a committed tree never changes, so the
+  // child reads it from its own store.
+  async function priorReadsAt(
+    principal: Principal,
+    repoId: RepoId,
+    parentCommitSha: string | null,
+  ): Promise<PriorDeltaReads> {
+    if (parentCommitSha === null) {
+      return {
+        listDirOids: async () => [],
+        readBlobByOid: async (oid) => {
+          throw new Error(
+            `workflow-child proxy substrate: no parent commit holds blob ${oid}`,
+          );
+        },
+      };
+    }
+    const reads = await bareStore.openCommittedReadsAtCommit(
+      principal,
+      repoId,
+      parentCommitSha,
+    );
+    if (reads === null) {
+      throw new Error(
+        `workflow-child proxy substrate: parent commit ${parentCommitSha} of ${repoId.kind}/${repoId.id} is not in the child's store`,
+      );
+    }
+    return {
+      listDirOids: (relPath) => reads.listDir(relPath),
+      readBlobByOid: (oid) => reads.readBlobByOid(oid),
+    };
+  }
 
   return {
     initRepo: (_repoId: RepoId, _initOpts?: InitRepoOpts): Promise<void> => {
@@ -169,50 +251,50 @@ export function createProxyWorkflowRunRepoStore(
         "workflow-child proxy substrate: receivePack is not supported (writes are proxied to the supervisor)",
       );
     },
-    writeTreeDelta: (
-      _principal: Principal,
-      _repoId: RepoId,
-      _ref: string,
-      _args: WriteTreeDeltaArgs,
-    ): Promise<WriteResult> => {
-      throw new Error(
-        "workflow-child proxy substrate: writeTreeDelta is not supported (claim-check writes run supervisor-side)",
+    writeTreeDelta(
+      principal: Principal,
+      repoId: RepoId,
+      ref: string,
+      args: WriteTreeDeltaArgs,
+    ): Promise<WriteResult> {
+      return proxiedWrite(principal, repoId, ref, "writeTreeDelta", () =>
+        bridge.submitDelta({
+          repoId: { kind: repoId.kind, id: repoId.id },
+          ref,
+          changedPathPrefixes: args.changedPathPrefixes,
+          message: args.message,
+          computeDelta: async (parentCommitSha) =>
+            args.computeDelta(
+              parentCommitSha,
+              await priorReadsAt(principal, repoId, parentCommitSha),
+            ),
+        }),
       );
     },
-    async writeTreePreservingPrefix(
-      _principal: Principal,
+    writeTreePreservingPrefix(
+      principal: Principal,
       repoId: RepoId,
       ref: string,
       args: WriteTreePreservingPrefixArgs,
     ): Promise<WriteResult> {
-      if (
-        repoId.kind !== workflowRunRepoId.kind ||
-        repoId.id !== workflowRunRepoId.id
-      ) {
-        throw new Error(
-          `workflow-child proxy substrate: writeTreePreservingPrefix targeting ${repoId.kind}/${repoId.id} is not supported (proxy services ${workflowRunRepoId.kind}/${workflowRunRepoId.id})`,
-        );
-      }
-      const key = refKey(repoId, ref);
-      const priorSha = lastSha.has(key)
-        ? (lastSha.get(key) ?? null)
-        : await bareStore.resolveRef(_principal, repoId, ref);
-      const result = await bridge.submit({
-        repoId: { kind: repoId.kind, id: repoId.id },
+      return proxiedWrite(
+        principal,
+        repoId,
         ref,
-        preservePrefix: args.preservePrefix,
-        message: args.message,
-        merge: args.merge,
-      });
-      lastSha.set(key, result.commitSha);
-      notifyRefUpdate(repoId, ref, priorSha, result.commitSha);
-      // The terminal signal is consumed supervisor-side (where the real
-      // substrate write happens); the child-proxied result carries only
-      // the commit, so report no terminal runs to the runtime body.
-      return { commitSha: result.commitSha, newlyTerminalRuns: [] };
+        "writeTreePreservingPrefix",
+        () =>
+          bridge.submit({
+            repoId: { kind: repoId.kind, id: repoId.id },
+            ref,
+            preservePrefix: args.preservePrefix,
+            message: args.message,
+            merge: args.merge,
+          }),
+      );
     },
     createPack: bareStore.createPack.bind(bareStore),
     commitPackedTip: bareStore.commitPackedTip.bind(bareStore),
+    forgetPackedTip: bareStore.forgetPackedTip.bind(bareStore),
     resolveRef: bareStore.resolveRef.bind(bareStore),
     listRefs: bareStore.listRefs.bind(bareStore),
     resolveHead: bareStore.resolveHead.bind(bareStore),
@@ -233,13 +315,9 @@ export function createProxyWorkflowRunRepoStore(
       // proxy's `writeTreePreservingPrefix` returns successfully.
       //
       // `from: { seq }` replay against historical commits is not
-      // emitted here today: the runtime body's signal-channel and
-      // similar consumers attach with `from: "head"` so only events
-      // committed after subscription fire. A `from: { seq }` caller
-      // (a resume path that wants to replay) would currently miss
-      // historical commits -- the bare store's `subscribe` is the
-      // path that supports replay today, and resume code can call it
-      // directly if needed.
+      // emitted here. Every consumer attaches with `from: "head"`, and
+      // the workflow-run adapter replays a run's events from the run's
+      // own log.
       const key = refKey(repoId, ref);
       let set = subscribers.get(key);
       if (set === undefined) {
@@ -251,10 +329,13 @@ export function createProxyWorkflowRunRepoStore(
         waiter: null,
         closed: false,
         signal: subOpts.signal,
+        handedOut: false,
+        endDelivery: null,
       };
       set.add(sub);
       const cleanup = (): void => {
         sub.closed = true;
+        noteDelivery(sub);
         const current = subscribers.get(key);
         if (current !== undefined) {
           current.delete(sub);
@@ -279,16 +360,21 @@ export function createProxyWorkflowRunRepoStore(
           return this;
         },
         next(): Promise<IteratorResult<{ seq: number; event: unknown }>> {
+          sub.handedOut = false;
           if (sub.closed) {
             return Promise.resolve({ value: undefined, done: true });
           }
           if (sub.buffer.length > 0) {
             const next = sub.buffer.shift();
             if (next === undefined) {
+              noteDelivery(sub);
               return Promise.resolve({ value: undefined, done: true });
             }
+            sub.handedOut = true;
+            noteDelivery(sub);
             return Promise.resolve({ value: next, done: false });
           }
+          noteDelivery(sub);
           return new Promise((resolve) => {
             sub.waiter = resolve;
           });

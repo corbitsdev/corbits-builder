@@ -50,6 +50,7 @@ import type {
 } from "./events";
 import {
   controlParkKindOf,
+  isApprovalPark,
   isTerminalRunPhase,
   isTerminalStepPhase,
   type RunPhase,
@@ -184,24 +185,35 @@ function handleRunStarted(state: RunState, e: RunStarted): RunState {
     throw new TransitionError("phase", `RunStarted in phase ${state.phase}`, e);
   }
   if (
-    e.consumedMessageId !== undefined &&
-    state.consumedMessageIds.has(e.consumedMessageId)
+    e.consumedDeliveryKey !== undefined &&
+    e.consumedMessageId !== undefined
   ) {
     throw new TransitionError(
       "consumed-message",
-      `RunStarted re-issued for consumed message-id ${e.consumedMessageId}`,
+      `RunStarted carries both consumedDeliveryKey ${e.consumedDeliveryKey} and consumedMessageId ${e.consumedMessageId}`,
       e,
     );
   }
-  const consumedMessageIds = new Set(state.consumedMessageIds);
-  if (e.consumedMessageId !== undefined) {
-    consumedMessageIds.add(e.consumedMessageId);
+  const consumedIdentity = e.consumedDeliveryKey ?? e.consumedMessageId;
+  if (
+    consumedIdentity !== undefined &&
+    state.consumedIdentities.has(consumedIdentity)
+  ) {
+    throw new TransitionError(
+      "consumed-message",
+      `RunStarted re-issued for consumed identity ${consumedIdentity}`,
+      e,
+    );
+  }
+  const consumedIdentities = new Set(state.consumedIdentities);
+  if (consumedIdentity !== undefined) {
+    consumedIdentities.add(consumedIdentity);
   }
   return {
     ...state,
     phase: "running",
     definitionHash: e.definitionHash,
-    consumedMessageIds,
+    consumedIdentities,
     lastSeq: e.seq,
   };
 }
@@ -539,9 +551,10 @@ function consumeAwaiter(
 }
 
 /**
- * Retire a step's `signal-relay` await without delivering a payload. Emitted by
- * the onTrigger driver when the proxied body progressed by another exit before
- * the external signal arrived.
+ * Retire a step's await without delivering a payload. Emitted by the
+ * onTrigger and loop drivers when the proxied body progressed by another exit
+ * before the external signal arrived, or ended under its relayed approval,
+ * and for a step that fails while it waits on an approval.
  *
  * Race with `SignalReceived`: the abandon and a delivery can be committed
  * concurrently for the same await. If the delivery won -- the step is no longer
@@ -549,11 +562,14 @@ function consumeAwaiter(
  * as the signal left it). If the await is still live, retire it: clear the
  * awaiter and drop the step to `in-flight`.
  *
- * Scope is strict. It touches ONLY a matching `signal-relay` park: an approval
- * or input park, a name mismatch, or a correlation-id mismatch is a producer
- * bug or a mis-target and is rejected, never silently cleared. It never
+ * Scope is strict. It touches ONLY a matching `signal-relay` park, the
+ * approval park of a step that spawned a child and so relays that child's
+ * approval, or a step's own approval park on its reserved channel: an input
+ * park, a plain gate on an author's name, a name mismatch, or a
+ * correlation-id mismatch is a producer bug or a mis-target and is rejected,
+ * never silently cleared. It never
  * touches either unconsumed queue, `observedSignalIds`, or
- * `consumedMessageIds`. A torn-down await does not consume or dedup a signal.
+ * `consumedIdentities`. A torn-down await does not consume or dedup a signal.
  * A late name-only delivery still queues for the next name await. A late
  * correlated delivery queues under its own id and does not satisfy a
  * different correlation.
@@ -572,15 +588,21 @@ function handleSignalAwaitAbandoned(
   const correlationMismatch =
     e.correlationId !== undefined &&
     awaiting?.correlationId !== e.correlationId;
+  const kind = awaiting === undefined ? undefined : controlParkKindOf(awaiting);
+  const relaysChildApproval =
+    kind === "approval" &&
+    [...state.children.values()].some((c) => c.spawnedBy === e.stepId);
   if (
     awaiting === undefined ||
-    controlParkKindOf(awaiting) !== "signal-relay" ||
+    (kind !== "signal-relay" &&
+      !relaysChildApproval &&
+      !isApprovalPark(awaiting)) ||
     awaiting.name !== e.signalName ||
     correlationMismatch
   ) {
     throw new TransitionError(
       "step-phase",
-      `SignalAwaitAbandoned for step ${e.stepId} on ${e.signalName} does not match an active signal-relay park`,
+      `SignalAwaitAbandoned for step ${e.stepId} on ${e.signalName} does not match an active relay park`,
       e,
     );
   }

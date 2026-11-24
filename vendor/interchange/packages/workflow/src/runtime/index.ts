@@ -7,9 +7,11 @@ export type {
   EffectContext,
   EffectLedger,
   LoopFn,
+  LoadParkedApproval,
   LoopFnRegistry,
   ParkedApprovalOp,
   PerformScope,
+  PersistRecoveredPark,
   PrimitiveKind,
   ReadParkedApprovalOps,
   RepoStore,
@@ -34,9 +36,8 @@ export {
   type EffectContextConfig,
 } from "./effect-context";
 
-export { runtimeRun, type RuntimeRunOptions } from "./run";
+export { bodyLogForRelays, runtimeRun, type RuntimeRunOptions } from "./run";
 export {
-  bodyParkedSignals,
   loopIterationCursor,
   loopOccurrenceReattach,
   onTriggerOccurrenceReattach,
@@ -47,10 +48,19 @@ export {
   bufferedEvents,
   commitBuffered,
   dropChain,
+  flushAllBuffers,
   reloadState,
   whenRunNextBuffers,
   withRunCommitBarrier,
 } from "./commit-chain";
+export {
+  activityStarts,
+  beginDelivery,
+  isQuiet,
+  isWorking,
+  whenDelivered,
+  whenQuiet,
+} from "./activity";
 
 export {
   createSuspendableChildHandle,
@@ -59,6 +69,8 @@ export {
 
 export { createLoopIterationHandle } from "./loop-iteration-handle";
 
+export { findParkedApprovalSnapshot } from "./parked-approval";
+
 export {
   MAX_CHILD_SPAWN_DEPTH,
   ChildSpawnDepthExceededError,
@@ -66,7 +78,10 @@ export {
   assertSpawnDepthWithinLimit,
 } from "./child-depth";
 
-export { RuntimeResumeUnsupportedError } from "./errors";
+export {
+  RuntimeResumeUnsupportedError,
+  StepOutcomeCommitError,
+} from "./errors";
 
 export {
   createNoopDrainController,

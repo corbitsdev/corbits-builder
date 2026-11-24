@@ -5,7 +5,7 @@ import { projectLiveToInert } from "@intx/workflow/projection";
 import { browserCatalog } from "../builds/browser-catalog.ts";
 import { nativePackageName } from "./package-name.ts";
 import { resolveRoleInference, type RoleInference } from "./role-inference.ts";
-import { spawnedWorkflowRole } from "./spawn-role.ts";
+import { workflowStep } from "./spawn-role.ts";
 import { resolve } from "node:path";
 import {
   CATALOG,
@@ -191,6 +191,8 @@ test("built npm tarballs contain importable production workflow metadata and def
   const { tmpdir } = await import("node:os");
   const { join } = await import("node:path");
   const { pathToFileURL } = await import("node:url");
+  const { composeCoordinatorPrompt } =
+    await import("@corbits-builder/coordinator/prompt");
   const { buildWorkflowPackages } = await import("./build-packages.ts");
   const directory = await mkdtemp(
     join(tmpdir(), "sb-packaged-definition-test-"),
@@ -237,13 +239,32 @@ test("built npm tarballs contain importable production workflow metadata and def
           );
           if (binding.optional) optional += 1;
         }
-      // The hub accepts a run as a specialist's only when its launch bundle yields a role.
-      if (metadata.packageName !== nativePackageName("coordinator"))
-        expect(
-          spawnedWorkflowRole({
-            projection: projectLiveToInert(entry.default),
-          }),
-        ).toBeDefined();
+      // A run is known by its agent's tags, so they give the role the package is installed for.
+      expect(
+        workflowStep({ projection: projectLiveToInert(entry.default) }, CATALOG)
+          ?.role,
+      ).toBe(WORKFLOW_PACKAGES.get(name));
+      if (metadata.packageName === nativePackageName("coordinator")) {
+        const { systemPrompt, toolFactories } =
+          entry.default.steps.coordinate.agent;
+        const declared: { name: string; approval?: string }[] =
+          toolFactories.flatMap(
+            (tool: { definitions: { name: string; approval?: string }[] }) =>
+              tool.definitions,
+          );
+        expect(systemPrompt).toBe(composeCoordinatorPrompt());
+        // question is Interchange's own tool, authorized like any other, so its bundle declares it.
+        expect(declared.map((tool) => tool.name)).toEqual([
+          "read_artifact",
+          "discover",
+          "execute",
+          "runs",
+          "plan",
+          "question",
+          "read_file",
+        ]);
+        expect(declared.filter((tool) => tool.approval)).toEqual([]);
+      }
     }
     expect(manifest).toHaveLength(WORKFLOW_PACKAGES.size);
     expect(optional).toBeGreaterThan(0);
@@ -251,52 +272,4 @@ test("built npm tarballs contain importable production workflow metadata and def
     await rm(directory, { recursive: true, force: true });
   }
   // Building starts the coder's browser, whose first start downloads Chrome for Testing.
-}, 180_000);
-
-test("the built coordinator runs its prompt with the plugin tools and no tool waits on the person", async () => {
-  const { mkdtemp, rm } = await import("node:fs/promises");
-  const { tmpdir } = await import("node:os");
-  const { join } = await import("node:path");
-  const { pathToFileURL } = await import("node:url");
-  const { buildWorkflowPackages } = await import("./build-packages.ts");
-  const { nativePackageName } = await import("./package-name.ts");
-  const { composeCoordinatorPrompt } =
-    await import("@corbits-builder/coordinator/prompt");
-  const directory = await mkdtemp(join(tmpdir(), "sb-coordinator-prompt-"));
-  try {
-    const manifest = await buildWorkflowPackages(directory, "1.0.0", inference);
-    const coordinator = manifest.find(
-      (item) => item.packageName === nativePackageName("coordinator"),
-    );
-    if (!coordinator) throw new Error("coordinator_package_missing");
-    const child = Bun.spawn(
-      ["tar", "-xzf", join(directory, coordinator.file), "-C", directory],
-      { stdout: "ignore", stderr: "pipe" },
-    );
-    expect(await child.exited).toBe(0);
-    const entry = await import(
-      pathToFileURL(join(directory, "package", coordinator.entry)).href
-    );
-    const { systemPrompt, toolFactories } =
-      entry.default.steps.coordinate.agent;
-    const declared: { name: string; approval?: string }[] =
-      toolFactories.flatMap(
-        (tool: { definitions: { name: string; approval?: string }[] }) =>
-          tool.definitions,
-      );
-    expect(systemPrompt).toBe(composeCoordinatorPrompt());
-    // question is Interchange's own tool, authorized like any other, so its bundle declares it.
-    expect(declared.map(({ name }) => name)).toEqual([
-      "read_artifact",
-      "discover",
-      "execute",
-      "runs",
-      "plan",
-      "question",
-      "read_file",
-    ]);
-    expect(declared.filter((definition) => definition.approval)).toEqual([]);
-  } finally {
-    await rm(directory, { recursive: true, force: true });
-  }
 }, 180_000);

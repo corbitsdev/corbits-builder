@@ -1,9 +1,24 @@
-import { and, eq, inArray, isNull, ne, or, type SQL } from "drizzle-orm";
+import { and, eq, inArray, isNull, ne, type SQL } from "drizzle-orm";
 
+import {
+  hostedSidecarAllocationStatuses,
+  hostedWorkflowProbeStatuses,
+  occupyingWorkflowProbeStatuses,
+  type RetireIdleSidecarResult,
+  type SidecarAllocationStatus,
+  type SidecarDeploymentView,
+  type SidecarProbeView,
+  type SidecarView,
+} from "@intx/types";
 import type { SidecarCapacity } from "@intx/types/sidecar";
 
 import type { DBExecutor } from "./client";
-import { sidecar, sidecarAllocation } from "./schema";
+import {
+  sidecar,
+  sidecarAllocation,
+  workflowProbe,
+  workflowRun,
+} from "./schema";
 
 /** A provisioner named a sidecar the Hub cannot place its work on. */
 export class SidecarReuseRejectedError extends Error {
@@ -144,6 +159,30 @@ export type AllocationConnectionCheck = (target: {
   readonly generation: number;
 }) => boolean;
 
+function mintedFor(binding: SidecarProvisionerBinding) {
+  return and(
+    eq(sidecar.provisionerId, binding.provisionerId),
+    eq(sidecar.provisionerApiVersion, binding.provisionerApiVersion),
+    eq(
+      sidecar.provisionerBindingFingerprint,
+      binding.provisionerBindingFingerprint,
+    ),
+  );
+}
+
+async function lockSidecarMintedFor(
+  tx: DBExecutor,
+  sidecarId: string,
+  binding: SidecarProvisionerBinding,
+): Promise<boolean> {
+  const [owned] = await tx
+    .select({ id: sidecar.id })
+    .from(sidecar)
+    .where(and(eq(sidecar.id, sidecarId), mintedFor(binding)))
+    .for("update");
+  return owned !== undefined;
+}
+
 /**
  * Retires a sidecar its provisioner reports stopped. Returns null, retiring
  * nothing, when no sidecar with that id was minted for `binding`. With
@@ -161,22 +200,8 @@ export async function retireProvisionerSidecar(
     readonly now: Date | SQL;
   },
 ): Promise<ProvisionerSidecarRetirement | null> {
-  const [owned] = await tx
-    .select({ id: sidecar.id })
-    .from(sidecar)
-    .where(
-      and(
-        eq(sidecar.id, args.sidecarId),
-        eq(sidecar.provisionerId, args.binding.provisionerId),
-        eq(sidecar.provisionerApiVersion, args.binding.provisionerApiVersion),
-        eq(
-          sidecar.provisionerBindingFingerprint,
-          args.binding.provisionerBindingFingerprint,
-        ),
-      ),
-    )
-    .for("update");
-  if (owned === undefined) return null;
+  if (!(await lockSidecarMintedFor(tx, args.sidecarId, args.binding)))
+    return null;
   await retireSidecar(tx, { sidecarId: args.sidecarId, now: args.now });
   const allocated = await tx
     .select({
@@ -232,6 +257,229 @@ export async function retireProvisionerSidecar(
 }
 
 /**
+ * Retires a sidecar only if nothing is left on it. The check and the write
+ * share the lock placements take, so a placement either commits first and this
+ * answers `in_use`, or comes later and is refused because the sidecar is
+ * retired.
+ *
+ * A provisioner may call this from `destroy`, so the row being destroyed must
+ * not count: the Hub confirms a connected copy removed before calling
+ * `destroy`, and records a probe's result before releasing it.
+ */
+export async function retireIdleProvisionerSidecar(
+  tx: DBExecutor,
+  args: {
+    readonly sidecarId: string;
+    readonly binding: SidecarProvisionerBinding;
+    readonly now: Date | SQL;
+  },
+): Promise<RetireIdleSidecarResult> {
+  if (!(await lockSidecarMintedFor(tx, args.sidecarId, args.binding)))
+    return { kind: "not_owned" };
+  const deployments = await tx
+    .select({
+      status: sidecarAllocation.status,
+      deploymentCleanupConfirmed: sidecarAllocation.deploymentCleanupConfirmed,
+    })
+    .from(sidecarAllocation)
+    .where(
+      and(
+        eq(sidecarAllocation.sidecarId, args.sidecarId),
+        inArray(sidecarAllocation.status, [...hostedSidecarAllocationStatuses]),
+      ),
+    );
+  if (deployments.some((deployment) => occupiesSidecar(deployment)))
+    return { kind: "in_use" };
+  const [probe] = await tx
+    .select({ id: workflowProbe.id })
+    .from(workflowProbe)
+    .where(
+      and(
+        eq(workflowProbe.sidecarId, args.sidecarId),
+        inArray(workflowProbe.status, [...occupyingWorkflowProbeStatuses]),
+      ),
+    )
+    .limit(1);
+  if (probe !== undefined) return { kind: "in_use" };
+  await retireSidecar(tx, { sidecarId: args.sidecarId, now: args.now });
+  return { kind: "retired" };
+}
+
+type SlotReservation = {
+  readonly id: string;
+  readonly status: SidecarAllocationStatus;
+  readonly deploymentCleanupConfirmed: boolean;
+  readonly ensureAcceptedGeneration: number | null;
+};
+
+// Placed work is on the sidecar; a copy being removed stays until confirmed.
+function occupiesSidecar(
+  row: Pick<SlotReservation, "status" | "deploymentCleanupConfirmed">,
+): boolean {
+  const placed = row.status === "provisioning" || row.status === "allocated";
+  return placed || !row.deploymentCleanupConfirmed;
+}
+
+// An incarnation durably retained also frees the active slot.
+function holdsActiveSlot(
+  reservation: SlotReservation,
+  inventory: SidecarInventory,
+): boolean {
+  if (!occupiesSidecar(reservation)) return false;
+  return !inventory.retainedIncarnations.some(
+    (incarnation) =>
+      incarnation.allocationId === reservation.id &&
+      incarnation.generation === reservation.ensureAcceptedGeneration,
+  );
+}
+
+function hostedStatus<T extends string>(
+  hosted: readonly T[],
+  rowId: string,
+  status: string,
+): T {
+  const match = hosted.find((candidate) => candidate === status);
+  if (match === undefined)
+    throw new Error(`Listed row ${rowId} has unlisted status ${status}`);
+  return match;
+}
+
+/**
+ * The sidecars minted for `binding` and what is on them: every one not retired,
+ * and every retired one with work left. Call it in one snapshot, since adoption
+ * moves a hold from a probe row to an allocation row in a single commit.
+ */
+export async function listProvisionerSidecars(
+  tx: DBExecutor,
+  args: {
+    readonly binding: SidecarProvisionerBinding;
+  } & SidecarAllocationStoreOptions,
+): Promise<readonly SidecarView[]> {
+  const sidecarColumns = {
+    id: sidecar.id,
+    retiredAt: sidecar.retiredAt,
+    adapterManifestDigest: sidecar.adapterManifestDigest,
+  };
+  const notRetired = await tx
+    .select(sidecarColumns)
+    .from(sidecar)
+    .where(and(mintedFor(args.binding), isNull(sidecar.retiredAt)));
+  const deployments = await tx
+    .select({
+      sidecar: sidecarColumns,
+      allocation: {
+        id: sidecarAllocation.id,
+        generation: sidecarAllocation.generation,
+        tenantId: sidecarAllocation.tenantId,
+        anchorRunId: sidecarAllocation.anchorRunId,
+        status: sidecarAllocation.status,
+        deploymentCleanupConfirmed:
+          sidecarAllocation.deploymentCleanupConfirmed,
+        ensureAcceptedGeneration: sidecarAllocation.ensureAcceptedGeneration,
+        externalRef: sidecarAllocation.externalRef,
+      },
+      run: {
+        address: workflowRun.address,
+        definitionId: workflowRun.definitionId,
+        status: workflowRun.status,
+      },
+    })
+    .from(sidecarAllocation)
+    .innerJoin(sidecar, eq(sidecarAllocation.sidecarId, sidecar.id))
+    .innerJoin(workflowRun, eq(sidecarAllocation.anchorRunId, workflowRun.id))
+    .where(
+      and(
+        mintedFor(args.binding),
+        inArray(sidecarAllocation.status, [...hostedSidecarAllocationStatuses]),
+      ),
+    );
+  const probes = await tx
+    .select({
+      sidecar: sidecarColumns,
+      probe: {
+        id: workflowProbe.id,
+        generation: workflowProbe.generation,
+        tenantId: workflowProbe.tenantId,
+        status: workflowProbe.status,
+        externalRef: workflowProbe.externalRef,
+      },
+    })
+    .from(workflowProbe)
+    .innerJoin(sidecar, eq(workflowProbe.sidecarId, sidecar.id))
+    .where(
+      and(
+        mintedFor(args.binding),
+        inArray(workflowProbe.status, [...hostedWorkflowProbeStatuses]),
+      ),
+    );
+
+  const sidecars = new Map(notRetired.map((row) => [row.id, row]));
+  for (const row of [...deployments, ...probes])
+    sidecars.set(row.sidecar.id, row.sidecar);
+  const deploymentsBySidecar = Map.groupBy(
+    deployments,
+    (row) => row.sidecar.id,
+  );
+  const probesBySidecar = Map.groupBy(probes, (row) => row.sidecar.id);
+
+  return [...sidecars.values()].map((row) => {
+    const onSidecar = deploymentsBySidecar.get(row.id) ?? [];
+    // Read after the database reads: the connection may have changed meanwhile.
+    const inventory = args.getSidecarInventory?.(row.id);
+    return {
+      sidecarId: row.id,
+      retired: row.retiredAt !== null,
+      adapterManifestDigest: row.adapterManifestDigest,
+      ...(inventory !== undefined
+        ? {
+            capacity: {
+              maxActiveDeployments: inventory.capacity.maxActiveDeployments,
+              activeDeployments: onSidecar.filter(({ allocation }) =>
+                holdsActiveSlot(allocation, inventory),
+              ).length,
+            },
+          }
+        : {}),
+      deployments: onSidecar.map(
+        ({ allocation, run }): SidecarDeploymentView => ({
+          allocationId: allocation.id,
+          generation: allocation.generation,
+          tenantId: allocation.tenantId,
+          anchorRunId: allocation.anchorRunId,
+          ...(run.address !== null ? { address: run.address } : {}),
+          definitionId: run.definitionId,
+          status: hostedStatus(
+            hostedSidecarAllocationStatuses,
+            allocation.id,
+            allocation.status,
+          ),
+          runStatus: run.status,
+          cleanupConfirmed: allocation.deploymentCleanupConfirmed,
+          ...(allocation.externalRef !== null
+            ? { externalRef: allocation.externalRef }
+            : {}),
+        }),
+      ),
+      probes: (probesBySidecar.get(row.id) ?? []).map(
+        ({ probe }): SidecarProbeView => ({
+          allocationId: probe.id,
+          generation: probe.generation,
+          tenantId: probe.tenantId,
+          status: hostedStatus(
+            hostedWorkflowProbeStatuses,
+            probe.id,
+            probe.status,
+          ),
+          ...(probe.externalRef !== null
+            ? { externalRef: probe.externalRef }
+            : {}),
+        }),
+      ),
+    };
+  });
+}
+
+/**
  * Locks the sidecar so placements serialize, counting every reservation
  * except cleanup confirmed removed or an incarnation durably retained.
  * Unknown inventory blocks placement until the sidecar completes its hello.
@@ -250,6 +498,8 @@ export async function assertSidecarHasRoom(
   const reservations = await tx
     .select({
       id: sidecarAllocation.id,
+      status: sidecarAllocation.status,
+      deploymentCleanupConfirmed: sidecarAllocation.deploymentCleanupConfirmed,
       ensureAcceptedGeneration: sidecarAllocation.ensureAcceptedGeneration,
     })
     .from(sidecarAllocation)
@@ -257,30 +507,15 @@ export async function assertSidecarHasRoom(
       and(
         eq(sidecarAllocation.sidecarId, args.sidecarId),
         ne(sidecarAllocation.id, args.placing.allocationId),
-        or(
-          inArray(sidecarAllocation.status, ["provisioning", "allocated"]),
-          and(
-            inArray(sidecarAllocation.status, [
-              "replacing",
-              "releasing",
-              "destroy_failed",
-            ]),
-            eq(sidecarAllocation.deploymentCleanupConfirmed, false),
-          ),
-        ),
+        inArray(sidecarAllocation.status, [...hostedSidecarAllocationStatuses]),
       ),
     );
   // Read after the database wait: the connection may have changed meanwhile.
   const inventory = args.getSidecarInventory?.(args.sidecarId);
   if (inventory === undefined)
     throw new SidecarInventoryUnavailableError(args.sidecarId);
-  const active = reservations.filter(
-    (reservation) =>
-      !inventory.retainedIncarnations.some(
-        (incarnation) =>
-          incarnation.allocationId === reservation.id &&
-          incarnation.generation === reservation.ensureAcceptedGeneration,
-      ),
+  const active = reservations.filter((reservation) =>
+    holdsActiveSlot(reservation, inventory),
   ).length;
   if (active >= inventory.capacity.maxActiveDeployments) {
     throw new SidecarReuseRejectedError(

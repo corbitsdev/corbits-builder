@@ -20,7 +20,9 @@ import type {
   ReplayProcessingToInboxOpts,
   ReplayProcessingToInboxResult,
 } from "@intx/hub-sessions/substrate";
+import type { SignedMessageBytes } from "@intx/mail-memory";
 import type { SignalKind } from "@intx/types";
+import type { InboundDelivery } from "@intx/types/message-id";
 import type {
   ApprovalSnapshot,
   OutboundMessage,
@@ -29,6 +31,9 @@ import type {
 import type { RunCancelled, RunCompleted, RunFailed } from "@intx/workflow";
 
 import type { FrameReader, NdjsonReader, NdjsonWriter } from "../ipc/index";
+import type { RecordedStandby } from "./recorded-standby";
+
+export type { RecordedStandby };
 
 /**
  * Terminal workflow-run event the supervisor's drain accumulators
@@ -106,14 +111,15 @@ export type PrincipalSigner = (
  * supervisor to `InMemoryTransport` or any other concrete bus.
  *
  * `subscribeMailForAddress` returns a disposer the supervisor calls
- * during teardown. The supplied handler is invoked with the raw RFC
- * 2822 message bytes of each inbound message at the address, and returns
- * a promise that resolves once the message is durably accepted (its inbox
- * write landed, or the message was already durably present) and rejects
- * when it was not (a transient failure, a stale refusal, or a phase where
- * the deployment is tearing down). The host propagates that settlement to
- * the wire so a durable-receipt ack is sent only on resolution -- resolve
- * is the ack signal, reject is the withhold signal.
+ * during teardown. The supplied handler is invoked with the delivery of
+ * each inbound message at the address: the raw RFC 2822 message bytes and
+ * the sender the hub authenticated for them. It returns a promise that
+ * resolves once the message is durably accepted (its inbox write landed, or
+ * the message was already durably present) and rejects when it was not (a
+ * transient failure, a stale refusal, or a phase where the deployment is
+ * tearing down). The host propagates that settlement to the wire so a
+ * durable-receipt ack is sent only on resolution -- resolve is the ack
+ * signal, reject is the withhold signal.
  *
  * `sendOutbound` is the OUTBOUND half of mailbox ownership (§3a). The
  * supervisor is the sole mail owner: the workflow-process child never
@@ -138,12 +144,21 @@ export interface MailBusBindings {
   unregisterAddress(address: string): void;
   subscribeMailForAddress(
     address: string,
-    handler: (rawMessage: Uint8Array) => Promise<void>,
+    handler: (delivery: InboundDelivery) => Promise<void>,
   ): () => void;
   sendOutbound(
     senderAddress: string,
     message: OutboundMessage,
   ): Promise<SendReceipt>;
+  /**
+   * Sign `message` as `senderAddress` the way `sendOutbound` does, but
+   * return the bytes instead of sending them. Run code posts them to the
+   * hub REST API itself.
+   */
+  composeSigned(
+    senderAddress: string,
+    message: OutboundMessage,
+  ): Promise<SignedMessageBytes>;
 }
 
 /**
@@ -197,36 +212,10 @@ export type SubprocessSpawner = (args: {
 }) => SubprocessHandle;
 
 /**
- * Logical pointer to the raw mail bytes the inbox claim-check
- * envelope stamps. The substrate stores this as the `mailAuditRef`
- * on every inbox/processing/consumed envelope; the substrate itself
- * never dereferences it. The boot edge supplies a derivation
- * coherent with wherever the deployment's mail audit actually lives
- * (a sidecar's session-mail audit, an alternative host's audit
- * store, etc.).
- */
-export type MailAuditRef = { store: string; path: string };
-
-/**
- * Host-supplied derivation that maps a parsed `messageId` plus the
- * raw mail bytes into the logical audit reference the inbox claim-
- * check envelope carries. Pure -- the supervisor invokes it on the
- * mail-arrival hot path and expects no I/O. Absent binding falls
- * back to a deterministic in-process derivation that synthesizes
- * `{ store: "in-process", path: <messageId> }` so the supervisor's
- * library tests that do not stand up an audit store still work; the
- * production sidecar boot edge supplies a real derivation.
- */
-export type DeriveMailAuditRef = (
-  messageId: string,
-  rawMessage: Uint8Array,
-) => MailAuditRef;
-
-/**
  * Inbox claim-check primitives the supervisor's mail-arrival path
  * and dispatch loop reach into. Production wires this against the
  * concrete `enqueueInbox` / `dequeueToProcessing` / `markConsumed`
- * / `replayProcessingToInbox` functions exported from
+ * / `replayProcessingToInbox` / `hasInboxEntries` functions exported from
  * `@intx/hub-sessions`; tests inject a deterministic in-memory
  * stub so the supervisor's dispatch loop is observable without a
  * real git substrate.
@@ -261,6 +250,12 @@ export interface InboxPrimitives {
     address: string,
     opts?: ReplayProcessingToInboxOpts,
   ): Promise<ReplayProcessingToInboxResult>;
+  hasInboxEntries(
+    store: SubstrateRepoStore,
+    principal: Principal,
+    repoId: RepoId,
+    address: string,
+  ): Promise<boolean>;
 }
 
 /**
@@ -287,6 +282,18 @@ export interface SuspensionRegistration {
 }
 
 /**
+ * A run that is about to stop waiting on its approvals, forwarded to the host
+ * from the child's `park.release`. It names one retired correlation, or none
+ * when the run ends. The supervisor stamps `agentAddress` as it does for a
+ * registration.
+ */
+export interface SuspensionRelease {
+  runId: string;
+  correlationId?: string;
+  agentAddress: string;
+}
+
+/**
  * Constructor arguments for `createWorkflowSupervisor`. One
  * `RepoStore` handle plus a `signAsPrincipal` callback that mints
  * signatures on demand per principal, rather than pre-minting
@@ -295,7 +302,7 @@ export interface SuspensionRegistration {
  * holds a private key in plaintext.
  */
 export interface WorkflowSupervisorBindings {
-  /** Substrate handle the supervisor reads grants from and commits events to. */
+  /** Substrate handle the supervisor commits the run's mail and events through. */
   repoStore: SubstrateRepoStore;
   /** Per-principal signing callback. See `PrincipalSigner`. */
   signAsPrincipal: PrincipalSigner;
@@ -315,6 +322,15 @@ export interface WorkflowSupervisorBindings {
    * or abort a re-emit partway through the parked set.
    */
   onSuspensionRegister?: (registration: SuspensionRegistration) => void;
+  /**
+   * Optional sink for a run that is about to stop waiting on approvals it
+   * registered. The pump invokes it when the child's `park.release` arrives,
+   * before the write that records the change can be committed. Production
+   * wires it to the hub link, which stops resending those registers: a resend
+   * that left after that history was pushed could reach the hub after it and
+   * leave the approval pending.
+   */
+  onSuspensionRelease?: (release: SuspensionRelease) => void;
   /**
    * Self-termination sink. The supervisor invokes it when it reaches a terminal
    * phase on its own -- the crash-loop latch (`crash-looping`), a channel crash
@@ -346,6 +362,56 @@ export interface WorkflowSupervisorBindings {
     reason: string;
   }) => void;
   /**
+   * Fired once a supervisor in standby has a running child again, whatever woke
+   * it: mail, a signal, a cancellation, its earliest pending timer, or
+   * `wake`. `requested` is true only when `wake()` started the respawn.
+   */
+  onWake?: (info: { reason: string; requested: boolean }) => void;
+  /**
+   * Called once a standby attempt has stopped the child and before anything can
+   * wake it, so a wake's record of the child running lands after it. A
+   * rejection runs the child again and refuses the standby attempt. What it
+   * records is what `restoreInStandby` takes after a restart.
+   */
+  recordStandby?: (standby: RecordedStandby) => Promise<void>;
+  /**
+   * Test seam, unset in production. Called each time a standby attempt makes
+   * something wait: `input` when mail or a signal waits out the final quiet
+   * check, `standby` when the standby attempt waits for work the supervisor
+   * still drives for the child, `attempt` when a wake waits for a standby
+   * attempt to finish stopping the child, `cancellation` when a wake waits
+   * for a cancellation being committed.
+   */
+  onStandbyWait?: (
+    waiting: "input" | "standby" | "attempt" | "cancellation",
+  ) => void;
+  /**
+   * Test seam, unset in production. Called each time a shutdown waits for
+   * work it owns before it resolves: `cancellation` for a drain deadline's
+   * cancellation, `attempt` for a standby attempt it called off, `replay` for
+   * a respawn's replay of `processing/`, `writes` for repository writes
+   * started off the control pump.
+   */
+  onShutdownWait?: (
+    waiting: "cancellation" | "attempt" | "replay" | "writes",
+  ) => void;
+  /**
+   * Test seam, unset in production. Called each time a respawn, before it
+   * scans `runs/`, waits for the boot replay (`replay`) or for repository
+   * writes started off the control pump (`writes`).
+   */
+  onRespawnWait?: (waiting: "replay" | "writes") => void;
+  /**
+   * Test seam, unset in production. Called when the dispatch holds mail for a
+   * live run until the run shows its input, parks or ends.
+   */
+  onDispatchWait?: (runId: string) => void;
+  /**
+   * Test seam, unset in production. Called when the dispatch waits for the
+   * child to say whether it committed a signal it was sent.
+   */
+  onDispatchAnswerWait?: (runId: string) => void;
+  /**
    * Per-run grants source. The dispatch loop consults it before it forwards a
    * `trigger.fire`, and every new child (spawn, crash-respawn, recycle) gets
    * its result in the `authority.set` frame before it resumes any run. It
@@ -358,14 +424,11 @@ export interface WorkflowSupervisorBindings {
    * synthesized `RunFailed`) rather than firing the trigger against absent
    * grants. For a new child, a null or a throw gives the child no grants
    * snapshot, so a step that needs grants fails closed.
-   *
-   * A caller that injects no per-run source -- today, the supervisor's own
-   * tests -- gives a new child the spawn-time snapshot instead. Production
-   * (the sidecar) wires it to the run's grants file.
    */
-  onRunStart?: (args: {
+  onRunStart: (args: {
     runId: string;
     anchorRunId: string;
+    stepIds: readonly string[];
   }) => Promise<import("./credentials").CredentialsSnapshot | null>;
   /**
    * Decrypted credential material for the deployment's binding consumers and
@@ -412,16 +475,6 @@ export interface WorkflowSupervisorBindings {
   /** Anchor run id baked into the supervisor's principal claims. */
   anchorRunId: string;
   /**
-   * Number of steps in the deployed `WorkflowDefinition`
-   * (`stepOrder.length`). The supervisor threads this into the child's
-   * spawn-time env (`STEP_COUNT`) so the child's deploy-tree read
-   * (`resolveStepAddress` in the sidecar step tools) collapses onto the
-   * head for a single-step deployment exactly as the host's producer
-   * push does -- one source of truth for the head/step collapse across
-   * the two processes. Fixed for the deployment's lifetime.
-   */
-  stepCount: number;
-  /**
    * Mail address the deployment registers on the bus. The
    * supervisor registers this on spawn and unregisters on teardown;
    * inbound mail at this address flows through the supervisor's
@@ -429,22 +482,18 @@ export interface WorkflowSupervisorBindings {
    */
   deploymentMailAddress: string;
   /**
-   * The supervisor's substrate principal for read-only operations
-   * the supervisor performs in its own right (e.g. enumerating
-   * step grants). Cancel-signing constructs its own principal at
-   * commit time; this binding is for non-write operations.
+   * Derive the deployment's step ids from the definition its first child
+   * verified: every step id the credentials snapshot carries an entry for, the
+   * definition's own `stepOrder` plus the step ids of every `loop` body. The
+   * supervisor calls it once, after checking the child's
+   * reported projection against the approved hash and before it reads the
+   * run's authority for that child, and keeps the ids for every later
+   * respawn: the same hash check pins each later child to the same
+   * definition. A throw fails the spawn and kills the child.
    */
-  readPrincipal: Principal;
-  /**
-   * Per-step mail-address derivation the supervisor uses while
-   * assembling the credentialsSnapshot. See `credentials.ts`.
-   */
-  deriveStepAddress: import("./credentials").DeriveStepAddress;
-  /**
-   * Optional override for the step's agent-state repo identity. The
-   * default convention is `<anchorRunId>-<stepId>`.
-   */
-  deriveStepRepoId?: import("./credentials").DeriveStepRepoId;
+  layoutSteps: (
+    definition: import("@intx/types/sidecar").WorkflowProjectionDefinition,
+  ) => Promise<readonly string[]>;
   /**
    * Optional override for the per-spawn IPC keypair factory. Each
    * spawn mints a fresh control-channel Ed25519 keypair; this hook
@@ -475,15 +524,17 @@ export interface WorkflowSupervisorBindings {
    */
   drainTimeoutAccumulatorFactory?: import("./drain-timeout").DrainTimeoutAccumulatorFactory;
   /**
-   * Clock the supervisor threads into the drainTimeout accumulator.
-   * Production wires `() => Date.now()`; tests inject a deterministic
-   * fake clock. Defaults to `Date.now` when omitted.
+   * Clock the supervisor threads into the drainTimeout accumulator, and
+   * that times the standby wake timer against the earliest timer the
+   * child reported. Production wires `() => Date.now()`; tests inject a
+   * deterministic fake clock. Defaults to `Date.now` when omitted.
    */
   now?: () => number;
   /**
    * General scheduling primitive the supervisor threads into its timed
    * waits: the drainTimeout accumulator, the spawn ready-handshake
-   * timeout, and that timeout's SIGTERM->SIGKILL kill escalation.
+   * timeout and its SIGTERM->SIGKILL kill escalation, and standby's wake
+   * timer, quiet-check watchdog and stop deadline.
    * Production wires `(cb, ms) => setTimeout(cb, ms)`; tests inject a
    * deterministic timer host. Defaults to `setTimeout` when omitted.
    */
@@ -529,17 +580,6 @@ export interface WorkflowSupervisorBindings {
   recyclePolicySetTimer?: (cb: () => void, ms: number) => unknown;
   recyclePolicyClearTimer?: (handle: unknown) => void;
   /**
-   * Compute the logical audit reference for an inbox entry. The
-   * substrate stamps this onto the envelope; the substrate itself
-   * does not dereference it. The boot edge supplies a derivation
-   * coherent with wherever the deployment's mail audit lives.
-   *
-   * Absent binding falls back to `{ store: "in-process",
-   * path: <messageId> }`, a deterministic derivation that lets the
-   * supervisor's library tests run without a host-side audit store.
-   */
-  deriveMailAuditRef?: DeriveMailAuditRef;
-  /**
    * Inbox claim-check primitives the dispatch loop reaches into.
    * Production wires this against `@intx/hub-sessions`'s concrete
    * `enqueueInbox` / `dequeueToProcessing` / `markConsumed` /
@@ -576,10 +616,11 @@ export interface WorkflowSupervisorBindings {
    */
   consumedRetentionMs?: number;
   /**
-   * Bound on the child's spawn-time `ready` handshake, in milliseconds.
-   * A spawned child that neither emits `ready` nor exits would block
-   * `spawn` forever; on expiry the supervisor kills the child (SIGTERM,
-   * then SIGKILL) and rejects the spawn. The boot edge resolves the
+   * Bound on each frame of a new child's handshake, its definition report
+   * and then `ready`, in milliseconds, on spawn and on recycle. A child
+   * that neither sends the frame nor exits would block `spawn` forever; on
+   * expiry the supervisor kills the child (SIGTERM, then SIGKILL) and
+   * rejects the spawn. The boot edge resolves the
    * operator's config and supplies it; absent, `DEFAULT_READY_TIMEOUT_MS`
    * (30s) applies. Callers surface the rejection through their existing
    * spawn-failure path, so a wedged child fails the deploy (or, on the
@@ -616,6 +657,18 @@ export interface WorkflowSupervisorBindings {
    * `DEFAULT_RESPAWN_BACKOFF_INITIAL_MS` (1s) applies.
    */
   respawnBackoffInitialMs?: number;
+  /**
+   * Wait (ms) before the first new try of a mail whose dispatch failed before
+   * any run took it. Each further try waits four times as long. Absent,
+   * `DEFAULT_DISPATCH_RETRY_BACKOFF_MS` (1s) applies.
+   */
+  dispatchRetryBackoffMs?: number;
+  /**
+   * How long (ms) a dispatch waits for its run to park or end, or for the
+   * child to say whether it took a signal, before the dispatch fails. Absent,
+   * `TERMINAL_OR_PARK_BACKSTOP_MS` (5 min) applies.
+   */
+  dispatchWaitBackstopMs?: number;
   /**
    * Maximum respawn backoff (ms) the exponential doubling is capped at, so
    * a rapidly-flapping child does not saturate the host. Absent,
@@ -685,8 +738,8 @@ export interface WorkflowSupervisorBindings {
 
 /**
  * The five per-message substrate legs the D2 attribution splits the
- * unified path's substrate tax across. Each is a single git
- * `writeTreePreservingPrefix` commit (or, for `runevent`, one of several
+ * unified path's substrate tax across. Each is a single git substrate
+ * commit (or, for `runevent`, one of several
  * commits per message) against the growing workflow-run repo:
  *
  *   - `enqueue`      — `enqueueInbox` in `onMailMessage`, BEFORE dispatch
@@ -703,7 +756,7 @@ export interface WorkflowSupervisorBindings {
  *   - `markconsumed` — `markConsumed` at the tail of `dispatchOne`, AFTER
  *                      `reply-produced` (paid OUTSIDE the window).
  *   - `wal`          — the D1 conversation WAL append / checkpoint
- *                      (`agent-state/<key>/...`), arriving as a
+ *                      (`runs/<runId>/steps/...`), arriving as a
  *                      child-proxied `substrate.write.request`. The control
  *                      leg: post-D1 it should be small and flat.
  */

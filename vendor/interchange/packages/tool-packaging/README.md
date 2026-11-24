@@ -1,22 +1,22 @@
 # @intx/tool-packaging
 
-Hub-side closure resolver and sidecar-side loader for the npm-distributed
+Hub-side closure resolver and sidecar-side closure materialization for the npm-distributed
 tool-package format. The contract below describes what the layered
-pipeline actually guarantees end-to-end; downstream code (the apply
-protocol, the session service, the deploy-flow integration tests) leans
+pipeline actually guarantees end-to-end; downstream code (the session
+service, the deploy-flow integration tests) leans
 on it as written.
 
-## Loader resolution contract
+## Closure resolution contract
 
-A tool package's `interchange.tools` entry, and the JS body it pulls in
-transitively, may `import` (or `require`) any bare specifier the
-manifest's resolved closure satisfies. The loader builds a per-instance
+A closure package's body, and the JS it pulls in transitively, may
+`import` (or `require`) any bare specifier the manifest's resolved
+closure satisfies. Materialization builds a per-instance
 nested `node_modules/` layout under the scratch directory so each
 package's direct dependencies are reachable through Node's standard
 ancestor walk; the layout composes recursively, so a transitive's own
 transitives are reachable from inside it.
 
-Concretely the loader:
+Concretely, materialization:
 
 1. Walks every manifest entry and validates that each one is
    source-consistent: every entry the manifest says lives at a
@@ -41,9 +41,8 @@ Concretely the loader:
    `store/<dep>/<depVersion>/` chosen for that requirer. Symlinks at
    the `node_modules/` boundary let Node's realpath-based resolver walk
    to the dep's own layout dir (which has its own `node_modules/`).
-4. Dynamically imports each top-level entry's `interchange.tools`
-   module and collects the `AnnotatedToolFactory` /
-   `AnnotatedPluginFactory` values it exports.
+
+Nothing in the closure is imported here; the workflow child evaluates it.
 
 Properties that fall out of this layout:
 
@@ -58,12 +57,10 @@ Properties that fall out of this layout:
   store entry (one symlink target per `(name, version)`); divergent
   versions live as separate store entries and Node's ancestor walk
   picks the right one for each requirer.
-- **Runtime-agnostic tarballs.** The loader does no Bun-specific
-  resolution. A tool package whose `interchange.tools` entry is a
-  `.js` file with no workspace-only deps loads identically on Node
-  and Bun. The workspace's built-in tool packages bundle their entries
-  through `bin/build-builtins.ts` precisely so the produced tarballs
-  satisfy this property.
+- **Runtime-agnostic tarballs.** The layout does no Bun-specific
+  resolution. A package whose entry is a `.js` file with no
+  workspace-only deps loads identically on Node
+  and Bun.
 
 ## Optional-dependency semantics
 
@@ -74,46 +71,23 @@ fetch — the whole subtree under that edge is dropped from the manifest
 silently. A hard dep of an optional dep is part of that optional
 subtree; a failure there drops the parent too, instead of leaving a
 parent in the closure whose own hard requirement is missing. Failures
-outside any optional subtree abort the walk and surface as a
-`manifest.invalid` deploy-apply error.
+outside any optional subtree abort the walk and fail the deploy.
 
 ## Asset modification race
 
-The hub-side `AssetRegistrySource` reads tarball packuments from a
-`package-registry` asset at resolution time. The sidecar's
-`createPack` then resolves the asset's main ref and serves the tarball
-bytes the resolver pinned. A concurrent PUT or DELETE against the
-asset's `tarballs/` prefix in the window between the resolver's read
-and the sidecar's fetch can cause the apply to fail with
-`tarball.missing` or `integrity.mismatch`.
-
-The substrate's `writeTreePreservingPrefix` primitive makes PUTs and
-DELETEs against the asset atomic with respect to one another, but it
-does not couple them to the sidecar's deploy-apply read. The
-intentional behavior is: the apply fails loudly as a rejected
-deploy-apply. There is no silent corruption —
-the integrity check on the sidecar side guarantees that mismatched
-bytes are rejected — but the operator does see a failed apply if the
-asset is mutated concurrently with a launch.
-
-A follow-up that snapshots the asset's commit SHA at resolution time
-and replays against it at apply time is in scope if this shows up in
-operator practice; it is not implemented today.
+The Hub reads and packs a source asset at one commit, so a concurrent PUT or
+DELETE against the asset's `tarballs/` prefix cannot change the bytes of a
+deploy. The sidecar still verifies each tarball's SRI before it extracts it.
 
 ## Call-time imports and `import.meta.url`
 
 Tool packages may resolve files relative to their own on-disk location
 at run time — `import.meta.url`, `require.resolve()`, or an
 `await import(new URL("./sibling.js", import.meta.url))` evaluated long
-after the module first loaded. The loader imports each top-level
-package's `interchange.tools` entry from a path under
-`<instanceDir>/packages/<deploy-id>/` that is never renamed, so a
-module's `import.meta.url` stays valid for the life of the deploy.
-
-The prior deploy's directory is retained across the next apply, so a
-session still draining against an older deploy keeps resolving its own
-files until a further apply supersedes it. See `ASSET-LAYOUT.md` for
-the on-disk layout and retention rules.
+after the module first loaded. A closure's packages run from a path
+under `<instanceDir>/packages/` that nothing moves, so a module's
+`import.meta.url` stays valid for the life of the deployment.
+See `ASSET-LAYOUT.md` for the on-disk layout and retention rules.
 
 ## Follow-up reference
 

@@ -4,7 +4,6 @@
   "private": true,
   "description": "Builds a slide deck and an approval package for one audience from the project's approved documents and its chosen design.",
   "license": "SEE LICENSE IN ../../LICENSE.md",
-  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
   "type": "module",
   "dependencies": {
     "@corbits-builder/plugin": "workspace:*",

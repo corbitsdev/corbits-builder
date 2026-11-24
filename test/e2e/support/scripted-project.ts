@@ -225,6 +225,7 @@ const RunActions = type({ plugin: "string", action: "string" }).array();
 export async function openProject(options: {
   start: Start;
   runs: Readonly<Record<string, Run>>;
+  toolReplay?: string | undefined;
 }) {
   const fixtures = Object.entries(options.runs).map(
     ([runKey, { role, turns }]) => ({
@@ -254,7 +255,7 @@ export async function openProject(options: {
       fixtures,
     );
     model = await startRecordedModelServer(fixtureDir);
-    hub = await startTestHub(model);
+    hub = await startTestHub(model, options);
     return await driven(hub, model, options.start, fixtures, async () => {
       await hub?.close();
       await model?.stop();
@@ -329,7 +330,7 @@ async function driven(
 
   /** A hub call as the person, or with the headers given instead; a refusal is returned, not thrown. */
   const callHub = async (
-    method: "GET" | "POST" | "DELETE",
+    method: "GET" | "POST" | "PUT" | "DELETE",
     target: string,
     body?: unknown,
     headers: Record<string, string> = {

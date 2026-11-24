@@ -2,8 +2,6 @@ import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
-import { pathToFileURL } from "node:url";
-import { projectLiveToInert } from "@intx/workflow/projection";
 import { bundledPlugins } from "@corbits-builder/plugin-host/bundle";
 import {
   CATALOG,
@@ -13,7 +11,6 @@ import {
 import { browserCatalog } from "../builds/browser-catalog.ts";
 import type { AgentPackage } from "@corbits-builder/plugin-host/catalog";
 import { nativePackageName } from "./package-name.ts";
-import { workflowStep } from "./spawn-role.ts";
 import type { RoleInference } from "./role-inference.ts";
 
 // The version follows the bundle bytes, so a rebuilt workflow publishes beside the old one instead of
@@ -104,16 +101,6 @@ export async function buildWorkflowPackages(
       await mkdir(join(staging, "package", "dist"), { recursive: true });
       const builtEntry = join(staging, "package", "dist", "workflow.mjs");
       await writeFile(builtEntry, bundle);
-      // Inference is chosen by the declared role, but a run is known by its agent's tags.
-      const definition = await import(pathToFileURL(builtEntry).href);
-      const tagged = workflowStep(
-        { projection: projectLiveToInert(definition.default) },
-        CATALOG,
-      )?.role;
-      if (tagged !== role)
-        throw new Error(
-          `The workflow package ${name} is installed for the role ${role}, but its agent's tags say ${tagged ?? "no one role"}`,
-        );
       await writeFile(
         join(staging, "package", "package.json"),
         JSON.stringify({

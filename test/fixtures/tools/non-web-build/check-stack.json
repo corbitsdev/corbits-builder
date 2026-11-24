@@ -1,0 +1,7 @@
+{
+  "shell": "check-stack",
+  "result": {
+    "callId": "recorded",
+    "content": "check passed: every command in CHECKS.txt succeeded\n✓ bun install --frozen-lockfile\n✓ bun run typecheck\n✓ bun run test\n✓ bun run build\n"
+  }
+}

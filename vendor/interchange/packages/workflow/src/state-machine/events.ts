@@ -56,20 +56,37 @@ export interface RunStarted extends EventBase {
   definitionHash: string;
   trigger: { type: string; payload: unknown };
   /**
-   * Message-id of the mail that fired this run, recorded so the
+   * Claim-check identity of the mail that fired this run, recorded so the
    * workflow-run repo participates in the per-address claim-check dedup
-   * on respawn-after-crash. Omitted for non-mail triggers.
+   * on respawn-after-crash. `consumedDeliveryKey` records a sender-scoped
+   * entry's delivery key and `consumedMessageId` records a legacy entry's
+   * bare Message-ID (see `ConsumedMailIdentity`). An event carries at most
+   * one of the two, and the state machine rejects one that carries both.
+   * Both are omitted for non-mail triggers.
    *
    * The state machine enforces dedup against the run-scoped
-   * `consumedMessageIds` set (a re-issued `RunStarted` for an
-   * already consumed message-id is rejected). The wider per-address FIFO
-   * invariant lives in the queue substrate: the first mail produces this
-   * RunStarted, live follow-up mail can become SignalReceived, and mail that
-   * reaches a terminal stable run is rejected without another RunStarted.
-   * The runtime body has no role in ordering the queue.
+   * `consumedIdentities` set (a re-issued `RunStarted` for an already
+   * consumed identity is rejected). One set holds both kinds: a delivery
+   * key starts with the reserved `mail-` prefix, and the hub refuses relayed
+   * mail whose Message-ID starts with it, so a key never equals a
+   * Message-ID that the hub relayed. The wider per-address FIFO invariant
+   * lives in the queue substrate: the first mail produces this RunStarted,
+   * live follow-up mail can become SignalReceived, and mail that reaches a
+   * terminal stable run is rejected without another RunStarted. The
+   * runtime body has no role in ordering the queue.
    */
+  consumedDeliveryKey?: string;
   consumedMessageId?: string;
 }
+
+/**
+ * The claim-check identity of the mail a run consumes: the delivery key of a
+ * sender-scoped entry, or the bare Message-ID of a legacy entry. Exactly one
+ * is present.
+ */
+export type ConsumedMailIdentity =
+  | { deliveryKey: string; messageId?: never }
+  | { messageId: string; deliveryKey?: never };
 
 export interface StepStarted extends EventBase {
   kind: "StepStarted";
@@ -155,7 +172,12 @@ export interface SignalReceived extends EventBase {
  * another exit -- its own await timeout, or any later body event -- before the
  * external signal arrives, so a late signal does not resolve a park the body no
  * longer waits on. Distinct from `SignalReceived`: nothing is delivered, the
- * await is simply torn down.
+ * await is simply torn down. A container also commits this for an approval it
+ * was relaying when the body ended, so the await cannot swallow its next park.
+ * A step that fails while it waits on an approval commits it for that
+ * approval: the failure names only the step, the run can go on without the
+ * step, and whoever offers the approval for a decision needs its name to
+ * withdraw it.
  */
 export interface SignalAwaitAbandoned extends EventBase {
   kind: "SignalAwaitAbandoned";

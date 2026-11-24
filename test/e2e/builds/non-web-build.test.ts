@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { join } from "node:path";
 import { CheckList } from "@corbits-builder/schemas/artifact";
 import {
   call,
@@ -12,6 +13,7 @@ import {
   turn,
   user,
 } from "../support/scripted-project.ts";
+import { toolReplay } from "../support/tool-replay.ts";
 
 const INSTRUCTION =
   "Build the echo command-line tool from the build plan: it prints back the words it is given.";
@@ -47,6 +49,9 @@ test("a command-line tool built from the bare starter finishes on the checks its
       idea: "I want a command-line tool that echoes things back to me.",
       title: "Echo",
     },
+    toolReplay: toolReplay(
+      join(import.meta.dir, "../../fixtures/tools/non-web-build"),
+    ),
     runs: {
       coordinator: {
         role: "coordinator",

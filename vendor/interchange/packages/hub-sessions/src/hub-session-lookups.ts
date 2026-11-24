@@ -7,12 +7,17 @@
 // `lookups`.
 
 import { eq, and, asc, inArray, isNotNull, isNull } from "drizzle-orm";
-import type { DB } from "@intx/db";
+import type { DB, DBExecutor } from "@intx/db";
 import {
   createApprovalStore,
+  runPrincipalActiveKeySql,
   createSignalCorrelationStore,
   createWorkflowPendingProjectionStore,
   createWorkflowRunStore,
+  expireApprovals,
+  listUndecidedCorrelations,
+  reopenApprovals,
+  type UndecidedCorrelation,
 } from "@intx/db";
 import {
   agentSession,
@@ -25,12 +30,14 @@ import {
 import { getLogger } from "@intx/log";
 import type { PackRejectReason } from "@intx/types/sidecar";
 import { signalName } from "@intx/types/signals";
-import { deriveWorkflowRunId } from "@intx/types/workflow-run-id";
 import { deriveWorkflowRunRepoId } from "@intx/workflow-deploy";
 
 import type { AgentRepoStore } from "./agent-repo";
 import { generateId } from "@intx/hub-common";
-import { RepoRemovedDuringReceiveError } from "./repo-store";
+import {
+  RepoRemovedDuringReceiveError,
+  type ApprovalWaitChange,
+} from "./repo-store";
 import type {
   SidecarLookups,
   WorkflowRunPackSource,
@@ -41,6 +48,58 @@ import { readWorkflowRunRefTips } from "./workflow-run-restore";
 import { projectTerminalRun } from "./workflow-run-terminal-projection";
 
 const logger = getLogger(["hub", "lookups"]);
+
+/**
+ * Bring a deployment's approvals in line with the wait changes a pack
+ * carries, in the caller's transaction. Replays the changes in the order
+ * given over the correlations they can move, read once, and writes only the
+ * net result, so the statements do not grow with the pack.
+ */
+export async function applyApprovalWaitChanges(
+  tx: DBExecutor,
+  anchorRunId: string,
+  changes: readonly ApprovalWaitChange[],
+  now: Date,
+): Promise<void> {
+  if (changes.length === 0) return;
+  const correlations = await listUndecidedCorrelations(
+    tx,
+    anchorRunId,
+    [...new Set(changes.map((change) => change.runId))],
+    // Only a change that waits can open a correlation an expiry closed.
+    changes.flatMap((change) => (change.waiting ? [change.correlationId] : [])),
+  );
+  if (correlations.length === 0) return;
+
+  const byRun = new Map<string, UndecidedCorrelation[]>();
+  for (const correlation of correlations) {
+    const ofRun = byRun.get(correlation.runId);
+    if (ofRun === undefined) byRun.set(correlation.runId, [correlation]);
+    else ofRun.push(correlation);
+  }
+  const open = new Map(
+    correlations.map((correlation) => [
+      correlation.correlationId,
+      correlation.open,
+    ]),
+  );
+  for (const change of changes) {
+    for (const correlation of byRun.get(change.runId) ?? []) {
+      if (correlation.correlationId === change.correlationId)
+        open.set(correlation.correlationId, change.waiting);
+    }
+  }
+
+  const moved = (to: boolean): string[] =>
+    correlations
+      .filter(
+        (correlation) =>
+          correlation.open !== to && open.get(correlation.correlationId) === to,
+      )
+      .map((correlation) => correlation.correlationId);
+  await expireApprovals(tx, moved(false), now);
+  await reopenApprovals(tx, anchorRunId, moved(true), now);
+}
 
 // The one definition of a source that owns the deployment's allocation. The
 // unlocked pre-check and the locked recheck of a workflow-run receive both
@@ -78,7 +137,13 @@ function packFailureReason(
     logger.warn`Workflow-run pack rejected for ${workflowRunRepoId}: ${msg}`;
     return "path_violation";
   }
-  // Mirror the agent-state branch's catch-all: any other failure
+  // The pack is well formed but assumed the Hub holds an object it does
+  // not, so the sidecar answers with the full history.
+  if (msg.startsWith("missing_objects")) {
+    logger.error`Workflow-run pack rejected for ${workflowRunRepoId}: ${msg}`;
+    return "missing_objects";
+  }
+  // Any other failure
   // (transaction failures, filesystem races, a staged pack whose bytes do
   // not match its tip, kind-handler diagnostics surfaced as Error messages,
   // etc.) becomes a structured `corrupt` rejection so the sender can
@@ -101,8 +166,10 @@ export function createHubSessionLookups(
     SidecarLookups,
     | "materializeMailTriggeredRunGrants"
     | "mintCorrespondentGrant"
+    | "authorizeMailSend"
     | "resyncCredentials"
     | "loadRunCredentials"
+    | "loadRunGrants"
     | "resolveSenderKey"
     | "resolveSenderKeyStrict"
     | "resolveSenderPrincipal"
@@ -120,13 +187,6 @@ export function createHubSessionLookups(
   });
 
   return {
-    async lookupDeployRef() {
-      // A workflow run is a supervised workflow-process pinned forever like a
-      // native deployment: it keeps its deploy-time definition and never
-      // reconciles, so no address enrolls in the reconnect deploy-ref catch-up.
-      return null;
-    },
-
     readWorkflowRunRefTips(agentAddress) {
       return readWorkflowRunRefTips(agentRepoStore.repoStore, agentAddress);
     },
@@ -269,6 +329,7 @@ export function createHubSessionLookups(
       agentAddress,
       kind,
       approvalSnapshot,
+      connectionOpen,
     }) {
       // Resolve tenancy and co-write both rows in one transaction so a resolver
       // never sees a correlation without its approval or vice versa. Both
@@ -279,6 +340,28 @@ export function createHubSessionLookups(
       // null: an agent-step suspend holds indefinitely (`parkOnSignal` is called
       // with no timeout), so no deadline reaches this co-write.
       await db.transaction(async (tx) => {
+        // A pack settles approvals while it holds the deployment's allocation
+        // row, so this write is ordered against every pack. The connection is
+        // checked under that lock: a register still running after its
+        // connection closed would otherwise write a pending approval after the
+        // new connection's pack retired its wait. The lock comes before the
+        // anchor's, as for every other writer.
+        await tx
+          .select({ id: sidecarAllocation.id })
+          .from(sidecarAllocation)
+          .innerJoin(
+            workflowRun,
+            eq(workflowRun.id, sidecarAllocation.anchorRunId),
+          )
+          .where(
+            and(
+              eq(workflowRun.address, agentAddress),
+              inArray(workflowRun.status, [...liveWorkflowRunStatuses]),
+            ),
+          )
+          .for("update", { of: sidecarAllocation });
+        if (!connectionOpen()) return;
+
         // Resolve tenancy and the run's definition from the deployment's anchor
         // run -- the workflow_run whose id is the deployment id, which the
         // address names. The anchor is the tenancy origin every approval needs
@@ -332,7 +415,7 @@ export function createHubSessionLookups(
 
         // Lazily anchor the run before its correlation and approval reference
         // it. A workflow-spawned internal run never crosses the external
-        // trigger route that mints a run principal, so its run row would
+        // trigger route that links a run principal, so its run row would
         // otherwise not exist; ensure it here so the co-written rows have a
         // referent. The principal is null: an internal run inherits its
         // deployment's grants and has no principal of its own. The insert is
@@ -349,6 +432,15 @@ export function createHubSessionLookups(
           },
           tx,
         );
+        // A run that has ended waits on nothing, and its end has expired its
+        // approvals. A registration written after it would stay pending with
+        // no run left to take the decision.
+        const [target] = await tx
+          .select({ status: workflowRun.status })
+          .from(workflowRun)
+          .where(eq(workflowRun.id, runId));
+        if (target === undefined || !isLiveWorkflowRunStatus(target.status))
+          return;
 
         await signalCorrelationStore.registerIfAbsent(
           {
@@ -386,44 +478,6 @@ export function createHubSessionLookups(
           tx,
         );
       });
-    },
-
-    async receiveAgentStatePack(repoId, pack, ref, commitSha) {
-      if (repoId.kind !== "agent-state") {
-        throw new Error(
-          `hub-session lookups receiveAgentStatePack received unsupported repo kind ${JSON.stringify(repoId.kind)}`,
-        );
-      }
-      const agentAddress = repoId.id;
-      const agentId = deriveWorkflowRunId(agentAddress);
-      try {
-        await agentRepoStore.receiveAgentStatePack(
-          { kind: "agent-state", id: agentId },
-          pack,
-          ref,
-          commitSha,
-        );
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        if (msg.startsWith("path_violation")) {
-          logger.warn`State pack rejected for ${agentAddress}: ${msg}`;
-          return { accepted: false, reason: "path_violation" as const };
-        }
-        // Any other failure from the repo subsystem reaches the
-        // WebSocket handler as an unhandled rejection unless we catch
-        // it here. Transient failures during receivePack (the agent
-        // directory being torn down concurrently with an in-flight
-        // pack write, filesystem errors mid-rename, etc.) are
-        // recoverable from the sender's perspective — the sender can
-        // re-push. Surface every such failure as a structured pack
-        // rejection (`corrupt` is the closest existing reason — from
-        // the sender's perspective the pack failed to index) and log
-        // the underlying error so the cause stays traceable on the
-        // hub side.
-        logger.error`State pack receive failed for ${agentAddress}: ${msg}`;
-        return { accepted: false, reason: "corrupt" as const };
-      }
-      return { accepted: true };
     },
 
     async receiveWorkflowRunPack(repoId, pack, ref, commitSha, source) {
@@ -510,15 +564,16 @@ export function createHubSessionLookups(
       // Git.
       if (prepared.kind === "already_applied") return { accepted: true };
 
-      // Recorded before Git can advance: Git acceptance and the run-status
-      // projection below are not atomic, and this row is the only durable
-      // trace of a projection that fails after the ref moves. It is removed
-      // here only when the receive provably left Git unchanged or every run
-      // reached a final decision; otherwise lifecycle recovery reconciles the
-      // deployment from Git and removes it.
+      // Recorded before Git can advance: Git acceptance and the projection
+      // below are not atomic, and this row is the only durable trace of a
+      // projection that fails after the ref moves. It is removed here only
+      // when the receive provably left Git unchanged or every run and
+      // approval reached a final decision; otherwise lifecycle recovery
+      // reconciles the deployment from Git and removes it.
       const pendingId = generateId("workflowPendingProjection");
       let newlyTerminalRuns;
       let applied;
+      let decided = true;
       let reachedGit = false;
       try {
         historyReceives.begin(pendingId);
@@ -568,17 +623,44 @@ export function createHubSessionLookups(
           // decision is made, so ownership cannot change between the
           // rechecks above and the ref write.
           reachedGit = true;
-          return { committed: await prepared.commit() } as const;
+          const committed = await prepared.commit();
+          // Settled while this lock is still held, so two packs settle their
+          // approvals in the order their commits reached Git, whichever
+          // connection carried each, and a registration lands wholly before
+          // or after a pack. A failed update rolls back only its savepoint:
+          // failing the transaction would reject a pack Git already holds.
+          let approvalsSettled = true;
+          if (
+            committed.kind === "applied" &&
+            committed.approvalWaitChanges.length > 0
+          ) {
+            const { approvalWaitChanges } = committed;
+            try {
+              await tx.transaction((savepoint) =>
+                applyApprovalWaitChanges(
+                  savepoint,
+                  anchor.id,
+                  approvalWaitChanges,
+                  new Date(),
+                ),
+              );
+            } catch (err) {
+              approvalsSettled = false;
+              const msg = err instanceof Error ? err.message : String(err);
+              logger.error`Approval update failed for deployment ${anchor.id}; its projection stays pending: ${msg}`;
+            }
+          }
+          return { committed, approvalsSettled } as const;
         });
         if ("rejected" in received) {
           logger.warn`Workflow-run pack rejected for ${workflowRunRepoId}: ${received.rejected}`;
           return { accepted: false, reason: "path_violation" as const };
         }
-        applied = received.committed.kind === "applied";
+        const { committed } = received;
+        applied = committed.kind === "applied";
+        decided = received.approvalsSettled;
         newlyTerminalRuns =
-          received.committed.kind === "applied"
-            ? received.committed.newlyTerminalRuns
-            : [];
+          committed.kind === "applied" ? committed.newlyTerminalRuns : [];
       } catch (err) {
         // A receive that reached Git keeps its pending row: the ref may have
         // advanced before the failure, so only a Git read can prove nothing was
@@ -606,14 +688,18 @@ export function createHubSessionLookups(
 
       // The substrate has already durably advanced the git ref by the time it
       // returns, so the pack is accepted regardless of what happens below. The
-      // per-run status flip and principal deactivation are a downstream side
-      // effect of that durable advance, not part of accepting the pack, so the
-      // verdict stays accepted and the sidecar does not wedge re-pushing a pack
-      // that already landed. A redelivery of the same durable tip produces no
-      // newly-terminal signal, so a failed flip is not retried here; the
-      // pending row stays and lifecycle recovery projects the run from Git.
+      // approval updates above, the per-run status flip and the principal
+      // deactivation are a downstream side effect of that durable advance, not
+      // part of accepting the pack, so the verdict stays accepted and the
+      // sidecar does not wedge re-pushing a pack that already landed. A
+      // redelivery of the same durable tip reports nothing as new, so a failed
+      // update is not retried here; the pending row stays and lifecycle
+      // recovery projects the deployment from Git.
+      //
+      // A run's waits were settled before its end is. Its terminal event is
+      // the last of its log, so every wait change the pack carries comes
+      // first, and an approval the end expires is not opened again after it.
       const now = new Date();
-      let decided = true;
       for (const { runId, status, terminalEventJson } of newlyTerminalRuns) {
         try {
           const outcome = await db.transaction((tx) =>
@@ -646,11 +732,12 @@ export function createHubSessionLookups(
         }
       }
 
-      // Another receive moved the ref to or past this tip while this one
-      // validated, so Git did not change here. That receive runs the dispatch
-      // projection after its own ref write, and the periodic dispatch
-      // projection pass retries any anchor that still has unsettled
-      // dispatches.
+      // The ref already held this tip, or another receive moved it to or past
+      // this tip while this one validated, so the ref did not move here; this
+      // receive at most restored objects the store had lost. The receive that
+      // moved the ref runs the dispatch projection after its own ref write,
+      // and the periodic dispatch projection pass retries any anchor that
+      // still has unsettled dispatches.
       if (!applied) return { accepted: true };
 
       // Git acceptance survives projection failures. The terminal recovery pass
@@ -674,7 +761,6 @@ export interface RoutableEndpoint {
   readonly id: string;
   readonly tenantId: string;
   readonly address: string;
-  readonly publicKey: string | null;
   /**
    * The endpoint's raw run status. Resolution is `endedAt`-filtered, so a
    * resolved endpoint is not necessarily live: a leaked run is deliberately
@@ -706,7 +792,6 @@ export async function resolveRoutableAddress(
     .select({
       id: workflowRun.id,
       tenantId: workflowRun.tenantId,
-      publicKey: workflowRun.publicKey,
       status: workflowRun.status,
       principalId: workflowRun.principalId,
     })
@@ -723,7 +808,6 @@ export async function resolveRoutableAddress(
     id: runRow.id,
     tenantId: runRow.tenantId,
     address,
-    publicKey: runRow.publicKey,
     status: runRow.status,
     sessionId: await resolveRunSessionId(db, runRow.principalId),
   };
@@ -780,8 +864,8 @@ export async function resolveRunIdForSession(
   tenantId: string,
 ): Promise<string | null> {
   // No `endedAt` filter: a stopped run's mail must stay fetchable, so the
-  // session resolves whether or not it has ended. The run principal is minted
-  // per launch and shared 1:1 by the run and its session, so at most one row
+  // session resolves whether or not it has ended. The run principal is created
+  // per deployment and shared 1:1 by the run and its session, so at most one row
   // matches; order deterministically anyway so a hypothetical second row cannot
   // make the pick flap, mirroring `resolveRunSessionId`.
   const row = await db
@@ -833,17 +917,16 @@ export interface RoutableRecord {
 }
 
 /**
- * Shape a run row and its already-resolved routing address into the run
- * record. Callers decide whether the run resolves at all -- only a top-level
- * run (`isTopLevelRun`) does -- and pass the address they have narrowed; this
- * only maps the columns, including the run's `endedAt ?? createdAt` stand-in
- * for the absent `updatedAt`.
+ * Shape a run row, its already-resolved routing address, and the active key
+ * of its run principal into the run record. Callers decide whether the run
+ * resolves at all -- only a top-level run (`isTopLevelRun`) does -- and pass
+ * the address they have narrowed; this only maps the columns, including the
+ * run's `endedAt ?? createdAt` stand-in for the absent `updatedAt`.
  */
 export function runRowToRoutableRecord(
   run: {
     id: string;
     tenantId: string;
-    publicKey: string | null;
     status: string;
     createdAt: Date;
     endedAt: Date | null;
@@ -856,6 +939,7 @@ export function runRowToRoutableRecord(
     infrastructureFailedAt: Date | null;
   },
   address: string,
+  publicKey: string | null,
 ): RoutableRecord {
   // A failure the Hub decided waits on history still being reconciled, and is
   // dropped if that history ends the run first, so only a failed run whose
@@ -866,7 +950,7 @@ export function runRowToRoutableRecord(
     id: run.id,
     tenantId: run.tenantId,
     address,
-    publicKey: run.publicKey,
+    publicKey,
     status: run.status,
     createdAt: run.createdAt,
     updatedAt: run.endedAt ?? run.createdAt,
@@ -911,7 +995,7 @@ export async function findRoutableById(
       tenantId: workflowRun.tenantId,
       address: workflowRun.address,
       anchorRunId: workflowRun.anchorRunId,
-      publicKey: workflowRun.publicKey,
+      publicKey: runPrincipalActiveKeySql(workflowRun.tenantId, workflowRun.id),
       status: workflowRun.status,
       createdAt: workflowRun.createdAt,
       endedAt: workflowRun.endedAt,
@@ -943,5 +1027,6 @@ export async function findRoutableById(
   return runRowToRoutableRecord(
     { ...runRow, definitionId: runRow.definitionId },
     runRow.address,
+    runRow.publicKey,
   );
 }

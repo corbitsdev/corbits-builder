@@ -3,7 +3,13 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import { describeRoute, validator } from "hono-openapi";
 
-import type { DB, ApprovalStore, SignalCorrelationStore } from "@intx/db";
+import type {
+  DB,
+  DBExecutor,
+  ApprovalStore,
+  GrantStoreFactory,
+  SignalCorrelationStore,
+} from "@intx/db";
 import { approval, sidecarAllocation } from "@intx/db/schema";
 import type { ConditionRegistry, GrantStore } from "@intx/types/authz";
 import { generateId } from "@intx/hub-common";
@@ -24,18 +30,16 @@ import {
   signalName,
 } from "@intx/types";
 
-import { getLogger } from "@intx/log";
-
 import type { TenantEnv } from "../context";
 import { errorResponse } from "../error-response";
-import { createAuthorizeGrant } from "../middleware/grant";
+import { createAuthorizeGrant, type RequireGrant } from "../middleware/grant";
 import { ts } from "../format";
 import {
   approvalToolName,
-  loadCommittedRunGrants,
   lockWorkflowRunState,
   setRunToolGrantEffect,
 } from "../run-grant-materialization";
+import { changeDelegatorGrants } from "../run-delegated-grants";
 import {
   cursorCondition,
   pageOrder,
@@ -46,53 +50,6 @@ import {
 import { jsonResponse } from "../openapi";
 
 type ParsedApproval = ReturnType<typeof parseApprovalRow>;
-
-const log = getLogger(["hub", "approvals"]);
-
-/**
- * Push a run's grants to the sidecar after a standing (`scope: "always"`)
- * resolution has mutated them in the resolve transaction. Re-reads the now
- * durably-mutated committed grants and rewrites the run's `grants.json` (the
- * `run.grants` handler also refreshes a live child), so the running child sees
- * the change in-flight and any respawn re-reads it.
- *
- * Best-effort relative to the resume: this runs after the resolve committed and
- * the parked run must still be resumed, so a failure is logged loudly but never
- * propagated -- a throw would skip the caller's signal delivery and hang the
- * run. It self-heals regardless: the mutation is already durable in the
- * committed grants, and the next dispatch's per-run re-establish reads the same
- * committed grants, so a missed push only delays the effect, never loses it.
- */
-async function propagateRunGrantsToSidecar(
-  deps: CreateApprovalRoutesDeps,
-  approval: ParsedApproval,
-  tenantId: string,
-): Promise<void> {
-  try {
-    const committed = await loadCommittedRunGrants(
-      deps.db,
-      tenantId,
-      approval.runId,
-    );
-    // A run with no committed per-run grants has nothing to push.
-    if (committed === null) return;
-    // A standing-grant refresh carries no inbound sender, so there is no sender
-    // key to co-deliver on this barrier; the sender's key rides the run.grants
-    // frame that its triggering mail pushed.
-    const delivered = deps.sidecarRouter.sendRunGrants(
-      approval.agentAddress,
-      approval.runId,
-      committed.stepGrants,
-      undefined,
-    );
-    if (!delivered) {
-      log.warn`standing grant for run ${approval.runId} not pushed: deployment ${approval.agentAddress} is not routable; the next dispatch re-establishes it`;
-    }
-  } catch (cause) {
-    const message = cause instanceof Error ? cause.message : String(cause);
-    log.error`failed to push standing grant for run ${approval.runId}; the parked run still resumes and the next dispatch re-establishes it: ${message}`;
-  }
-}
 
 export function formatApproval(row: ParsedApproval) {
   return {
@@ -113,7 +70,7 @@ export function formatApproval(row: ParsedApproval) {
   };
 }
 
-export type CreateApprovalRoutesDeps = {
+export type ResolveApprovalDeps = {
   db: DB["db"];
   sidecarRouter: SidecarRouter;
   workflowDispatchService?: Pick<
@@ -122,9 +79,14 @@ export type CreateApprovalRoutesDeps = {
   >;
   readRunLifecycles?: ReadRunLifecycles;
   grantStore: GrantStore;
+  grantStoreFor: GrantStoreFactory;
   conditionRegistry: ConditionRegistry;
   approvalStore: ApprovalStore;
   signalCorrelationStore: SignalCorrelationStore;
+};
+
+export type CreateApprovalRoutesDeps = ResolveApprovalDeps & {
+  requireGrant: RequireGrant;
 };
 
 export type ReadRunLifecycles = (
@@ -176,9 +138,12 @@ type PendingFailureKind = Extract<
  * allocation's durable, generation-fenced dispatch path and remains replayable
  * until workflow Git records the signal as received. Deployments without an
  * allocation retain their direct sidecar delivery behavior.
+ *
+ * The approve and reject routes check their grant here, after the approval
+ * row names the run; see GRANT_EXEMPTIONS in route-registration.test.ts.
  */
 export async function resolveApproval(
-  deps: CreateApprovalRoutesDeps,
+  deps: ResolveApprovalDeps,
   args: ResolveApprovalRequest,
 ): Promise<ResolveApprovalOutcome> {
   const {
@@ -187,6 +152,7 @@ export async function resolveApproval(
     workflowDispatchService,
     readRunLifecycles,
     grantStore,
+    grantStoreFor,
     conditionRegistry,
     approvalStore,
     signalCorrelationStore,
@@ -222,7 +188,7 @@ export async function resolveApproval(
 
   const resolvedAt = new Date();
   const signalId = generateId("signal");
-  const claimed = await db.transaction(async (tx) => {
+  const resolveInTransaction = async (tx: DBExecutor) => {
     const failIfStillPending = async (kind: PendingFailureKind) => {
       const currentApproval = await approvalStore.findById(args.approvalId, tx);
       if (
@@ -331,22 +297,23 @@ export async function resolveApproval(
     // A standing resolution durably mutates the run's committed grant for this
     // tool IN this transaction -- `allow` on approve-always, `deny` on
     // reject-always -- so a rolled-back resolve reverts the grant change too.
-    // The run keeps it: enforcement, the authorization view, and the
-    // per-dispatch re-establish all read the committed grant.
-    if (standingToolName !== null) {
-      await setRunToolGrantEffect(
-        tx,
-        args.tenantId,
-        approval.runId,
-        standingToolName,
-        standingEffect,
-      );
-    }
+    // The re-derivation below can then give the row a new expiry or delete
+    // it. Enforcement, the authorization view, and the grants the sidecar
+    // router sends ahead of the resume signal all read the committed grant.
+    const changedRunPrincipalId =
+      standingToolName === null
+        ? null
+        : await setRunToolGrantEffect(
+            tx,
+            args.tenantId,
+            approval.runId,
+            standingToolName,
+            standingEffect,
+          );
 
     if (provisionedDispatchService !== undefined) {
       await provisionedDispatchService.enqueueSignal(
         {
-          id: `dispatch:${approval.anchorRunId}:${signalId}`,
           anchorRunId: approval.anchorRunId,
           signal: {
             agentAddress: claim.agentAddress,
@@ -365,22 +332,37 @@ export async function resolveApproval(
       claim,
       resolved,
       provisionedDispatchService,
+      changedRunPrincipalId,
     } as const;
-  });
+  };
+  // A standing resolution changes a delegated row's effect, and the row's
+  // expiry follows its effect, so the run is re-derived in the same
+  // transaction: an `allow` gets the expiry the delegator's grants give it,
+  // and an `allow` the delegator no longer holds is removed. The run is also
+  // the delegator of the deployments it deployed, so those are re-derived
+  // too. The tenant lock comes first, before the allocation and anchor locks,
+  // as for every other re-derivation, and is held across the lifecycle read.
+  // A `once` resolution changes no grant and does not take the tenant lock.
+  const claimed =
+    standingToolName === null
+      ? await db.transaction(resolveInTransaction)
+      : await changeDelegatorGrants(
+          { db, grantStoreFor, sidecarRouter },
+          args.tenantId,
+          async (tx) => {
+            const value = await resolveInTransaction(tx);
+            const changed =
+              value.kind === "resolved" ? value.changedRunPrincipalId : null;
+            return {
+              value,
+              principalIds: changed === null ? [] : [changed],
+              anchorRunIds: changed === null ? [] : [approval.anchorRunId],
+            };
+          },
+        );
 
   if (claimed.kind !== "resolved") {
     return claimed;
-  }
-
-  // Standing resolution: the committed grant was mutated in the transaction
-  // above. Push the now-durable grants to the sidecar so the running child sees
-  // the change in-flight. Post-commit, so a rolled-back resolve pushes nothing.
-  // It runs before the wake/signal delivery so the floor lands promptly, but
-  // correctness does not depend on that ordering: `deliverSignal` refreshes
-  // grants on the child's control FIFO immediately ahead of the resume signal,
-  // and the next dispatch re-establishes them regardless.
-  if (args.scope === "always") {
-    await propagateRunGrantsToSidecar(deps, approval, args.tenantId);
   }
 
   if (claimed.provisionedDispatchService !== undefined) {
@@ -409,6 +391,13 @@ export function createApprovalRoutes(
 
   app.get(
     "/",
+    // Listing spans the whole tenant, so it needs a tenant-wide grant
+    // (`approval:*`), not a per-deployment one: a per-deployment approver
+    // holds only `approval:<their deployment>` and reads individual
+    // approvals by id via the detail route. The action is `resolve`, the
+    // same capability the approve/reject routes gate on -- reading an
+    // approval is part of being able to resolve it.
+    deps.requireGrant("approval:*", "resolve"),
     describeRoute({
       tags: ["Approvals"],
       summary: "List pending approvals in the tenant",
@@ -428,28 +417,6 @@ export function createApprovalRoutes(
     }),
     async (c) => {
       const tenant = c.get("tenant");
-      const principal = c.get("principal");
-
-      // Listing spans the whole tenant, so it needs a tenant-wide grant
-      // (`approval:*`), not a per-deployment one: a per-deployment approver
-      // holds only `approval:<their deployment>` and reads individual
-      // approvals by id via the detail route. The action is `resolve`, the
-      // same capability the approve/reject routes gate on -- reading an
-      // approval is part of being able to resolve it.
-      const allowed = await authorizeGrant({
-        principalId: principal.id,
-        tenantId: tenant.id,
-        resource: "approval:*",
-        action: "resolve",
-        consumer: c.get("consumer"),
-      });
-      if (!allowed) {
-        return errorResponse(
-          c,
-          "forbidden",
-          "You do not have permission to list approvals",
-        );
-      }
 
       const { limit, cursor } = parsePageParams({
         cursor: c.req.query("cursor"),
@@ -479,6 +446,8 @@ export function createApprovalRoutes(
     },
   );
 
+  // Checks its grant in the handler, after the approval row names the run;
+  // see GRANT_EXEMPTIONS in route-registration.test.ts.
   app.get(
     "/:approvalId",
     describeRoute({
@@ -533,7 +502,7 @@ export function createApprovalRoutes(
       tags: ["Approvals"],
       summary: "Approve an action",
       description:
-        "Approves the pending action. Scope 'once' authorizes only this suspended call. Scope 'always' additionally records a standing approval, so the same tool is not asked again for the rest of this run.",
+        "Approves the pending action. Scope 'once' authorizes only this suspended call. Scope 'always' additionally records a standing approval, so the same tool is not asked again for the rest of this run. The tool is then allowed only while the run's delegator still allows it; otherwise the run's grant for it is removed and the tool is denied.",
       responses: {
         200: jsonResponse("Action approved", ApprovalResponse),
         404: jsonResponse("Approval not found", ErrorResponse),
