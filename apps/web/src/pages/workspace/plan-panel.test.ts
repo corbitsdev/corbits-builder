@@ -1,12 +1,15 @@
 import { expect, test } from "bun:test";
 import { isValidElement, type ReactNode } from "react";
-import { type PlanView, stepFinished } from "@corbits-builder/schemas/plan";
+import {
+  type PlanView,
+  type PlanViewChild,
+  stepFinished,
+} from "@corbits-builder/schemas/plan";
 import { StepControls, planProgress } from "./plan-panel.tsx";
 
-type Child = Extract<PlanView["steps"][number], { plugin: string }>;
-type State = Child["state"];
+type State = PlanViewChild["state"];
 
-const step = (id: string, state: State, optional = false): Child => ({
+const step = (id: string, state: State, optional = false): PlanViewChild => ({
   id,
   title: id,
   plugin: "writer",
@@ -30,7 +33,7 @@ const built = [
   step("manual", "not_started", true),
 ];
 
-const readyMade = (steps: Child[]): PlanView["steps"] => [
+const readyMade = (steps: PlanViewChild[]): PlanView["steps"] => [
   {
     id: "web-app",
     title:
@@ -89,7 +92,7 @@ function controls(node: ReactNode): Map<string, Control> {
   return found;
 }
 
-function stepControls(child: Child) {
+function stepControls(child: PlanViewChild) {
   const sent: unknown[] = [];
   const found = controls(
     StepControls({

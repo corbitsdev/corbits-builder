@@ -16,8 +16,9 @@ import {
   type PlanStepStateName,
   type PlanViewChild,
   type PlanViewGroup,
+  type PlanViewStep,
   type StoredPlanChild,
-  type StoredPlanGroup,
+  type StoredPlanStep,
 } from "@corbits-builder/schemas/plan";
 import { holds, resolveFacts, unmet } from "./facts.ts";
 import { missingTexts, unfinishedText } from "./text.ts";
@@ -102,9 +103,9 @@ const DECLINED_SUMMARY = "declined by the person";
  */
 export function planState(
   catalog: Catalog,
-  steps: readonly (StoredPlanChild | StoredPlanGroup)[],
+  steps: readonly StoredPlanStep[],
   records: PlanRecords,
-): (PlanViewChild | PlanViewGroup)[] {
+): PlanViewStep[] {
   const { facts } = records;
   const makers = makersIn(catalog);
   const stepView = (step: StoredPlanChild): PlanViewChild => {
@@ -214,25 +215,24 @@ export function planState(
   return steps.map((step) => {
     if (!("steps" in step)) return stepView(step);
     const children = step.steps.map(stepView);
-    const left = children.filter(leftToDo);
+    const firstLeft = children.find(leftToDo);
     const view: PlanViewGroup = {
       id: step.id,
       title: step.title,
       state: "not_started",
-      finished: left.length === 0,
+      finished: firstLeft === undefined,
       steps: children,
     };
     if (step.plan) view.plan = step.plan;
-    const any = (state: PlanStepStateName) =>
+    const has = (state: PlanStepStateName) =>
       children.some((child) => child.state === state);
-    const [next] = left;
-    if (any("failed")) view.state = "failed";
-    else if (any("needs_you")) view.state = "needs_you";
-    else if (any("running")) view.state = "running";
-    else if (next === undefined) view.state = endedState(children);
+    if (has("failed")) view.state = "failed";
+    else if (has("needs_you")) view.state = "needs_you";
+    else if (has("running")) view.state = "running";
+    else if (firstLeft === undefined) view.state = endedState(children);
     else {
-      view.state = next.state;
-      if (next.needs) view.needs = next.needs;
+      view.state = firstLeft.state;
+      if (firstLeft.needs) view.needs = firstLeft.needs;
     }
     return view;
   });
@@ -251,7 +251,7 @@ export type ProtectedStep = {
  * theirs to drop already.
  */
 export function protectedSteps(
-  steps: readonly (PlanViewChild | PlanViewGroup)[],
+  steps: readonly PlanViewStep[],
   records: Pick<PlanRecords, "facts" | "personFacts" | "asksApprovals">,
 ): ProtectedStep[] {
   const plans = [

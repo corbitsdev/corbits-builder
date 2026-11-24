@@ -4,7 +4,12 @@ import type { Context, Hono } from "hono";
 import { describeRoute, resolver } from "hono-openapi";
 import type { TenantEnv } from "@intx/hub-api";
 import { showsScreen } from "@corbits-builder/schemas/conversation";
-import { PlanView, PlanWrite, StoredPlan } from "@corbits-builder/schemas/plan";
+import {
+  PlanView,
+  PlanWrite,
+  StoredPlan,
+  planActionSteps,
+} from "@corbits-builder/schemas/plan";
 import type { Catalog } from "@corbits-builder/plugin-host/catalog";
 import { planRefusal } from "@corbits-builder/plugin-host/coordinator";
 import { resolveFacts, unmet } from "@corbits-builder/plugin-host/facts";
@@ -221,14 +226,12 @@ export function mountPlanRoutes(
       if (action.kind === "workflow") {
         // Planned work runs again under its own step ids, so a click never adds it twice; a step
         // already running is left as it is.
-        const planned = steps
-          .flatMap((step) => ("steps" in step ? step.steps : [step]))
-          .filter(
-            (step) =>
-              step.plugin === plugin &&
-              step.action === name &&
-              isDeepStrictEqual(step.input, input),
-          );
+        const planned = planActionSteps(steps).filter(
+          (step) =>
+            step.plugin === plugin &&
+            step.action === name &&
+            isDeepStrictEqual(step.input, input),
+        );
         await service.addPlanStep(
           current,
           projectId,

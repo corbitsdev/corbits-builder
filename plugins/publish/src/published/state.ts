@@ -278,13 +278,6 @@ const tookDown = (records: Records, latest: RunRead | undefined) =>
   (records.release === undefined ||
     Date.parse(records.release.at) <= endOf(latest));
 
-// The publish plans' groups on the project's plan that still have work to do. A failed step does not
-// end a publish: what the step needs, such as a change to the app, is often worked on next.
-const unfinished = (records: Records) =>
-  records.project.planned.filter(
-    ({ plan, finished }) => records.plans.includes(plan) && !finished,
-  );
-
 // Whether the saved app is newer than the release, with no publishing run started since it went out.
 function isBehind(records: Records, release: PublishRelease) {
   const out = Date.parse(release.at);
@@ -325,20 +318,20 @@ function standing(records: Records): PublishState {
   const live =
     release !== undefined &&
     records.ends.some((fact) => project.facts.has(fact));
-  if (
-    busy(records) &&
-    !done &&
-    !behind &&
-    !live &&
-    unfinished(records).length > 0
-  )
+  // A failed step does not end a publish: what it needs, such as a change to the app, is often
+  // worked on next.
+  const openPublishGroups = done
+    ? []
+    : project.planned.filter(
+        ({ plan, finished }) => records.plans.includes(plan) && !finished,
+      );
+  if (busy(records) && !behind && !live && openPublishGroups.length > 0)
     return { state: "publishing" };
   const outcome =
     latest !== undefined && stopped(latest) && !latestRemoves
       ? outcomeOf(latest, release)
       : null;
-  const planAhead =
-    !done && unfinished(records).some(({ state }) => state !== "failed");
+  const planAhead = openPublishGroups.some(({ state }) => state !== "failed");
   if (live) return { state: "published", url: release.url, at: release.at };
   if (release !== undefined && outcome === "published")
     return { state: "published", url: release.url, at: release.at };

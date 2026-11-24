@@ -4,7 +4,6 @@ import {
   credentialProvider,
   notNeededWhileOf,
   wrongFields,
-  Approval,
   type Fact,
   type Field,
   type Started,
@@ -36,9 +35,12 @@ import {
   unmet,
 } from "./facts.ts";
 import {
+  Approval,
   leftToDo,
+  planActionSteps,
   unstartedOptional,
   type PlanChildWrite,
+  type PlanGroupWrite,
   type PlanStepWrite,
   type PlanViewChild,
   type PlanViewStep,
@@ -103,12 +105,6 @@ export type CheckRan =
       evidence: readonly string[];
     }
   | { started: true; plugin: string; action: string; checkId: string };
-
-type PlanGroupWrite = Extract<PlanStepWrite, { steps: unknown }>;
-
-// The plan's action steps, those its groups hold among them.
-const actionSteps = (steps: readonly PlanViewStep[]) =>
-  steps.flatMap((step) => ("steps" in step ? step.steps : [step]));
 
 /** What the coordinator's tools need from the project they act on, which only the host can do. */
 export type Project = StarterProject & {
@@ -432,7 +428,7 @@ function readiness(
 
 // The plan's action steps for this action whose gate still holds: a finished step's gate is spent.
 const gatingSteps = (action: Action, steps: readonly PlanViewStep[]) =>
-  actionSteps(steps).filter(
+  planActionSteps(steps).filter(
     (step) =>
       step.plugin === action.plugin &&
       step.action === action.action &&
@@ -578,7 +574,7 @@ export async function discoverFor(
     ...found.map((plugin) => listing(catalog, plugin, state)),
     ...choices,
     projectValuesText(catalog.values, values),
-    planLine(actionSteps(state.plan.steps)),
+    planLine(planActionSteps(state.plan.steps)),
     DISCOVER_OWN_PLAN,
     DISCOVER_MORE,
   ].join("\n\n");
@@ -698,7 +694,7 @@ function stepsFor(
 ) {
   const returns = action.builder.returns ?? [];
   const making = resolveFacts(returns, input);
-  return actionSteps(steps).filter(
+  return planActionSteps(steps).filter(
     (step) =>
       step.plugin === action.plugin &&
       step.action === action.action &&
@@ -1409,21 +1405,21 @@ async function planAnswer(
   saved: { steps: readonly PlanViewStep[] },
   project: Project,
 ) {
-  const steps = actionSteps(saved.steps);
+  const steps = planActionSteps(saved.steps);
   // The model reads each step's state, which the finished mark only restates.
-  const marked = new Set<unknown>([...saved.steps, ...steps]);
+  const planSteps = new Set<unknown>([...saved.steps, ...steps]);
   const plan = JSON.stringify(
     saved,
     function (this: unknown, key: string, value: unknown) {
-      return key === "finished" && marked.has(this) ? undefined : value;
+      return key === "finished" && planSteps.has(this) ? undefined : value;
     },
   );
   const answer = `${plan}\n\n${PLAN_STEP_REMINDER}`;
-  const left = steps.filter(unstartedOptional);
-  if (left.length === 0 || steps.some(leftToDo)) return answer;
+  const optionalToOffer = steps.filter(unstartedOptional);
+  if (optionalToOffer.length === 0 || steps.some(leftToDo)) return answer;
   const { asksApprovals } = await project.state();
   return `${answer}\n\n${optionalLeft(
-    left.map(({ title }) => title),
+    optionalToOffer.map(({ title }) => title),
     asksApprovals,
   )}`;
 }

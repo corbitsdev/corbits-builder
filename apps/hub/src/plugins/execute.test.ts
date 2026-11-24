@@ -2,10 +2,12 @@ import { expect, test } from "bun:test";
 import type { RuntimeCapabilities } from "@intx/types/runtime-capabilities";
 import { planState, type PlanRecords } from "@corbits-builder/plugin-host/plan";
 import {
-  PlanView,
   PlanWrite,
+  stepFinished,
   type PlanChildWrite,
   type PlanStepWrite,
+  type PlanViewChild,
+  type PlanViewStep,
   type StoredPlanChild,
 } from "@corbits-builder/schemas/plan";
 import { CATALOG } from "./catalog.ts";
@@ -39,7 +41,8 @@ function project(
   following: string[] = [],
   preferences: Record<string, string> = {},
 ) {
-  const state = { artifacts, following, plan: [] as ViewStep[] };
+  const plan: PlanViewStep[] = [];
+  const state = { artifacts, following, plan };
   const deployed: string[] = [];
   const mailed: string[] = [];
   const approvals: unknown[] = [];
@@ -144,11 +147,9 @@ function project(
 }
 
 // A plan step as the hub reads it back once saved: given an id, and not started.
-type ViewStep = PlanView["steps"][number];
-type ViewChild = Exclude<ViewStep, { steps: unknown }>;
 let lastId = 0;
-function storedChild(step: PlanChildWrite): ViewChild {
-  const view: ViewChild = {
+function storedChild(step: PlanChildWrite): PlanViewChild {
+  const view: PlanViewChild = {
     id: step.id ?? `s${++lastId}`,
     title: step.title,
     plugin: step.plugin,
@@ -164,11 +165,11 @@ function storedChild(step: PlanChildWrite): ViewChild {
   if (step.requires) view.requires = step.requires;
   return view;
 }
-const stepsOf = (step: ViewStep | undefined) =>
+const stepsOf = (step: PlanViewStep | undefined) =>
   step !== undefined && "steps" in step ? step.steps : [];
-function stored(step: PlanStepWrite): ViewStep {
+function stored(step: PlanStepWrite): PlanViewStep {
   if (!("steps" in step)) return storedChild(step);
-  const group: ViewStep = {
+  const group: PlanViewStep = {
     id: step.id ?? `s${++lastId}`,
     title: step.title,
     state: "not_started",
@@ -701,9 +702,9 @@ test("the plan offers the optional steps nobody started only once nothing else i
   const idea = project([filed("app")]);
   const step = (
     id: string,
-    state: ViewChild["state"],
+    state: PlanViewChild["state"],
     optional: boolean,
-  ): ViewChild => ({
+  ): PlanViewChild => ({
     id,
     title: id,
     plugin: "designer",
@@ -712,7 +713,7 @@ test("the plan offers the optional steps nobody started only once nothing else i
     askFirst: false,
     optional,
     state,
-    finished: state === "done",
+    finished: stepFinished(state),
     kind: "workflow",
   });
   const tried = step("tried", "failed", true);

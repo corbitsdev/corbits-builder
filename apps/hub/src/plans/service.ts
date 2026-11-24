@@ -3,6 +3,7 @@ import type { DB, DBExecutor } from "@intx/db";
 import { isLiveWorkflowRunStatus, principal } from "@intx/db/schema";
 import { droppable } from "@corbits-builder/plugin";
 import {
+  planActionSteps,
   type PlanChildWrite,
   type PlanStepWrite,
   type StoredPlan,
@@ -66,10 +67,8 @@ function savedPlanStep(
   return saved;
 }
 // A project with no plan saved yet has no steps.
-function planActionSteps(plan: StoredPlan | null | undefined) {
-  if (!plan) return [];
-  return plan.steps.flatMap((step) => ("steps" in step ? step.steps : [step]));
-}
+const savedActionSteps = (plan: StoredPlan | null | undefined) =>
+  planActionSteps(plan?.steps ?? []);
 const newPlanStepId = () => crypto.randomUUID().slice(0, 12);
 
 // The plan as stored, with its project row locked until the transaction ends so that no other write
@@ -169,7 +168,7 @@ export function createPlanService(
       }
       return rawDB.transaction(async (tx) => {
         const before = new Map(
-          planActionSteps(await lockedPlan(tx, projectId)).map((step) => [
+          savedActionSteps(await lockedPlan(tx, projectId)).map((step) => [
             step.id,
             step,
           ]),
@@ -238,7 +237,7 @@ export function createPlanService(
         throw new ProjectError(403, "only_a_person_declines");
       const { plan, title, changed } = await rawDB.transaction(async (tx) => {
         const plan = await lockedPlan(tx, projectId);
-        const step = planActionSteps(plan).find(({ id }) => id === stepId);
+        const step = savedActionSteps(plan).find(({ id }) => id === stepId);
         if (!plan || !step)
           throw new ProjectError(404, "plan_step_not_found", { id: stepId });
         if (!step.optional)
@@ -287,9 +286,9 @@ export function createPlanService(
       // The screens open in front of the person are left out: an open one only shows a step that has
       // not run as needing them, and that step may be dropped either way.
       const { read } = await this.readPlan(actor, projectId, catalog, []);
-      const cancelled = read.steps
-        .flatMap((each) => ("steps" in each ? each.steps : [each]))
-        .filter(({ id, state }) => stepIds.includes(id) && droppable(state));
+      const cancelled = planActionSteps(read.steps).filter(
+        ({ id, state }) => stepIds.includes(id) && droppable(state),
+      );
       // The jobs stop before the steps are marked, so an answer retried after a failed stop still
       // finds them.
       const live = (await artifacts.runs(actor, projectId)).filter(
@@ -307,7 +306,7 @@ export function createPlanService(
         }
       await rawDB.transaction(async (tx) => {
         const plan = await lockedPlan(tx, projectId);
-        const named = planActionSteps(plan).filter(
+        const named = savedActionSteps(plan).filter(
           (step) =>
             cancelled.some(({ id }) => id === step.id) && !step.cancelled,
         );
@@ -330,7 +329,7 @@ export function createPlanService(
       await authorizeProject(rawDB, actor, projectId, "manage");
       await rawDB.transaction(async (tx) => {
         const plan = await lockedPlan(tx, projectId);
-        const step = planActionSteps(plan).find(
+        const step = savedActionSteps(plan).find(
           (each) =>
             each.plugin === screen.plugin &&
             each.action === screen.action &&
@@ -375,7 +374,7 @@ export function createPlanService(
           added.goAhead = mark;
           plan.steps.push(added);
         } else
-          for (const each of planActionSteps(plan))
+          for (const each of planActionSteps(plan.steps))
             if (told.goAhead.includes(each.id)) each.goAhead = mark;
         plan.updatedAt = at;
         await writePlan(tx, projectId, plan);
@@ -426,7 +425,7 @@ export function createPlanService(
         throw new ProjectError(403, "only_a_person_decides");
       const { plan, note } = await rawDB.transaction(async (tx) => {
         const plan = await lockedPlan(tx, projectId);
-        const step = planActionSteps(plan).find(({ id }) => id === stepId);
+        const step = savedActionSteps(plan).find(({ id }) => id === stepId);
         if (!plan || !step)
           throw new ProjectError(404, "plan_step_not_found", { id: stepId });
         let note: string;

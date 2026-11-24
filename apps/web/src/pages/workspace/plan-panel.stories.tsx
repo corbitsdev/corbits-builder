@@ -1,10 +1,13 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { fn } from "storybook/test";
-import { type PlanView, stepFinished } from "@corbits-builder/schemas/plan";
+import {
+  type PlanView,
+  type PlanViewChild,
+  stepFinished,
+} from "@corbits-builder/schemas/plan";
 import { PlanPanel } from "./plan-panel.tsx";
 
-type Child = Extract<PlanView["steps"][number], { plugin: string }>;
-type State = Child["state"];
+type State = PlanViewChild["state"];
 
 const started = new Date(Date.now() - 95_000).toISOString();
 
@@ -13,10 +16,10 @@ const step = (
   title: string,
   state: State,
   more: Partial<
-    Pick<Child, "optional" | "askFirst" | "approval" | "summary">
+    Pick<PlanViewChild, "optional" | "askFirst" | "approval" | "summary">
   > = {},
-): Child => {
-  const made: Child = {
+): PlanViewChild => {
+  const made: PlanViewChild = {
     id,
     title,
     plugin: "writer",

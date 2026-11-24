@@ -57,7 +57,7 @@ const StoredPlanGroup = type({
   steps: StoredPlanChild.array(),
 });
 export type StoredPlanGroup = typeof StoredPlanGroup.infer;
-export const StoredPlanStep = StoredPlanChild.or(StoredPlanGroup);
+const StoredPlanStep = StoredPlanChild.or(StoredPlanGroup);
 export type StoredPlanStep = typeof StoredPlanStep.infer;
 export const StoredPlan = type({
   "+": "reject",
@@ -120,16 +120,22 @@ const PlanChildWrite = PlanStepBody.merge({
   "id?": PlanStepId,
 });
 export type PlanChildWrite = typeof PlanChildWrite.infer;
-export const PlanStepWrite = PlanChildWrite.or({
+const PlanGroupWrite = type({
   "+": "reject",
   "id?": PlanStepId,
   title: text,
   "plan?": readyPlan,
   steps: PlanChildWrite.array(),
 });
+export type PlanGroupWrite = typeof PlanGroupWrite.infer;
+const PlanStepWrite = PlanChildWrite.or(PlanGroupWrite);
 export type PlanStepWrite = typeof PlanStepWrite.infer;
 export const PlanWrite = type({ "+": "reject", steps: PlanStepWrite.array() });
 export type PlanWrite = typeof PlanWrite.infer;
+
+export const planActionSteps = <C extends object>(
+  steps: readonly (C | { steps: readonly C[] })[],
+) => steps.flatMap((step) => ("steps" in step ? step.steps : [step]));
 
 export const stepFinished = (state: PlanStepStateName) =>
   state === "done" || state === "skipped" || state === "cancelled";
@@ -138,26 +144,21 @@ export const stepFinished = (state: PlanStepStateName) =>
  * An optional step nobody started leaves nothing to do: it does not hold its group open, and the
  * coordinator offers it once the rest is done. One that started keeps its group open.
  */
-export const unstartedOptional = (step: {
-  optional?: boolean;
-  runId?: string;
-  state: PlanStepStateName;
-}) =>
+export const unstartedOptional = (
+  step: Pick<PlanViewChild, "optional" | "runId" | "state">,
+) =>
   step.optional === true &&
   step.runId === undefined &&
   (step.state === "not_started" || step.state === "waiting");
 
 /** A step that still holds its group open. */
-export const leftToDo = (step: {
-  finished: boolean;
-  optional?: boolean;
-  runId?: string;
-  state: PlanStepStateName;
-}) => !step.finished && !unstartedOptional(step);
+export const leftToDo = (
+  step: Pick<PlanViewChild, "optional" | "runId" | "state" | "finished">,
+) => !step.finished && !unstartedOptional(step);
 
 /** Where a group stands once nothing in it is left to do. */
 export const endedState = (
-  steps: readonly { state: PlanStepStateName; finished: boolean }[],
+  steps: readonly Pick<PlanViewChild, "state" | "finished">[],
 ): "done" | "cancelled" => {
   const ended = steps.filter((step) => step.finished);
   return ended.length > 0 && ended.every((step) => step.state === "cancelled")

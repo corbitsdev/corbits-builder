@@ -9,7 +9,10 @@ import {
   readPluginFolder,
   type Found,
 } from "@corbits-builder/plugin-host/folder";
-import type { StoredPlanStep } from "@corbits-builder/schemas/plan";
+import type {
+  PlanViewChild,
+  StoredPlanStep,
+} from "@corbits-builder/schemas/plan";
 import { type } from "arktype";
 import type { createArtifactService } from "../artifacts/service.ts";
 import { HOST, PLUGINS_FOLDER } from "../plugins/catalog.ts";
@@ -176,15 +179,16 @@ test("a screen is listed, with its state, only while its state returns one, and 
 });
 
 test("a screen reads each plan step's id and title", () => {
-  const step = {
+  const step: PlanViewChild = {
     id: "deploy",
     title: "Put the app online",
     plugin: "tester",
     action: "test",
     input: {},
     askFirst: false,
-    state: "running" as const,
-    kind: "workflow" as const,
+    state: "running",
+    finished: false,
+    kind: "workflow",
   };
   expect(
     projectRead(catalog, Object.assign(read(), { steps: [step] })).plan,

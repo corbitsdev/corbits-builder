@@ -19,10 +19,12 @@ import {
   Approval,
   droppable,
   type PlanStepStateName,
+  type PlanViewChild,
+  type PlanViewGroup,
 } from "@corbits-builder/schemas/plan";
 import { SpecialistInstruction } from "@corbits-builder/schemas/native-specialist";
 
-export { Approval, droppable };
+export { droppable };
 export type { ReadyPlanOffer, Removes, ScreenStatus };
 
 /** The value an arktype type checked, or undefined when the check failed. */
@@ -795,14 +797,12 @@ export type Offer<Output> = {
   sendBack?: Output;
 };
 
-export type StepStatus = {
-  id: string;
-  title: string;
-  plugin: string;
-  action: string;
-  plan: string | undefined;
-  state: PlanStepStateName;
-  summary: string | undefined;
+export type StepStatus = Pick<
+  PlanViewChild,
+  "id" | "title" | "plugin" | "action" | "state"
+> & {
+  plan: PlanViewGroup["plan"];
+  summary: PlanViewChild["summary"];
 };
 
 // A run the coordinator started for a plugin action, as a screen reads it.
