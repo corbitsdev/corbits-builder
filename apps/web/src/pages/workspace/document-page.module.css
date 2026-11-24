@@ -156,14 +156,22 @@
   user-select: none;
 }
 
-/* Small and quiet, but outlined so it reads as something to press. */
+/* Small and quiet: outlined as lightly as the prompt box, so it reads as something to press
+   without pulling the eye from the page. */
 .file {
   gap: 6px;
   height: 1.75rem;
   padding-inline: 10px;
-  color: var(--wb-foreground);
+  border: 1px solid var(--wb-border);
+  background: transparent;
+  color: var(--wb-muted-foreground);
   font-size: 0.8125rem;
   font-weight: 500;
+}
+
+.file:hover,
+.file:focus-visible {
+  color: var(--wb-foreground);
 }
 
 .file > svg {
