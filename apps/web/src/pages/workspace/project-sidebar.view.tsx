@@ -394,7 +394,7 @@ type TreeItemProps = Required<
  * a group's steps always show under it; the up and down arrows move through every row, the left
  * arrow goes from a step to its group, Home and End jump, a letter finds the next row starting with
  * it, Enter or Space opens what a row made or else the row's menu, and Shift+F10 or the
- * context-menu key opens a row's menu. Until there is a plan it says nothing is made yet.
+ * context-menu key opens a row's menu.
  */
 function PlanTree({
   label,
@@ -441,7 +441,8 @@ function PlanTree({
     setFocused(key);
     items.current.get(key)?.focus();
   };
-  if (plan.length === 0) return <p className={styles.empty}>{words.noPlan}</p>;
+  // With no plan, as for a request too small to plan, there is nothing to list and nothing is said.
+  if (plan.length === 0) return null;
   const onKeyDown = (event: KeyboardEvent<HTMLUListElement>) => {
     // A row's menu is drawn elsewhere on the page, but its keys still pass through here.
     if (

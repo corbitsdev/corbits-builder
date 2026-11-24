@@ -457,7 +457,6 @@ export const wording = {
       projects: "Projects",
       workspace: "Workspace",
     },
-    noPlan: "Nothing made yet",
     /** Read after a step's name, since its mark alone does not say it. */
     stepState: {
       to_do: "to do",

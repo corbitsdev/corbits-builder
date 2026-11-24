@@ -231,18 +231,6 @@
   white-space: nowrap;
 }
 
-/* Nothing made yet: said where the first thing will be, as faint as one still ahead. */
-.empty {
-  display: flex;
-  align-items: center;
-  height: 2rem;
-  margin: 0;
-  padding-inline-start: var(--space-2);
-  color: color-mix(in oklab, var(--wb-muted-foreground) 72%, transparent);
-  font-size: var(--wb-text-control);
-  line-height: var(--wb-text-control--line-height);
-}
-
 /* Where a thing stands is said by its words and its icon. Made ones stay quiet in the secondary
    grey; ones still ahead are fainter, so the eye goes to the one being made, which is the brightest
    row. One that waits on the person or failed reads as plainly. */

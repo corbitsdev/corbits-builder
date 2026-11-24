@@ -285,8 +285,20 @@ export const NoApp: Story = {
   },
 };
 
-/** A new project: no steps yet, and no app. */
-export const NewProject: Story = { args: { plan: [] } };
+/**
+ * No plan, as in a new project or one asked for something too small to plan: the sidebar lists
+ * nothing and makes up no row, and the links stay at its foot.
+ */
+export const NoPlan: Story = {
+  args: { plan: [] },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.queryByRole("tree")).toBeNull();
+    await expect(
+      canvas.getByRole("button", { name: words.projectSettings }),
+    ).toBeVisible();
+  },
+};
 
 /**
  * A plan the coordinator wrote itself, its steps mostly making nothing: each is a row of its own,
