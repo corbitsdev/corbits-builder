@@ -746,6 +746,12 @@ export function useRoom({
     openQuestion !== undefined && showsScreen(openQuestion)
       ? openQuestion
       : undefined;
+  // A screen asking the person to accept something takes their comments, as their typed words, as
+  // the changes they want in place of accepting.
+  const screenDecides =
+    screenQuestion !== undefined &&
+    screenWords(screenQuestion.asked.plugin, screenQuestion.asked.action ?? "")
+      ?.decides === true;
   // A document opened from the screen waiting in the box, so the plan can say it waits on the
   // person while that screen stays unanswered.
   const [openedFromScreen, setOpenedFromScreen] = useState<{
@@ -1278,18 +1284,22 @@ export function useRoom({
         deliverMail(body, clearComposer, declineWith(approvalId)),
     });
   };
-  // Comments go as an ordinary message, so they wait while a question or approval would take it.
+  // Comments go as an ordinary message, so they wait while a question or approval would take it,
+  // unless the question asks to accept something, which they answer by asking for changes.
   const commentDrafts = useCommentDrafts({
     projectId,
     archived,
-    question: openQuestion !== undefined,
+    question: openQuestion !== undefined && !screenDecides,
     approval: openApproval !== undefined,
     sending: sending || approvalBusy,
     approvalOpenNow: async () =>
       (await readPendingApprovals())?.some(
         (approval) => approval.packages === undefined,
       ) ?? false,
-    mail: (message, clearBox) => deliverMail(message, clearBox),
+    mail: (message, clearBox) =>
+      screenDecides
+        ? deliver(message, clearBox)
+        : deliverMail(message, clearBox),
     shown: projectOpen ? shownTab : null,
     open: openDocument,
   });
@@ -1859,11 +1869,12 @@ export function useRoom({
       onStop: promptBox.onStop,
       suggestedReplies: replies,
       onReply: (reply) => void deliver(reply),
-      // Words typed beside a screen asking to approve something ask for changes instead.
+      // Words typed or comments beside a screen asking to approve something ask for changes instead.
       sendLabel:
         stagedItems !== null
           ? wording.questions.sendBack(stagedItems)
-          : promptBox.decides && value.trim() !== ""
+          : promptBox.decides &&
+              (value.trim() !== "" || (commentDrafts.box?.count ?? 0) > 0)
             ? wording.promptBox.waiting.makeChanges
             : null,
       ...(commentDrafts.box === null

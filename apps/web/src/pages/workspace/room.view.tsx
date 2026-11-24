@@ -1077,13 +1077,13 @@ function RoomComposerView({
               ) : (
                 <>
                   {/* The row's one action: what waits on the person hands its buttons here, where
-                      they stand in for Send until the person types; Send stands while it is empty.
-                      Kept while the person types, only hidden, so its buttons keep their place
-                      and focus. */}
+                      they stand in for Send until the person types, or until comments wait that
+                      Send names as its own; Send stands while it is empty. Kept meanwhile, only
+                      hidden, so its buttons keep their place and focus. */}
                   <div
                     ref={ports.setActionsAt}
                     data-slot="composer-actions"
-                    hidden={typed}
+                    hidden={typed || (commentsReady && sendLabel !== null)}
                   />
                   {/* Where Send carries something of its own, it says so on itself, a pill
                       with its words before the arrow. */}

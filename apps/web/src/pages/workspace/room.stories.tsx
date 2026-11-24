@@ -1017,6 +1017,39 @@ export const ApproveInBoxDark: Story = {
   globals: { mode: "dark" },
 };
 
+/** A comment on the documents is no approval: Approve gives way to Make changes, which sends it. */
+export const ApproveWithComments: Story = {
+  args: {
+    ...ApproveInBox.args,
+    dock: {
+      ...composer,
+      comments: 1,
+      onSendComments: fn(),
+      onShowComments: fn(),
+      onRemoveComments: fn(),
+      commentsBlocked: null,
+      commentsSending: false,
+      sendLabel: wording.promptBox.waiting.makeChanges,
+    },
+  },
+  play: async ({ args, canvasElement }) => {
+    const box = canvasElement.querySelector<HTMLElement>(
+      '[data-slot="composer"]',
+    );
+    if (box === null) throw new Error("No prompt box");
+    await expect(
+      within(box).queryByRole("button", { name: "Approve" }),
+    ).toBeNull();
+    await userEvent.click(
+      within(box).getByRole("button", {
+        name: wording.promptBox.waiting.makeChanges,
+      }),
+    );
+    if (args.dock.kind === "composer")
+      await expect(args.dock.onSendComments).toHaveBeenCalled();
+  },
+};
+
 /**
  * The chat pulled up over a page while a tall approval waits in the box: the history gives way, so
  * the card and the typing row under it stay on screen.
