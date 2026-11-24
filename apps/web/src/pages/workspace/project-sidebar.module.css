@@ -2,6 +2,8 @@
   --width: var(--rail-width);
   /* Closing is the system answering, so it is quicker than opening. */
   --speed: var(--duration-standard);
+  /* Open beside the page, it is a card this far in from the window's edges. */
+  --inset: var(--frame-edge, var(--space-2));
 
   position: relative;
   display: flex;
@@ -16,6 +18,10 @@
   --speed: var(--duration-large);
 
   width: var(--width);
+}
+
+.sidebar[data-open]:not([data-drawer]) {
+  width: calc(var(--width) + var(--inset));
 }
 
 /* Opened or closed from the keyboard it moves at once: a shortcut is pressed too often to wait on. */
@@ -39,11 +45,18 @@
   height: 100%;
   /* Below the project's name, which floats over the panel's top. */
   padding-block-start: 56px;
-  /* It stands over the page's margin, or over the page as a drawer. */
-  background: var(--wb-background);
   transition:
     opacity var(--speed) var(--ease-out),
     visibility 0s;
+}
+
+/* Beside the page it floats over the page's ground as a card; the name keeps its corner. */
+.sidebar:not([data-drawer]) .panel {
+  height: calc(100% - 2 * var(--inset));
+  margin: var(--inset) 0 var(--inset) var(--inset);
+  padding-block-start: calc(56px - var(--inset));
+  border-radius: var(--radius-lg);
+  background: var(--card);
 }
 
 /* Closing, the rows fade as the edge passes over them, while the plan's card comes in under the
@@ -74,6 +87,10 @@
 
 .sidebar[data-drawer][data-open] .room {
   translate: 0;
+}
+
+.sidebar[data-drawer] .panel {
+  background: var(--wb-background);
 }
 
 /* In one place open or closed, the window's top left corner. */
