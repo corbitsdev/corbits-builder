@@ -1073,6 +1073,8 @@ export const wording = {
   /** The print-like page a written document is read on, with its contents beside it. */
   documentViewer: {
     contentsLabel: "Sections of this document",
+    /** The control at the contents' head that folds them away and brings them back. */
+    contentsToggle: "Contents",
     /** Download and Share, as a screen reader names them together. */
     file: "Document file",
     /** A section someone has commented on. */

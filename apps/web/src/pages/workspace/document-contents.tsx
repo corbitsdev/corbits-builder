@@ -1,9 +1,10 @@
 /**
  * A written document's sections beside its page: the document's name, then each section under a
- * thin rail. The section being read is lifted onto the page colour, and a section someone has
- * commented on carries a comment mark.
+ * thin rail. The section being read is shaded, and a section someone has commented on carries a
+ * comment mark. A toggle at the head folds them away and brings them back.
  */
-import { MessageSquare } from "lucide-react";
+import { useId, useState } from "react";
+import { ChevronDown, MessageSquare } from "lucide-react";
 import { wording } from "../../config.ts";
 import styles from "./document-contents.module.css";
 
@@ -29,21 +30,39 @@ export function DocumentContents({
   onOpen: (id: string | null) => void;
 }) {
   const words = wording.documentViewer;
+  const listId = `contents-${useId()}`;
+  const [open, setOpen] = useState(true);
+  const listed = open && sections.length > 0;
   return (
     <nav
       className={styles.contents}
       data-slot="document-contents"
       aria-label={words.contentsLabel}
     >
-      <button
-        type="button"
-        className={styles.document}
-        onClick={() => onOpen(null)}
-      >
-        {title}
-      </button>
-      {sections.length === 0 ? null : (
-        <ol className={styles.sections}>
+      <div className={styles.head}>
+        <button
+          type="button"
+          className={styles.toggle}
+          aria-label={words.contentsToggle}
+          aria-expanded={open}
+          aria-controls={listed ? listId : undefined}
+          title={words.contentsToggle}
+          onClick={() => setOpen(!open)}
+        >
+          <ChevronDown size={14} aria-hidden="true" />
+        </button>
+        {open ? (
+          <button
+            type="button"
+            className={styles.document}
+            onClick={() => onOpen(null)}
+          >
+            {title}
+          </button>
+        ) : null}
+      </div>
+      {listed ? (
+        <ol id={listId} className={styles.sections}>
           {sections.map((section) => (
             <li key={section.id}>
               <button
@@ -64,7 +83,7 @@ export function DocumentContents({
             </li>
           ))}
         </ol>
-      )}
+      ) : null}
     </nav>
   );
 }

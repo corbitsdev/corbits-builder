@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { fn } from "storybook/test";
+import { expect, fn, userEvent, within } from "storybook/test";
+import { wording } from "../../config.ts";
 import { DocumentContents } from "./document-contents.tsx";
 
 const meta = {
@@ -46,3 +47,19 @@ export const WithComments: Story = {};
 
 /** At the top of the page no section is open yet. */
 export const AtTheTop: Story = { args: { current: null } };
+
+/** The toggle at the head folds the contents away, leaving only itself, and brings them back. */
+export const Collapsed: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const toggle = canvas.getByRole("button", {
+      name: wording.documentViewer.contentsToggle,
+    });
+    await userEvent.click(toggle);
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await expect(canvas.queryByRole("list")).toBeNull();
+    await expect(canvas.queryByText("Problem brief")).toBeNull();
+    await userEvent.click(toggle);
+    await expect(canvas.getByRole("list")).toBeVisible();
+  },
+};
