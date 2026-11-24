@@ -162,6 +162,7 @@ const leftToDo = (step: PlanStepView) =>
   !step.finished &&
   !(
     step.optional &&
+    step.runId === undefined &&
     (step.state === "not_started" || step.state === "waiting")
   );
 
@@ -348,7 +349,7 @@ export function protectedSteps(
       if (step.cancelled) return null;
       if (
         step.approval &&
-        step.state !== "done" &&
+        !step.finished &&
         gateOf(step, records).goAhead.length > 0
       )
         return "approval";

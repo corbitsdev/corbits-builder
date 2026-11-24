@@ -651,13 +651,13 @@ test("a group is finished once nothing in it is left to do, and a cancelled step
   const cancelled = (id: string) =>
     step(id, { cancelled: { by: "person", at } });
   const optional = step("extra", { optional: true });
-  const groupOf = (steps: SavedStep[]) =>
+  const groupOf = (steps: SavedStep[], runs: PlanRecords["runs"] = []) =>
     planState(CATALOG, [{ id: "group", title: "Publish", steps }], {
       facts: new Set(),
       personFacts: new Set(),
       asksApprovals: true,
       checks: [],
-      runs: [],
+      runs,
       questions: [],
     })[0];
   expect(
@@ -666,6 +666,19 @@ test("a group is finished once nothing in it is left to do, and a cancelled step
   expect(
     groupOf([cancelled("first"), cancelled("second"), optional]),
   ).toMatchObject({ state: "cancelled", finished: true });
+  const blocked = {
+    runId: "run",
+    plugin: "designer",
+    action: "mockup",
+    step: "extra",
+    status: "cancelled" as const,
+    startedAt: at,
+    endedAt: at,
+    blocked: { reason: "The hub refused every file write." },
+  };
+  expect(
+    groupOf([cancelled("first"), cancelled("second"), optional], [blocked]),
+  ).toMatchObject({ state: "waiting", finished: false });
 });
 
 test("a step whose run is held on the person's approval needs them, and its group says so", () => {
