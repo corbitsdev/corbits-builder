@@ -2,22 +2,17 @@
   padding: 0;
   border: 0;
   background: none;
-  color: var(--wb-foreground);
+  color: var(--wb-action);
   font: inherit;
   text-align: left;
   cursor: pointer;
   text-decoration-line: underline;
-  text-decoration-color: color-mix(
-    in srgb,
-    var(--wb-muted-foreground) 45%,
-    transparent
-  );
+  text-decoration-thickness: 1px;
   text-underline-offset: 3px;
 }
 
 .sourceLink:hover {
-  color: var(--wb-primary);
-  text-decoration-color: var(--wb-primary);
+  text-decoration-thickness: 2px;
 }
 
 .sourceLink:focus-visible {

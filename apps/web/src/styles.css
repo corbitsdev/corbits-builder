@@ -206,6 +206,19 @@ input[type="file"]:not(:disabled) {
   cursor: pointer;
 }
 
+/* A link in a document or a message reads as one at rest: blue and underlined, the line
+   thickening under the pointer. */
+[data-slot="prose"] a[href] {
+  color: var(--wb-action);
+  text-decoration-line: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+[data-slot="prose"] a[href]:hover {
+  text-decoration-thickness: 2px;
+}
+
 :focus-visible {
   outline: 2px solid var(--wb-ring);
   outline-offset: 3px;
