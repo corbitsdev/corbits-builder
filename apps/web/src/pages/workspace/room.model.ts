@@ -84,6 +84,7 @@ import type { ChatMessage, Wait } from "../../api/types.ts";
 import {
   deliveredText,
   showsScreen,
+  type QuestionAnswer,
 } from "@corbits-builder/schemas/conversation";
 import { keys } from "../../queries/keys.ts";
 import { turnItemId, type TranscriptTurn } from "./transcript.tsx";
@@ -1124,12 +1125,14 @@ export function useRoom({
   };
   const chooseDocument = (id: string) =>
     setDocumentChoice({ id, filedCount: filed.length });
-  // The person approves the document they read; the next room read shows it approved.
+  // The person approves the document they read; the next room read shows it approved. Approved,
+  // it is done with, so the project view closes on the conversation.
   const approveRead = async (id: string, version: number) => {
     const item = paneDeliverables.find((entry) => entry.kind === id);
     if (item === undefined) return;
     try {
       await approveDocument(projectId, item.artifactId, version);
+      setProjectOpen(false);
       reloadRef.current();
       onChanged();
     } catch (cause) {
@@ -1761,11 +1764,22 @@ export function useRoom({
     designDraft === null &&
     concepts.length === 0 &&
     liveApp === null;
+  // Accepting what a screen asks closes the project view on the conversation, where the work
+  // carries on; asking for changes keeps the page open until the next version is filed.
+  const answerScreen = async (signalName: string, given: QuestionAnswer) => {
+    const accepted =
+      screenDecides &&
+      signalName === screenQuestion.signalName &&
+      "output" in given;
+    const sent = await answer(signalName, given);
+    if (sent && accepted) setProjectOpen(false);
+    return sent;
+  };
   const promptBox = usePromptBox({
     projectId,
     archived,
     openQuestion,
-    onAnswer: answer,
+    onAnswer: answerScreen,
     sending,
     approvals: pendingApprovals,
     approvalBusy,
