@@ -114,23 +114,6 @@ export async function createSSHSignature(
   privateKeyBytes: Uint8Array,
   publicKeyBytes: Uint8Array,
 ): Promise<string> {
-  return createSSHSignatureWithSigner(payload, publicKeyBytes, (signedData) =>
-    signEd25519(privateKeyBytes, signedData),
-  );
-}
-
-/**
- * Produce an SSH signature (SSHSIG format) over a commit payload with a
- * signer that holds the Ed25519 private key elsewhere, such as a
- * custodied principal key. `sign` receives the SSHSIG signed-data blob
- * and returns the raw 64-byte Ed25519 signature over it; the mirror of
- * `createDetachedSignatureWithSigner` for PGP.
- */
-export async function createSSHSignatureWithSigner(
-  payload: string,
-  publicKeyBytes: Uint8Array,
-  sign: (signedData: Uint8Array) => Promise<Uint8Array>,
-): Promise<string> {
   const payloadBytes = new TextEncoder().encode(payload);
   const messageHash = new Uint8Array(
     await crypto.subtle.digest("SHA-512", payloadBytes),
@@ -139,7 +122,7 @@ export async function createSSHSignatureWithSigner(
   const publicKeyBlob = buildPublicKeyBlob(publicKeyBytes);
   const signedData = buildSignedData(messageHash);
 
-  const rawSignature = await sign(signedData);
+  const rawSignature = await signEd25519(privateKeyBytes, signedData);
 
   const signatureBlob = buildSignatureBlob(rawSignature);
 

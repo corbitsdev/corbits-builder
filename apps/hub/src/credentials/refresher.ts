@@ -11,114 +11,16 @@ import {
 } from "@corbits/oauth-core/hub";
 import type { OAuthLoginProvider } from "@corbits/oauth-core";
 import type { DB } from "@intx/db";
-import { getDescendantTenants } from "@intx/db";
-import { credential, workflowRun } from "@intx/db/schema";
-import {
-  pushCredentialReconcile,
-  pushSourceUpdates,
-  type RunCredentialsLoader,
-  type SidecarRouter,
-} from "@intx/hub-sessions";
+import { credential } from "@intx/db/schema";
 import { getLogger } from "@intx/log";
 import type { CredentialCipher } from "@intx/types";
 import { credentialProvider } from "@corbits-builder/plugin";
-import { and, eq, inArray, isNotNull } from "drizzle-orm";
+import { inArray } from "drizzle-orm";
 
 const log = getLogger(["corbits-builder", "token-refresh"]);
 
 // The prefix of every plugin credential's provider key.
 const PLUGIN = credentialProvider("");
-
-/** The addresses of the running runs, in `tenantId` or below it, that were given the credential. */
-export async function runsHolding(
-  db: DB["db"],
-  tenantId: string,
-  credentialId: string,
-) {
-  const runs = await db
-    .select({
-      address: workflowRun.address,
-      credentialRefs: workflowRun.credentialRefs,
-    })
-    .from(workflowRun)
-    .where(
-      and(
-        inArray(workflowRun.tenantId, await getDescendantTenants(db, tenantId)),
-        eq(workflowRun.status, "running"),
-        isNotNull(workflowRun.address),
-      ),
-    );
-  return runs.flatMap(({ address, credentialRefs }) =>
-    address !== null && credentialRefs?.credentialIds.includes(credentialId)
-      ? [address]
-      : [],
-  );
-}
-
-/** The pushes that give renewed material to the runs that have it, one per step of a renewal. */
-export type RenewedSteps = {
-  // Pushes the inference sources of the tenant's runs, which include a model's login.
-  sources: () => Promise<void>;
-  // The addresses of the running runs that were given the credential directly.
-  holders: () => Promise<string[]>;
-  // Gives one run its credentials' current material.
-  reconcile: (address: string) => Promise<void>;
-};
-
-/**
- * Gives the runs that have a renewed credential its new material. If one step fails the others
- * still run: a run given the credential directly gets it whether or not the inference sources
- * could be pushed. Each failure is logged as a fixed code.
- */
-async function pushRenewed(credentialId: string, steps: RenewedSteps) {
-  try {
-    await steps.sources();
-  } catch {
-    log.warn("Renewed sources not pushed for {credentialId}: {code}", {
-      credentialId,
-      code: "source_push_failed",
-    });
-  }
-  let addresses: string[];
-  try {
-    addresses = await steps.holders();
-  } catch {
-    log.warn("Renewed credential not pushed for {credentialId}: {code}", {
-      credentialId,
-      code: "holders_unread",
-    });
-    return;
-  }
-  await Promise.all(addresses.map((address) => steps.reconcile(address)));
-}
-
-/**
- * Gives the running runs that have a credential its current material. A specialist's run gets a
- * plugin's credential when it starts and keeps it, but a model's login reaches a run through its
- * inference sources, so both are pushed.
- */
-export function createRenewedPush(options: {
-  db: DB["db"];
-  cipher: CredentialCipher;
-  sidecarRouter: SidecarRouter;
-  loadRunCredentials: RunCredentialsLoader;
-}) {
-  const { db, cipher, sidecarRouter, loadRunCredentials } = options;
-  return (tenantId: string, credentialId: string) =>
-    pushRenewed(credentialId, {
-      sources: () => pushSourceUpdates(db, sidecarRouter, tenantId, cipher),
-      holders: () => runsHolding(db, tenantId, credentialId),
-      reconcile: async (address) => {
-        await pushCredentialReconcile(
-          db,
-          sidecarRouter,
-          address,
-          cipher,
-          loadRunCredentials,
-        );
-      },
-    });
-}
 
 /** The name of each of the given credentials, by id. */
 export type CredentialNames = (

@@ -17,6 +17,7 @@ import {
   type ProjectRead,
   type ProjectValues,
   type Screen,
+  type StepStatus,
 } from "@corbits-builder/plugin";
 import type { ReadyPlanOffer } from "@corbits-builder/schemas/project";
 import type { QuestionAnswer } from "@corbits-builder/schemas/conversation";
@@ -115,14 +116,15 @@ export function storyScreen<In, Out, Data, Prepared>(
   };
 }
 
-// The project as the hub reads it for a screen, from the story's values and ready-made plans.
+// The project as the hub reads it for a screen, from the story's values, plan and ready-made plans.
 const storyRead = (
   values: ProjectValues,
+  plan: readonly StepStatus[],
   plans: (group: string) => readonly ReadyPlanOffer[],
 ): ProjectRead => ({
   value: (name) => values[name] ?? null,
   facts: new Set(),
-  plan: [],
+  plan,
   planned: [],
   now: Date.now(),
   app: { version: undefined },
@@ -139,6 +141,7 @@ export function ScreenStory({
   project,
   draft,
   output,
+  plan = [],
   plans = () => [],
 }: {
   screen: ReturnType<typeof storyScreen>;
@@ -149,6 +152,8 @@ export function ScreenStory({
   draft?: Record<string, unknown>;
   /** What they chose, in the "answered" state. */
   output?: Record<string, unknown>;
+  /** The project's plan steps a screen that prepares from the project reads. */
+  plan?: readonly StepStatus[];
   /** The installed ready-made plans a screen that prepares from the project reads. */
   plans?: (group: string) => readonly ReadyPlanOffer[];
 }) {
@@ -204,7 +209,7 @@ export function ScreenStory({
       }}
       supplies={{
         ...storySupplies,
-        asked: () => screen.asked(input, storyRead(project, plans)),
+        asked: () => screen.asked(input, storyRead(project, plan, plans)),
       }}
     />
   );

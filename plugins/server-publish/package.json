@@ -4,7 +4,6 @@
   "private": true,
   "description": "Your own server: one you already rent. Your hosting provider bills you.",
   "license": "SEE LICENSE IN ../../LICENSE.md",
-  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
   "type": "module",
   "dependencies": {
     "@corbits-builder/plugin": "workspace:*",

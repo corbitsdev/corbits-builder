@@ -4,7 +4,6 @@
   "private": true,
   "description": "Adds a feature to an existing app: revised requirements and build plan the person approves, then the change.",
   "license": "SEE LICENSE IN ../../LICENSE.md",
-  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
   "type": "module",
   "builder": {
     "handle": "add-feature",

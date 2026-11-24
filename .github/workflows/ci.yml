@@ -30,7 +30,14 @@ jobs:
       pins: ${{ steps.filter.outputs.pins }}
       vendor: ${{ steps.filter.outputs.vendor }}
       environment: ${{ steps.filter.outputs.environment }}
+      build-tests: ${{ steps.build-tests.outputs.files }}
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: test/e2e/builds
+      - id: build-tests
+        run: echo "files=$(cd test/e2e/builds && ls *.test.ts | grep -vxE "new-app.test.ts|font-change.test.ts" | jq -Rcs 'split("\n")[:-1]')" >> "$GITHUB_OUTPUT"
       - id: filter
         if: github.event_name == 'pull_request'
         uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
@@ -101,8 +108,8 @@ jobs:
               - "packages/environment/**"
               - "scripts/verify-environment.ts"
 
-  format-check:
-    name: format:check
+  checks:
+    needs: changes
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -110,179 +117,170 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup
-      - run: bun run format:check
-
-  # The jobs below always report so their required checks are satisfied; on a pull request the steps run only when their paths changed.
-  lint:
-    needs: changes
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    env:
-      RUN: ${{ github.event_name != 'pull_request' || needs.changes.outputs.lint == 'true' }}
-    steps:
-      - if: env.RUN == 'true'
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - if: env.RUN == 'true'
-        uses: ./.github/actions/setup
-      - if: env.RUN == 'true'
-        run: bun run lint
-      - if: env.RUN == 'true'
-        run: bun run boundaries
-
-  typecheck:
-    needs: changes
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    env:
-      RUN: ${{ github.event_name != 'pull_request' || needs.changes.outputs.typecheck == 'true' }}
-    steps:
-      - if: env.RUN == 'true'
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - if: env.RUN == 'true'
-        uses: ./.github/actions/setup
-      - if: env.RUN == 'true'
+      # Each check runs even when an earlier one failed, so every check reports its own result.
+      - name: format:check
+        run: bun run format:check
+      - name: lint
+        if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.changes.outputs.lint == 'true') }}
+        run: |
+          bun run lint
+          bun run boundaries
+      - name: typecheck
+        if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.changes.outputs.typecheck == 'true') }}
         run: bun run typecheck
+      - name: pins:verify
+        if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.changes.outputs.pins == 'true') }}
+        run: bun run pins:verify
+      - name: vendor:verify
+        if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.changes.outputs.vendor == 'true') }}
+        run: bun run vendor:verify
+      - name: environment:verify
+        if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.changes.outputs.environment == 'true') }}
+        run: bun run environment:verify
 
   test:
     needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.test == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
-    env:
-      RUN: ${{ github.event_name != 'pull_request' || needs.changes.outputs.test == 'true' }}
     steps:
-      - if: env.RUN == 'true'
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - if: env.RUN == 'true'
-        uses: ./.github/actions/setup
-      - if: env.RUN == 'true'
-        run: bun run test
+      - uses: ./.github/actions/setup
+      - run: bun run test --path-ignore-patterns=apps/hub/src/workflows/packaged.test.ts
 
-  e2e:
+  # Packaging every agent takes most of a minute, so its test runs beside the others.
+  packaged:
     needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.test == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - run: bun --conditions=intx-src test apps/hub/src/workflows/packaged.test.ts
+
+  e2e:
+    name: e2e (${{ matrix.shard }}/8)
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.e2e == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
     env:
-      RUN: ${{ github.event_name != 'pull_request' || needs.changes.outputs.e2e == 'true' }}
       E2E_DB_HOST: 127.0.0.1
       E2E_DB_PORT: 5432
       E2E_DB_USER: postgres
       E2E_DB_PASSWORD: postgres
-      # The hub reads its plugins once per process, so each test that installs a plugin runs in a
-      # process of its own.
-      OWN_PROCESS: >-
-        plugin-credentials.test.ts
-        plugin-optional-credential.test.ts
-        plugin-sign-in.test.ts
-        server-key.test.ts
-        run-server-key.test.ts
-        publish-tab.test.ts
     steps:
-      - if: env.RUN == 'true'
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - if: env.RUN == 'true'
-        uses: ./.github/actions/postgres
-      - if: env.RUN == 'true'
-        uses: ./.github/actions/setup
-      - if: env.RUN == 'true'
-        run: bunx playwright install --with-deps chromium
-      - if: env.RUN == 'true'
-        # test/e2e/builds runs in the e2e-builds job, which installs the sandbox libraries a build needs.
-        run: |
-          ignored=("--path-ignore-patterns=test/e2e/builds/**")
-          for test in $OWN_PROCESS; do ignored+=("--path-ignore-patterns=test/e2e/$test"); done
-          bun --conditions=intx-src test ./test/e2e "${ignored[@]}"
-      - if: env.RUN == 'true'
-        run: |
-          for test in $OWN_PROCESS; do
-            bun --conditions=intx-src test "./test/e2e/$test" || exit 1
-          done
+      - uses: ./.github/actions/postgres
+      - uses: ./.github/actions/setup
+      - id: playwright
+        run: echo "version=$(bunx playwright --version)" >> "$GITHUB_OUTPUT"
+      - id: browser
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+      - if: steps.browser.outputs.cache-hit != 'true'
+        run: bunx playwright install chromium
+      # test/e2e/builds runs in the e2e-builds job.
+      # The tests that install a plugin copy it into the shared plugins folder, and the hub reads that
+      # folder once per module load, so files run one at a time, each in a fresh module registry.
+      # Each shard records how long its files took, and the next run splits files by those durations:
+      # https://bun.com/docs/test#large-codebases
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .bun-test-timings
+          key: bun-test-timings-${{ github.run_id }}
+          restore-keys: bun-test-timings-
+      - run: >-
+          bun --conditions=intx-src test ./test/e2e
+          --path-ignore-patterns='test/e2e/builds/**'
+          --shard=${{ matrix.shard }}/8 --isolate --update-timings
+          --timings=.bun-test-timings/next/${{ matrix.shard }}.json
+          $(ls .bun-test-timings/*.json 2>/dev/null | sed 's/^/--timings=/')
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: timings-${{ matrix.shard }}
+          path: .bun-test-timings/next/${{ matrix.shard }}.json
+
+  e2e-timings:
+    needs: e2e
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: timings-*
+          path: .bun-test-timings
+          merge-multiple: true
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .bun-test-timings
+          key: bun-test-timings-${{ github.run_id }}
 
   e2e-builds:
+    name: e2e-builds (${{ matrix.test || matrix.file }})
     needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.e2e-builds == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        file: ${{ fromJSON(needs.changes.outputs.build-tests) }}
+        # Its two full pipelines each get a job of their own.
+        include:
+          - file: new-app.test.ts
+            test: the long way
+          - file: new-app.test.ts
+            test: just build it
     env:
-      RUN: ${{ github.event_name != 'pull_request' || needs.changes.outputs.e2e-builds == 'true' }}
+      FILE: ${{ matrix.file }}
+      TEST: ${{ matrix.test }}
     steps:
-      - if: env.RUN == 'true'
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - if: env.RUN == 'true'
-        uses: ./.github/actions/postgres
-      - if: env.RUN == 'true'
-        uses: ./.github/actions/setup
-      - if: env.RUN == 'true'
-        run: |
-          sudo apt-get update && sudo apt-get install -y --no-install-recommends \
-            bubblewrap socat unzip fonts-liberation libasound2t64 \
-            libatk-bridge2.0-0t64 libatk1.0-0t64 libatspi2.0-0t64 libdbus-1-3 \
-            libexpat1 libgbm1 libglib2.0-0t64 libnspr4 libnss3 libx11-6 libxcb1 \
-            libxcomposite1 libxdamage1 libxext6 libxfixes3 libxkbcommon0 libxrandr2
-          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-      - if: env.RUN == 'true'
-        run: bun --conditions=intx-src test ./test/e2e/builds
+      - uses: ./.github/actions/postgres
+      - uses: ./.github/actions/setup
+      - run: bun --conditions=intx-src test "./test/e2e/builds/$FILE" -t "${TEST:-.}"
         env:
           E2E_DB_HOST: 127.0.0.1
           E2E_DB_PORT: 5432
           E2E_DB_USER: postgres
           E2E_DB_PASSWORD: postgres
 
-  pins-verify:
-    name: pins:verify
-    needs: changes
+  # One build with real tools instead of recordings, on each push to main once the repository
+  # variable E2E_REAL_BUILD is set to true.
+  e2e-real-build:
+    if: vars.E2E_REAL_BUILD == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 15
     env:
-      RUN: ${{ github.event_name != 'pull_request' || needs.changes.outputs.pins == 'true' }}
+      E2E_REAL_TOOLS: "1"
+      E2E_DB_HOST: 127.0.0.1
+      E2E_DB_PORT: 5432
+      E2E_DB_USER: postgres
+      E2E_DB_PASSWORD: postgres
     steps:
-      - if: env.RUN == 'true'
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - if: env.RUN == 'true'
-        uses: ./.github/actions/setup
-      - if: env.RUN == 'true'
-        run: bun run pins:verify
-
-  vendor-verify:
-    name: vendor:verify
-    needs: changes
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    env:
-      RUN: ${{ github.event_name != 'pull_request' || needs.changes.outputs.vendor == 'true' }}
-    steps:
-      - if: env.RUN == 'true'
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - if: env.RUN == 'true'
-        uses: ./.github/actions/setup
-      - if: env.RUN == 'true'
-        run: bun run vendor:verify
-
-  environment-verify:
-    name: environment:verify
-    needs: changes
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    env:
-      RUN: ${{ github.event_name != 'pull_request' || needs.changes.outputs.environment == 'true' }}
-    steps:
-      - if: env.RUN == 'true'
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - if: env.RUN == 'true'
-        uses: ./.github/actions/setup
-      - if: env.RUN == 'true'
-        run: bun run environment:verify
+      - uses: ./.github/actions/postgres
+      - uses: ./.github/actions/setup
+      - run: |
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends \
+            bubblewrap socat unzip
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - run: bun --conditions=intx-src test ./test/e2e/builds/non-web-build.test.ts

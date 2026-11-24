@@ -1,6 +1,4 @@
 import { expect, test } from "bun:test";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { Hono } from "hono";
 import type { DB } from "@intx/db";
 import { createMiddleware } from "hono/factory";
@@ -8,6 +6,7 @@ import type { RequireGrant, TenantEnv } from "@intx/hub-api";
 import { createSidecarRouter, findRoutableById } from "@intx/hub-sessions";
 import type { InferenceEvent } from "@intx/types/runtime";
 import { createAgentActivity } from "./artifacts/activity.ts";
+import type { ConversationRepoStore } from "./mail/conversation-turns.ts";
 import { createWorkflowRunStreamRoutes, runSteps } from "./run-stream.ts";
 
 type Routable = Awaited<ReturnType<typeof findRoutableById>>;
@@ -34,7 +33,7 @@ const requireGrant: RequireGrant = () =>
 
 function appFor(
   findRun: typeof findRoutableById,
-  repoDir: () => string = () => {
+  openCommittedReads: ConversationRepoStore["openCommittedReads"] = () => {
     throw new Error("The stream reads no saved conversation.");
   },
 ) {
@@ -53,7 +52,7 @@ function appFor(
       db: {} as DB["db"],
       sidecarRouter,
       requireGrant,
-      repoStore: { getRepoDir: repoDir },
+      repoStore: { openCommittedReads },
       activity,
       findRun,
     }),
@@ -258,7 +257,7 @@ test("a saved step carries when it was made and the end of its result", () => {
 });
 
 test("a working run's calls in the message it has not saved yet are its steps", async () => {
-  const app = appFor(findRun, () => join(tmpdir(), "no-saved-run-repo"));
+  const app = appFor(findRun, async () => null);
   const emit = (event: InferenceEvent) =>
     sidecarRouter.events.emit("agent.event", {
       agentAddress: runAddress,

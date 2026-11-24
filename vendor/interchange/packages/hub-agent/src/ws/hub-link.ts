@@ -2,9 +2,7 @@
 //
 // Connects to the hub, sends the hello frame, forwards outbound
 // mail and inference events, and handles inbound agent lifecycle
-// commands. Per-agent key material lives on AgentKeyStore; the link calls into
-// the store for deploy-commit verification and hub-key bookkeeping. The wire layer itself never
-// touches raw key bytes.
+// commands. The wire layer itself never touches raw key bytes.
 
 import { getLogger } from "@intx/log";
 import type { HubTransport } from "@intx/mail-memory";
@@ -23,8 +21,10 @@ import {
   type SessionErrorFrame,
   type AgentUndeployFrame,
   type DeploymentStoppedFrame,
+  type DeploymentWokenFrame,
   type DeploymentRetention,
   type WorkflowControlFrame,
+  type WorkflowControlAckFrame,
   type WorkflowRunRefTips,
   type HostedIncarnation,
   type IncarnationStamp,
@@ -64,6 +64,7 @@ import {
   type ResolvedInboundMailPolicy,
 } from "./inbound-signature";
 import { base64Decode, base64Encode } from "@intx/types/base64";
+import type { InboundDelivery } from "@intx/types/message-id";
 import { isRunAddress } from "@intx/types/agent-address";
 import type {
   ApprovalSnapshot,
@@ -71,7 +72,6 @@ import type {
   InferenceEvent,
 } from "@intx/types/runtime";
 
-import type { AgentKeyStore } from "../agent-key-store";
 import { isSenderPublicKeyHex } from "../sender-key-cache";
 import type { SessionManager } from "../session-manager";
 
@@ -114,8 +114,9 @@ const MalformedRequestEnvelope = type({
  * correlates by `requestId`, whose failure reply is a `session.error`.
  * `sources.update` and `credentials.update` qualify -- both are answered with a
  * `session.error`. Frames answered through the other correlation keys live in
- * `LIFECYCLE_ERROR_TYPES` and `PACK_REJECT_REQUEST_TYPES`; a malformed frame
- * of any other type is dropped unanswered.
+ * `LIFECYCLE_ERROR_TYPES` and `PACK_REJECT_REQUEST_TYPES`, and a
+ * `workflow.control` is answered with its ack; a malformed frame of any other
+ * type is dropped unanswered.
  */
 const SESSION_ERROR_REQUEST_TYPES: ReadonlySet<string> = new Set([
   "sources.update",
@@ -147,11 +148,12 @@ const PACK_REJECT_REQUEST_TYPES: ReadonlySet<string> = new Set([
 
 /**
  * Answer a malformed inbound request/ack control frame with an error reply
- * so the hub's request does not hang to its timeout. Two control-frame
+ * so the hub's request does not hang to its timeout. Three control-frame
  * families answer through their `requestId`: sources.update and
  * credentials.update reply `session.error`; agent.deploy and agent.undeploy
  * reply their typed error, which also needs the frame's address and
- * generation. The fire-and-forget frames
+ * generation; workflow.control replies its ack with an error, since a
+ * standby request has no timeout to end the wait. The fire-and-forget frames
  * (mail/signal/drain/...) have no requester waiting on a reply, so a
  * malformed one is correctly left to be logged and dropped by the caller.
  *
@@ -169,28 +171,13 @@ const PACK_REJECT_REQUEST_TYPES: ReadonlySet<string> = new Set([
  * and drops, because there is nothing to answer.
  */
 /**
- * Classify an `applyAssetPack` failure message into a `repo.pack.reject` reason.
- * A structural rejection -- a symlink or submodule the checkout cannot reproduce
- * faithfully, or a mountPath that escapes -- is a `path_violation`, distinct from
- * `corrupt` (bad or incomplete bytes), and a workflow-run seed that would move
- * history the sidecar already has is a `conflict`. The match is on the messages
- * `writeTreeToDisk`, the mountPath guard and the seed guard raise; a wording
- * drift only reverts the reason to `corrupt`, never misclassifies bytes as a
- * path issue. The raw message rides on the frame's `detail` regardless, so the
- * operator always sees the specific cause.
+ * Classify a pack apply failure message into a `repo.pack.reject` reason. The
+ * raw message rides on the frame's `detail` regardless, so the operator always
+ * sees the specific cause.
  */
-export function classifyAssetPackRejectReason(msg: string): PackRejectReason {
+export function classifyPackRejectReason(msg: string): PackRejectReason {
   if (msg.startsWith("sha_mismatch")) return "sha_mismatch";
   if (msg.startsWith("workflow_run_restore_conflict")) return "conflict";
-  if (
-    msg.startsWith("signature_invalid") ||
-    msg.startsWith("signature_unsigned")
-  ) {
-    return "signature_invalid";
-  }
-  if (/symlink at |submodule reference at |mountPath|escaping path/.test(msg)) {
-    return "path_violation";
-  }
   return "corrupt";
 }
 
@@ -202,6 +189,7 @@ export function answerMalformedRequestFrame(
       | SessionErrorFrame
       | AgentDeployErrorFrame
       | AgentUndeployErrorFrame
+      | WorkflowControlAckFrame
       | PackRejectFrame,
   ) => void,
 ): boolean {
@@ -218,6 +206,18 @@ export function answerMalformedRequestFrame(
       type: "session.error",
       requestId: envelope.requestId,
       error: `malformed ${frameType} frame: ${summary}`,
+    });
+    return true;
+  }
+  if (
+    frameType === "workflow.control" &&
+    envelope.requestId !== undefined &&
+    envelope.requestId.length > 0
+  ) {
+    send({
+      type: "workflow.control.ack",
+      requestId: envelope.requestId,
+      error: fitDeploymentError(`malformed ${frameType} frame: ${summary}`),
     });
     return true;
   }
@@ -367,29 +367,41 @@ export interface DeployRouter {
    * routers can omit the implementation; the link then deletes the directory.
    */
   undeploy?: (frame: AgentUndeployFrame) => Promise<void>;
-  /** Cancel, stop, or request durable retention of a workflow's local inspection state. */
-  control?: (frame: WorkflowControlFrame) => Promise<WorkflowControlOutcome>;
+  /**
+   * Cancel, stop, put in standby, or wake a workflow deployment, or request durable
+   * retention of its local inspection state. `signal` aborts once the
+   * connection that carried the frame closes.
+   */
+  control?: (
+    frame: WorkflowControlFrame,
+    opts: { signal: AbortSignal },
+  ) => Promise<WorkflowControlOutcome>;
 }
 
 /** What a handled workflow control reports back to the Hub. */
 export type WorkflowControlOutcome = {
   retention?: DeploymentRetention;
-  /** Final history for a live stop, which the Hub must confirm receiving. */
+  /**
+   * Final history for a live stop or a standby request, which the Hub must
+   * confirm receiving.
+   */
   refTips?: WorkflowRunRefTips;
+  /** The earliest pending timer of the child in standby. */
+  wakeAt?: string;
 };
 
 /**
  * Per-address mail handler registry the link consults on every
  * `mail.inbound` frame. Production wires this against the sidecar's
  * `createMultistepMailRouter` so a supervised deployment's supervisor
- * receives the bytes through its mail-bus subscription. Mail for an
+ * receives the delivery through its mail-bus subscription. Mail for an
  * address with no registered handler has no receiver and is dropped.
  * The shape lives on hub-agent so the link does not import the sidecar
  * host's wiring module, and so tests can substitute a stub.
  */
 export interface MailInboundRouter {
   /**
-   * Attempt to dispatch `message` to a handler registered against
+   * Attempt to dispatch `delivery` to a handler registered against
    * `agentAddress`. Returns `null` if no handler is registered, in which
    * case the link logs and drops the mail (and sends no ack). Otherwise
    * returns the handler's durable settlement: a promise that resolves once
@@ -399,7 +411,10 @@ export interface MailInboundRouter {
    * `mail.inbound.ack` only on resolution, so resolve is the ack signal and
    * reject is the withhold signal.
    */
-  tryRoute(agentAddress: string, message: Uint8Array): Promise<void> | null;
+  tryRoute(
+    agentAddress: string,
+    delivery: InboundDelivery,
+  ): Promise<void> | null;
 }
 
 /**
@@ -588,12 +603,6 @@ export type HubLinkConfig = {
   transport: HubTransport;
   sessions: SessionManager;
   /**
-   * Key custody and per-frame crypto. HubLink calls into the store for
-   * deploy-commit verification, hub-key recording, and per-agent forgetting;
-   * it does not maintain its own copy of those tables.
-   */
-  keyStore: AgentKeyStore;
-  /**
    * Resolves a sender address to the crypto whose public key verifies that
    * sender's inbound mail, or `undefined` when no key is known. The inbound
    * signature verify uses it to check each frame's signature against the key a
@@ -635,11 +644,9 @@ export type HubLinkConfig = {
    */
   evictSenderKey: (address: string) => Promise<void>;
   /**
-   * Routes every inbound `agent.deploy` frame. Production wiring
+   * Handles every inbound `agent.deploy` frame. Production wiring
    * supplies a router that stages each deploy through the workflow-run
-   * substrate: a provision-step frame primes a per-step repo, and a
-   * workflow frame spawns the supervised workflow-process child. The
-   * router owns the routing decision; the link does not re-decide.
+   * substrate and spawns the supervised workflow-process child.
    */
   deployRouter: DeployRouter;
   /**
@@ -803,6 +810,18 @@ export type HubLink = {
     approvalSnapshot?: ApprovalSnapshot;
   }) => void;
   /**
+   * Stop resending the registers of a run that is about to stop waiting on
+   * them: the one for `correlationId`, or every one of the run without it.
+   * Called before the history that records the change can be pushed, so no
+   * resend can reach the hub after the pack that retired the wait.
+   */
+  releaseSignalCorrelationRegisters: (release: {
+    runId: string;
+    correlationId?: string;
+    agentAddress: string;
+    generation: number;
+  }) => void;
+  /**
    * Ship a workflow-run pack to the hub. Streams the supplied pack as
    * `repo.pack.push` chunks followed by a `repo.pack.done`, then
    * resolves on the matching `repo.pack.ack` (rejects on
@@ -827,6 +846,12 @@ export type HubLink = {
    * again after each `welcome`.
    */
   sendDeploymentStopped: (report: Omit<DeploymentStoppedFrame, "type">) => void;
+  /**
+   * Report that an input woke a deployment in standby. Held while the link
+   * is not welcomed, the latest per incarnation, and sent on the next
+   * `welcome`.
+   */
+  sendDeploymentWoken: (report: Omit<DeploymentWokenFrame, "type">) => void;
 };
 
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
@@ -860,7 +885,6 @@ export function createHubLink(config: HubLinkConfig): HubLink {
     token,
     transport,
     sessions,
-    keyStore,
     resolveSenderCrypto,
     lookupInboundMailPolicy,
     cacheSenderKey,
@@ -1007,6 +1031,25 @@ export function createHubLink(config: HubLinkConfig): HubLink {
     );
   }
 
+  // Wake reports owed while the link is not welcomed, one per incarnation:
+  // the next `hello` can predate the wake. Kept out of the queue, so they never
+  // crowd out mail, and bounded by the deployments the sidecar holds.
+  const pendingWakes = new Map<string, Omit<DeploymentWokenFrame, "type">>();
+
+  function sendPendingWakes(socket: WebSocket): void {
+    const held = new Set(
+      getIncarnations().map(
+        (incarnation) =>
+          `${incarnation.address}\n${String(incarnation.generation)}`,
+      ),
+    );
+    for (const [key, woken] of pendingWakes) {
+      if (held.has(key))
+        socket.send(JSON.stringify({ type: "deployment.woken", ...woken }));
+    }
+    pendingWakes.clear();
+  }
+
   function welcomedSocket(): WebSocket | null {
     return ws !== null && welcomed && ws.readyState === WebSocket.OPEN
       ? ws
@@ -1073,6 +1116,19 @@ export function createHubLink(config: HubLinkConfig): HubLink {
   // is dropped rather than sent on a newer connection, where it could match an
   // unrelated request.
   type Reply = (frame: SidecarFrame) => void;
+
+  // Aborts once the connection closes, for work that only matters while the
+  // Hub that asked for it can hear the answer.
+  const connectionsClosed = new WeakMap<WebSocket, AbortController>();
+  function closedSignalOf(connection: WebSocket): AbortSignal {
+    let closed = connectionsClosed.get(connection);
+    if (closed === undefined) {
+      closed = new AbortController();
+      if (connection.readyState === WebSocket.CLOSED) closed.abort();
+      connectionsClosed.set(connection, closed);
+    }
+    return closed.signal;
+  }
 
   function replyOn(connection: WebSocket): Reply {
     return (frame) => {
@@ -1197,7 +1253,6 @@ export function createHubLink(config: HubLinkConfig): HubLink {
       }
     }
 
-    keyStore.forgetAgent(frame.agentAddress);
     forgetIncarnation(frame.agentAddress, frame.generation);
 
     if (failures.length > 0) {
@@ -1316,9 +1371,9 @@ export function createHubLink(config: HubLinkConfig): HubLink {
       return;
     }
 
-    // A Hub pack stages a step or seeds a deployment's history before the
-    // deployment is deployed. Applying one over a held incarnation would
-    // rewrite what that deployment is running on.
+    // A Hub pack seeds a deployment's history before the deployment is
+    // deployed. Applying one over a held incarnation would rewrite what that
+    // deployment is running on.
     const held = incarnationOf(frame.agentAddress);
     if (held !== undefined) {
       reply({
@@ -1333,49 +1388,23 @@ export function createHubLink(config: HubLinkConfig): HubLink {
     }
 
     try {
-      if (frame.repoId.kind === "workflow-run") {
-        if (frame.mountPath !== undefined) {
-          throw new Error(
-            "workflow_run_restore_invalid: workflow-run packs cannot carry mountPath",
-          );
-        }
-        if (applyWorkflowRunPack === undefined) {
-          throw new Error(
-            "workflow_run_restore_unconfigured: no workflow-run pack applier is configured",
-          );
-        }
-        await applyWorkflowRunPack({
-          agentAddress: frame.agentAddress,
-          repoId: frame.repoId,
-          pack: result.pack,
-          ref: result.ref,
-          commitSha: result.commitSha,
-        });
-      } else if (frame.mountPath !== undefined) {
-        // Asset pack: route to the workspace materializer. Use
-        // frame.agentAddress for destination routing — frame.repoId.id
-        // names the source asset at the hub, which is a different
-        // entity than the destination agent.
-        await sessions.applyAssetPack(
-          frame.agentAddress,
-          frame.mountPath,
-          result.pack,
-          result.ref,
-          result.commitSha,
-        );
-      } else {
-        const verifyCommit = (payload: string, signature: string) =>
-          keyStore.verifyDeployCommit(frame.agentAddress, payload, signature);
-
-        await sessions.applyDeployPack(
-          frame.agentAddress,
-          result.pack,
-          result.ref,
-          result.commitSha,
-          frame.transferId,
-          verifyCommit,
+      if (frame.repoId.kind !== "workflow-run") {
+        throw new Error(
+          `workflow_run_restore_invalid: a Hub pack must restore a workflow-run repo, not ${frame.repoId.kind}`,
         );
       }
+      if (applyWorkflowRunPack === undefined) {
+        throw new Error(
+          "workflow_run_restore_unconfigured: no workflow-run pack applier is configured",
+        );
+      }
+      await applyWorkflowRunPack({
+        agentAddress: frame.agentAddress,
+        repoId: frame.repoId,
+        pack: result.pack,
+        ref: result.ref,
+        commitSha: result.commitSha,
+      });
       reply({
         type: "repo.pack.ack",
         agentAddress: frame.agentAddress,
@@ -1384,7 +1413,7 @@ export function createHubLink(config: HubLinkConfig): HubLink {
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      const reason = classifyAssetPackRejectReason(msg);
+      const reason = classifyPackRejectReason(msg);
       logger.warn`Pack apply failed for ${frame.agentAddress}: ${msg}`;
       reply({
         type: "repo.pack.reject",
@@ -1526,7 +1555,8 @@ export function createHubLink(config: HubLinkConfig): HubLink {
     //
     // Supervised deployments register the deployment-level mail
     // address on `mailInboundRouter` once their supervisor spawns;
-    // that handler delivers the bytes to the supervisor's mail-bus
+    // that handler delivers the message bytes and the frame's
+    // hub-authenticated sender, verbatim, to the supervisor's mail-bus
     // subscription, which is what the workflow-host's `awaitSignal`
     // listens on. Mail for an address with no registered handler has
     // no receiver -- the in-process session runtime that once backed
@@ -1538,7 +1568,10 @@ export function createHubLink(config: HubLinkConfig): HubLink {
     let durable: Promise<void> | null = null;
     if (mailInboundRouter !== undefined) {
       try {
-        durable = mailInboundRouter.tryRoute(frame.agentAddress, rawBytes);
+        durable = mailInboundRouter.tryRoute(frame.agentAddress, {
+          rawMessage: rawBytes,
+          authenticatedSender: frame.authenticatedSender,
+        });
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         logger.warn`mail.inbound router threw for ${frame.agentAddress}: ${msg}`;
@@ -1555,7 +1588,9 @@ export function createHubLink(config: HubLinkConfig): HubLink {
     // frames; on rejection (transient failure, stale refusal, or a
     // tearing-down phase) no ack is sent, so the hub redelivers. The ack
     // names the incarnation the mail was delivered to, so the Hub credits
-    // it to no other.
+    // it to no other. It also names the frame's sender, because the inbox
+    // keys the mail by that sender and the Message-ID, so the Hub resolves
+    // only that sender's mail.
     const ackMessageId = frame.messageId;
     if (ackMessageId !== undefined) {
       void durable
@@ -1565,6 +1600,7 @@ export function createHubLink(config: HubLinkConfig): HubLink {
             agentAddress: frame.agentAddress,
             generation: frame.generation,
             messageId: ackMessageId,
+            authenticatedSender: frame.authenticatedSender,
           });
         })
         .catch((err: unknown) => {
@@ -1932,16 +1968,22 @@ export function createHubLink(config: HubLinkConfig): HubLink {
   async function handleWorkflowControl(
     frame: WorkflowControlFrame,
     reply: Reply,
+    signal: AbortSignal,
   ): Promise<void> {
     let error: string | undefined;
     let refTips: WorkflowRunRefTips | undefined;
     let retention: DeploymentRetention | undefined;
+    let wakeAt: string | undefined;
     try {
       if (deployRouter.control === undefined)
         throw new Error("Workflow control is not supported by this sidecar");
-      ({ refTips, retention } = await deployRouter.control(frame));
+      ({ refTips, retention, wakeAt } = await deployRouter.control(frame, {
+        signal,
+      }));
     } catch (cause) {
-      error = cause instanceof Error ? cause.message : String(cause);
+      error = fitDeploymentError(
+        cause instanceof Error ? cause.message : String(cause),
+      );
     }
     reply({
       type: "workflow.control.ack",
@@ -1949,6 +1991,7 @@ export function createHubLink(config: HubLinkConfig): HubLink {
       ...(error !== undefined ? { error } : {}),
       ...(refTips !== undefined ? { refTips } : {}),
       ...(retention !== undefined ? { retention } : {}),
+      ...(wakeAt !== undefined ? { wakeAt } : {}),
     });
   }
 
@@ -1972,6 +2015,8 @@ export function createHubLink(config: HubLinkConfig): HubLink {
     if (ws !== connection || welcomed) return;
     welcomed = true;
     stopWelcomeTimer();
+    const socket = welcomedSocket();
+    if (socket !== null) sendPendingWakes(socket);
     flush();
     if (onWorkflowAddressesRoutable === undefined) return;
     const held = new Map(
@@ -2084,10 +2129,14 @@ export function createHubLink(config: HubLinkConfig): HubLink {
       }
       case "workflow.control":
         // Start in the address's order, but leave its lane free for a forced
-        // stop and the deployment's undeploy while cooperative cancellation
-        // waits for the child.
+        // stop and the deployment's undeploy while cooperative cancellation or
+        // a standby request waits for the child.
         onLanes(frame.type, [frame.agentAddress], async () => {
-          void handleWorkflowControl(frame, reply).catch((cause: unknown) => {
+          void handleWorkflowControl(
+            frame,
+            reply,
+            closedSignalOf(connection),
+          ).catch((cause: unknown) => {
             logger.warn`Workflow control reply failed: ${cause instanceof Error ? cause.message : String(cause)}`;
           });
         });
@@ -2261,6 +2310,7 @@ export function createHubLink(config: HubLinkConfig): HubLink {
     });
 
     connection.addEventListener("close", () => {
+      connectionsClosed.get(connection)?.abort();
       // A late close from a superseded attempt must not null or reschedule the
       // active socket. Normal reconnects also pass this fence: the next socket
       // is not created until this handler schedules it.
@@ -2359,6 +2409,28 @@ export function createHubLink(config: HubLinkConfig): HubLink {
       registerAcker.send(frame);
     };
 
+  const releaseSignalCorrelationRegisters: HubLink["releaseSignalCorrelationRegisters"] =
+    (release) => {
+      const released = (frame: SignalCorrelationRegisterFrame): boolean =>
+        frame.agentAddress === release.agentAddress &&
+        frame.generation === release.generation &&
+        frame.runId === release.runId &&
+        (release.correlationId === undefined ||
+          frame.correlationId === release.correlationId);
+      // A register queued while the link is down goes out once it is
+      // welcomed, so the queued copy is dropped as well.
+      for (let index = queue.length - 1; index >= 0; index -= 1) {
+        const queued = queue[index];
+        if (
+          queued?.type === "signal.correlation.register" &&
+          released(queued)
+        ) {
+          queue.splice(index, 1);
+        }
+      }
+      registerAcker.cancelWhere(released);
+    };
+
   const sendDeploymentStopped: HubLink["sendDeploymentStopped"] = (report) => {
     welcomedSocket()?.send(
       JSON.stringify({
@@ -2368,12 +2440,26 @@ export function createHubLink(config: HubLinkConfig): HubLink {
     );
   };
 
+  const sendDeploymentWoken: HubLink["sendDeploymentWoken"] = (woken) => {
+    const socket = welcomedSocket();
+    if (socket !== null) {
+      socket.send(JSON.stringify({ type: "deployment.woken", ...woken }));
+      return;
+    }
+    pendingWakes.set(
+      `${woken.agentAddress}\n${String(woken.generation)}`,
+      woken,
+    );
+  };
+
   return {
     connect,
     close,
     sendEvent,
     sendSignalCorrelationRegister,
+    releaseSignalCorrelationRegisters,
     pushWorkflowRunPack,
     sendDeploymentStopped,
+    sendDeploymentWoken,
   };
 }

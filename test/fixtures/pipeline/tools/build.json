@@ -1,0 +1,4 @@
+{
+  "shell": "bun run build",
+  "result": { "callId": "recorded", "content": "" }
+}

@@ -1,0 +1,4 @@
+{
+  "shell": "bun run tsc -p 'packages/shared' --noEmit --pretty false --incremental --tsBuildInfoFile \"$HOME\"/'.type-probe/packages-shared.tsbuildinfo'",
+  "result": { "callId": "recorded", "content": "" }
+}

@@ -1,8 +1,15 @@
 import { afterEach, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { $ } from "bun";
+import { generateKeyPair } from "@intx/crypto";
+import {
+  createAgentRepoStore,
+  stepStateWalEntryPath,
+  workflowRunRepoIdForAddress,
+  workflowRunStepStatePrefix,
+} from "@intx/hub-sessions";
 import { declineNote } from "../config/decline.ts";
 import { resumeMessage } from "../config/resume.ts";
 import {
@@ -11,6 +18,8 @@ import {
 } from "./conversation-turns.ts";
 
 const person = "b65b0e2f4c4a444db11b7321dc413964@sunny-harbor-panda.localhost";
+const address =
+  "run_04ba732b8686649f77a2797393bafbc5@sunny-harbor-panda.localhost";
 const dirs: string[] = [];
 
 afterEach(async () => {
@@ -19,12 +28,29 @@ afterEach(async () => {
   );
 });
 
-// A run repo whose committed coordinator mirror holds these inbound messages, with the CRLF line breaks mail delivers.
+const repoStoreAt = async (dataDir: string) =>
+  createAgentRepoStore({ dataDir, signingKey: await generateKeyPair() })
+    .repoStore;
+
+// A hub data folder whose run repo holds a committed coordinator step state with these inbound
+// messages, with the CRLF line breaks mail delivers.
 async function runRepo(inbound: { from: string; text: string }[]) {
-  const dir = await mkdtemp(join(tmpdir(), "sb-conversation-turns-"));
-  dirs.push(dir);
-  const wal = join(dir, "agent-state", "coordinate", "wal", "0");
-  await mkdir(wal, { recursive: true });
+  const dataDir = await mkdtemp(join(tmpdir(), "sb-conversation-turns-"));
+  dirs.push(dataDir);
+  const dir = (await repoStoreAt(dataDir)).getRepoDir(
+    workflowRunRepoIdForAddress(address),
+  );
+  const entry = join(
+    dir,
+    stepStateWalEntryPath(
+      workflowRunStepStatePrefix(
+        "run_04ba732b8686649f77a2797393bafbc5",
+        "coordinate",
+      ),
+      0,
+    ),
+  );
+  await mkdir(dirname(entry), { recursive: true });
   const turns = inbound.map(({ from, text }, at) => ({
     role: "user",
     content: [
@@ -46,10 +72,7 @@ async function runRepo(inbound: { from: string; text: string }[]) {
     },
     connectorState: null,
   };
-  await writeFile(
-    join(wal, "0.json"),
-    JSON.stringify({ seq: 0, turns, metadata }),
-  );
+  await writeFile(entry, JSON.stringify({ seq: 0, turns, metadata }));
   const env = {
     ...process.env,
     GIT_AUTHOR_NAME: "test",
@@ -60,7 +83,7 @@ async function runRepo(inbound: { from: string; text: string }[]) {
   await $`git init -q -b main ${dir}`.env(env);
   await $`git -C ${dir} add -A`.env(env);
   await $`git -C ${dir} -c commit.gpgsign=false commit -q -m mirror`.env(env);
-  return dir;
+  return dataDir;
 }
 
 const decisions = () =>
@@ -79,14 +102,13 @@ const decisions = () =>
   ]);
 
 const personTexts = async (
-  dir: string,
+  dataDir: string,
   approvalDecisions: "note" | "decision",
 ) =>
   (
     await readDurableConversationTurns({
-      repoStore: { getRepoDir: () => dir },
-      address:
-        "run_04ba732b8686649f77a2797393bafbc5@sunny-harbor-panda.localhost",
+      repoStore: await repoStoreAt(dataDir),
+      address,
       approvalDecisions,
     })
   ).map(({ role, text }) => ({ role, text }));

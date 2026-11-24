@@ -69,20 +69,18 @@ pull in the shapes they need:
 - `@intx/types/grant-snapshot` — `GrantWalkSnapshot`, the per-step grant
   declarations and workflow grant requirements serialized for deployment,
   and `serializeGrantWalk`, which builds it from a capability walk.
-- `@intx/types/grant-wire` — grant-update wire frames pushed from
-  the hub to the sidecar.
+- `@intx/types/grant-wire` — the `WireGrantRule` validator for grants
+  that round-trip through JSON.
 - `@intx/types/tool-packages` — schemas for the tool-package
   distribution path: pin shapes (`ToolPackagePin`,
-  `ToolPackagePinArray`, `ToolPackagePinName`), source variants
+  `ToolPackagePinName`), source variants
   (`ToolPackageRegistrySource`, `ToolPackageAssetSource`, and its
   `package` arms `ToolPackageAssetTarball` and
-  `ToolPackageAssetSourceTree`, unioned as `ToolPackageSource`), the
-  `getToolPackageSourceContentIdentity` helper that reads an entry's
-  content identity (tarball SRI or source tree oid), and the deploy-pack
-  manifest (`ToolPackageManifestEntry`, `ToolPackageManifest`).
+  `ToolPackageAssetSourceTree`, unioned as `ToolPackageSource`), and the
+  tool-package manifest (`ToolPackageManifestEntry`, `ToolPackageManifest`).
 - `@intx/types/package-json` — the `PackageJSON` validator for the
-  subset of `package.json` fields the asset substrate and tool-package
-  builders read, including the `interchange.tools` extension, plus
+  subset of `package.json` fields the asset substrate and closure tooling
+  read, including the `interchange.tools` extension, plus
   `isContainedEntryPath` for entry-path containment.
 - `@intx/types/wire-definition-hash` — `computeWireDefinitionHash` and
   the `canonicalJsonStringify` it builds on, the stable content hash a

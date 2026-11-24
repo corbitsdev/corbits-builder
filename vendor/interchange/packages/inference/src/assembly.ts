@@ -19,6 +19,7 @@ import {
   type ContextStore,
   type ContextTransform,
   type InferenceSource,
+  QUESTION_TOOL_NAME,
   type ReactorDirector,
   type ToolDefinition,
   type ToolResultTransform,
@@ -31,7 +32,7 @@ import {
   type AuthzExtensionOptions,
 } from "./authz-extension";
 import type { CorrelationValidator } from "./correlation";
-import { createQuestionExtension, questionTool } from "./question";
+import { createQuestionExtension } from "./question";
 import { createCallCheckExtension, type CallCheck } from "./question";
 import type { Dependencies } from "./harness";
 import {
@@ -199,14 +200,13 @@ export function createReactorAssembly(
 
   // A question is authorized like any other tool call, then paused. Only an
   // agent that lists the question tool gets the pause; for any other, a call
-  // named `question` goes to its own tools. The tool is matched by name: a
-  // bundled workflow carries its own copy of this module, so the definition it
-  // lists is never this module's object.
+  // named `question` goes to its own tools. The tool is matched by name,
+  // whatever definition offered it.
   const composedBeforeToolExtensions: BeforeToolExtension[] = [];
   if (authzExtension !== undefined) {
     composedBeforeToolExtensions.push(authzExtension);
   }
-  if (toolDefinitions?.some((tool) => tool.name === questionTool.name)) {
+  if (toolDefinitions?.some((tool) => tool.name === QUESTION_TOOL_NAME)) {
     composedBeforeToolExtensions.push(createQuestionExtension());
   }
   if (checkCall !== undefined) {

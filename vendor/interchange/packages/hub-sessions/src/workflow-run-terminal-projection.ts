@@ -1,11 +1,13 @@
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 import {
-  deleteRunTokensForPrincipals,
+  deactivateRunPrincipals,
+  expireDeploymentApprovals,
+  expireRunApprovals,
   type DBExecutor,
   type WorkflowRunStore,
 } from "@intx/db";
-import { principal, workflowRun } from "@intx/db/schema";
+import { sidecarAllocation, workflowRun } from "@intx/db/schema";
 
 import { getWorkflowRunEndedAt } from "./workflow-run-ended-at";
 
@@ -26,7 +28,8 @@ export type TerminalProjectionOutcome = "projected" | "settled" | "foreign";
 /**
  * Project one accepted terminal event onto its `workflow_run` row. Pack
  * ingestion and lifecycle recovery both settle runs through this, so a run's
- * status, end time, and principal follow the same rules on either path.
+ * status, end time, principal, and approvals follow the same rules on either
+ * path.
  */
 export async function projectTerminalRun(
   tx: DBExecutor,
@@ -40,6 +43,15 @@ export async function projectTerminalRun(
   },
 ): Promise<TerminalProjectionOutcome> {
   const { anchor, runId, status, terminalEvent, now } = args;
+  // A run's end expires approvals, the anchor's those of the whole
+  // deployment. It takes the deployment's allocation row first, as every
+  // other path that ends a run or decides an approval does: none of them
+  // then runs beside it, and their row locks cannot cross with its own.
+  await tx
+    .select({ id: sidecarAllocation.id })
+    .from(sidecarAllocation)
+    .where(eq(sidecarAllocation.anchorRunId, anchor.id))
+    .for("update");
   // Lazily anchor the run before settling it. An internal run that parks only
   // on a plain signal gate never reaches `registerSignalCorrelation`, the sole
   // other path that mints an internal run row, so its terminal event can be the
@@ -92,22 +104,16 @@ export async function projectTerminalRun(
   // deployment (the guard above), so no live row matched only because the run
   // is already terminal. Leave its settled status and `endedAt` alone.
   if (won === null) return "settled";
-  // Deactivate the run's own principal, if it has one. Externally-triggered
-  // runs carry a principal; internal, workflow-spawned runs have
-  // `principalId = null` and inherit the deployment's grants, so there is
-  // nothing to deactivate. Deactivation is gated on winning the flip -- the
-  // single claim point -- not on the principal's own status.
-  if (won.principalId !== null) {
-    await tx
-      .update(principal)
-      .set({ status: "deactivated", updatedAt: now })
-      // `won.principalId` is already this run's own principal and
-      // `principal.id` is the primary key, so the `refId` match only confirms
-      // the id we won belongs to this run.
-      .where(
-        and(eq(principal.id, won.principalId), eq(principal.refId, runId)),
-      );
-    await deleteRunTokensForPrincipals(tx, [won.principalId]);
-  }
+  // Deactivate the run's own principal, found by its run reference, so a
+  // principal its run has not linked yet is deactivated too. Internal,
+  // workflow-spawned runs have no principal and inherit the deployment's
+  // grants, so there is nothing to deactivate. Deactivation is gated on
+  // winning the flip -- the single claim point -- not on the principal's own
+  // status.
+  await deactivateRunPrincipals(tx, anchor.tenantId, [runId], now);
+  // The anchor's end stops every run of the deployment from taking a
+  // decision, and no later pack settles the runs it left live.
+  if (runId === anchor.id) await expireDeploymentApprovals(tx, anchor.id, now);
+  else await expireRunApprovals(tx, anchor.id, [runId], now);
   return "projected";
 }

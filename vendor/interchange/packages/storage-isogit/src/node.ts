@@ -4,7 +4,7 @@ import {
   createIsogitStorage,
   type CommitSigner,
   type DurableMirrorReads,
-  type GCPolicy,
+  type ParkedReplyTargetBuffer,
 } from "./index";
 import { createNodeIsogitRuntime } from "./node-runtime";
 import { IsogitStore as RuntimeIsogitStore } from "./store";
@@ -15,27 +15,19 @@ export {
   syncDirectoryDurable,
   syncRemovedPathDurable,
 } from "./node-durability";
-export {
-  countLooseObjects,
-  countPackFiles,
-  gitBytes,
-  repoDiskUsage,
-} from "./node-metrics";
+export { countLooseObjects, gitBytes } from "./node-metrics";
 
 export {
   createIsogitStorage,
   type CommitSigner,
   type DurableMirrorReads,
-  type GCPolicy,
+  type ParkedReplyTargetBuffer,
   type ContextStore,
   type AuditStore,
-  type CommitVerifier,
   type StagedPack,
   type IncludeShaPredicate,
+  type ObjectPresence,
   type InitRepoOpts,
-  type RetentionPolicy,
-  type GCResult,
-  type RepoDiskUsage,
   type MailAuditStore,
   type MailCommitOptions,
   type MailCommitResult,
@@ -53,22 +45,20 @@ const storage = createIsogitStorage(runtime);
 const { storageRuntime } = storage;
 
 export const {
-  applyPack,
   collectReachableObjects,
   createAndSwitchBranch,
   createDeployPack,
   createMailAuditStore,
   createNegotiatedPack,
+  createObjectPresence,
   currentBranch,
   initAgentRepo,
   initRepo,
   listBranches,
   listMail,
-  listRepoRefs,
   logHistory,
-  maybeGC,
+  removeOrphanPackIndexes,
   removeStagedPacks,
-  runGC,
   stagePack,
   switchBranch,
   writeTreeToDisk,
@@ -93,15 +83,16 @@ export async function indexPackIntoGitDir(
 }
 
 export class IsogitStore extends RuntimeIsogitStore {
-  constructor(dir: string, signer?: CommitSigner, gcPolicy?: GCPolicy) {
-    super(storageRuntime, storageRuntime.path.resolve(dir), signer, gcPolicy);
+  constructor(dir: string, signer?: CommitSigner) {
+    super(storageRuntime, storageRuntime.path.resolve(dir), signer);
   }
 }
 
 export async function createIsogitStore(
   dir: string,
   signer?: CommitSigner,
-  gcPolicy?: GCPolicy,
-): Promise<ContextStore & AuditStore & DurableMirrorReads> {
-  return storage.createIsogitStore(dir, signer, gcPolicy);
+): Promise<
+  ContextStore & AuditStore & DurableMirrorReads & ParkedReplyTargetBuffer
+> {
+  return storage.createIsogitStore(dir, signer);
 }

@@ -1,0 +1,12 @@
+.line {
+  margin: 0;
+}
+
+.line + .line {
+  margin-top: var(--space-2);
+}
+
+.steps {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}

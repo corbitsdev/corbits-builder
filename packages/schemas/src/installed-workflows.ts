@@ -32,6 +32,8 @@ export type AppRun = typeof AppRun.infer;
 export const SandboxToolchains = type({
   paths: type("string > 0").array(),
   dataDir: "string > 0",
+  // A module whose createReplayExecutor answers the tools in place of the sandbox; only tests set it.
+  "replay?": "string > 0",
 });
 export type SandboxToolchains = typeof SandboxToolchains.infer;
 

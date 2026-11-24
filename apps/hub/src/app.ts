@@ -14,13 +14,15 @@ import {
   withExecutableWorkflowRun,
 } from "@intx/db";
 import { createEnvKeyCredentialCipher } from "@intx/crypto";
+import { HUB_CONDITION_REGISTRY } from "@intx/authz";
 import {
-  HUB_CONDITION_REGISTRY,
   createHubContextMiddleware,
   createCorrespondentGrantMinter,
+  createMailSendAuthorizer,
   createMailTriggeredRunGrantsMaterializer,
   createRequireGrant,
   createResolveTenant,
+  createRunGrantsLoader,
   mountHubRoutes,
   type AppEnv,
   type GetSession,
@@ -36,6 +38,7 @@ import {
   createRunCredentialsLoader,
   pushCredentialReconcile,
   pushCredentialRevoke,
+  pushCredentialRotation,
   type SidecarLookups,
   createSessionService,
   createSidecarCredentialResolver,
@@ -45,6 +48,7 @@ import {
 import { getLogger } from "@intx/log";
 import { hexDecode, hexEncode } from "@intx/types";
 import { createProductConfig } from "./config/index.ts";
+import type { SandboxToolchains } from "@corbits-builder/schemas/installed-workflows";
 import type { HubEnvironment } from "./environment.ts";
 import { loadHubSigningKey } from "./signing-key.ts";
 import { createWorkspaceRoutes } from "./workspaces.ts";
@@ -60,10 +64,7 @@ import {
   mountModelLogins,
   oauthModelProviders,
 } from "./inference/oauth-login.ts";
-import {
-  createRenewedPush,
-  startTokenRefresher,
-} from "./credentials/refresher.ts";
+import { startTokenRefresher } from "./credentials/refresher.ts";
 import { mountPluginSignIns } from "./credentials/sign-in-routes.ts";
 import {
   createPluginSignIns,
@@ -100,7 +101,6 @@ import {
 import { createAvailabilityRoutes } from "./availability.ts";
 import { createGitTokenBoundary } from "./git-token-boundary.ts";
 import { createSidecarWebSocket } from "./sidecar-websocket.ts";
-import { createCoordinatorCredentialRefresh } from "./auth/coordinator-credential-refresh.ts";
 import { createAgentTokenBridge } from "./auth/agent-token-bridge.ts";
 import { prepareMailTriggeredSpecialistGrants } from "./auth/specialist-project-grant.ts";
 import {
@@ -130,7 +130,10 @@ import { version } from "../package.json";
 
 const log = getLogger(["corbits-builder", "hub"]);
 
-export async function createHubRuntime(env: HubEnvironment) {
+export async function createHubRuntime(
+  env: HubEnvironment,
+  testing?: { toolReplay?: string | undefined },
+) {
   const handle = createDB(env.database);
   let authEmail: ReturnType<typeof createAuthEmail>;
   try {
@@ -211,7 +214,6 @@ export async function createHubRuntime(env: HubEnvironment) {
     const assetService = createAssetService({
       db: handle.db,
       repoStore: agentRepoStore.repoStore,
-      reservedPackageRegistryNames: new Set(httpRegistries.keys()),
     });
     const nativeGrants = createGrantStore(handle.db);
     const runTokenStore = createRunTokenStore({
@@ -231,15 +233,15 @@ export async function createHubRuntime(env: HubEnvironment) {
     });
     const mailTriggeredRunGrants = createMailTriggeredRunGrantsMaterializer({
       db: handle.db,
-      principalKeyStore,
       runTokenStore,
-      grantStore: nativeGrants,
+      grantStoreFor: createGrantStore,
       registry: HUB_CONDITION_REGISTRY,
     });
     const lookups: SidecarLookups = {
       ...nativeLookups,
       persistMail: createWorkflowMailPersistence({
         db: handle.db,
+        principalKeyStore,
         directory: reportMailDirectory,
       }),
       materializeMailTriggeredRunGrants: async (args) => {
@@ -250,6 +252,7 @@ export async function createHubRuntime(env: HubEnvironment) {
         return mailTriggeredRunGrants(args);
       },
       loadRunCredentials,
+      loadRunGrants: createRunGrantsLoader({ db: handle.db }),
       resolveSenderKey: (address) =>
         resolveFrameSenderKey(handle.db, principalKeyStore, address),
       resolveSenderKeyStrict: async (address) =>
@@ -257,16 +260,16 @@ export async function createHubRuntime(env: HubEnvironment) {
           ?.publicKey ?? null,
       resolveSenderPrincipal: (address) =>
         resolveSenderPrincipal(handle.db, principalKeyStore, address),
-      mintCorrespondentGrant: createCorrespondentGrantMinter({
+      mintCorrespondentGrant: createCorrespondentGrantMinter({ db: handle.db }),
+      authorizeMailSend: createMailSendAuthorizer({
         db: handle.db,
-        principalKeyStore,
+        grantStoreFor: createGrantStore,
       }),
     };
     const sidecarCredentials = createSidecarCredentialResolver({
       db: handle.db,
     });
     const sidecarRouter = createSidecarRouter({
-      hubPublicKey: hexEncode(key.publicKey),
       authenticateSidecar: async ({ token }) =>
         sidecarCredentials.resolve(token),
       validateSidecarIdentity: sidecarCredentials.isCurrent,
@@ -295,7 +298,6 @@ export async function createHubRuntime(env: HubEnvironment) {
       sidecarRouter,
       sidecarAllocationRouter: sidecarRouter,
       agentRepoStore,
-      assetService,
       db: handle.db,
       toolPackageRegistries: { httpRegistries, defaultRegistry: "npmjs" },
       loadRunCredentials,
@@ -321,7 +323,6 @@ export async function createHubRuntime(env: HubEnvironment) {
     const sessions = createHubSessionOrchestrator({
       events: sidecarRouter.events,
       router: sidecarRouter,
-      db: handle.db,
       eventCollectors,
     });
     const workflows = await createWorkflowServices({
@@ -359,7 +360,6 @@ export async function createHubRuntime(env: HubEnvironment) {
             sourceAuthorityPrincipalId: args.principalId,
             sourceOfferingIds: args.deployment.sourceOfferingIds,
             defaultSourceOfferingId: args.deployment.defaultSourceOfferingId,
-            deployContent: { systemPrompt: "" },
           });
           return { runId: prepared.anchorRunId };
         } catch (error) {
@@ -452,12 +452,15 @@ export async function createHubRuntime(env: HubEnvironment) {
     app.use(liveAppProxy.refuseAppOrigins);
     app.use(createHubContextMiddleware({ getSession }));
     app.use(gitTokens.middleware);
+    const toolchains: SandboxToolchains = {
+      paths: env.SANDBOX_TOOLCHAIN_PATHS,
+      dataDir: resolve(env.HUB_DATA_DIR),
+    };
+    // oxlint-disable-next-line corbits-builder/no-tool-replay
+    if (testing?.toolReplay) toolchains.replay = testing.toolReplay;
     const coordinatorTokens = createAgentTokenBridge(
       handle.db,
-      {
-        paths: env.SANDBOX_TOOLCHAIN_PATHS,
-        dataDir: resolve(env.HUB_DATA_DIR),
-      },
+      toolchains,
       runTokenStore,
       {
         install: (actor, projectId) =>
@@ -471,15 +474,6 @@ export async function createHubRuntime(env: HubEnvironment) {
     );
     app.use("/api/tenants/:tenantId/*", coordinatorTokens.middleware);
     app.use("/api/workflow-project-scope", coordinatorTokens.middleware);
-    app.use(
-      "/api/tenants/:tenantId/credentials/:credentialId",
-      createCoordinatorCredentialRefresh({
-        db: handle.db,
-        router: sidecarRouter,
-        cipher: credentialCipher,
-        loadRunCredentials,
-      }),
-    );
     app.route(
       "/api/integrations",
       createAuthMethodsRoutes(
@@ -524,10 +518,6 @@ export async function createHubRuntime(env: HubEnvironment) {
       createResolveTenant({ db: handle.db }),
       createDeclineNote({ coordinatorAsk: coordinatorAskReader(handle.db) }),
     );
-    const sandboxToolchains = {
-      paths: env.SANDBOX_TOOLCHAIN_PATHS,
-      dataDir: resolve(env.HUB_DATA_DIR),
-    };
     const savedApps = createArtifactService(
       handle.db,
       createWorkflowRunReader(agentRepoStore.repoStore),
@@ -538,7 +528,7 @@ export async function createHubRuntime(env: HubEnvironment) {
     // hub's own mail route.
     const checks = createChecks({
       db: handle.db,
-      toolchains: sandboxToolchains,
+      toolchains,
       artifacts: savedApps,
       commands,
       fetch: async (request) => app.fetch(request),
@@ -547,7 +537,7 @@ export async function createHubRuntime(env: HubEnvironment) {
       db: handle.db,
       artifacts: savedApps,
       commands,
-      toolchains: sandboxToolchains,
+      toolchains,
     });
     // A coder's push to a project's app repository is how its main gets a new commit: once
     // Interchange's receive-pack has moved the ref, the checks the push made stale re-run.
@@ -694,12 +684,14 @@ export async function createHubRuntime(env: HubEnvironment) {
       providers: modelProviders,
       requireGrant,
     });
-    const pushRenewed = createRenewedPush({
-      db: handle.db,
-      cipher: credentialCipher,
-      sidecarRouter,
-      loadRunCredentials,
-    });
+    const pushRenewed = (tenantId: string, credentialId: string) =>
+      pushCredentialRotation(
+        handle.db,
+        sidecarRouter,
+        tenantId,
+        credentialId,
+        credentialCipher,
+      );
     const pluginSignIns = createPluginSignIns({
       db: handle.db,
       cipher: credentialCipher,

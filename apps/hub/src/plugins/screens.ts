@@ -31,6 +31,8 @@ const log = getLogger(["corbits-builder", "hub", "screens"]);
 
 const statusOf = (
   step: {
+    id: string;
+    title: string;
     plugin: string;
     action: string;
     state: StepStatus["state"];
@@ -38,6 +40,8 @@ const statusOf = (
   },
   plan: string | undefined,
 ): StepStatus => ({
+  id: step.id,
+  title: step.title,
   plugin: step.plugin,
   action: step.action,
   plan,

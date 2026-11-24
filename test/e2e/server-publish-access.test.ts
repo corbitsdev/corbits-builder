@@ -1,7 +1,6 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import JSZip from "jszip";
-import { createArtifact } from "@corbits/artifacts";
 import { toolConsumer } from "@intx/authz";
 import { createNoopCredentialCipher } from "@intx/crypto";
 import { createRunTokenStore } from "@intx/db";
@@ -13,7 +12,7 @@ let hub: Awaited<ReturnType<typeof startInProcessHub>>;
 
 beforeAll(async () => {
   hub = await startInProcessHub();
-});
+}, 120_000);
 
 afterAll(() => hub?.close());
 
@@ -32,18 +31,7 @@ async function publishing(title: string) {
   await hub.call("POST", `${path}/values`, {
     values: { "stack.production": PRODUCTION },
   });
-  const content = JSON.stringify({ files: { "package.json": "{}" } });
-  await hub.db.transaction((tx) =>
-    createArtifact(tx, {
-      scope: person,
-      ownerPrincipalId: person.principalId,
-      kind: "app",
-      title: "App",
-      content,
-      source: { origin: "workflow" },
-      metadata: { source: "import", bytes: Buffer.byteLength(content) },
-    }),
-  );
+  await hub.seedApp(path, { "package.json": "{}" });
   const run = await hub.seedRun(person, "server", true);
   await hub.call("POST", `${path}/run-actions`, {
     runId: run.id,

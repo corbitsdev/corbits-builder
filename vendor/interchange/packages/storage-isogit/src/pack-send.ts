@@ -1,39 +1,33 @@
 import git from "isomorphic-git";
 import { collectReachableObjects } from "./object-walk";
-import { withRepoDirLock } from "./repo-lock";
 import type { StorageRuntime } from "./runtime";
 
 /**
- * Create a git packfile containing all objects reachable from a ref.
+ * Create a git packfile containing a ref's tip commit and its tree.
  *
- * Used by the hub to produce deploy packs for transfer to sidecars. The
- * caller sends the resulting bytes as chunked repo.pack.push frames.
+ * Used by the hub to produce the packs a deploy frame carries.
  */
 export async function createDeployPack(
   runtime: StorageRuntime,
   dir: string,
   ref: string,
 ): Promise<{ pack: Uint8Array; commitSha: string }> {
-  // Read under the per-directory lock so a concurrent GC pass cannot prune
-  // a loose object out from under the reachability walk or the pack write.
-  return withRepoDirLock(runtime, dir, async () => {
-    const commitSha = await git.resolveRef({ fs: runtime.fs.git, dir, ref });
-    const oids = await collectReachableObjects(runtime, dir, commitSha);
+  const commitSha = await git.resolveRef({ fs: runtime.fs.git, dir, ref });
+  const oids = await collectReachableObjects(runtime, dir, commitSha);
 
-    const result = await git.packObjects({
-      fs: runtime.fs.git,
-      dir,
-      oids,
-      write: false,
-    });
-    if (result.packfile === undefined) {
-      throw new Error(
-        `packObjects returned no packfile for ref "${ref}" (${commitSha})`,
-      );
-    }
-
-    return { pack: result.packfile, commitSha };
+  const result = await git.packObjects({
+    fs: runtime.fs.git,
+    dir,
+    oids,
+    write: false,
   });
+  if (result.packfile === undefined) {
+    throw new Error(
+      `packObjects returned no packfile for ref "${ref}" (${commitSha})`,
+    );
+  }
+
+  return { pack: result.packfile, commitSha };
 }
 
 /**

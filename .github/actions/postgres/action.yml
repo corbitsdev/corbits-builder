@@ -6,5 +6,5 @@ runs:
     # Starting the runner's own Postgres avoids Docker Hub pulls and their rate limits.
     - run: |
         sudo systemctl start postgresql.service
-        sudo -u postgres psql -c "ALTER USER postgres PASSWORD 'postgres';"
+        sudo -u postgres psql -c "ALTER USER postgres PASSWORD 'postgres';" -c "ALTER SYSTEM SET jit = off" -c "SELECT pg_reload_conf()"
       shell: bash

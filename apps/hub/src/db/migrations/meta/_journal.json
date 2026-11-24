@@ -295,6 +295,13 @@
       "when": 1795001121440,
       "tag": "0041_sign_in_client",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1795452778995,
+      "tag": "0042_drop_mirrored_grants",
+      "breakpoints": true
     }
   ]
 }

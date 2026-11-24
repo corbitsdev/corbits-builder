@@ -17,7 +17,7 @@ import {
 } from "../db/schema.ts";
 import {
   readCommittedTurns,
-  type CoordinatorRepoDirSource,
+  type ConversationRepoStore,
 } from "../mail/conversation-turns.ts";
 import type { HubMail } from "../mail/hub-mail.ts";
 import { errorCode, requestErrorMetadata } from "../request-error.ts";
@@ -36,7 +36,7 @@ const clip = (text: string) =>
 
 // The run's last calls from its saved conversation, each with the start of what it returned.
 async function savedLastCalls(
-  repoStore: CoordinatorRepoDirSource,
+  repoStore: ConversationRepoStore,
   run: { runId: string; address: string | null },
 ): Promise<string[]> {
   if (run.address === null) return [];
@@ -128,7 +128,7 @@ export async function liveSpecialistRuns(
 export function createSpecialistEndNotices(deps: {
   db: DB["db"];
   runs: WorkflowRunReader;
-  repoStore: CoordinatorRepoDirSource;
+  repoStore: ConversationRepoStore;
   mailDirectory: string;
   mail: HubMail;
 }) {

@@ -25,7 +25,7 @@ import { requestErrorMetadata } from "../request-error.ts";
 import { earlierRunQuestions } from "./earlier-questions.ts";
 import { isRecord } from "../lib/json.ts";
 import {
-  type CoordinatorRepoDirSource,
+  type ConversationRepoStore,
   projectRunTurns,
   unsavedPersonTurns,
 } from "./conversation-turns.ts";
@@ -39,7 +39,7 @@ export function createConversationRoutes(
   dispatch: (request: Request) => Response | Promise<Response>,
   runReader: WorkflowRunReader,
   options?: {
-    repoStore?: CoordinatorRepoDirSource;
+    repoStore?: ConversationRepoStore;
     /** The retained native mail store the hub archives workflow mail into. */
     mailDirectory?: string;
   },
@@ -139,7 +139,7 @@ export function createConversationRoutes(
         const repoStore = options?.repoStore;
         const mailDirectory = options?.mailDirectory;
         const read = (
-          store: CoordinatorRepoDirSource,
+          store: ConversationRepoStore,
           run: { runId: string; address: string },
         ) =>
           projectRunTurns({
@@ -149,7 +149,7 @@ export function createConversationRoutes(
             mailDirectory,
             ...run,
           });
-        const priorTurns = async (store: CoordinatorRepoDirSource) =>
+        const priorTurns = async (store: ConversationRepoStore) =>
           (
             await Promise.all(selected.prior.map((run) => read(store, run)))
           ).flatMap((prior) => prior.turns);

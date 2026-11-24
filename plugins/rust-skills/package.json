@@ -4,7 +4,6 @@
   "private": true,
   "description": "How the coder lays out, writes and tests a Rust project.",
   "license": "SEE LICENSE IN ../../LICENSE.md",
-  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
   "type": "module",
   "builder": {
     "handle": "rust-skills",

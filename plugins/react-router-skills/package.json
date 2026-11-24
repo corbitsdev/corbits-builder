@@ -4,7 +4,6 @@
   "private": true,
   "description": "Routes, links and data in a React app routed with React Router.",
   "license": "SEE LICENSE IN ../../LICENSE.md",
-  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
   "type": "module",
   "builder": {
     "handle": "react-router-skills",

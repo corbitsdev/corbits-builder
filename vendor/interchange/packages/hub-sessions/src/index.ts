@@ -11,16 +11,11 @@ export {
   createWorkflowDispatchProjection,
   DEFAULT_WORKFLOW_PROJECTION_CONCURRENCY,
 } from "./workflow-dispatch-projection";
-export {
-  createAgentRepoStore,
-  type AgentRepoStore,
-  type DeployContent,
-} from "./agent-repo";
+export { createAgentRepoStore, type AgentRepoStore } from "./agent-repo";
 export {
   createSessionService,
   recoverSenderDeploy,
   SessionLaunchError,
-  bridgeOrchestratorDeployContent,
   deployCodeSourcedWorkflow,
   type SessionService,
   type DeployWorkflowDefinitionResult,
@@ -81,6 +76,7 @@ export {
   type WorkflowRunPackSource,
 } from "./ws";
 export {
+  applyApprovalWaitChanges,
   createHubSessionLookups,
   findRoutableById,
   resolveRoutableAddress,
@@ -98,11 +94,13 @@ export {
   type HubSessionRouterFacade,
 } from "./hub-session-orchestrator";
 export {
-  pushSourceUpdates,
-  pushSourceUpdatesSubtree,
+  pushCredentialRotation,
   pushCredentialRevoke,
   pushCredentialReconcile,
+  recheckDeliveredCredentials,
+  revokeRemovedCredentials,
 } from "./credential-push";
+export { pushRunGrants } from "./run-grants-push";
 export {
   createRunCredentialsLoader,
   type CreateRunCredentialsLoaderDeps,
@@ -156,7 +154,9 @@ export {
   type WorkflowAllocationServiceDeps,
 } from "./workflow-allocation-service";
 export {
+  attachWorkflowDispatchAcknowledgements,
   createWorkflowDispatchService,
+  type AttachWorkflowDispatchAcknowledgementsDeps,
   type WorkflowDispatchAcknowledgement,
   type WorkflowDispatchService,
   type WorkflowDispatchServiceDeps,
@@ -195,7 +195,6 @@ export {
   TARBALLS_PREFIX,
   TARBALL_FILENAME_PATTERN,
   REGISTRY_INDEX_PATH,
-  WORKSPACE_BUILTINS_REGISTRY,
 } from "./package-registry-kind";
 export {
   workflowKindHandler,
@@ -214,10 +213,11 @@ export {
   dequeueToProcessing,
   readProcessingEntry,
   markConsumed,
+  claimCheckIdentity,
+  NotInProcessingError,
   classifyTerminalEvent,
   scanRunsForBoot,
   readCommittedWorkflowRunLifecycle,
-  readWorkflowRunLifecycle,
   workflowRunRepoIdForAddress,
   WORKFLOW_RUN_REF,
   replayProcessingToInbox,
@@ -225,7 +225,6 @@ export {
   WORKFLOW_RUN_RUNS_PREFIX,
   WORKFLOW_RUN_EVENTS_DIR,
   WORKFLOW_RUN_GRANTS_FILE,
-  WORKFLOW_RUN_AGENT_STATE_PREFIX,
   WORKFLOW_RUN_ADDRESSES_PREFIX,
   WORKFLOW_RUN_CONTROL_PREFIX,
   WORKFLOW_RUN_INBOX_DIR,
@@ -233,6 +232,8 @@ export {
   WORKFLOW_RUN_CONSUMED_DIR,
   WORKFLOW_RUN_WATERMARK_FILE,
   DEFAULT_CONSUMED_RETENTION_MS,
+  workflowRunStepSeedPath,
+  workflowRunStepStatePrefix,
   type ClaimCheckEnvelope,
   type ConsumedEnvelope,
   type EnqueueAlreadyPresentReason,
@@ -252,6 +253,25 @@ export {
   type WorkflowRunWorkflowProcessPrincipal,
   type WorkflowRunSupervisorPrincipal,
 } from "./workflow-run-kind";
+export {
+  readCommittedFile,
+  readCommittedStepStateSeed,
+  readStepStateSnapshot,
+} from "./step-state-snapshot";
+export { MAILBOX_INDEX_VERSION, MailboxIndex } from "./mailbox-index";
+export {
+  buildStepStateCheckpoint,
+  createCommittedStepStateReader,
+  reconstructStepState,
+  serializeStepStateWalEntry,
+  stepStateWalBucket,
+  stepStateWalBucketPrefix,
+  stepStateWalEntryPath,
+  type ReconstructedStepState,
+  type StepStateContent,
+  type StepStateMetadata,
+  type StepStateReader,
+} from "./step-state";
 export {
   readWorkflowRunRefTips,
   restoreWorkflowRunToAllocation,
@@ -280,6 +300,7 @@ export {
   encodeCombinedEventLog,
 } from "./workflow-run-event-log";
 export type {
+  ApprovalWaitChange,
   AuthorizeFn,
   CommittedReads,
   CommittedTreeEntry,
@@ -301,6 +322,7 @@ export type {
 } from "./repo-store";
 export {
   createRepoStore,
+  isPlainPathSegment,
   RepoRemovedDuringReceiveError,
   subscribeKind,
   UserPrincipal,

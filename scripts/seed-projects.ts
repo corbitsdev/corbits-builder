@@ -32,6 +32,7 @@ import {
   type DesignChoiceReceipt,
 } from "@corbits-builder/schemas/artifact";
 import type { ProjectShipReceipt } from "@corbits-builder/schemas/project";
+import { MAIL_SEND_ACTION, mailSendResource } from "@intx/authz";
 import { createEnvKeyCredentialCipher } from "@intx/crypto";
 import {
   createDB,
@@ -542,17 +543,31 @@ async function provisionChildTenant(
       createdAt: now,
     });
 
-    await tx.insert(grant).values({
-      id: generateId("grant"),
-      tenantId,
-      roleId: ownerRoleId,
-      resource: "*",
-      action: "*",
-      effect: "allow",
-      origin: "system",
-      createdAt: now,
-      updatedAt: now,
-    });
+    // The `*` grant does not reach the `mail.send` namespace, so the owner also needs the send row.
+    await tx.insert(grant).values([
+      {
+        id: generateId("grant"),
+        tenantId,
+        roleId: ownerRoleId,
+        resource: "*",
+        action: "*",
+        effect: "allow",
+        origin: "system",
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: generateId("grant"),
+        tenantId,
+        roleId: ownerRoleId,
+        resource: mailSendResource("tenant", tenantId),
+        action: MAIL_SEND_ACTION,
+        effect: "allow",
+        origin: "system",
+        createdAt: now,
+        updatedAt: now,
+      },
+    ]);
 
     return { id: tenantId, principalId: ownerPrincipal.id };
   });

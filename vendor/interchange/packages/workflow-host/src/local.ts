@@ -26,18 +26,18 @@ export {
   attachStepCredentialWiring,
   attachStepTools,
   createToolBearingAgentFactory,
-  deriveToolMarkFloorGrants,
-  type StepToolMaterialization,
+  type StepToolRuntime,
 } from "./child/step-tools";
 export {
   createCredentialsBackedAuthorize,
   createGrantEvaluator,
+  createSnapshotGrantsResolver,
   type CredentialsSnapshotRef,
   type GrantEvaluator,
+  type StepGrantsResolver,
 } from "./child/credentials-backed-authorize";
 export {
   createLocalCredentialsSnapshot,
-  snapshotStepGrants,
   type LocalCredentialsSnapshotOpts,
 } from "./local-credentials";
 export type {

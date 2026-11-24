@@ -196,9 +196,17 @@ const databaseConfig = (
         schema: "public",
       };
 
+const agentStateVariables = {
+  HUB_DATA_DIR: "string = 'data/hub'",
+  "SIDECAR_IMAGE?": "string",
+  SIDECAR_DOCKER_HOST: "string = 'unix:///var/run/docker.sock'",
+  "SIDECAR_DOCKER_HUB_ID?": "string",
+} as const;
+
 const migrationVariables = {
   // Separate credentials for migrations, such as the schema owner's.
   "MIGRATION_DATABASE_URL?": postgresURL,
+  ...agentStateVariables,
 } as const;
 
 const MigrationVariables = type({
@@ -212,6 +220,7 @@ const migrationURL = (env: MigrationVariables) =>
 
 const hubVariables = {
   ...databaseVariables,
+  ...agentStateVariables,
   // Surrounding whitespace adds nothing to a secret, so it does not count toward its length.
   BETTER_AUTH_SECRET: type("string").narrow(
     (value, ctx) =>
@@ -222,7 +231,6 @@ const hubVariables = {
   PRINCIPAL_KEY_ENCRYPTION_KEY: hexKey,
   HOST: "string = '127.0.0.1'",
   PORT: port.default("8000"),
-  HUB_DATA_DIR: "string = 'data/hub'",
   "HUB_WEB_DIR?": "string",
   // The address people sign in at; http://localhost:$PORT unless set.
   "BETTER_AUTH_BASE_URL?": httpURL,
@@ -281,9 +289,6 @@ const hubVariables = {
   // setting covers both reading its host key and a sidecar running commands on it. Off unless set,
   // because a rented server is never at such an address and Builder's own network is.
   SIDECAR_SSH_ALLOW_PRIVATE_ADDRESSES: flag(false),
-  "SIDECAR_IMAGE?": "string",
-  SIDECAR_DOCKER_HOST: "string = 'unix:///var/run/docker.sock'",
-  "SIDECAR_DOCKER_HUB_ID?": "string",
   "SIDECAR_HUB_WS_URL?": "string",
   SIDECAR_MEMORY_BYTES: positiveInteger.default(
     String(defaultDockerLimits.memoryBytes),
@@ -367,7 +372,7 @@ export const readHubEnvironment = reader(hubSchema);
 export type HubEnvironment = ReturnType<typeof readHubEnvironment>;
 export type PluginHint = HubEnvironment["PLUGIN_HINT"];
 
-/** `bun run db:migrate`'s environment: the database alone, so a migration needs no hub secrets. */
+/** `bun run db:migrate`'s environment: the database and the agent state it moves, never the hub's secrets. */
 const migrationSchema = type({
   "+": "delete",
   ...databaseVariables,

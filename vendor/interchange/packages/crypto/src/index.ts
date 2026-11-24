@@ -16,11 +16,7 @@ export {
   armorDecode,
   createDetachedSignatureWithSigner,
 } from "./pgp";
-export {
-  createSSHSignature,
-  createSSHSignatureWithSigner,
-  verifySSHSignature,
-} from "./sshsig";
+export { createSSHSignature, verifySSHSignature } from "./sshsig";
 export { aeadEncrypt, aeadDecrypt, AEAD_KEY_BYTES, isCiphertext } from "./aead";
 export {
   createEnvKeyCredentialCipher,

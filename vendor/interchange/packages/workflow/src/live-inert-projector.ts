@@ -38,7 +38,6 @@ import type {
   InferencePreference,
   ToolDeclaration,
 } from "@intx/agent";
-import type { ToolPackagePin } from "@intx/types/tool-packages";
 import type { CredentialBinding, SidecarCapabilityPolicy } from "@intx/types";
 import type { InboundMailPolicy } from "@intx/types/inbound-mail-policy";
 import type { MailAccept } from "@intx/types/mail-accept";
@@ -129,7 +128,6 @@ export interface InertAgent {
   readonly plugins?: readonly InertPlugin[];
   readonly modelSources: readonly InertModelSource[];
   readonly tags?: Readonly<Record<string, string>>;
-  readonly toolPackagePins?: readonly ToolPackagePin[];
 }
 
 export interface InertStepStep {
@@ -228,7 +226,7 @@ export interface InertWorkflowDefinition {
   readonly stepOrder: readonly string[];
   readonly steps: Record<string, InertStep>;
   readonly state?: { readonly schema?: unknown };
-  // The definition's credential bindings -- each maps a tool package's or an
+  // The definition's credential bindings -- each maps a tool factory's or an
   // action handler's declared handle to a concrete provider/locator. These are
   // pure plain data (no secret material; the secret is resolved fresh at
   // deploy), so they project verbatim. They are part of the hashed surface on
@@ -622,9 +620,6 @@ function projectAgent(
       : {}),
     modelSources: agent.inference.sources.map(projectModelSource),
     ...(agent.tags !== undefined ? { tags: { ...agent.tags } } : {}),
-    ...(agent.toolPackagePins !== undefined
-      ? { toolPackagePins: [...agent.toolPackagePins] }
-      : {}),
   };
 }
 

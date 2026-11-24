@@ -439,7 +439,24 @@ export async function toolchainReadPaths(
   return reads;
 }
 
+export type ReplayExecutorFactory = (
+  workspace: string,
+  options: Parameters<typeof createSandboxExecutor>[3],
+) => ReturnType<typeof createSandboxExecutor>;
+
 export async function createPosixBuildExecutor(
+  ...args: Parameters<typeof createSandboxExecutor>
+) {
+  const [workspace, , , options] = args;
+  if (options?.toolchains?.replay) {
+    const replay: { createReplayExecutor: ReplayExecutorFactory } =
+      await import(options.toolchains.replay);
+    return replay.createReplayExecutor(workspace, options);
+  }
+  return createSandboxExecutor(...args);
+}
+
+async function createSandboxExecutor(
   workspace: string,
   limits: BuildExecutionPolicy,
   layout: BuildPackageLayout,
@@ -1097,7 +1114,6 @@ export async function createPosixBuildExecutor(
       return result;
     };
     return {
-      policy,
       version: SANDBOX_RUNTIME_VERSION,
       run(call: ToolCall, signal: AbortSignal): Promise<ToolResult> {
         if (

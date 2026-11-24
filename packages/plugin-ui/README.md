@@ -10,7 +10,7 @@ and tokens, so every screen reads alike. Each is its own entry point.
 - `screen-card`: `ScreenCard`, a question's framed card, and `ScreenSettled`,
   the one quiet line it leaves once answered.
 - `screen-actions`: `ScreenActions`, a question's row of actions with the
-  host's Cancel.
+  host's Cancel, unless one of the view's own buttons already says no.
 - `document-block`: `DocumentBlock`, a filed document as the person meets it
   anywhere: its title, which opens it, its version, and its own summary, or a
   way to read it when it has none. Use it wherever a view shows a document, so
