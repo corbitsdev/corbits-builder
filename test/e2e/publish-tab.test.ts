@@ -113,3 +113,29 @@ test("a run's read of the plan lists no screen and nothing prepared for one, sin
   expect(read.screens).toEqual([]);
   expect(read.asked).toEqual([]);
 });
+
+test("a publish whose early step the person cancelled is paused while a required step is still to do", async () => {
+  const { path } = await savedApp();
+  const step = (action: string) => ({
+    plugin: "hoster",
+    action,
+    title: action,
+    input: {
+      instruction: "Put the project's saved app on a machine rented at Hoster.",
+    },
+    askFirst: false,
+  });
+  const cancelled = { by: "person", at: new Date().toISOString() };
+  await hub.call("PUT", `${path}/plan`, {
+    steps: [
+      {
+        title: "Publish to Hoster",
+        plan: "publish-to-hoster",
+        steps: [{ ...step("create"), cancelled }, step("publish")],
+      },
+    ],
+  });
+  expect((await publishTab(path))?.state).toMatchObject({
+    state: { state: "stalled" },
+  });
+});

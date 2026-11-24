@@ -18,12 +18,6 @@ import {
 } from "@corbits-builder/publish-contract";
 import { PUBLISH_ASKED, PUBLISH_GROUP, PublishAsked } from "../go-ahead.ts";
 
-// A ready-made plan's group has work ahead in these states.
-const AHEAD = new Set(["not_started", "waiting", "running", "needs_you"]);
-// A failed step does not end a publish: what the step needs, such as a change to the app, is often
-// worked on next.
-const UNFINISHED = new Set([...AHEAD, "failed"]);
-
 /**
  * How long the project still counts as busy after work last moved on: a run ended, or the person
  * asked. A publish or a take-down is a chain of hand-offs, and between one step ending and the
@@ -284,10 +278,11 @@ const tookDown = (records: Records, latest: RunRead | undefined) =>
   (records.release === undefined ||
     Date.parse(records.release.at) <= endOf(latest));
 
-// Whether a publish plan's group on the project's plan is in one of states.
-const planIn = (records: Records, states: ReadonlySet<string>) =>
-  records.project.planned.some(
-    ({ plan, state }) => records.plans.includes(plan) && states.has(state),
+// The publish plans' groups on the project's plan that still have work to do. A failed step does not
+// end a publish: what the step needs, such as a change to the app, is often worked on next.
+const unfinished = (records: Records) =>
+  records.project.planned.filter(
+    ({ plan, finished }) => records.plans.includes(plan) && !finished,
   );
 
 // Whether the saved app is newer than the release, with no publishing run started since it went out.
@@ -330,13 +325,20 @@ function standing(records: Records): PublishState {
   const live =
     release !== undefined &&
     records.ends.some((fact) => project.facts.has(fact));
-  if (busy(records) && !done && !behind && !live && planIn(records, UNFINISHED))
+  if (
+    busy(records) &&
+    !done &&
+    !behind &&
+    !live &&
+    unfinished(records).length > 0
+  )
     return { state: "publishing" };
   const outcome =
     latest !== undefined && stopped(latest) && !latestRemoves
       ? outcomeOf(latest, release)
       : null;
-  const planAhead = !done && planIn(records, AHEAD);
+  const planAhead =
+    !done && unfinished(records).some(({ state }) => state !== "failed");
   if (live) return { state: "published", url: release.url, at: release.at };
   if (release !== undefined && outcome === "published")
     return { state: "published", url: release.url, at: release.at };

@@ -837,8 +837,13 @@ export type ProjectRead = {
   value(name: string): unknown;
   facts: ReadonlySet<Fact>;
   plan: readonly StepStatus[];
-  // Each ready-made plan the project's plan holds, with where its steps stand together.
-  planned: readonly { plan: string; state: PlanStepStateName }[];
+  // Each ready-made plan the project's plan holds, with where its steps stand together and whether
+  // nothing in it is left to do.
+  planned: readonly {
+    plan: string;
+    state: PlanStepStateName;
+    finished: boolean;
+  }[];
   // The hub's time of this read, in milliseconds since the epoch. A state that reads the clock
   // reads it here, so it depends on nothing but this read.
   now: number;

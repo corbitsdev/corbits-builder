@@ -15,6 +15,7 @@ const step = (id: string, state: State, optional = false): Child => ({
   askFirst: false,
   optional,
   state,
+  finished: state === "done" || state === "skipped" || state === "cancelled",
   kind: "workflow",
 });
 
@@ -36,6 +37,7 @@ const readyMade = (steps: Child[]): PlanView["steps"] => [
       "A ready-made plan for a web app: requirements, a design, a build plan, then the build.",
     plan: "build-web-app",
     state: "not_started",
+    finished: false,
     steps,
   },
 ];

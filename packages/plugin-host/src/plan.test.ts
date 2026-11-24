@@ -16,6 +16,7 @@ const check: PlanStepView = {
   input: {},
   askFirst: false,
   state: "failed",
+  finished: false,
   kind: "check",
   checkId: "earlier",
 };
@@ -27,6 +28,7 @@ const build: PlanStepView = {
   input: {},
   askFirst: false,
   state: "not_started",
+  finished: false,
   kind: "workflow",
 };
 const built: PlanStepView = {
@@ -37,6 +39,7 @@ const built: PlanStepView = {
   input: {},
   askFirst: false,
   state: "done",
+  finished: true,
   kind: "workflow",
   runId: "run",
 };
@@ -48,6 +51,7 @@ const answered: PlanStepView = {
   input: {},
   askFirst: false,
   state: "done",
+  finished: true,
   kind: "screen",
   answered: { by: "person", at: "2026-01-01T00:00:00.000Z" },
 };

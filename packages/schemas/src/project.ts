@@ -157,6 +157,8 @@ export type PlanStepStateName = typeof PlanStepStateName.infer;
 const PlanStepState = type({
   "+": "reject",
   state: PlanStepStateName,
+  // Done, skipped or cancelled: nothing more will happen to it unless the plan changes.
+  finished: "boolean",
   kind: "'workflow' | 'screen' | 'check'",
   // One plain line: the check's summary, the run's last activity, or why it failed.
   "summary?": "string > 0",
@@ -177,6 +179,8 @@ const PlanViewGroup = type({
   title: text,
   "plan?": readyPlan,
   state: PlanStepStateName,
+  // Nothing in it is left to do: every step is finished, apart from optional steps nobody started.
+  finished: "boolean",
   "needs?": "string[]",
   steps: PlanViewChild.array(),
 });

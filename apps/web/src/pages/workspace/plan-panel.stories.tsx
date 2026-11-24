@@ -24,6 +24,7 @@ const step = (
     input: {},
     askFirst: more.askFirst === true,
     state,
+    finished: state === "done" || state === "skipped" || state === "cancelled",
     kind: "workflow",
   };
   if (more.optional !== undefined) made.optional = more.optional;
@@ -105,6 +106,7 @@ export const Long: Story = {
         title: "Build a web app from an idea",
         plan: "build-web-app",
         state: "running",
+        finished: false,
         steps: [
           "Write the problem brief",
           "Write the constraints",

@@ -82,6 +82,8 @@ export type StepState =
 /** A plan step with where it stands, worked out from what the host has recorded. */
 export type PlanStepView = PlanStep & {
   state: StepState;
+  // Done, skipped or cancelled: nothing more will happen to it unless the plan changes.
+  finished: boolean;
   kind: "workflow" | "screen" | "check";
   // One plain line: the check's summary, the run's last activity, or why it failed.
   summary?: string;
@@ -100,6 +102,8 @@ export type PlanGroupView = {
   title: string;
   plan?: string;
   state: StepState;
+  // Nothing in it is left to do: every step is finished, apart from optional steps nobody started.
+  finished: boolean;
   needs?: string[];
   steps: PlanStepView[];
 };
@@ -147,8 +151,19 @@ export type PlanRecords = {
 
 const DECLINED_SUMMARY = "declined by the person";
 
-const settled = ({ state }: PlanStepView) =>
-  state === "done" || state === "skipped";
+const FINISHED: ReadonlySet<StepState> = new Set([
+  "done",
+  "skipped",
+  "cancelled",
+]);
+
+// An optional step nobody started leaves nothing to do; one that started keeps its group open.
+const leftToDo = (step: PlanStepView) =>
+  !step.finished &&
+  !(
+    step.optional &&
+    (step.state === "not_started" || step.state === "waiting")
+  );
 
 /**
  * Where each step of a plan stands, worked out from the project's records each time, so the plan
@@ -180,6 +195,7 @@ export function planState(
       input: step.input,
       askFirst: step.askFirst,
       state: "not_started",
+      finished: false,
       kind: action.kind,
     };
     if (step.goAhead) view.goAhead = step.goAhead;
@@ -255,6 +271,7 @@ export function planState(
       return "not_started";
     };
     view.state = state();
+    view.finished = FINISHED.has(view.state);
     if (view.state === "skipped" && step.declined)
       view.summary = DECLINED_SUMMARY;
     if (view.state === "failed" && run?.status === "completed")
@@ -269,21 +286,28 @@ export function planState(
   return steps.map((step) => {
     if (!("steps" in step)) return stepView(step);
     const children = step.steps.map(stepView);
+    const left = children.filter(leftToDo);
     const view: PlanGroupView = {
       id: step.id,
       title: step.title,
       state: "not_started",
+      finished: left.length === 0,
       steps: children,
     };
     if (step.plan) view.plan = step.plan;
     const any = (state: StepState) =>
       children.some((child) => child.state === state);
-    const next = children.find((child) => !settled(child));
+    const [next] = left;
     if (any("failed")) view.state = "failed";
     else if (any("needs_you")) view.state = "needs_you";
     else if (any("running")) view.state = "running";
-    else if (next === undefined) view.state = "done";
-    else {
+    else if (next === undefined) {
+      const ended = children.filter((child) => child.finished);
+      view.state =
+        ended.length > 0 && ended.every((child) => child.state === "cancelled")
+          ? "cancelled"
+          : "done";
+    } else {
       view.state = next.state;
       if (next.needs) view.needs = next.needs;
     }
@@ -330,8 +354,7 @@ export function protectedSteps(
         return "approval";
       if (step.state === "done") return "done";
       if (started(step)) return "started";
-      if (underway && !step.optional && step.state !== "skipped")
-        return "underway";
+      if (underway && !step.optional && !step.finished) return "underway";
       return null;
     };
     return plan.flatMap((step) => {

@@ -85,7 +85,7 @@ export function projectRead(catalog: Catalog, read: ReadProject): ProjectRead {
     ),
     planned: read.steps.flatMap((step) =>
       "steps" in step && step.plan !== undefined
-        ? [{ plan: step.plan, state: step.state }]
+        ? [{ plan: step.plan, state: step.state, finished: step.finished }]
         : [],
     ),
     now: read.now,

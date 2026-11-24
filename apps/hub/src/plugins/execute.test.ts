@@ -1,6 +1,10 @@
 import { expect, test } from "bun:test";
 import type { RuntimeCapabilities } from "@intx/types/runtime-capabilities";
-import { planState, type PlanRecords } from "@corbits-builder/plugin-host/plan";
+import {
+  planState,
+  type PlanRecords,
+  type PlanStep as SavedStep,
+} from "@corbits-builder/plugin-host/plan";
 import { CATALOG } from "./catalog.ts";
 import { createExecuteTools } from "./tools.ts";
 
@@ -140,6 +144,7 @@ function project(
 type PlanStep = {
   id?: string;
   state?: string;
+  finished?: boolean;
   kind?: string;
   steps?: PlanStep[];
 };
@@ -147,6 +152,7 @@ let lastId = 0;
 function stored(step: PlanStep): PlanStep {
   step.id ??= `s${++lastId}`;
   step.state = "not_started";
+  step.finished = false;
   if (step.steps) step.steps.forEach(stored);
   else step.kind = "workflow";
   return step;
@@ -432,6 +438,9 @@ test("execute on build-web-app is turned to plan add, which puts the plan's step
     'build-web-app was not added, so the plan was not changed: the project is already following it. Show the plan with plan({ operation: "show" }) to see where its steps stand.',
   );
   expect(idea.state.plan).toHaveLength(1);
+  const shown = await idea.plan({ operation: "show" });
+  expect(shown.content).toContain('"state":"not_started"');
+  expect(shown.content).not.toContain('"finished"');
   const found = await idea.discover({ query: "build me an app" });
   expect(found.content).toContain("This project is following it.");
   expect(found.content).toContain(
@@ -619,6 +628,44 @@ test("a step whose run ended blocked waits again rather than failing", () => {
   expect(blocked && "summary" in blocked ? blocked.summary : "").toBe(
     "The hub refused every file write.",
   );
+});
+
+test("a group is finished once nothing in it is left to do, and a cancelled step does not end it early", () => {
+  const at = new Date(0).toISOString();
+  const step = (
+    id: string,
+    marks: Pick<SavedStep, "cancelled" | "optional">,
+  ): SavedStep => {
+    const made: SavedStep = {
+      id,
+      title: id,
+      plugin: "designer",
+      action: "mockup",
+      input: {},
+      askFirst: false,
+    };
+    if (marks.cancelled) made.cancelled = marks.cancelled;
+    if (marks.optional) made.optional = marks.optional;
+    return made;
+  };
+  const cancelled = (id: string) =>
+    step(id, { cancelled: { by: "person", at } });
+  const optional = step("extra", { optional: true });
+  const groupOf = (steps: SavedStep[]) =>
+    planState(CATALOG, [{ id: "group", title: "Publish", steps }], {
+      facts: new Set(),
+      personFacts: new Set(),
+      asksApprovals: true,
+      checks: [],
+      runs: [],
+      questions: [],
+    })[0];
+  expect(
+    groupOf([cancelled("first"), step("second", {}), optional]),
+  ).toMatchObject({ state: "not_started", finished: false });
+  expect(
+    groupOf([cancelled("first"), cancelled("second"), optional]),
+  ).toMatchObject({ state: "cancelled", finished: true });
 });
 
 test("a step whose run is held on the person's approval needs them, and its group says so", () => {

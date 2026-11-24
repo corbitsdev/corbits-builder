@@ -113,6 +113,7 @@ type SavedPlanChild = {
   requires?: Fact[];
   declined?: { by: string; at: string };
   state: string;
+  finished: boolean;
 };
 /**
  * A step of the plan: an action step, or a group that only holds action steps, with the handle of
@@ -127,7 +128,10 @@ export type SavedPlanStep =
       steps: readonly SavedPlanChild[];
     };
 /** A step of the plan as saved: one with no id is new, and the host gives it one. */
-type PlanChildWrite = Omit<SavedPlanChild, "id" | "declined" | "state"> & {
+type PlanChildWrite = Omit<
+  SavedPlanChild,
+  "id" | "declined" | "state" | "finished"
+> & {
   id?: string;
 };
 type PlanGroupWrite = {
@@ -462,15 +466,13 @@ function readiness(
   };
 }
 
-const SETTLED = new Set(["done", "skipped", "cancelled"]);
-
-// The plan's action steps for this action whose gate still holds: a settled step's gate is spent.
+// The plan's action steps for this action whose gate still holds: a finished step's gate is spent.
 const gatingSteps = (action: Action, steps: readonly SavedPlanStep[]) =>
   actionSteps(steps).filter(
     (step) =>
       step.plugin === action.plugin &&
       step.action === action.action &&
-      !SETTLED.has(step.state),
+      !step.finished,
   );
 
 // The installed action that a plugin's handle and an action's name pick out.
@@ -832,7 +834,7 @@ async function executing(
   // A step id is a hint for tying the run to the plan, never a reason to hold work back: one that
   // names none of the steps this start would do falls back to the one of them still open. Every open
   // step it would do holds it with its gate, so another step for the same work cannot slip past one.
-  const open = doing.filter(({ state }) => !SETTLED.has(state));
+  const open = doing.filter(({ finished }) => !finished);
   const stepId =
     doing.find(({ id }) => id === asked.step)?.id ??
     (open.length === 1 ? open[0]?.id : undefined);
@@ -1443,14 +1445,22 @@ async function planAnswer(
   saved: { steps: readonly SavedPlanStep[] },
   project: Project,
 ) {
-  const answer = `${JSON.stringify(saved)}\n\n${PLAN_STEP_REMINDER}`;
   const steps = actionSteps(saved.steps);
+  // The model reads each step's state, which the finished mark only restates.
+  const marked = new Set<unknown>([...saved.steps, ...steps]);
+  const plan = JSON.stringify(
+    saved,
+    function (this: unknown, key: string, value: unknown) {
+      return key === "finished" && marked.has(this) ? undefined : value;
+    },
+  );
+  const answer = `${plan}\n\n${PLAN_STEP_REMINDER}`;
   const left = steps.filter(
     (step) => step.optional && step.state === "not_started",
   );
   if (
     left.length === 0 ||
-    steps.some((step) => !step.optional && !SETTLED.has(step.state))
+    steps.some((step) => !step.optional && !step.finished)
   )
     return answer;
   const { asksApprovals } = await project.state();
