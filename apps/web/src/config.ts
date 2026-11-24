@@ -662,9 +662,6 @@ export const wording = {
       stepPlaceholder: "Or say what to do instead…",
     },
     /** The space beside the main area where plugin screens open. */
-    space: {
-      close: "Close",
-    },
     /** The token in the typing row while comments on a document wait to be sent. */
     comments: (count: number) =>
       count === 1 ? "1 comment" : `${String(count)} comments`,

@@ -61,7 +61,8 @@ export function ScreenCard({
   disabled = false,
 }: {
   title: string;
-  onOpen: () => void;
+  /** Opens the space; absent while the screen is already in sight. */
+  onOpen?: (() => void) | undefined;
   /** Turns the screen down, or sets it aside for now. */
   onNotNow?: (() => void) | undefined;
   disabled?: boolean;
@@ -88,15 +89,17 @@ export function ScreenCard({
             {text.notNow}
           </Button>
         )}
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          className={styles.open}
-          onClick={onOpen}
-        >
-          {text.openScreen}
-        </Button>
+        {onOpen === undefined ? null : (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className={styles.open}
+            onClick={onOpen}
+          >
+            {text.openScreen}
+          </Button>
+        )}
       </header>
     </section>
   );

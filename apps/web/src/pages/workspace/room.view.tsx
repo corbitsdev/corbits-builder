@@ -273,6 +273,9 @@ export type TabStatus = ScreenStatus & { tab: string; onOpen: () => void };
  */
 const NARROW_ROOM_PX = 900;
 
+/** The narrowest ground right of the chat a plugin's screen can be used in. */
+const SIDE_MIN_PX = 320;
+
 export type RoomViewProps = RoomContent & RoomSlots;
 
 export function RoomView({
@@ -348,15 +351,28 @@ export function RoomView({
       setDrawerOpen(false);
       go(...args);
     };
-  // A waiting screen opens only when the person presses Open in the box: beside the main area on a
-  // wide window, as a sheet on a narrow one, and Close puts it away. Closed on a wide window, the
-  // column stays mounted out of sight, so the screen's forward action stays in the box.
-  const [sheetOpen, setSheetOpen] = useState(false);
-  // Only a screen its plugin draws for the page stands beside the room; any other is in the box.
+  // Only a screen its plugin draws for the page has a space; any other is in the box. Over the
+  // conversation it stands in the empty ground right of the chat, which stays where it is; where
+  // that ground is too narrow for a screen, it takes the whole page over the conversation, the box
+  // beneath it. Over the project view it waits for Open in the box. Answering it, or Not now in the
+  // box, puts it away.
   const side = space?.place === "page" ? space : null;
-  const sheetShown = narrow && sheetOpen && side !== null;
-  const columnShown = !narrow && sheetOpen && side !== null;
-  const spaceShown = sheetShown || columnShown;
+  const [fits, setFits] = useState(true);
+  const groundRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const ground = groundRef.current;
+    if (ground === null) return;
+    const measure = () => setFits(ground.offsetWidth >= SIDE_MIN_PX);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(ground);
+    return () => observer.disconnect();
+  }, []);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const besideChat = side !== null && !projectOpen && fits;
+  const sheetShown =
+    side !== null && !besideChat && (sheetOpen || !projectOpen);
+  const spaceShown = besideChat || sheetShown;
   const headingRef = useRef<HTMLHeadingElement>(null);
   const inputRef = dock.kind === "composer" ? dock.inputRef : null;
   const openSpace = () => {
@@ -369,10 +385,11 @@ export function RoomView({
     setSheetOpen(false);
     refocusBox.current = true;
   };
-  // The space takes focus to its heading as it opens.
+  // A space the person opened from the box takes focus to its heading; one that comes of its own
+  // accord leaves the cursor where it is.
   useEffect(() => {
-    if (spaceShown) headingRef.current?.focus();
-  }, [spaceShown]);
+    if (sheetOpen) headingRef.current?.focus();
+  }, [sheetOpen]);
   // Once a screen is submitted the next takes its place, or the space closes; either way the
   // person carries on in the prompt box, with what they had typed still there.
   const spaceKey = space?.key ?? null;
@@ -414,10 +431,10 @@ export function RoomView({
   // Escape puts the space away first; a menu inside the view closes on Escape before that, and
   // marks the key as used.
   useEffect(() => {
-    if (!projectOpen && !spaceShown) return;
+    if (!projectOpen && !sheetOpen) return;
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.defaultPrevented) return;
-      if (spaceShown) return closeSheet();
+      if (sheetOpen) return closeSheet();
       // An open chat sheet takes the key to put itself back, whichever listener hears it first;
       // the view closes on the next one.
       const sheet =
@@ -428,7 +445,7 @@ export function RoomView({
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [projectOpen, spaceShown]);
+  }, [projectOpen, sheetOpen]);
   // The prompt box stays in reach under whatever covers the conversation.
   const dockInSheet = sheetShown;
   const dockInProject = projectOpen && !sheetShown;
@@ -437,7 +454,7 @@ export function RoomView({
   const ports = useBoxPorts();
   const card = waitingCard(
     waiting,
-    openSpace,
+    spaceShown ? undefined : openSpace,
     space?.place === "box" ? pluginSpace : null,
   );
   const conversationDock = (
@@ -547,6 +564,13 @@ export function RoomView({
               {dockInConversation ? conversationDock : null}
             </div>
           </section>
+          {/* The ground right of the chat, measured so the space knows whether a screen fits it. */}
+          <div ref={groundRef} className={styles.ground} aria-hidden="true" />
+          {besideChat ? (
+            <PluginSpace title={side.title} headingRef={headingRef}>
+              {spaceScreen}
+            </PluginSpace>
+          ) : null}
           {projectReady ? (
             // Kept while closed, so its panes, previews and drafts keep their place.
             <div
@@ -570,29 +594,13 @@ export function RoomView({
           ) : null}
           {sheetShown && side !== null ? (
             <div className={styles.page} data-slot="room-space-sheet">
-              <PluginSpace
-                title={side.title}
-                as="sheet"
-                headingRef={headingRef}
-                onClose={closeSheet}
-              >
+              <PluginSpace title={side.title} headingRef={headingRef}>
                 {spaceScreen}
               </PluginSpace>
               {dockInSheet ? roomDock : null}
             </div>
           ) : null}
         </div>
-        {!narrow && side !== null ? (
-          <PluginSpace
-            title={side.title}
-            as="column"
-            headingRef={headingRef}
-            onClose={closeSheet}
-            hidden={!columnShown}
-          >
-            {spaceScreen}
-          </PluginSpace>
-        ) : null}
       </div>
       {shell.reply}
     </StageView>
@@ -600,12 +608,13 @@ export function RoomView({
 }
 
 /**
- * What waits on the person as the card the prompt box holds. A screen for the page has a card that
- * opens the space; any other screen is the card, its actions in the box's row as every card's are.
+ * What waits on the person as the card the prompt box holds. A screen for the page has a card,
+ * with Open while the space is not in sight; any other screen is the card, its actions in the box's
+ * row as every card's are.
  */
 function waitingCard(
   waiting: BoxWaiting | null,
-  openSpace: () => void,
+  openSpace: (() => void) | undefined,
   screen: ReactNode,
 ): ReactNode {
   if (waiting === null) return undefined;

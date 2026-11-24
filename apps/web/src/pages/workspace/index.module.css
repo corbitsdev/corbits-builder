@@ -1,7 +1,4 @@
 .room {
-  /* The plugin space's column: what a reading measure in the middle of the window leaves it, within
-     bounds a screen can be used in. */
-  --plugin-column: clamp(20rem, (100% - 48rem) / 2 - var(--space-2), 28rem);
   /* The prompt box's width: the turns' text measure inside their 48rem column, so the box's edges
      line up with the words above it, and a document's page runs a little wider either side. */
   --box-measure: 46rem;
@@ -172,11 +169,12 @@
   }
 }
 
-.conversation {
-  /* The chat stays in the middle of the window as the sidebar opens and closes, not of the canvas
-     beside it, so it never slides. It is as wide as it can be in the middle of the window clear of
-     an open sidebar, open or not, so it never grows or shrinks either. The window is the canvas
-     and however much of the sidebar is showing. */
+/* The chat stays in the middle of the window as the sidebar opens and closes, not of the canvas
+   beside it, so it never slides. It is as wide as it can be in the middle of the window clear of an
+   open sidebar, open or not, so it never grows or shrinks either. The window is the canvas and
+   however much of the sidebar is showing. The ground right of it, and a plugin's screen standing
+   there, work it out the same way against the same canvas. */
+:is(.conversation, .ground, .main > [data-slot="plugin-space"]) {
   --chat-width: min(
     48rem,
     100cqw + var(--rail-width) *
@@ -184,7 +182,9 @@
       var(--sidebar-beside)
   );
   --chat-shift: calc(var(--rail-width) * var(--sidebar-open) / 2);
+}
 
+.conversation {
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -206,6 +206,30 @@
 
 .conversation > :last-child {
   flex: none;
+}
+
+/* The ground right of the chat, from a little past its edge to the canvas's: a plugin's screen for
+   the page stands there, over the conversation's empty side, so the chat never moves for it. Below
+   the row the project control stands in, so that stays in reach. */
+:is(.ground, .main > [data-slot="plugin-space"]) {
+  position: absolute;
+  inset-block: 2.75rem 0;
+  inset-inline-end: 0;
+  z-index: 1;
+  width: calc(
+    (100cqw - var(--chat-width)) / 2 + var(--chat-shift) - var(--space-2)
+  );
+}
+
+.ground {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* Where that ground is too narrow, the screen takes the whole page over the conversation, the box
+   at its foot. */
+.page > [data-slot="plugin-space"] {
+  flex: 1 1 auto;
 }
 
 /* The status pill floats 8px above the box where the way back to the latest message stands; while

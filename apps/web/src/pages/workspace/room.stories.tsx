@@ -16,8 +16,8 @@ import documentPane, {
 import { coordinatorPlan, planning } from "./project-outline.fixtures.ts";
 import { projectOutline, type OutlineAppState } from "./project-outline.ts";
 import designer from "@plugins/designer/package.json";
-import pickColours from "@plugins/designer/src/pick-colours/definition.ts";
-import PickColoursView from "@plugins/designer/src/pick-colours/view.tsx";
+import choose from "@plugins/designer/src/choose/definition.ts";
+import ChooseView from "@plugins/designer/src/choose/view.tsx";
 import looks from "@plugins/designer/src/looks/definition.ts";
 import LooksView from "@plugins/designer/src/looks/view.tsx";
 import writer from "@plugins/writer/package.json";
@@ -835,39 +835,60 @@ export const NarrowDrawerOpensApp: Story = {
   },
 };
 
-const pickColoursScreen = storyScreen(
-  "@corbits-builder/designer pick-colours",
-  designer.builder.actions["pick-colours"],
-  { screen: pickColours, view: PickColoursView, data: undefined },
+const chooseScreen = storyScreen(
+  "@corbits-builder/designer choose",
+  designer.builder.actions["choose"],
+  { screen: choose, view: ChooseView, data: undefined },
 );
 
 const screenNotNow = fn();
 
 /**
- * A screen its plugin draws for the page waits: the box names it with Not now and Open, and the
- * screen's forward action stands where Send is. The plugin space stays closed until the person
- * opens it.
+ * A screen its plugin draws for the page waits: it stands at once in the ground right of the chat,
+ * with no Close, and the box names it with Not now, the screen's forward action where Send is.
  */
 export const ScreenWaiting: Story = {
   args: {
     waiting: {
       kind: "screen",
-      title: "Pick colours",
+      title: "Choose a design",
       onNotNow: screenNotNow,
       disabled: false,
     },
-    space: { key: "screen:story", title: "Pick colours", place: "page" },
+    space: { key: "screen:story", title: "Choose a design", place: "page" },
     pluginSpace: (
       <ScreenStory
-        screen={pickColoursScreen}
+        screen={chooseScreen}
         state="open"
-        input={{ proposed: { primary: "#1d4ed8" } }}
-        project={{
-          "look.color-primary": "#c2410c",
-          "look.color-background": "#ffffff",
-        }}
+        input={{}}
+        project={{}}
+        draft={{ concept: "Crisp", version: 1, comments: [] }}
       />
     ),
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const space = await waitFor(() => {
+      const found = canvasElement.querySelector<HTMLElement>(
+        '[data-slot="plugin-space"]',
+      );
+      if (found === null) throw new Error("No plugin space");
+      return found;
+    });
+    await expect(
+      canvas.queryByRole("button", {
+        name: wording.promptBox.waiting.openScreen,
+      }),
+    ).not.toBeInTheDocument();
+    await expect(
+      within(space).queryByRole("button", { name: "Close" }),
+    ).not.toBeInTheDocument();
+    // The screen keeps to the ground beside the chat; the box and the turns stay where they were.
+    const box = canvasElement.querySelector('[data-slot="composer-box"]');
+    if (box === null) throw new Error("No prompt box");
+    await expect(space.getBoundingClientRect().left).toBeGreaterThanOrEqual(
+      box.getBoundingClientRect().right,
+    );
   },
 };
 
@@ -998,9 +1019,6 @@ export const ScreenNotNow: Story = {
       }),
     );
     await expect(screenNotNow).toHaveBeenCalledOnce();
-    await expect(
-      canvasElement.querySelector('[data-slot="plugin-space"]'),
-    ).toHaveAttribute("hidden");
   },
 };
 
@@ -1010,7 +1028,7 @@ export const ScreenOfItsOwn: Story = {
     ...ScreenWaiting.args,
     waiting: {
       kind: "screen",
-      title: "Pick colours",
+      title: "Choose a design",
       onNotNow: fn(),
       disabled: false,
     },
@@ -1028,36 +1046,10 @@ export const ScreenOfItsOwn: Story = {
   },
 };
 
-/** Open in the box brings the plugin space up beside the conversation; Close or Escape puts it away. */
-export const ScreenOpened: Story = {
-  ...ScreenWaiting,
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    const space = () =>
-      canvasElement.querySelector('[data-slot="plugin-space"]');
-    await expect(space()).toHaveAttribute("hidden");
-    await userEvent.click(
-      canvas.getByRole("button", {
-        name: wording.promptBox.waiting.openScreen,
-      }),
-    );
-    await waitFor(() => expect(space()).not.toHaveAttribute("hidden"));
-    await userEvent.click(
-      canvas.getByRole("button", { name: wording.promptBox.space.close }),
-    );
-    await waitFor(() => expect(space()).toHaveAttribute("hidden"));
-    await userEvent.click(
-      canvas.getByRole("button", {
-        name: wording.promptBox.waiting.openScreen,
-      }),
-    );
-    await waitFor(() => expect(space()).not.toHaveAttribute("hidden"));
-    await userEvent.keyboard("{Escape}");
-    await waitFor(() => expect(space()).toHaveAttribute("hidden"));
-  },
-};
-
-/** The plugin space opened beside the open project view, as beside the conversation. */
+/**
+ * Over the project view the screen waits for Open in the box, which lays it over the page with the
+ * box beneath; Escape puts it away again.
+ */
 export const ScreenWaitingProjectOpen: Story = {
   args: {
     ...ScreenWaiting.args,
@@ -1065,11 +1057,17 @@ export const ScreenWaitingProjectOpen: Story = {
     layout: { ...withDocuments.layout, projectOpen: true },
   },
   play: async ({ canvasElement }) => {
+    const space = () =>
+      canvasElement.querySelector('[data-slot="plugin-space"]');
+    await expect(space()).toBeNull();
     await userEvent.click(
       within(canvasElement).getByRole("button", {
         name: wording.promptBox.waiting.openScreen,
       }),
     );
+    await waitFor(() => expect(space()).not.toBeNull());
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(space()).toBeNull());
   },
 };
 
@@ -1084,21 +1082,25 @@ const narrow = {
   ],
 };
 
-/** On a narrow room the space waits closed: the box names the screen, and Open brings it up. */
-export const ScreenWaitingNarrow: Story = { ...ScreenWaiting, ...narrow };
-
-/** Open lays the screen over the main area as a sheet, the prompt box beneath and Close above. */
+/**
+ * Where the ground beside the chat is too narrow for a screen, it takes the whole page over the
+ * conversation, the prompt box beneath it, with no Close and no Open.
+ */
 export const ScreenSheetNarrow: Story = {
-  ...ScreenWaitingNarrow,
-  play: async ({ canvas, userEvent }) => {
-    await userEvent.click(
-      await canvas.findByRole("button", {
+  ...ScreenWaiting,
+  ...narrow,
+  play: async ({ canvas }) => {
+    await expect(
+      await canvas.findByRole("heading", { name: "Choose a design" }),
+    ).toBeInTheDocument();
+    await expect(
+      canvas.queryByRole("button", {
         name: wording.promptBox.waiting.openScreen,
       }),
-    );
+    ).not.toBeInTheDocument();
     await expect(
-      await canvas.findByRole("heading", { name: "Pick colours" }),
-    ).toHaveFocus();
+      canvas.queryByRole("button", { name: "Close" }),
+    ).not.toBeInTheDocument();
   },
 };
 
@@ -1148,7 +1150,7 @@ export const AppScreenWaiting: Story = {
   args: { ...ScreenWaiting.args, ...AppBuilt.args },
   play: async ({ canvasElement }) => {
     await waitFor(() => expect(foldLine(canvasElement)).not.toBeNull());
-    await expect(foldLine(canvasElement)).toHaveTextContent("Pick colours");
+    await expect(foldLine(canvasElement)).toHaveTextContent("Choose a design");
     await expect(
       canvasElement.querySelector(
         '[data-slot="room-project"] [data-slot="composer-panel"]',
