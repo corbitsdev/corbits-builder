@@ -57,6 +57,8 @@ export function usePageComments(
   margin: ((place: PassagePlace) => ReactNode) | undefined;
   /** Takes what the person selects in the text as the passage to write about. */
   select: { onMouseUp: () => void; onKeyUp: (event: KeyboardEvent) => void };
+  /** The passage being written about, made wider or narrower by its handles. */
+  resize: ((id: string, range: Range) => void) | undefined;
 } {
   // The comment being written: a new one on a selected passage, or a saved one being edited.
   const [writing, setWriting] = useState<{
@@ -89,12 +91,13 @@ export function usePageComments(
       passages: undefined,
       margin: undefined,
       select: { onMouseUp: () => {}, onKeyUp: () => {} },
+      resize: undefined,
     };
 
   const { drafts, onSave, onDelete } = comments;
   const passages: MarginPassage[] = drafts.map((draft) =>
     writing?.id === draft.id
-      ? { id: draft.id, quote: draft.quote, state: "selected" }
+      ? { id: draft.id, quote: writing.quote, state: "selected" }
       : { id: draft.id, quote: draft.quote },
   );
   if (writing !== null && writing.id === null)
@@ -106,7 +109,10 @@ export function usePageComments(
       writing !== null &&
       (place.id === NEW ? writing.id === null : writing.id === place.id);
     if (draft === undefined && !editing) return null;
-    const quote = draft?.quote ?? writing?.quote ?? place.quote;
+    // A comment being written takes the passage as its handles have left it.
+    const quote = editing
+      ? (writing?.quote ?? place.quote)
+      : (draft?.quote ?? place.quote);
     const card = editing ? (
       <CommentCard
         state="writing"
@@ -138,6 +144,11 @@ export function usePageComments(
   return {
     passages,
     margin,
+    resize: (_id, range) => {
+      const quote = rangeText(range).trim();
+      if (quote === "") return;
+      setWriting((was) => (was === null ? was : { ...was, quote }));
+    },
     select: {
       onMouseUp: take,
       // A selection made from the keyboard is taken once the keys that made it are let go.

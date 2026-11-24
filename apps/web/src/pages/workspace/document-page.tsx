@@ -15,6 +15,7 @@ import {
   useState,
   type CSSProperties,
   type MouseEvent,
+  type PointerEvent,
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
@@ -43,6 +44,26 @@ export type PassagePlace = MarginPassage & {
   section: string | null;
   found: boolean;
 };
+
+/** Where one end of the passage being written about sits, from the top left of the page's column. */
+type PassageEnd = { x: number; y: number; height: number };
+
+/** The two ends of the passage being written about, which its handles move. */
+type PassageEnds = { id: string; start: PassageEnd; end: PassageEnd };
+
+/** The text position under a point, by whichever of the two ways the browser offers. */
+function caretAt(x: number, y: number): { node: Node; offset: number } | null {
+  if (typeof document.caretPositionFromPoint === "function") {
+    const caret = document.caretPositionFromPoint(x, y);
+    return caret === null
+      ? null
+      : { node: caret.offsetNode, offset: caret.offset };
+  }
+  const range = document.caretRangeFromPoint(x, y);
+  return range === null
+    ? null
+    : { node: range.startContainer, offset: range.startOffset };
+}
 
 /** How the document's writing stands, while it is not yet filed whole. */
 export type PageWriting = "live" | "stopped";
@@ -177,6 +198,7 @@ export function DocumentPage({
   notes,
   passages = [],
   margin,
+  onResize,
   children,
 }: {
   title: string;
@@ -191,6 +213,8 @@ export function DocumentPage({
   passages?: readonly MarginPassage[] | undefined;
   /** What sits in the right margin beside a passage, such as its comment. */
   margin?: ((passage: PassagePlace) => ReactNode) | undefined;
+  /** The passage being written about was dragged wider or narrower by one of its handles. */
+  onResize?: ((id: string, range: Range) => void) | undefined;
   /** The document's body, drawn at the page's type scale. */
   children: ReactNode;
 }) {
@@ -198,6 +222,8 @@ export function DocumentPage({
   const scroller = useRef<HTMLDivElement>(null);
   const sheet = useRef<HTMLElement>(null);
   const marginColumn = useRef<HTMLDivElement>(null);
+  const pageColumn = useRef<HTMLDivElement>(null);
+  const [ends, setEnds] = useState<PassageEnds | null>(null);
   const marginItems = useRef<(HTMLDivElement | null)[]>([]);
   // The page's headings as the last measure found them, so scrolling need not look again.
   const headingsRef = useRef<HTMLElement[]>([]);
@@ -322,6 +348,46 @@ export function DocumentPage({
       })),
     );
     ranges.current = new Map(found.map((hit) => [hit.place.id, hit.range]));
+    // The passage being written about gets a handle at each end, at its first and last line.
+    const writing = found.find((hit) => hit.place.state === "selected");
+    const lines = [...(writing?.range.getClientRects() ?? [])].filter(
+      (line) => line.width > 0,
+    );
+    const first = lines[0];
+    const last = lines.at(-1);
+    const frame = pageColumn.current?.getBoundingClientRect();
+    const next =
+      writing === undefined ||
+      first === undefined ||
+      last === undefined ||
+      frame === undefined
+        ? null
+        : {
+            id: writing.place.id,
+            start: {
+              x: first.left - frame.left,
+              y: first.top - frame.top,
+              height: first.height,
+            },
+            end: {
+              x: last.right - frame.left,
+              y: last.top - frame.top,
+              height: last.height,
+            },
+          };
+    setEnds((was) =>
+      was !== null &&
+      next !== null &&
+      was.id === next.id &&
+      (["start", "end"] as const).every(
+        (side) =>
+          was[side].x === next[side].x &&
+          was[side].y === next[side].y &&
+          was[side].height === next[side].height,
+      )
+        ? was
+        : next,
+    );
     // Passages not on the page head the margin, above those level with their lines.
     const now = [...missing, ...found.map((hit) => hit.place)];
     setPlaces((was) =>
@@ -395,6 +461,52 @@ export function DocumentPage({
       box.focus({ preventScroll: true });
     }
   }, [card, cardRef, cardTrigger]);
+
+  // A handle drags its end of the passage to the text under the pointer, measured from the line it
+  // took hold of, so the words move with the finger rather than with the knob above or below them.
+  const resizeFrom = (side: "start" | "end", event: PointerEvent) => {
+    const column = pageColumn.current;
+    const paper = sheet.current;
+    const range = ends === null ? undefined : ranges.current.get(ends.id);
+    if (
+      ends === null ||
+      onResize === undefined ||
+      column === null ||
+      paper === null ||
+      range === undefined
+    )
+      return;
+    event.preventDefault();
+    const { id } = ends;
+    const held =
+      side === "start"
+        ? { node: range.endContainer, offset: range.endOffset }
+        : { node: range.startContainer, offset: range.startOffset };
+    const line = ends[side];
+    const lift =
+      event.clientY -
+      (column.getBoundingClientRect().top + line.y + line.height / 2);
+    column.dataset.resizing = "";
+    const move = (moved: globalThis.PointerEvent) => {
+      const caret = caretAt(moved.clientX, moved.clientY - lift);
+      if (caret === null || !paper.contains(caret.node)) return;
+      const next = document.createRange();
+      next.setStart(held.node, held.offset);
+      if (next.comparePoint(caret.node, caret.offset) < 0)
+        next.setStart(caret.node, caret.offset);
+      else next.setEnd(caret.node, caret.offset);
+      if (!next.collapsed) onResize(id, next);
+    };
+    const stop = () => {
+      delete column.dataset.resizing;
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", stop);
+      window.removeEventListener("pointercancel", stop);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", stop);
+    window.addEventListener("pointercancel", stop);
+  };
 
   const narrow = margin !== undefined && !roomy;
   const inMargin = margin !== undefined && !narrow;
@@ -542,7 +654,7 @@ export function DocumentPage({
             actions={<FileActions files={files} />}
           />
         </div>
-        <div className={styles.column}>
+        <div ref={pageColumn} className={styles.column}>
           {/* Without room for the contents, Download and Share head the page instead. */}
           <div className={styles.narrowFiles}>
             <FileActions files={files} />
@@ -563,6 +675,24 @@ export function DocumentPage({
               <Fault onRetry={onResume}>{words.stopped}</Fault>
             ) : null}
           </article>
+          {/* Pointer only, as a text selection's own handles are: the keyboard selects again. */}
+          {ends === null || onResize === undefined
+            ? null
+            : (["start", "end"] as const).map((side) => (
+                <span
+                  key={side}
+                  className={styles.handle}
+                  data-side={side}
+                  data-slot="passage-handle"
+                  aria-hidden="true"
+                  style={{
+                    left: ends[side].x,
+                    top: ends[side].y,
+                    height: ends[side].height,
+                  }}
+                  onPointerDown={(event) => resizeFrom(side, event)}
+                />
+              ))}
           {narrow
             ? places.map((place) => (
                 <Button

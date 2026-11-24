@@ -1,7 +1,7 @@
 import type { UserManual } from "@corbits-builder/schemas/artifact";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { Download, Share2 } from "lucide-react";
-import { fn } from "storybook/test";
+import { expect, fn, waitFor } from "storybook/test";
 import { wording } from "../../config.ts";
 import { PROBLEM_BRIEF } from "./document-page.stories.tsx";
 import type { PaneBarGroup } from "./pane-bar.tsx";
@@ -201,6 +201,53 @@ export const UserManualPage: Story = {
       images: new Map(Object.entries(SAMPLE_MANUAL.pictures)),
     },
     comments: undefined,
+  },
+};
+
+/**
+ * A passage selected to comment on carries a handle at each end, as a text selection does; dragging
+ * the end handle along the line takes in more of it.
+ */
+export const ResizeAPassage: Story = {
+  play: async ({ canvasElement }) => {
+    const words = [...canvasElement.querySelectorAll("article p")].find(
+      (line) => line.textContent.startsWith("Small bakeries"),
+    )?.firstChild;
+    if (words === null || words === undefined) throw new Error("No text");
+    const selection = window.getSelection();
+    const range = document.createRange();
+    range.setStart(words, 0);
+    range.setEnd(words, "Small bakeries".length);
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    words.parentElement?.dispatchEvent(
+      new MouseEvent("mouseup", { bubbles: true }),
+    );
+    const handle = await waitFor(() => {
+      const found = canvasElement.querySelector<HTMLElement>(
+        '[data-slot="passage-handle"][data-side="end"]',
+      );
+      if (found === null) throw new Error("No handle");
+      return found;
+    });
+    const knob = handle.getBoundingClientRect();
+    const at = (x: number) => ({
+      bubbles: true,
+      clientX: x,
+      clientY: knob.bottom + 5,
+      pointerId: 1,
+      isPrimary: true,
+    });
+    handle.dispatchEvent(new PointerEvent("pointerdown", at(knob.left)));
+    window.dispatchEvent(new PointerEvent("pointermove", at(knob.left + 160)));
+    window.dispatchEvent(new PointerEvent("pointerup", at(knob.left + 160)));
+    await waitFor(() =>
+      expect(
+        [...(CSS.highlights.get("document-passage-selected") ?? [])].map(
+          (passage) => String(passage).length,
+        )[0],
+      ).toBeGreaterThan("Small bakeries".length),
+    );
   },
 };
 

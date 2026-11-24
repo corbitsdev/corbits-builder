@@ -100,6 +100,7 @@ export function WrittenDocumentView({
       notes={notes === undefined ? undefined : <VersionNotes {...notes} />}
       passages={page.passages}
       margin={page.margin}
+      onResize={page.resize}
     >
       {text}
     </DocumentPage>

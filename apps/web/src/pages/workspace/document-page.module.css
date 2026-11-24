@@ -94,6 +94,54 @@
   color: var(--wb-foreground);
 }
 
+/* The ends of the passage being written about, as a text selection's own handles are drawn: a bar
+   the height of the line, its round knob above the start and below the end, in the passage's
+   underline colour. Each takes a finger's width around it. */
+.handle {
+  position: absolute;
+  z-index: 1;
+  width: 2px;
+  margin-inline-start: -1px;
+  background: var(--wb-primary);
+  cursor: grab;
+  touch-action: none;
+}
+
+.handle::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--wb-primary);
+  translate: -50% 0;
+}
+
+.handle[data-side="start"]::before {
+  bottom: 100%;
+}
+
+.handle[data-side="end"]::before {
+  top: 100%;
+}
+
+.handle::after {
+  content: "";
+  position: absolute;
+  inset: -12px -11px;
+}
+
+/* While a handle is held, the text under it is what is aimed at, and nothing on the page selects. */
+.column[data-resizing] {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.column[data-resizing] .handle {
+  pointer-events: none;
+}
+
 /* Download and Share: small and quiet, each said in words beside its icon. */
 .files {
   display: flex;

@@ -197,6 +197,7 @@ function CommentField({
 
   // A press anywhere else puts the comment away, and its passage with it, while doing so loses
   // nothing: the field is empty, or still holds the comment it opened with. Words written stay.
+  // The passage's own handles are part of writing it, so taking hold of one keeps the card.
   const latest = useRef({ draft, onCancel });
   useLayoutEffect(() => {
     latest.current = { draft, onCancel };
@@ -207,7 +208,9 @@ function CommentField({
         fieldRef.current?.closest('[data-slot="comment-card"]') ?? null;
       if (
         card === null ||
-        (event.target instanceof Node && card.contains(event.target))
+        (event.target instanceof Node && card.contains(event.target)) ||
+        (event.target instanceof Element &&
+          event.target.closest('[data-slot="passage-handle"]') !== null)
       )
         return;
       const { draft: now, onCancel: cancel } = latest.current;
