@@ -2,8 +2,10 @@
   --width: var(--rail-width);
   /* Closing is the system answering, so it is quicker than opening. */
   --speed: var(--duration-standard);
-  /* Open beside the page, it is a card this far in from the window's edges. */
+  /* The card stands this far in from the window's edges. */
   --inset: var(--frame-edge, var(--space-2));
+  /* flex keeps the plan in the closed card under the name; none leaves the closed card the name alone. */
+  --plan-when-closed: flex;
 
   position: relative;
   display: flex;
@@ -16,105 +18,64 @@
 
 .sidebar[data-open] {
   --speed: var(--duration-large);
-
-  width: var(--width);
 }
 
+/* Beside the page, open, it takes its card's room from what stands beside it; as a drawer it
+   takes none. */
 .sidebar[data-open]:not([data-drawer]) {
   width: calc(var(--width) + var(--inset));
 }
 
-/* Opened or closed from the keyboard it moves at once: a shortcut is pressed too often to wait on. */
-.sidebar[data-instant],
-.sidebar[data-instant] :is(.toggle, .room, .panel) {
-  transition: none;
-}
-
-.room {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-}
-
-/* The panel keeps its full width while the room around it opens and closes: the edge reveals the
-   rows where they stand, so they never move, wrap or squeeze on the way. */
-.panel {
-  display: flex;
-  flex-direction: column;
-  width: var(--width);
-  height: 100%;
-  /* Below the project's name, which floats over the panel's top. */
-  padding-block-start: 56px;
-  transition:
-    opacity var(--speed) var(--ease-out),
-    visibility 0s;
-}
-
-/* Beside the page it floats over the page's ground as a card; the name keeps its corner. */
-.sidebar:not([data-drawer]) .panel {
-  height: calc(100% - 2 * var(--inset));
-  margin: var(--inset) 0 var(--inset) var(--inset);
-  padding-block-start: calc(56px - var(--inset));
-  border-radius: var(--radius-lg);
-  background: var(--card);
-}
-
-/* Closing, the rows fade as the edge passes over them, while the plan's card comes in under the
-   name; hidden once closed, so nothing in it takes focus or is read out. */
-.sidebar:not([data-open]) .panel {
-  visibility: hidden;
-  opacity: 0;
-  transition:
-    opacity var(--duration-micro) var(--ease-out),
-    visibility 0s var(--speed);
-}
-
 .sidebar[data-drawer] {
-  width: 0;
   z-index: 5;
 }
 
-.sidebar[data-drawer] .room {
-  position: absolute;
-  inset-block: 0;
-  inset-inline-start: 0;
-  width: var(--width);
-  max-width: 100vw;
-  box-shadow: var(--wb-shadow);
-  translate: -100% 0;
-  transition: translate var(--speed) var(--ease-out);
-}
-
-.sidebar[data-drawer][data-open] .room {
-  translate: 0;
-}
-
-.sidebar[data-drawer] .panel {
-  background: var(--wb-background);
-}
-
-/* The title row: the mark and the project's name, which only say whose sidebar it is, and the
-   toggle at its end. It spans the card's width in one place open or closed, so opening only grows
-   the card around it; closed, it is the card's top alone. */
-.head {
+/* The card holds the name and the plan, open or closed; open, it grows to the window's height
+   around them, so neither moves. */
+.card {
   position: absolute;
   inset-block-start: var(--inset);
   inset-inline-start: var(--inset);
   z-index: 6;
   display: flex;
-  align-items: center;
-  gap: var(--space-2);
+  flex-direction: column;
   box-sizing: border-box;
   width: var(--width);
-  height: 2.5rem;
-  padding: 0 var(--space-1) 0 var(--space-2);
+  height: auto;
+  overflow: hidden;
   border-radius: var(--radius-lg);
-  color: var(--wb-foreground);
-  white-space: nowrap;
+  background: var(--card);
+  interpolate-size: allow-keywords;
+  transition:
+    height var(--speed) var(--ease-out),
+    box-shadow var(--speed) var(--ease-out);
 }
 
-.sidebar:not([data-open]) .head {
-  background: var(--card);
+.sidebar[data-open] .card {
+  height: calc(100% - 2 * var(--inset));
+}
+
+.sidebar[data-drawer][data-open] .card {
+  box-shadow: var(--wb-shadow);
+}
+
+/* Opened or closed from the keyboard it moves at once: a shortcut is pressed too often to wait on. */
+.sidebar[data-instant],
+.sidebar[data-instant] :is(.card, .toggle) {
+  transition: none;
+}
+
+/* The title row: the mark and the project's name, which only say whose sidebar it is, and the
+   toggle at its end, across the card's width. */
+.head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-2);
+  height: 2.5rem;
+  padding: 0 var(--space-1) 0 var(--space-2);
+  color: var(--wb-foreground);
+  white-space: nowrap;
 }
 
 .toggle {
@@ -165,56 +126,43 @@
   white-space: nowrap;
 }
 
-/* Closed beside the page, the plan stays in sight in a card under the project's name, on the same
-   ground as the name, its rows as the sidebar draws them. It comes in as the sidebar's rows fade, so
-   the plan never leaves the corner, and long plans scroll inside it. */
-.glance {
-  position: absolute;
-  inset-block-start: calc(var(--space-2) + 2.5rem + var(--space-2));
-  inset-inline-start: var(--space-2);
-  z-index: 6;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  width: calc(var(--width) - var(--space-4));
-  max-height: min(24rem, 100dvh - 6rem);
-  padding: var(--space-2) var(--space-1) var(--space-1);
-  border-radius: var(--radius-lg);
-  background: var(--card);
-  transition:
-    opacity var(--duration-standard) var(--ease-out)
-      calc(var(--duration-micro) / 2),
-    translate var(--duration-standard) var(--ease-out)
-      calc(var(--duration-micro) / 2),
-    visibility 0s;
-}
-
-/* Open, the panel holds the plan, so the card gives way to it, quicker than it came. */
-.sidebar[data-open] .glance {
-  visibility: hidden;
-  opacity: 0;
-  translate: 0 calc(-1 * var(--space-1));
-  transition:
-    opacity var(--duration-micro) var(--ease-out),
-    translate var(--duration-micro) var(--ease-out),
-    visibility 0s var(--duration-micro);
-}
-
-.sidebar[data-instant] .glance {
-  transition: none;
-}
-
-.glanceHead {
-  margin: 0;
-  padding: 0 var(--space-2);
-  color: var(--wb-foreground);
-  font-size: var(--text-xs);
-  font-weight: 600;
-  line-height: var(--text-xs--line-height);
-}
-
-/* The plan in the open sidebar: its name over its steps, how far it has gone beside it. */
+/* The plan, at one size open or closed: a long one scrolls inside it. */
 .plan {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  max-height: min(24rem, 100dvh - 6rem);
+  padding: 0 var(--space-2) var(--space-2);
+  overflow-y: auto;
+}
+
+.sidebar:not([data-open]) .plan {
+  display: var(--plan-when-closed);
+}
+
+/* A drawer closed is its name alone, so it covers as little of the page as it can. */
+.sidebar[data-drawer]:not([data-open]) .plan {
+  display: none;
+}
+
+/* The rest of what the sidebar holds, only while open; it scrolls below the plan. */
+.body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-height: 0;
+  padding: 0 var(--space-2) var(--space-3);
+  overflow-y: auto;
+  animation: global(fade-in) var(--speed) var(--ease-out);
+}
+
+.sidebar:not([data-open]) .body {
+  display: none;
+}
+
+/* The plan's name over its steps, how far it has gone beside it. */
+.steps {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
@@ -246,72 +194,6 @@
   color: var(--wb-muted-foreground);
   font-variant-numeric: tabular-nums;
   font-weight: 400;
-}
-
-.glanceRows {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-height: 0;
-  margin: 0;
-  padding: 0;
-  overflow-y: auto;
-  list-style: none;
-}
-
-.glance .row {
-  height: 1.75rem;
-}
-
-/* In the card the type alone says what is done: a done step is dark and firm, one still to come
-   light and faint, so the two read apart at a glance without a mark. */
-.glance .row[data-row="step"][data-state="done"] {
-  color: var(--wb-foreground);
-  font-weight: 500;
-}
-
-.glance
-  .row[data-row="step"]:is([data-state="to_do"], [data-state="declined"]) {
-  color: color-mix(in oklab, var(--wb-muted-foreground) 55%, transparent);
-}
-
-.glanceOpen {
-  display: block;
-  width: 100%;
-  padding: 0;
-  border: 0;
-  border-radius: var(--radius-md);
-  color: inherit;
-  font: inherit;
-  text-align: start;
-  background: transparent;
-  cursor: pointer;
-}
-
-.glanceOpen:focus-visible {
-  outline: 2px solid var(--wb-action);
-  outline-offset: -2px;
-}
-
-/* Said to a screen reader only. */
-.said {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
-
-/* The rows scroll below the project's name, never under it. */
-.body {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  gap: var(--space-2);
-  min-height: 0;
-  padding: 0 var(--space-2) var(--space-3);
-  overflow-y: auto;
 }
 
 /* The links that leave the project stand at the sidebar's foot, below what the project holds. */
@@ -350,7 +232,6 @@
   height: 14px;
 }
 
-.tree,
 .links {
   display: flex;
   flex-direction: column;
@@ -360,33 +241,145 @@
   list-style: none;
 }
 
-/* The tree item holds focus; its row draws the ring. */
-.item:focus-visible {
-  outline: none;
+.tree {
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
-.item:focus-visible > .row,
+/* A step is a stop on the timeline: its circle in a column of its own, joined to its neighbours by
+   a thin line, and its name beside it, at the links' size and rhythm. Each row draws its own half
+   of the line either side of its circle, since the next row's ground covers anything drawn past
+   its edge. The line is darker after a done step and light after the one at work. */
+.step {
+  --line: var(--wb-border);
+  --line-in: var(--wb-border);
+
+  position: relative;
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr);
+  column-gap: var(--space-2);
+  align-items: start;
+  min-height: 1.75rem;
+  box-sizing: border-box;
+  padding: 6px var(--space-2);
+  border-radius: var(--radius-md);
+  background: var(--card);
+  color: color-mix(in oklab, var(--wb-muted-foreground) 72%, transparent);
+  font-size: var(--text-xs);
+  line-height: var(--text-xs--line-height);
+  cursor: default;
+}
+
+.step:not(:first-child)::before,
+.step:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  left: calc(var(--space-2) + 6.5px);
+  width: 1px;
+}
+
+.step:not(:first-child)::before {
+  top: 0;
+  height: calc(6px + 0.5lh);
+  background: var(--line-in);
+}
+
+.step:not(:last-child)::after {
+  top: calc(6px + 0.5lh);
+  bottom: 0;
+  background: var(--line);
+}
+
+.step[data-state="done"] {
+  --line: var(--wb-muted-foreground);
+
+  color: var(--wb-foreground);
+}
+
+.step[data-state="done"] + .step {
+  --line-in: var(--wb-muted-foreground);
+}
+
+.step[data-state="running"] {
+  color: var(--wb-foreground);
+  font-weight: 600;
+}
+
+.step[data-state="needs_you"] {
+  color: var(--wb-foreground);
+  font-weight: 500;
+}
+
+.step[data-state="failed"] {
+  color: var(--destructive);
+}
+
+/* Over the line, on the row's own ground, so the line runs between circles, not through them. */
+.circle {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  height: 1lh;
+  background: inherit;
+}
+
+.circle::before {
+  content: "";
+  box-sizing: border-box;
+  width: 8px;
+  height: 8px;
+  border: 1.5px solid
+    color-mix(in oklab, var(--wb-muted-foreground) 55%, transparent);
+  border-radius: 50%;
+}
+
+.step[data-state="done"] .circle::before {
+  border-color: var(--wb-foreground);
+  background: var(--wb-foreground);
+}
+
+.step[data-state="needs_you"] .circle::before {
+  border-color: var(--wb-primary);
+  background: var(--wb-primary);
+}
+
+.step[data-state="failed"] .circle::before {
+  border-color: var(--destructive);
+  background: var(--destructive);
+}
+
+.step[data-state="running"] .circle::before {
+  content: none;
+}
+
+/* A step that has made something opens it; the one whose document is on the page is shaded, as a
+   selected row is, so the person sees where in the plan they are reading. */
+.step[data-opens] {
+  cursor: pointer;
+}
+
+.step[data-opens]:hover,
+.step[aria-current] {
+  background: var(--wb-muted);
+}
+
+.step[aria-current] {
+  font-weight: 500;
+}
+
+.step:focus-visible,
 .toggle:focus-visible {
   outline: 2px solid var(--wb-action);
   outline-offset: -2px;
 }
 
-.row {
-  position: relative;
+.text {
   display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  height: 2rem;
-  padding: 0 var(--space-2);
-  border-radius: var(--radius-md);
-  color: var(--wb-muted-foreground);
-  font-size: var(--wb-text-control);
-  line-height: var(--wb-text-control--line-height);
-  cursor: pointer;
-}
-
-.row:hover {
-  background: var(--wb-muted);
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
 }
 
 .name {
@@ -397,89 +390,24 @@
   white-space: nowrap;
 }
 
-/* Where a thing stands is said by its words and its icon. Made ones stay quiet in the secondary
-   grey; ones still ahead are fainter, so the eye goes to the one being made, which is the brightest
-   row. One that waits on the person or failed reads as plainly. */
-.row[data-row="step"]:is([data-state="to_do"], [data-state="declined"]) {
-  color: color-mix(in oklab, var(--wb-muted-foreground) 72%, transparent);
-}
-
-.row[data-row="step"]:is(
-    [data-opens]:hover,
-    [data-state="running"],
-    [data-state="needs_you"],
-    [data-state="failed"]
-  ),
-.item[aria-current] > .row[data-row="step"] {
-  color: var(--wb-foreground);
-}
-
-/* What a row is at sits under its name, small and quiet, and the row grows to hold it. */
-.text {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.text > .name {
-  flex: none;
-}
-
+/* The one quiet line under a step that is at work, waits or failed. */
 .doing {
   display: flex;
   gap: 5px;
   overflow: hidden;
   color: var(--wb-muted-foreground);
-  font-size: var(--text-xs);
   font-weight: 400;
-  line-height: var(--text-xs--line-height);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.row[data-row="step"]:is([data-lines], :has(.doing)) {
-  align-items: flex-start;
-  height: auto;
-  min-height: 2rem;
-  padding-block: 7px;
-}
-
-/* A step that failed says so in red, as its words say it. */
-.row[data-row="step"][data-state="failed"] .name {
-  color: var(--destructive);
-}
-
-/* The end marks sit level with the name, on a row of two lines too. */
-.row[data-row="step"]:is([data-lines], :has(.doing)) > .dot {
-  margin-block-start: 2px;
-}
-
-/* A row with nothing to show yet is only where the work stands: no fill or pointer, as though it
-   opened something. One that has made its thing opens it, and is marked as the app's line is
-   while that is on the page. */
-.row[data-row="step"]:not([data-opens]) {
-  cursor: default;
-}
-
-.row[data-row="step"]:not([data-opens]):hover {
-  background: transparent;
-}
-
-/* The step whose document is on the page is the one shaded, as a selected row is, so the person
-   sees where in the plan they are reading. What waits on them says so in its own line instead. */
-.item[aria-current] > .row[data-row="step"],
-.item[aria-current] > .row[data-row="step"]:hover {
-  background: var(--wb-muted);
+/* What waits on the person reads as plainly as the step's name. */
+.doing[data-tone="you"] {
+  color: var(--wb-foreground);
   font-weight: 500;
 }
 
-.row[data-row="step"][data-state="running"] {
-  font-weight: 500;
-}
-
-/* A dot sits in a 14px box at the row's end, so every mark lines up in one column. */
+/* A dot sits in a 14px box, so every mark lines up in one column. */
 .dot {
   display: grid;
   flex: none;
@@ -519,22 +447,6 @@
 .clock {
   flex: none;
   font-variant-numeric: tabular-nums;
-}
-
-.glance .clock {
-  color: var(--wb-muted-foreground);
-  font-size: var(--text-xs);
-}
-
-/* What waits on the person reads as plainly as the step's name. */
-.doing[data-tone="you"] {
-  color: var(--wb-foreground);
-  font-weight: 500;
-}
-
-/* A skipped step's line is as faint as its name, never brighter than a step still to do. */
-.row[data-state="declined"] .doing {
-  color: inherit;
 }
 
 /* The app's line stands level with Plan: the same height, size and colour. It reads as a status,

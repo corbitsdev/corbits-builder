@@ -1,11 +1,11 @@
-/* A document's contents and the closed sidebar's plan card would both stand in the margin left of
-   the page, one over the other. While the page is open its contents keep the margin; the plan is
-   a press away on the project's name. */
+/* A document's contents and the closed sidebar's plan would both stand in the margin left of the
+   page, one over the other. While the page is open its contents keep the margin, and the closed
+   sidebar folds to its name; the plan is a press away on its toggle. */
 [data-slot="room-frame"]:has(
     [data-slot="room-project"]:not([hidden]) [data-slot="document-contents"]
   )
-  [data-slot="plan-glance"] {
-  display: none;
+  [data-slot="project-sidebar"] {
+  --plan-when-closed: none;
 }
 
 /* Open, the sidebar takes the margin left of the page, so a document's contents leave it at once

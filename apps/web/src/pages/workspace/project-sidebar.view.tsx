@@ -1,12 +1,12 @@
 /**
- * An open project's sidebar: the project's name, which opens and closes it, then the project's plan
- * as the coordinator saved it, each step opening what it made once it is made, and, where no step
- * makes the app, a line saying how the app stands, which opens it. Kept at the bottom, smaller and greyer, are
- * the links that leave it: the project's settings and secrets, the other projects, and the
- * workspace's settings and the person's account. Closed, the project's name stays, and while the
- * plan is under way a small card under it keeps the plan in sight. Where the room is narrow it is a
- * drawer over the page. Its frame, foot and links are the workspace
- * sidebar's too, outside a project.
+ * An open project's sidebar: a card with the project's name and the toggle that opens and closes
+ * it, then the project's plan as the coordinator saved it, each step opening what it made once it
+ * is made. Closed, the card holds the name and the plan; open, it grows to the window's height
+ * around them, with a line saying how the app stands where no step makes it, and at the foot,
+ * smaller and greyer, the links that leave it: the project's settings and secrets, the other
+ * projects, and the workspace's settings and the person's account. Where the room is narrow it is
+ * a drawer over the page. Its frame, foot and links are the workspace sidebar's too, outside a
+ * project.
  */
 import {
   useEffect,
@@ -139,15 +139,16 @@ export function ProjectSidebarView({
       open={open}
       drawer={drawer}
       onToggleSidebar={onToggleSidebar}
-      glance={<PlanGlance plan={plan} shown={shown} onOpenStep={onOpenStep} />}
+      plan={
+        <PlanTree
+          plan={plan}
+          app={app}
+          shown={shown}
+          waitsOn={waitsOn}
+          onOpenStep={onOpenStep}
+        />
+      }
     >
-      <PlanTree
-        plan={plan}
-        app={app}
-        shown={shown}
-        waitsOn={waitsOn}
-        onOpenStep={onOpenStep}
-      />
       {/* The app has its own line only where no step of the plan makes it. */}
       {plan.some((row) => row.app) ? null : (
         <AppLine app={app} open={appOpen} onOpen={onOpenApp} />
@@ -177,9 +178,10 @@ export function ProjectSidebarView({
 }
 
 /**
- * The sidebar's frame, in a project and outside one: a name with the mark, which opens and closes
- * it from anywhere with the shortcut too, and below it what the sidebar holds. Closed, only the
- * name stays; narrow, it is a drawer over the page.
+ * The sidebar's frame, in a project and outside one: a card with the name and the mark, and a
+ * toggle that opens and closes it, from anywhere with the shortcut too. Under the name, open or
+ * closed and in one place, is the plan; open, the card grows around it with the rest of what the
+ * sidebar holds. Narrow, it is a drawer over the page, the plan shown only while open.
  */
 export function SidebarFrame({
   label = words.sidebar,
@@ -187,7 +189,7 @@ export function SidebarFrame({
   open,
   drawer,
   onToggleSidebar,
-  glance = null,
+  plan = null,
   children,
 }: {
   /** What a screen reader calls the sidebar. */
@@ -196,9 +198,10 @@ export function SidebarFrame({
   open: boolean;
   drawer: boolean;
   onToggleSidebar: () => void;
-  /** What stays in sight under the name while the sidebar is closed beside the page. */
-  glance?: ReactNode;
-  children: ReactNode;
+  /** What stays under the name, open or closed, without moving as the card grows. */
+  plan?: ReactNode;
+  /** What the card holds only while open. */
+  children?: ReactNode;
 }) {
   const bodyId = `project-sidebar-${useId()}`;
   // The last open or close came from the keyboard, so it happens without moving.
@@ -216,8 +219,8 @@ export function SidebarFrame({
     return () => document.removeEventListener("keydown", onKey);
   }, []);
   const Icon = open ? PanelLeftClose : PanelLeftOpen;
-  // One root open or closed, so the toggle keeps focus as the sidebar opens and closes, and the
-  // panel stays mounted so it can leave as well as arrive.
+  // One root open or closed, so the toggle keeps focus and the plan stays as it is as the sidebar
+  // opens and closes.
   return (
     <aside
       className={styles.sidebar}
@@ -227,124 +230,34 @@ export function SidebarFrame({
       data-instant={byKey ? "" : undefined}
       aria-label={label}
     >
-      <div className={styles.head}>
-        <span className={styles.mark}>
-          <Mark size={28} />
-        </span>
-        <span className={styles.project}>{title}</span>
-        <button
-          type="button"
-          className={styles.toggle}
-          aria-label={title}
-          aria-expanded={open}
-          aria-controls={bodyId}
-          aria-keyshortcuts={shortcut.key}
-          title={`${open ? words.closeSidebar : words.openSidebar} (${shortcut.words})`}
-          onClick={() => {
-            setByKey(false);
-            onToggleSidebar();
-          }}
-        >
-          <Icon aria-hidden="true" />
-        </button>
-      </div>
-      {/* Kept while open, out of sight, so it can fade as the panel takes its place. */}
-      {drawer ? null : glance}
-      <div className={styles.room}>
-        <div id={bodyId} className={styles.panel} inert={!open}>
-          <div className={styles.body}>{children}</div>
+      <div className={styles.card}>
+        <div className={styles.head}>
+          <span className={styles.mark}>
+            <Mark size={28} />
+          </span>
+          <span className={styles.project}>{title}</span>
+          <button
+            type="button"
+            className={styles.toggle}
+            aria-label={title}
+            aria-expanded={open}
+            aria-controls={bodyId}
+            aria-keyshortcuts={shortcut.key}
+            title={`${open ? words.closeSidebar : words.openSidebar} (${shortcut.words})`}
+            onClick={() => {
+              setByKey(false);
+              onToggleSidebar();
+            }}
+          >
+            <Icon aria-hidden="true" />
+          </button>
+        </div>
+        {plan === null ? null : <div className={styles.plan}>{plan}</div>}
+        <div id={bodyId} className={styles.body}>
+          {children}
         </div>
       </div>
     </aside>
-  );
-}
-
-/**
- * The plan in sight while the sidebar is closed: a small card under the project's name with how
- * many steps are done and each step set by where it stands, a done one dark and firm, one still to
- * come light, so the work can be followed
- * without opening the sidebar. It shows only while the plan is under way; once every step has
- * finished, only the name stays. A step that has made something opens it, as its row does.
- */
-function PlanGlance({
-  plan,
-  shown,
-  onOpenStep,
-}: {
-  plan: readonly SidebarRow[];
-  shown: string | null;
-  onOpenStep: (tab: string) => void;
-}) {
-  const underWay = plan.some(
-    (row) =>
-      row.state === "to_do" ||
-      row.state === "running" ||
-      row.state === "needs_you",
-  );
-  if (!underWay) return null;
-  const counted = plan.filter((row) => row.state !== "declined");
-  const done = counted.filter((row) => row.state === "done").length;
-  return (
-    <section
-      className={styles.glance}
-      data-slot="plan-glance"
-      aria-label={words.glance.label}
-    >
-      <p className={styles.glanceHead}>
-        {words.glance.progress(done, counted.length)}
-      </p>
-      <ul className={styles.glanceRows}>
-        {plan.map((row) => {
-          const state =
-            row.state === "declined"
-              ? words.skipped
-              : words.stepState[row.state];
-          const line = (
-            <span
-              className={styles.row}
-              data-row="step"
-              data-state={row.state}
-              data-opens={row.opens === null ? undefined : ""}
-            >
-              <span className={styles.name}>{row.name}</span>
-              {/* Its type says where it stands; a screen reader hears it said. */}
-              <span className={styles.said}>, {state}</span>
-              {row.state === "running" ? (
-                <>
-                  <RunningFor since={row.startedAt} />
-                  <span className={styles.dot}>
-                    <Working />
-                  </span>
-                </>
-              ) : null}
-            </span>
-          );
-          const { opens } = row;
-          return (
-            <li
-              key={row.id}
-              aria-current={
-                opens !== null && opens === shown ? "page" : undefined
-              }
-              className={styles.item}
-              title={row.name}
-            >
-              {opens === null ? (
-                line
-              ) : (
-                <button
-                  type="button"
-                  className={styles.glanceOpen}
-                  onClick={() => onOpenStep(opens)}
-                >
-                  {line}
-                </button>
-              )}
-            </li>
-          );
-        })}
-      </ul>
-    </section>
   );
 }
 
@@ -495,7 +408,7 @@ function PlanTree({
   // With no plan yet, the place the steps will take says so, rather than standing empty.
   if (plan.length === 0)
     return (
-      <section className={styles.plan}>
+      <section className={styles.steps}>
         <h2 className={styles.planHead}>{words.plan}</h2>
         <p className={styles.planEmpty}>{words.noPlan}</p>
       </section>
@@ -555,12 +468,12 @@ function PlanTree({
   const counted = plan.filter((row) => row.state !== "declined");
   const done = counted.filter((row) => row.state === "done").length;
   return (
-    <section className={styles.plan}>
+    <section className={styles.steps}>
       {/* The steps are named as the plan, with how far it has gone beside the name. */}
       <h2 className={styles.planHead}>
         <span id={headingId}>{words.plan}</span>
         <span className={styles.planCount}>
-          {words.glance.progress(done, counted.length)}
+          {words.progress(done, counted.length)}
         </span>
       </h2>
       <ul
@@ -586,12 +499,12 @@ function PlanTree({
 }
 
 /**
- * One step of the plan: its name, and under it a line saying where it stands. The one at work
- * turns at its end, and its line counts how long it has run; one that waits on the person, or whose
- * document the waiting card opened, says so; one that failed is red and says so. The one whose
- * document is on the page is shaded. What a run last did is often a tool's own words, so it is kept
- * to the row's tooltip. Once a step has made something it opens it; once the app is built, its
- * step says how it runs.
+ * One step of the plan, as a stop on a timeline: a circle on the line that joins the steps, and the
+ * step's name beside it. Only the step at work, one that waits on the person, one that failed and
+ * the app's own step have a line under the name: how long it has run, that it waits, that it did
+ * not finish, or how the app runs. The one at work turns in its circle. The one whose document is
+ * on the page is shaded. What a run last did is often a tool's own words, so it is kept to the
+ * row's tooltip. Once a step has made something it opens it.
  */
 function PlanRow({
   row,
@@ -637,8 +550,6 @@ function PlanRow({
       </span>
     ) : state === "failed" ? (
       <span className={styles.doing}>{words.stepNow.failed}</span>
-    ) : state === "declined" ? (
-      <span className={styles.doing}>{words.stepNow.skipped}</span>
     ) : doing === null ? null : (
       <span className={styles.doing} aria-live="polite">
         {doing}
@@ -650,27 +561,19 @@ function PlanRow({
       aria-level={1}
       aria-label={said}
       aria-current={current ? "page" : undefined}
-      className={styles.item}
+      className={styles.step}
+      data-state={state}
+      data-opens={onOpen === null ? undefined : ""}
       title={row.summary === null ? row.name : `${row.name}: ${row.summary}`}
       onClick={onOpen ?? undefined}
       {...item}
     >
-      <span
-        className={styles.row}
-        data-row="step"
-        data-state={state}
-        data-opens={onOpen === null ? undefined : ""}
-        data-lines={line === null ? undefined : "2"}
-      >
-        <span className={styles.text}>
-          <span className={styles.name}>{row.name}</span>
-          {line}
-        </span>
-        {state === "running" ? (
-          <span className={styles.dot}>
-            <Working />
-          </span>
-        ) : null}
+      <span className={styles.circle}>
+        {state === "running" ? <Working /> : null}
+      </span>
+      <span className={styles.text}>
+        <span className={styles.name}>{row.name}</span>
+        {line}
       </span>
     </li>
   );

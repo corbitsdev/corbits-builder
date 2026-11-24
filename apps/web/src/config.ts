@@ -496,13 +496,9 @@ export const wording = {
       working: "Working",
       needsYou: "Waiting on you",
       failed: "Didn't finish",
-      skipped: "Skipped",
     },
-    /** The plan kept in sight under the project's name while the sidebar is closed. */
-    glance: {
-      label: "Plan",
-      progress: (done: number, steps: number) => `${done} of ${steps} done`,
-    },
+    /** How far the plan has gone, beside its name. */
+    progress: (done: number, steps: number) => `${done} of ${steps} done`,
     /** Read after a step's name, and shown on its pause mark. */
     pausesFirst: "pauses for you before it starts",
     skipped: "skipped",

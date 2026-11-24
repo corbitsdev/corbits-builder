@@ -429,17 +429,19 @@ export const LongPlan: Story = {
 };
 
 /**
- * Closed, the page takes the whole window; the project's name floats top left, as the control that
- * opens the sidebar again, and while the plan is under way a card under it keeps the plan in sight.
+ * Closed, the card holds the project's name, with the toggle that opens it again, and the plan,
+ * where the open sidebar has it; the rest of the sidebar waits until it opens.
  */
 export const Closed: Story = {
   args: { ...buildingArgs, open: false },
   play: async ({ canvasElement }) => {
-    const glance = within(canvasElement).getByRole("region", {
-      name: words.glance.label,
-    });
-    await expect(glance).toHaveTextContent(words.glance.progress(6, 7));
-    await expect(within(glance).getAllByRole("listitem")).toHaveLength(7);
+    const canvas = within(canvasElement);
+    await expect(canvas.getByRole("tree")).toBeVisible();
+    await expect(canvas.getByText(words.progress(6, 7))).toBeVisible();
+    await expect(canvas.getAllByRole("treeitem")).toHaveLength(7);
+    await expect(
+      canvas.queryByRole("button", { name: words.projectSettings }),
+    ).toBeNull();
   },
 };
 
@@ -448,41 +450,30 @@ export const ClosedDark: Story = {
   globals: { mode: "dark" },
 };
 
-/** A step in the card that has made something opens it, as its row in the sidebar does. */
+/** A step that has made something opens it, closed as well as open. */
 export const ClosedOpensWhatAStepMade: Story = {
   args: { ...buildingArgs, open: false },
   play: async ({ args, canvasElement }) => {
-    const glance = within(canvasElement).getByRole("region", {
-      name: words.glance.label,
-    });
     await userEvent.click(
-      within(glance).getByRole("button", { name: /Design the look/ }),
+      within(canvasElement).getByRole("treeitem", { name: /^Design the look/ }),
     );
     await expect(args.onOpenStep).toHaveBeenCalledWith("design");
   },
 };
 
-/** Once every step has finished, the plan has nothing to follow, so only the name stays. */
-export const ClosedPlanFinished: Story = {
-  args: {
-    ...buildingArgs,
-    open: false,
-    plan: building.map((each) => ({ ...each, state: "done" })),
-  },
+/** Opening and closing grow and shrink the card around the plan, which stays where it is. */
+export const PlanStaysPut: Story = {
+  args: { ...buildingArgs, open: false },
   play: async ({ canvasElement }) => {
-    await expect(
-      within(canvasElement).queryByRole("region", { name: words.glance.label }),
-    ).toBeNull();
-  },
-};
-
-/** Closed with no plan, only the name stays. */
-export const ClosedNoPlan: Story = {
-  args: { ...buildingArgs, open: false, plan: [] },
-  play: async ({ canvasElement }) => {
-    await expect(
-      within(canvasElement).queryByRole("region", { name: words.glance.label }),
-    ).toBeNull();
+    const canvas = within(canvasElement);
+    const before = canvas.getByRole("tree").getBoundingClientRect();
+    await userEvent.click(
+      canvas.getByRole("button", { name: "Bakery orders", expanded: false }),
+    );
+    const after = canvas.getByRole("tree").getBoundingClientRect();
+    await expect(after.top).toBe(before.top);
+    await expect(after.left).toBe(before.left);
+    await expect(after.width).toBe(before.width);
   },
 };
 
@@ -542,7 +533,7 @@ export const StepsBeforeTheyStart: Story = {
       canvas.getByRole("treeitem", {
         name: `Visit the market stalls, ${words.skipped}`,
       }),
-    ).toHaveTextContent(words.stepNow.skipped);
+    ).toHaveTextContent(/^Visit the market stalls$/);
     await expect(canvas.queryByRole("switch", { hidden: true })).toBeNull();
     await expect(
       within(

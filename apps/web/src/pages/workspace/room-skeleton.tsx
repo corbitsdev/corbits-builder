@@ -85,16 +85,17 @@ export function RoomSkeleton({
                 open={sidebar.open}
                 drawer={sidebar.drawer}
                 onToggleSidebar={sidebar.onToggleSidebar}
-              >
-                <ul className={styles.plan} aria-hidden="true">
-                  {PLAN_ROWS.map((width, index) => (
-                    <li key={index} className={styles.step}>
-                      <span className={styles.dot} />
-                      <span className={styles.bar} style={{ width }} />
-                    </li>
-                  ))}
-                </ul>
-              </SidebarFrame>
+                plan={
+                  <ul className={styles.plan} aria-hidden="true">
+                    {PLAN_ROWS.map((width, index) => (
+                      <li key={index} className={styles.step}>
+                        <span className={styles.dot} />
+                        <span className={styles.bar} style={{ width }} />
+                      </li>
+                    ))}
+                  </ul>
+                }
+              />
             ) : (
               <ProjectSidebarView
                 project={title}

@@ -632,7 +632,7 @@ export const SidebarClosedPlanUnderWay: Story = {
 
 /**
  * Put away beside the open project view, whose header leaves the corner to the toggle. The page's
- * contents keep the margin left of it, so the plan's card gives way to them.
+ * contents keep the margin left of it, so the closed sidebar folds to its name.
  */
 export const SidebarClosedProjectOpen: Story = {
   args: {
@@ -645,8 +645,10 @@ export const SidebarClosedProjectOpen: Story = {
         canvasElement.querySelector('[data-slot="document-contents"]'),
       ).not.toBeNull(),
     );
-    const glance = canvasElement.querySelector('[data-slot="plan-glance"]');
-    if (glance !== null) await expect(glance).not.toBeVisible();
+    const plan = canvasElement.querySelector(
+      '[data-slot="project-sidebar"] [role="tree"]',
+    );
+    if (plan !== null) await expect(plan).not.toBeVisible();
   },
 };
 
