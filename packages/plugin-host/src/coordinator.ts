@@ -1400,21 +1400,27 @@ function removed(plan: PlanStepWrite[], ids: readonly string[]) {
   return plan.filter(kept);
 }
 
+// The plan as the model reads it, without the finished marks: each step's state already says it.
+function planForModel(saved: { steps: readonly PlanViewStep[] }) {
+  const steps = new Set<unknown>([
+    ...saved.steps,
+    ...planActionSteps(saved.steps),
+  ]);
+  return JSON.stringify(
+    saved,
+    function (this: unknown, key: string, value: unknown) {
+      return key === "finished" && steps.has(this) ? undefined : value;
+    },
+  );
+}
+
 // The plan as it stands, and once only optional steps are left unstarted, what is owed on them.
 async function planAnswer(
   saved: { steps: readonly PlanViewStep[] },
   project: Project,
 ) {
   const steps = planActionSteps(saved.steps);
-  // The model reads each step's state, which the finished mark only restates.
-  const planSteps = new Set<unknown>([...saved.steps, ...steps]);
-  const plan = JSON.stringify(
-    saved,
-    function (this: unknown, key: string, value: unknown) {
-      return key === "finished" && planSteps.has(this) ? undefined : value;
-    },
-  );
-  const answer = `${plan}\n\n${PLAN_STEP_REMINDER}`;
+  const answer = `${planForModel(saved)}\n\n${PLAN_STEP_REMINDER}`;
   const optionalToOffer = steps.filter(unstartedOptional);
   if (optionalToOffer.length === 0 || steps.some(leftToDo)) return answer;
   const { asksApprovals } = await project.state();
