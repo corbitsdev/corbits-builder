@@ -194,10 +194,6 @@ const meta = {
     onSettings: fn(),
     onOpenApp: fn(),
     onOpenStep: fn(),
-    onProjectSettings: fn(),
-    onNewProject: fn(),
-    onWorkspaceSettings: fn(),
-    onAccount: fn(),
   },
   render: (args) => (
     <Shell>
@@ -298,7 +294,7 @@ export const NoApp: Story = {
 
 /**
  * No plan, as in a new project or one asked for something too small to plan: the sidebar makes up
- * no row, says in one line that the steps will show there, and the links stay at its foot.
+ * no row and says in one line that the steps will show there.
  */
 export const NoPlan: Story = {
   args: { plan: [] },
@@ -306,9 +302,6 @@ export const NoPlan: Story = {
     const canvas = within(canvasElement);
     await expect(canvas.queryByRole("tree")).toBeNull();
     await expect(canvas.getByText(words.noPlan)).toBeVisible();
-    await expect(
-      canvas.getByRole("button", { name: words.projectSettings }),
-    ).toBeVisible();
   },
 };
 
@@ -441,9 +434,6 @@ export const Closed: Story = {
     const canvas = within(canvasElement);
     await expect(canvas.getByRole("tree", { name: words.plan })).toBeVisible();
     await expect(canvas.getAllByRole("treeitem")).toHaveLength(7);
-    await expect(
-      canvas.queryByRole("button", { name: words.projectSettings }),
-    ).toBeNull();
   },
 };
 

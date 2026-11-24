@@ -19,7 +19,7 @@ import { Dictated } from "../dictation.jsx";
 import { useShellReply } from "../flourish.tsx";
 import { Composer } from "../composer.tsx";
 import { HOME_COMPOSER_PLACEHOLDER } from "./home-view.ts";
-import { RoomSkeleton, type StartingWays } from "./workspace/room-skeleton.tsx";
+import { RoomSkeleton } from "./workspace/room-skeleton.tsx";
 import type { MarkWays } from "./workspace/project-sidebar.view.tsx";
 import { ProjectCards, type LibraryProject } from "./project-library.view.tsx";
 import styles from "./projects.module.css";
@@ -45,7 +45,10 @@ export type FolderReading = {
 export type ProjectsViewProps = {
   /** What the page is busy with; the prompt and both imports wait until it is idle. */
   activity: "idle" | "starting" | "importing";
-  /** The sidebar as the person keeps it, for the room a starting project opens into. */
+  /**
+   * The sidebar as the person keeps it, for the room a starting project opens into. Leaving from
+   * its menu lets the project finish without opening it.
+   */
   sidebar: MarkWays & {
     open: boolean;
     drawer: boolean;
@@ -57,8 +60,6 @@ export type ProjectsViewProps = {
   /** What is typed into the room's box while the project starts, for the room to send. */
   followUp: string;
   onFollowUpChange: (followUp: string) => void;
-  /** Where the starting room's sidebar leads; leaving lets the project finish without opening it. */
-  startingWays: StartingWays;
   onStart: () => void;
   /** The model profiles a project can start on; the picker is absent when there are none. */
   profiles: readonly PromptInputModelOption[];
@@ -101,7 +102,6 @@ export function ProjectsView({
   onIdeaChange,
   followUp,
   onFollowUpChange,
-  startingWays,
   onStart,
   profiles,
   profile,
@@ -138,7 +138,6 @@ export function ProjectsView({
           opening={idea.trim()}
           status={wording.newProject.starting}
           draft={{ value: followUp, onValueChange: onFollowUpChange }}
-          ways={startingWays}
           sidebar={sidebar}
         />
       </div>

@@ -40,11 +40,6 @@ const meta = {
     onIdeaChange: fn(),
     followUp: "",
     onFollowUpChange: fn(),
-    startingWays: {
-      onNewProject: fn(),
-      onWorkspaceSettings: fn(),
-      onAccount: fn(),
-    },
     onStart: fn(),
     profiles: [
       {
@@ -180,15 +175,15 @@ export const Starting: Story = {
     await expect(box).toHaveValue("Keep it short");
     await userEvent.keyboard("{Enter}");
     await expect(box).toHaveValue("Keep it short");
-    await expect(
-      canvas.getByRole("button", {
-        name: wording.projectShell.projectSettings,
-      }),
-    ).toBeDisabled();
     await userEvent.click(
-      canvas.getByRole("button", { name: wording.shell.newProject }),
+      canvas.getByRole("button", { name: wording.projectShell.menu }),
     );
-    await expect(args.startingWays.onNewProject).toHaveBeenCalled();
+    await userEvent.click(
+      within(document.body).getByRole("menuitem", {
+        name: wording.projectShell.backToProjects,
+      }),
+    );
+    await expect(args.sidebar.onHome).toHaveBeenCalled();
   },
 };
 

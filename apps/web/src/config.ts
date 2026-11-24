@@ -473,11 +473,6 @@ export const wording = {
     closeSidebar: "Close the sidebar",
     shortcut: { mac: "⌘\\", other: "Ctrl+\\" },
     sidebar: "Project",
-    groups: {
-      thisProject: "This project",
-      projects: "Projects",
-      workspace: "Workspace",
-    },
     /** Read after a step's name, since its mark alone does not say it. */
     stepState: {
       to_do: "to do",
@@ -519,7 +514,6 @@ export const wording = {
     menu: "Menu",
     backToProjects: "Back to projects",
     settings: "Settings",
-    projectSettings: "Project settings",
     workspaceSettings: "Workspace settings",
     account: "Account",
   },

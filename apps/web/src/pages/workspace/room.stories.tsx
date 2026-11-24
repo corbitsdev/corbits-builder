@@ -131,10 +131,6 @@ function sidebarOf(
     onSettings: fn(),
     onOpenApp: fn(),
     onOpenStep: fn(),
-    onProjectSettings: fn(),
-    onNewProject: fn(),
-    onWorkspaceSettings: fn(),
-    onAccount: fn(),
   };
 }
 

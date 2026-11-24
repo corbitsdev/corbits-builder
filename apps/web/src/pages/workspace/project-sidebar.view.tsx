@@ -1,12 +1,10 @@
 /**
- * An open project's sidebar: a card with the project's name and the toggle that opens and closes
- * it, then the project's plan as the coordinator saved it, each step opening what it made once it
- * is made. Closed, the card holds the name and the plan; open, it grows to the window's height
- * around them, with a line saying how the app stands where no step makes it, and at the foot,
- * smaller and greyer, the links that leave it: the project's settings and secrets, the other
- * projects, and the workspace's settings and the person's account. Where the room is narrow it is
- * a drawer over the page. Its frame, foot and links are the workspace sidebar's too, outside a
- * project.
+ * An open project's sidebar: a card with the mark, the project's name and the toggle that opens
+ * and closes it, then the project's plan as the coordinator saved it, each step opening what it
+ * made once it is made. The mark's menu leaves the project and the name's menu acts on it. Closed,
+ * the card holds the name and the plan; open, it grows to the window's height around them, with a
+ * line saying how the app stands where no step makes it. Where the room is narrow it is a drawer
+ * over the page. Its frame is the workspace sidebar's too, outside a project.
  */
 import {
   useEffect,
@@ -19,17 +17,7 @@ import {
   type ReactElement,
   type ReactNode,
 } from "react";
-import {
-  ArrowUpRight,
-  Building2,
-  CircleUser,
-  PanelLeftClose,
-  PanelLeftOpen,
-  Plus,
-  Settings,
-  type LucideIcon,
-} from "lucide-react";
-import { SidebarItem } from "@corbits/react-ui";
+import { ArrowUpRight, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import {
   Menu,
   MenuContent,
@@ -125,11 +113,6 @@ export type ProjectSidebarViewProps = MarkWays & {
   onOpenApp: () => void;
   /** Opens what a step made, on its tab. */
   onOpenStep: (tab: string) => void;
-  /** Absent while the project is still being made, when its settings have nothing to show yet. */
-  onProjectSettings?: (() => void) | undefined;
-  onNewProject: () => void;
-  onWorkspaceSettings: () => void;
-  onAccount: () => void;
 };
 
 export function ProjectSidebarView({
@@ -147,10 +130,6 @@ export function ProjectSidebarView({
   onSettings,
   onOpenApp,
   onOpenStep,
-  onProjectSettings,
-  onNewProject,
-  onWorkspaceSettings,
-  onAccount,
 }: ProjectSidebarViewProps) {
   return (
     <SidebarFrame
@@ -175,34 +154,14 @@ export function ProjectSidebarView({
       {plan.some((row) => row.app) ? null : (
         <AppLine app={app} open={appOpen} onOpen={onOpenApp} />
       )}
-      <SidebarFoot>
-        <SidebarLinks label={words.groups.thisProject}>
-          <SidebarLink icon={Settings} onClick={onProjectSettings}>
-            {words.projectSettings}
-          </SidebarLink>
-        </SidebarLinks>
-        <SidebarLinks label={words.groups.projects}>
-          <SidebarLink icon={Plus} onClick={onNewProject}>
-            {wording.shell.newProject}
-          </SidebarLink>
-        </SidebarLinks>
-        <SidebarLinks label={words.groups.workspace}>
-          <SidebarLink icon={Building2} onClick={onWorkspaceSettings}>
-            {words.workspaceSettings}
-          </SidebarLink>
-          <SidebarLink icon={CircleUser} onClick={onAccount}>
-            {words.account}
-          </SidebarLink>
-        </SidebarLinks>
-      </SidebarFoot>
     </SidebarFrame>
   );
 }
 
 /**
  * The sidebar's frame, in a project and outside one: a card with the name and the mark, whose menu
- * leads back to the projects or to Settings, and a toggle that opens and closes it, from anywhere with the shortcut too. Under the name, open or
- * closed and in one place, is the plan; open, the card grows around it with the rest of what the
+ * leads back to the projects or to Settings, and a toggle that opens and closes it, from anywhere
+ * with the shortcut too. Under the name, open or closed and in one place, is the plan; open, the card grows around it with the rest of what the
  * sidebar holds. Narrow, it is a drawer over the page, the plan shown only while open.
  */
 export function SidebarFrame({
@@ -308,26 +267,6 @@ export function SidebarFrame({
   );
 }
 
-/** The sidebar's foot, below what it holds: the links that leave it, smaller and greyer. */
-export function SidebarFoot({ children }: { children: ReactNode }) {
-  return <div className={styles.utilities}>{children}</div>;
-}
-
-/** A few links that go together at the sidebar's foot, named for a screen reader. */
-export function SidebarLinks({
-  label,
-  children,
-}: {
-  label: string;
-  children: ReactNode;
-}) {
-  return (
-    <ul className={styles.links} aria-label={label}>
-      {children}
-    </ul>
-  );
-}
-
 /**
  * One line saying how the app stands, which opens it. Until there is an app there is no line. Its
  * words change as the app starts, runs or stops, so they are read out as they change.
@@ -365,37 +304,6 @@ function AppLine({
       </span>
       <ArrowUpRight className={styles.go} aria-hidden="true" />
     </button>
-  );
-}
-
-/** One link at the sidebar's foot; marked while its page is on screen. */
-export function SidebarLink({
-  icon: Icon,
-  current = false,
-  onClick,
-  children,
-}: {
-  icon: LucideIcon;
-  current?: boolean;
-  /** Absent, the link stands disabled. */
-  onClick?: (() => void) | undefined;
-  children: ReactNode;
-}) {
-  return (
-    <SidebarItem
-      asChild
-      className={styles.link}
-      icon={<Icon aria-hidden="true" />}
-    >
-      <button
-        type="button"
-        aria-current={current ? "page" : undefined}
-        disabled={onClick === undefined}
-        onClick={onClick}
-      >
-        {children}
-      </button>
-    </SidebarItem>
   );
 }
 

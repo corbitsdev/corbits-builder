@@ -1,23 +1,16 @@
 /**
  * The sidebar outside a project, on the projects, not on the new project page or Settings, which
- * stand alone: the project sidebar's frame and foot, holding only what starts or resumes work. A
- * new project, connecting a model while none is, and the projects last worked on, to go straight
- * back to one.
+ * stand alone: the project sidebar's frame, holding only what starts or resumes work. A new
+ * project, connecting a model while none is, and the projects last worked on, to go straight back
+ * to one.
  */
-import { Building2, CircleUser, Plus, Unplug } from "lucide-react";
+import { Plus, Unplug } from "lucide-react";
 import { SidebarItem } from "@corbits/react-ui";
 import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { wording } from "./config.ts";
-import {
-  SidebarFoot,
-  SidebarFrame,
-  SidebarLink,
-  SidebarLinks,
-} from "./pages/workspace/project-sidebar.view.tsx";
+import { SidebarFrame } from "./pages/workspace/project-sidebar.view.tsx";
 import styles from "./workspace-sidebar.module.css";
-
-const words = wording.projectShell;
 
 export type WorkspaceSidebarViewProps = {
   /** The open workspace's name, beside the mark. */
@@ -37,6 +30,7 @@ export type WorkspaceSidebarViewProps = {
   onConnectModel: () => void;
   onOpenProject: (projectId: string) => void;
   onWorkspaceSettings: () => void;
+  /** The home page's corner leads here; the sidebar itself does not. */
   onAccount: () => void;
 };
 
@@ -52,7 +46,6 @@ export function WorkspaceSidebarView({
   onConnectModel,
   onOpenProject,
   onWorkspaceSettings,
-  onAccount,
 }: WorkspaceSidebarViewProps) {
   return (
     <SidebarFrame
@@ -97,16 +90,6 @@ export function WorkspaceSidebarView({
           </ul>
         </section>
       )}
-      <SidebarFoot>
-        <SidebarLinks label={words.groups.workspace}>
-          <SidebarLink icon={Building2} onClick={onWorkspaceSettings}>
-            {words.workspaceSettings}
-          </SidebarLink>
-          <SidebarLink icon={CircleUser} onClick={onAccount}>
-            {words.account}
-          </SidebarLink>
-        </SidebarLinks>
-      </SidebarFoot>
     </SidebarFrame>
   );
 }

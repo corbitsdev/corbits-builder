@@ -163,11 +163,7 @@ import { useModelCatalog } from "../settings/model-catalog.ts";
 import type { RoomContent, RoomDock } from "./room.view.tsx";
 import { useProjectSidebar } from "./project-sidebar.model.ts";
 import type { SettingsTab } from "../settings/settings.view.tsx";
-import type {
-  MenuProject,
-  ProjectInfoDialogProps,
-  ProjectMenuHost,
-} from "../project-menu.model.ts";
+import type { MenuProject, ProjectMenuHost } from "../project-menu.model.ts";
 import { parseBundle } from "./design-bundle.ts";
 import { CommentCard } from "./comment-card.tsx";
 import { MockupFrame } from "./mockup-frame.tsx";
@@ -582,8 +578,6 @@ export function useRoom({
   refetchProject,
 }: ReadyRoomProps): {
   view: RoomContent;
-  /** Project settings, opened from the sidebar, while open. */
-  projectSettings: ProjectInfoDialogProps | null;
   /** The project's own menu, opened from its name in the sidebar; null until the list has it. */
   projectMenu: ProjectMenuHost | null;
   enableAi: EnableAiDialogProps;
@@ -1924,7 +1918,7 @@ export function useRoom({
   const paneDocuments = paneDeliverables.map((item) =>
     paneDocument(item, seen),
   );
-  const { sidebar, projectSettings, projectMenu } = useProjectSidebar({
+  const { sidebar, projectMenu } = useProjectSidebar({
     projectId,
     title: projectTitle,
     project: menuProject,
@@ -2036,7 +2030,6 @@ export function useRoom({
       ),
       paneRef: documentPaneRef,
     },
-    projectSettings,
     projectMenu,
     enableAi: { open: enablingAi, onOpenChange: setEnablingAi },
     liveApp,

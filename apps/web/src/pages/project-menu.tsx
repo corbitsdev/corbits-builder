@@ -51,6 +51,6 @@ function ExportDialog(props: ExportDialogProps) {
   return <ExportDialogView {...useExportDialog(props)} />;
 }
 
-export function ProjectInfoDialog(props: ProjectInfoDialogProps) {
+function ProjectInfoDialog(props: ProjectInfoDialogProps) {
   return <ProjectInfoDialogView {...useProjectInfoDialog(props)} />;
 }

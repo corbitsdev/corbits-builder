@@ -24,7 +24,6 @@ import {
   ProjectSidebarView,
   SidebarFrame,
   type MarkWays,
-  type ProjectSidebarViewProps,
 } from "./project-sidebar.view.tsx";
 import { RoomFrame } from "./room-frame.tsx";
 import styles from "./room-skeleton.module.css";
@@ -35,19 +34,12 @@ const PLAN_ROWS = ["72%", "58%", "80%", "50%", "66%"];
 
 const nothing = () => {};
 
-/** Where the sidebar's links lead while a project just started is being made. */
-export type StartingWays = Pick<
-  ProjectSidebarViewProps,
-  "onNewProject" | "onWorkspaceSettings" | "onAccount"
->;
-
 export function RoomSkeleton({
   title,
   sidebar,
   opening,
   status,
   draft,
-  ways,
 }: {
   /** The project's name, as the project list has it. */
   title: string;
@@ -57,17 +49,15 @@ export function RoomSkeleton({
     drawer: boolean;
     onToggleSidebar: () => void;
   };
-  /** The person's first words to a project just started, shown as theirs while it opens. */
+  /**
+   * The person's first words to a project just started, shown as theirs while it opens. Its plan is
+   * known to be empty, so the sidebar is the room's own; absent, the plan is drawn as faint rows.
+   */
   opening?: string | undefined;
   /** What the box says is happening; by default, that the project is opening. */
   status?: string | undefined;
   /** What is typed into the box, kept for the room; without it the box takes nothing. */
   draft?: { value: string; onValueChange: (value: string) => void } | undefined;
-  /**
-   * For a project just started, whose plan is known to be empty: the sidebar is the room's own,
-   * and its links lead where they will. Absent, the plan is drawn as faint rows.
-   */
-  ways?: StartingWays | undefined;
 }) {
   const said = status ?? wording.message.projectLoading(title);
   const boxRef = useRef<HTMLTextAreaElement>(null);
@@ -84,7 +74,7 @@ export function RoomSkeleton({
       <div className={styles.room} data-slot="room-skeleton">
         <RoomFrame
           sidebar={
-            ways === undefined ? (
+            opening === undefined ? (
               <SidebarFrame
                 title={title}
                 open={sidebar.open}
@@ -113,7 +103,6 @@ export function RoomSkeleton({
                 shown={null}
                 onOpenApp={nothing}
                 onOpenStep={nothing}
-                {...ways}
               />
             )
           }

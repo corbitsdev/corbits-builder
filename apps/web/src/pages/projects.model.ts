@@ -319,18 +319,6 @@ export function useProjects({
       onIdeaChange: setIdea,
       followUp,
       onFollowUpChange: setFollowUp,
-      startingWays: {
-        onNewProject: leaveStart,
-        onWorkspaceSettings: () => {
-          leaveStart();
-          onOpenSettings();
-        },
-        // The account is at the foot of Preferences.
-        onAccount: () => {
-          leaveStart();
-          onOpenSettings("preferences");
-        },
-      },
       onStart: () => void start(),
       profiles: profiles.options,
       profile,
