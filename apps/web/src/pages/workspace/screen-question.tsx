@@ -397,6 +397,7 @@ export function screenHost<In, Out, Data, Prepared>(
       return (
         <SettledFrame
           title={text.screenAnswered}
+          untitled
           ended="answered"
           focus={answering.sending}
         >

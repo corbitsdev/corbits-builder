@@ -76,21 +76,28 @@
 .answers {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: var(--space-1);
   margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.25rem;
+}
+
+/* One line each, question then answer at the same size, so a decision reads as a note between
+   the messages rather than a heading over them. */
+.answers > div {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: var(--space-2);
 }
 
 .answers dt {
   color: var(--muted-foreground);
-  font-size: 0.8125rem;
 }
 
 .answers dd {
   margin: 0;
-  font-weight: 500;
 }
 
 .answers dd[data-absent] {
   color: var(--muted-foreground);
-  font-weight: 400;
 }
