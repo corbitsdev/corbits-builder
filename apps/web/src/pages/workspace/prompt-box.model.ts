@@ -358,6 +358,7 @@ export function usePromptBox(room: PromptBoxRoom): PromptBox {
         seen: room.seen[item.artifactId] === item.version,
       })),
     app: room.hasApp ? (app?.state ?? null) : null,
+    deciding: decides,
   };
   const line = room.archived ? null : roomStatus(facts);
   const status: StatusPillContent | null =

@@ -85,6 +85,10 @@ describe("what the status line says", () => {
     });
   });
 
+  test("a version waiting to be approved has no line of its own", () => {
+    expect(roomStatus(rooms.approving)).toBeNull();
+  });
+
   test("a first version is ready without its number", () => {
     expect(roomStatus(rooms.firstVersion)?.label).toBe("Build plan is ready");
   });

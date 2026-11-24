@@ -32,6 +32,8 @@ export type RoomStatusFacts = {
   }[];
   /** How the project's app stands while the project is open; null while there is none to run. */
   app: "running" | "starting" | "failed" | "stopped" | "not_built" | null;
+  /** The box asks the person to accept something, and its screen opens what it asks about. */
+  deciding: boolean;
 };
 
 /** What the line's one button does; the model gives each its handler. */
@@ -117,8 +119,10 @@ export const rules: readonly { name: string; rule: Rule }[] = [
     },
   },
   {
+    // A screen asking the person to accept a document already opens it, so the line does not.
     name: "a version the person has not opened",
-    rule: ({ documents }) => {
+    rule: ({ documents, deciding }) => {
+      if (deciding) return undefined;
       const unseen = documents.findLast((document) => !document.seen);
       if (unseen === undefined) return undefined;
       return {

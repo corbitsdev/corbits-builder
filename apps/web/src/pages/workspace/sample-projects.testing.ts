@@ -151,6 +151,7 @@ const quietFacts: RoomStatusFacts = {
   plan: [],
   documents: [],
   app: null,
+  deciding: false,
 };
 
 /** What is happening in each sample project, as the status line reads it. */
@@ -219,6 +220,14 @@ export const statusRooms = {
       { id: "build_plan", title: "Build plan", version: 3, seen: false },
       { id: "design", title: "Design", version: 1, seen: true },
     ],
+  },
+  /** A new version, while the box asks the person to approve it and opens it from there. */
+  approving: {
+    ...quietFacts,
+    documents: [
+      { id: "build_plan", title: "Build plan", version: 3, seen: false },
+    ],
+    deciding: true,
   },
   /** The first build plan, not yet opened. */
   firstVersion: {
