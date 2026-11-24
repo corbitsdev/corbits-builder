@@ -101,10 +101,13 @@
   flex: none;
 }
 
-/* A plugin's screen for the page takes the whole page over the conversation, the box floating
-   at its foot as over the project view. */
+/* A plugin's screen for the page takes the page over the conversation down to the prompt box and
+   what stands on it, as an app does over the project view. */
 .page > [data-slot="plugin-space"] {
+  --box-height: 0px;
+
   flex: 1 1 auto;
+  margin-bottom: var(--dock-height, 0px);
 }
 
 /* The status pill floats 8px above the box where the way back to the latest message stands; while
@@ -282,10 +285,10 @@
   }
 }
 
-/* The prompt box floats over the project view's foot, whatever it shows: a written page runs on
-   under it over a fade into the page's backdrop, so its last lines read clearly as they scroll
-   beneath it, and a design or the live app keeps its full height under it. Each keeps what it must
-   reach clear of the box by the box's height, which the room sets on the page. */
+/* The prompt box floats over the project view's foot: a written page runs on under it over a fade
+   into the page's backdrop, so its last lines read clearly as they scroll beneath it, and a design
+   or the live app ends above it. Each keeps clear of the box by its height, which the room sets on
+   the page. */
 .footFade {
   display: none;
 }

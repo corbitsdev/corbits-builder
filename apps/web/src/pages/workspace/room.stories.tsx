@@ -943,7 +943,7 @@ export const ScreenWaiting: Story = {
     await expect(
       within(space).queryByRole("button", { name: "Close" }),
     ).not.toBeInTheDocument();
-    // The screen has the whole page, not a strip beside the chat, and the box floats over its foot.
+    // The screen has the whole page, not a strip beside the chat, down to the box under it.
     const page = space.closest('[data-slot="room-space-sheet"]');
     if (!(page instanceof HTMLElement))
       throw new Error("No page for the screen");
@@ -951,13 +951,11 @@ export const ScreenWaiting: Story = {
     if (main === null) throw new Error("No room main");
     const shape = space.getBoundingClientRect();
     await expect(shape.width).toBe(main.getBoundingClientRect().width);
-    await expect(shape.bottom).toBe(page.getBoundingClientRect().bottom);
     const box = page.querySelector('[data-slot="composer-box"]');
-    if (box === null) throw new Error("No prompt box over the screen");
-    await expect(box.getBoundingClientRect().bottom).toBeLessThanOrEqual(
+    if (box === null) throw new Error("No prompt box under the screen");
+    await expect(box.getBoundingClientRect().top).toBeGreaterThanOrEqual(
       shape.bottom,
     );
-    await expect(box.getBoundingClientRect().top).toBeGreaterThan(shape.top);
   },
 };
 
