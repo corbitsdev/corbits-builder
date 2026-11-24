@@ -3,8 +3,6 @@
    window's edge. */
 .frame {
   --frame-edge: var(--space-2);
-  /* The sidebar's title row, at the top of the left zone. */
-  --frame-title: 2.5rem;
   /* The sidebar's card, in from the window's edge, and a gap before the page. */
   --frame-left: calc(var(--frame-edge) + var(--rail-width) + var(--space-4));
 
@@ -42,5 +40,6 @@
 }
 
 .frame:has([data-drawer]) > .main {
-  padding-block-start: calc(var(--frame-title) + 2 * var(--frame-edge));
+  /* Below the sidebar's 2.5rem title row and the edge either side of it. */
+  padding-block-start: calc(2.5rem + 2 * var(--frame-edge));
 }

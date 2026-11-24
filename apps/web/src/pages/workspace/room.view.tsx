@@ -290,6 +290,9 @@ export function RoomView({
       page.style.removeProperty("--dock-height");
       return;
     }
+    // The pill or handle standing above the box, which a view that fills the pane ends above too,
+    // so nothing of it shows beneath them.
+    const grip = box.querySelector<HTMLElement>('[data-slot="chat-grip"]');
     // The box at rest: while the chat is pulled up over the view, the view keeps the foot it had.
     const measure = () => {
       if (
@@ -297,9 +300,6 @@ export function RoomView({
       )
         return;
       page.style.setProperty("--box-height", `${String(box.offsetHeight)}px`);
-      // The box with the pill or handle standing above it, which a view that fills the pane ends
-      // above, so nothing of it shows beneath them.
-      const grip = box.querySelector<HTMLElement>('[data-slot="chat-grip"]');
       const top = box.getBoundingClientRect().top;
       const reach =
         grip === null ? 0 : Math.max(0, top - grip.getBoundingClientRect().top);
@@ -311,7 +311,6 @@ export function RoomView({
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(box);
-    const grip = box.querySelector('[data-slot="chat-grip"]');
     if (grip !== null) observer.observe(grip);
     return () => observer.disconnect();
   });

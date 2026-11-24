@@ -2,9 +2,6 @@
   display: flex;
   flex-direction: column;
   gap: 0;
-  /* Its own width where there is room, else what is left beside the page. */
-  width: 240px;
-  max-width: 100%;
 }
 
 .toggle,

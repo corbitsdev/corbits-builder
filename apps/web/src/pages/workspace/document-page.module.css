@@ -65,6 +65,14 @@
   padding: 6px var(--space-8) 0 var(--space-4);
 }
 
+/* Download and Share and the contents share one width where there is room, so they start and end
+   together; else they take what is left beside the page. */
+.side > * {
+  box-sizing: border-box;
+  width: 240px;
+  max-width: 100%;
+}
+
 .column {
   position: relative;
   grid-column: 2;
@@ -150,9 +158,6 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  box-sizing: border-box;
-  width: 240px;
-  max-width: 100%;
   user-select: none;
 }
 
