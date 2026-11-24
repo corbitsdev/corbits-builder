@@ -349,6 +349,7 @@
   display: flex;
   flex: 1;
   flex-direction: column;
+  gap: 2px;
   min-width: 0;
 }
 
@@ -357,6 +358,8 @@
 }
 
 .doing {
+  display: flex;
+  gap: 5px;
   overflow: hidden;
   color: var(--wb-muted-foreground);
   font-size: var(--text-xs);
@@ -370,7 +373,7 @@
   align-items: flex-start;
   height: auto;
   min-height: 2rem;
-  padding-block: var(--space-1);
+  padding-block: 7px;
 }
 
 /* A step that failed says so in red, as its words say it. */
@@ -379,8 +382,8 @@
 }
 
 /* The end marks sit level with the name, on a row of two lines too. */
-.row[data-row="step"] > .dot {
-  align-self: center;
+.row[data-row="step"]:is([data-lines], :has(.doing)) > .dot {
+  margin-block-start: 2px;
 }
 
 /* A row with nothing to show yet is only where the work stands: no fill or pointer, as though it
@@ -539,9 +542,7 @@
    counts. */
 .clock {
   flex: none;
-  color: var(--wb-foreground);
   font-variant-numeric: tabular-nums;
-  font-weight: 500;
 }
 
 .glance .clock {
@@ -555,13 +556,12 @@
   font-weight: 500;
 }
 
-/* A step's settings before it starts, under its name: two small quiet pills, each lit in the
-   action blue while it is on. */
+/* A step's settings before it starts, under its name: two quiet words, each a small button
+   whose text lines up with the name's, lit in the action blue while it is on. */
 .settings {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-1);
-  margin-block: 3px 1px;
+  gap: 2px;
+  margin-inline-start: -6px;
 }
 
 .setting {
@@ -569,37 +569,36 @@
   gap: 4px;
   align-items: center;
   height: 20px;
-  padding: 0 7px 0 6px;
-  border: 1px solid var(--wb-border);
-  border-radius: 9999px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--wb-muted-foreground);
+  color: color-mix(in oklab, var(--wb-muted-foreground) 80%, transparent);
   font: inherit;
-  font-size: 0.6875rem;
-  font-weight: 500;
+  font-size: var(--text-xs);
   line-height: 1;
   white-space: nowrap;
   cursor: pointer;
   transition:
     background-color var(--duration-micro),
-    color var(--duration-micro),
-    border-color var(--duration-micro);
+    color var(--duration-micro);
 }
 
 .setting > svg {
-  width: 11px;
-  height: 11px;
+  width: 12px;
+  height: 12px;
+  stroke-width: 1.75;
 }
 
 .setting:hover {
-  border-color: var(--wb-border-strong);
+  background: color-mix(in oklab, var(--wb-foreground) 6%, transparent);
   color: var(--wb-foreground);
 }
 
 .setting[data-on] {
-  border-color: color-mix(in oklab, var(--wb-action) 35%, transparent);
   background: color-mix(in oklab, var(--wb-action) 10%, transparent);
   color: var(--wb-action);
+  font-weight: 500;
 }
 
 .setting:active {

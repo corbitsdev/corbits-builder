@@ -615,9 +615,9 @@ function PlanTree({
 
 /**
  * One step of the plan: its name, and under it a line saying where it stands. The one at work
- * shimmers with a ring turning at its end, and its line counts how long it has run beside what it
- * is doing; one that waits on the person is shaded and says so; one that failed is red and says
- * why. Until a step starts, its line holds its settings, Ask me first and, where it is optional,
+ * shimmers with a ring turning at its end, and its line counts how long it has run; one that waits
+ * on the person is shaded and says so; one that failed is red and says so. What a run last did is
+ * often a tool's own words, so it is kept to the row's tooltip. Until a step starts, its line holds its settings, Ask me first and, where it is optional,
  * Skip, each lit while it is on, so how the plan will go is read off the rows rather than hidden
  * in a menu. Once a step has made something it opens it; once the app is built, its step says how
  * it runs.
@@ -666,18 +666,16 @@ function PlanRow({
   const line =
     state === "running" ? (
       <span className={styles.doing}>
+        {words.stepNow.working}
+        <span aria-hidden="true">·</span>
         <RunningFor since={row.startedAt} />
-        {" · "}
-        {row.summary ?? words.stepNow.working}
       </span>
     ) : state === "needs_you" ? (
       <span className={styles.doing} data-tone="you">
         {words.stepNow.needsYou}
       </span>
     ) : state === "failed" ? (
-      <span className={styles.doing}>
-        {row.summary ?? words.stepNow.failed}
-      </span>
+      <span className={styles.doing}>{words.stepNow.failed}</span>
     ) : settings !== undefined ? (
       <StepSettings
         step={settings}
