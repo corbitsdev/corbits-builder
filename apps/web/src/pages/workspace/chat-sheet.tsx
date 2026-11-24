@@ -1,9 +1,10 @@
 /**
  * The chat behind the prompt box. A pull handle sits on the box's top edge; dragging it up, or
  * pressing it, grows a sheet up around the box holding the conversation. Pulling it down, or
- * Escape, puts it back. While work runs the box's own words say so, so nothing above it repeats
- * them; only something to press, such as Open on a document that is ready, stands above it as a
- * pill, with the handle beneath.
+ * Escape, puts it back. Over the project, where the conversation is out of sight, the status pill
+ * says what is running and opens the chat in the handle's place; where the conversation is the
+ * page, its own thinking says that, so only a pill with something to press, such as Open on a
+ * document that is ready, stands above the box, with the handle beneath.
  */
 import {
   useEffect,
@@ -84,6 +85,11 @@ export type ChatSheetState = "closed" | "open";
 export type ChatSheetProps = {
   /** What is happening, in the pill above the box; null while nothing is. */
   status: StatusPillContent | null;
+  /**
+   * Whether the pill says what is running even with nothing to press: over the project, where the
+   * conversation that says so is out of sight. Absent, the conversation is in sight.
+   */
+  saysWork?: boolean | undefined;
   /** The conversation, oldest first; the sheet scrolls to its end. Absent, there is nothing to pull up. */
   children?: ReactNode;
   /**
@@ -117,6 +123,7 @@ const reducedMotion = () =>
  */
 export function ChatSheet({
   status,
+  saysWork = false,
   children,
   onFullScreen,
   defaultState = "closed",
@@ -379,15 +386,24 @@ export function ChatSheet({
   const handle = hasChat ? <PullHandle {...pullProps} onPress={press} /> : null;
   // A pill with an action of its own does that when pressed, and is not the chat's control, so
   // the handle stays beneath it: the chat never waits on the person pressing through actions.
-  const pill = status?.onAction === undefined ? null : status;
+  const pill =
+    status === null || (status.onAction === undefined && !saysWork)
+      ? null
+      : status;
   const grip =
     pill === null ? (
       handle
-    ) : (
+    ) : pill.onAction !== undefined ? (
       <>
         <StatusPill {...pill} onPress={pill.onAction} />
         {handle}
       </>
+    ) : (
+      // With nothing of its own to do, the pill stands in for the handle and opens the chat.
+      <StatusPill
+        {...pill}
+        {...(hasChat ? { ...pullProps, onPress: press } : {})}
+      />
     );
 
   const sheetState = moving ? "moving" : state;

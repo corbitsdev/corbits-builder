@@ -110,8 +110,9 @@ function Screen(args: Args) {
       <RoomDockView
         {...args}
         dock={{ ...dock, text, onTextChange: setText }}
-        // In the room, full screen puts the page away for the room's own conversation.
-        chatStart={{ onFullScreen: fn(), ...args.chatStart }}
+        // In the room, full screen puts the page away for the room's own conversation. Over the
+        // page the conversation is out of sight, so the pill says what is running.
+        chatStart={{ onFullScreen: fn(), saysWork: true, ...args.chatStart }}
       />
     </Page>
   );
@@ -141,12 +142,12 @@ export const MidPull: Story = {
   args: { ...whileWorking, chatStart: { defaultPull: 150 } },
 };
 
-/** Chat open: the newest message is the work in progress. Pull it down and the handle comes back. */
+/** Chat open: the newest message is the work in progress. Pull it down and the pill comes back. */
 export const ChatOpen: Story = {
   args: { ...whileWorking, chatStart: { defaultState: "open" } },
 };
 
-/** Escape puts the chat back and the handle returns. */
+/** Escape puts the chat back and the pill returns. */
 export const EscapeCloses: Story = {
   args: { ...whileWorking, chatStart: { defaultState: "open" } },
   play: async ({ canvasElement }) => {
@@ -157,31 +158,43 @@ export const EscapeCloses: Story = {
     await expect(
       canvasElement.querySelector('[data-slot="chat-history"]'),
     ).not.toBeVisible();
-    // The handle fades back in, so it is looked for once the fade is done.
+    // The pill fades back in, so it is looked for once the fade is done.
     await waitFor(() =>
-      expect(
-        canvasElement.querySelector('[data-slot="pull-handle"]'),
-      ).toBeVisible(),
+      expect(canvasElement.querySelector('[data-slot="pill"]')).toBeVisible(),
+    );
+  },
+};
+
+/** Work running over the page: the pill above the box says what it is, with the chat behind it. */
+export const WorkingOverPage: Story = { args: whileWorking };
+
+/** While work runs over the page, the pill says so, and pressing it opens the chat. */
+export const PressToOpen: Story = {
+  args: whileWorking,
+  play: async ({ canvasElement }) => {
+    const pill = canvasElement.querySelector<HTMLElement>('[data-slot="pill"]');
+    if (pill === null) throw new Error("No pill");
+    await userEvent.click(pill);
+    // Shown once the room's page has faded in and the sheet has begun to open.
+    await waitFor(() =>
+      expect(within(canvasElement).getByRole("log")).toBeVisible(),
     );
   },
 };
 
 /**
- * While work runs the box itself says so, so no pill stands above it repeating that: only the
- * handle, which opens the chat.
+ * Where the conversation is the page, its own thinking says what is running, so no pill stands
+ * above the box repeating it: only the handle.
  */
-export const PressToOpen: Story = {
-  args: whileWorking,
+export const WorkInSight: Story = {
+  args: { ...whileWorking, chatStart: { saysWork: false } },
   play: async ({ canvasElement }) => {
     await expect(canvasElement.querySelector('[data-slot="pill"]')).toBeNull();
-    const handle = canvasElement.querySelector<HTMLElement>(
-      '[data-slot="pull-handle"]',
-    );
-    if (handle === null) throw new Error("No handle");
-    await userEvent.click(handle);
-    // Shown once the room's page has faded in and the sheet has begun to open.
+    // The handle fades in with the page, so it is looked for once the fade is done.
     await waitFor(() =>
-      expect(within(canvasElement).getByRole("log")).toBeVisible(),
+      expect(
+        canvasElement.querySelector('[data-slot="pull-handle"]'),
+      ).toBeVisible(),
     );
   },
 };

@@ -453,6 +453,8 @@ export function RoomView({
       }
       chat={chat}
       chatStart={{
+        // The conversation is out of sight behind the project, so the pill says what is running.
+        saysWork: true,
         onFullScreen: () =>
           swapCover(
             "chat",
@@ -698,7 +700,7 @@ type AnswersShell = (text: string) => boolean;
 /** Where the chat sheet starts, before the person moves it. */
 type ChatStart = Pick<
   ChatSheetProps,
-  "defaultState" | "defaultPull" | "onFullScreen"
+  "defaultState" | "defaultPull" | "onFullScreen" | "saysWork"
 >;
 
 /**
