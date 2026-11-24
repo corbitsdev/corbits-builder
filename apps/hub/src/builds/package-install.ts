@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { type } from "arktype";
 import { hasCode } from "@intx/types/has-code";
+import { isRecord } from "../lib/json.ts";
 import type { ToolCall, ToolResult, ToolRunner } from "@intx/types/runtime";
 import {
   type ApprovedPackages,
@@ -26,7 +27,7 @@ export const packageInstallDefinitions = [
   },
   {
     name: PLANNED_INSTALL_TOOL,
-    description: `Install npm packages the approved build plan names with bun add ${WHERE}, without waiting for the person. A package the plan names without a version installs as given; one it pins installs at that version, so give it bare or at that version. Any other package, or another version, is not installed and waits for the person through ${PACKAGE_INSTALL_TOOL}.`,
+    description: `Install npm packages the approved build plan names with bun add ${WHERE}, without waiting for the person. A package the plan names without a version installs as given; one it pins installs at that version, so give it bare or at that version. Any other package, or another version, is not installed; install it with ${PACKAGE_INSTALL_TOOL}.`,
     inputSchema,
   },
 ];
@@ -45,10 +46,9 @@ export const Manifest = type({
 });
 const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
 
-export async function readManifest(path: string) {
-  let parsed: unknown;
+async function readPackageJson(path: string): Promise<unknown> {
   try {
-    parsed = JSON.parse(await readFile(path, "utf8"));
+    return JSON.parse(await readFile(path, "utf8"));
   } catch (error) {
     if (
       (hasCode(error) && error.code === "ENOENT") ||
@@ -57,7 +57,10 @@ export async function readManifest(path: string) {
       return undefined;
     throw error;
   }
-  const manifest = Manifest(parsed);
+}
+
+export async function readManifest(path: string) {
+  const manifest = Manifest(await readPackageJson(path));
   return manifest instanceof type.errors ? undefined : manifest;
 }
 
@@ -67,6 +70,9 @@ export const DEPENDENCY_FIELDS = [
   "optionalDependencies",
   "peerDependencies",
 ] as const;
+const INSTALLED_FIELDS = new Set<string>(DEPENDENCY_FIELDS);
+// Bun resolves the specs in these fields too, so the source check reads them as well.
+const SOURCE_FIELDS = [...DEPENDENCY_FIELDS, "overrides", "resolutions"];
 const Lockfile = type({ "workspaces?": type({ "[string]": Manifest }) });
 
 /** The packages bun.lock records as installed for some package of the workspace. */
@@ -116,19 +122,29 @@ export function createPackageGate(
           ),
       ),
     );
-    const manifests = await Promise.all(
-      manifestPaths.flat().map((path) => readManifest(join(workspace, path))),
+    // Read unvalidated: Bun installs from a package.json that the Manifest type would reject.
+    const packageJsons = await Promise.all(
+      manifestPaths
+        .flat()
+        .map((path) => readPackageJson(join(workspace, path))),
     );
-    const dependencies = manifests.flatMap((manifest) =>
-      DEPENDENCY_FIELDS.flatMap((field) =>
-        Object.entries(manifest?.[field] ?? {}),
-      ),
+    const specs = packageJsons.filter(isRecord).flatMap((packageJson) =>
+      SOURCE_FIELDS.flatMap((field) => {
+        const entries = packageJson[field];
+        return isRecord(entries)
+          ? Object.entries(entries).map(([name, spec]) => ({
+              field,
+              name,
+              spec,
+            }))
+          : [];
+      }),
     );
-    for (const [name, spec] of dependencies) {
-      if (spec.startsWith("workspace:")) continue;
+    for (const { field, name, spec } of specs) {
+      if (typeof spec !== "string" || spec.startsWith("workspace:")) continue;
       // An installed name could otherwise point at any alias, git repository, URL or file.
       if (/[:/]/.test(spec)) outsideRegistry.add(`${name}@${spec}`);
-      else registryPackages.add(name);
+      else if (INSTALLED_FIELDS.has(field)) registryPackages.add(name);
     }
     return { registryPackages, outsideRegistry };
   };
@@ -213,7 +229,7 @@ export function createPackageGate(
         return refuse(call, {
           code: "package_not_planned",
           packages: asks,
-          summary: `No approved document names these at this version, so nothing was installed. ${PACKAGE_INSTALL_TOOL} asks the person for them.`,
+          summary: `No approved document names these at this version, so nothing was installed. Install them with ${PACKAGE_INSTALL_TOOL}.`,
         });
       const allowedBy = [
         ...new Set(
@@ -234,7 +250,7 @@ export function createPackageGate(
       // After the output, which a failed install opens with its exit code.
       const allowed = `${covered.join(", ")}: allowed by the approved ${allowedBy}, without asking the person.`;
       const left = asks.length
-        ? `\nNot installed: ${asks.join(", ")}, which the approved ${allowedBy} does not name at that version; ${PACKAGE_INSTALL_TOOL} asks the person for them.`
+        ? `\nNot installed: ${asks.join(", ")}, which the approved ${allowedBy} does not name at that version; install them with ${PACKAGE_INSTALL_TOOL}.`
         : "";
       return { ...result, content: `${result.content}\n\n${allowed}${left}` };
     },

@@ -303,7 +303,7 @@ sandboxTest(
       );
       const failed = expect.stringMatching(/^failed: /);
       // macOS refuses a hidden file; Linux shows an empty file in its place.
-      const hidden = expect.not.stringContaining("sentinel");
+      const hidden = expect.stringMatching(/^(|failed: .*)$/);
       expect(results).toEqual({
         readHome: failed,
         readOtherProject: hidden,

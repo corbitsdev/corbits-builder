@@ -1,5 +1,6 @@
 import { afterAll, expect, test } from "bun:test";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ToolCall } from "@intx/types/runtime";
@@ -34,10 +35,19 @@ const versions: Record<number, string> = {
 const approved = async (document: { kind: string; approvedVersion: number }) =>
   document.kind === "design" ? "{}" : versions[document.approvedVersion];
 
-const workspace = await mkdtemp(join(tmpdir(), "package-gate-"));
-afterAll(() => rm(workspace, { recursive: true, force: true }));
+const workspaces: string[] = [];
+afterAll(() =>
+  Promise.all(
+    workspaces.map((path) => rm(path, { recursive: true, force: true })),
+  ),
+);
 
-function gate(installs: "allow" | "ask" | "deny") {
+// Each gate gets its own workspace, holding packageJson when one is given.
+function gate(installs: "allow" | "ask" | "deny", packageJson?: object) {
+  const workspace = mkdtempSync(join(tmpdir(), "package-gate-"));
+  workspaces.push(workspace);
+  if (packageJson)
+    writeFileSync(join(workspace, "package.json"), JSON.stringify(packageJson));
   const commands: string[] = [];
   const packageGate = createPackageGate(
     workspace,
@@ -114,7 +124,7 @@ test("a package the plan does not name, or another version than it pins, waits f
   const mixed = await install(["date-fns", "left-pad"]);
   expect(commands).toEqual(["bun add --exact --cwd 'server' 'date-fns'"]);
   expect(mixed.content).toContain(
-    `Not installed: left-pad, which the approved build plan does not name at that version; ${PACKAGE_INSTALL_TOOL} asks the person for them.`,
+    `Not installed: left-pad, which the approved build plan does not name at that version; install them with ${PACKAGE_INSTALL_TOOL}.`,
   );
 });
 
@@ -143,33 +153,38 @@ test("the list is the approved version's, so a revision not yet approved pre-app
 });
 
 test("a bare bun install takes a hand-added package only while the run installs freely", async () => {
-  await writeFile(
-    join(workspace, "package.json"),
-    JSON.stringify({ dependencies: { "date-fns": "4.1.0" } }),
-  );
-  expect(await gate("allow").shellRefusal("bun install")).toBeUndefined();
-  expect(await gate("ask").shellRefusal("bun install")).toBe(
+  const handAdded = { dependencies: { "date-fns": "4.1.0" } };
+  expect(
+    await gate("allow", handAdded).shellRefusal("bun install"),
+  ).toBeUndefined();
+  expect(await gate("ask", handAdded).shellRefusal("bun install")).toBe(
     "package_install_refused",
   );
 });
 
 test("every install refuses a package from outside the registry, and the shell installs only bare", async () => {
-  const { commands, install, shellRefusal } = gate("allow");
+  const { commands, shellRefusal } = gate("allow");
   expect(await shellRefusal("bun add date-fns")).toBe(
     "package_install_refused",
   );
   expect(await shellRefusal("npx some-tool")).toBe("package_install_refused");
-  for (const spec of [
-    "github:someone/thing",
-    "https://example.com/thing.tgz",
-    "file:../thing",
-  ]) {
-    await writeFile(
-      join(workspace, "package.json"),
-      JSON.stringify({ dependencies: { "date-fns": "4.1.0", thing: spec } }),
-    );
-    expect(await shellRefusal("bun install")).toBe("package_source_refused");
-    expect((await install(["zod"], PACKAGE_INSTALL_TOOL)).isError).toBe(true);
-  }
   expect(commands).toEqual([]);
+  for (const packageJson of [
+    { dependencies: { thing: "github:someone/thing" } },
+    { dependencies: { thing: "https://example.com/thing.tgz" } },
+    { dependencies: { thing: "file:../thing" } },
+    { overrides: { "date-fns": "file:../thing" } },
+    { resolutions: { "date-fns": "github:someone/thing" } },
+    // Bun still installs from a package.json whose name is not a string.
+    { name: 5, dependencies: { thing: "file:../thing" } },
+  ]) {
+    const outside = gate("allow", packageJson);
+    expect(await outside.shellRefusal("bun install")).toBe(
+      "package_source_refused",
+    );
+    expect((await outside.install(["zod"], PACKAGE_INSTALL_TOOL)).isError).toBe(
+      true,
+    );
+    expect(outside.commands).toEqual([]);
+  }
 });
