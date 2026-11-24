@@ -14,7 +14,7 @@ import {
   type SuggestedReason,
 } from "@corbits-builder/schemas/repository-import";
 import { wording } from "../config.ts";
-import { ApiFailure } from "../api/types.ts";
+import { ApiFailure, type ProjectSummary } from "../api/types.ts";
 import {
   createProject,
   importProject,
@@ -35,6 +35,8 @@ import { useNewProjectProfiles } from "./new-project-profiles.model.ts";
 import type { AddProviderDialogProps } from "./settings/add-provider-dialog.model.ts";
 import type { SettingsTab } from "./settings/settings.view.tsx";
 import type { FolderReading, ProjectsViewProps } from "./projects.view.tsx";
+import { useCoverPages } from "./project-cover.model.ts";
+import { libraryProject } from "./project-library.model.ts";
 
 export type ProjectsProps = {
   onOpen: (projectId: string, openingMessage?: string) => void;
@@ -42,9 +44,14 @@ export type ProjectsProps = {
   onOpenSettings: (tab?: SettingsTab) => void;
   /** No model provider holds a usable key, so a project cannot start yet. */
   needsProvider: boolean;
-  /** The projects last worked on, latest first, each with when; empty, none are listed. */
-  recent: ProjectsViewProps["recent"];
+  /** Every project the person can see; the ones last worked on show as cards under the prompt. */
+  projects: readonly ProjectSummary[];
+  /** Opens the Projects page, where every project is. */
+  onOpenLibrary: () => void;
 };
+
+/** How many of the projects last worked on show as cards under the prompt. */
+const RECENT_CARDS = 4;
 
 // Kept apart from every project's own box, since the project does not exist yet; a start that
 // fails leaves it here for the next.
@@ -106,7 +113,8 @@ export function useProjects({
   onChanged,
   onOpenSettings,
   needsProvider,
-  recent,
+  projects,
+  onOpenLibrary,
 }: ProjectsProps): {
   view: ProjectsViewProps;
   /** The dialog the page's offer to connect a provider opens. */
@@ -123,6 +131,14 @@ export function useProjects({
   const profiles = useNewProjectProfiles();
   const [picked, setPicked] = useState<string>();
   const profile = picked ?? profiles.preferred;
+  const recent = projects
+    .filter((project) => project.archivedAt === null)
+    .toSorted((a, b) => b.lastActivityAt.localeCompare(a.lastActivityAt))
+    .slice(0, RECENT_CARDS);
+  const covers = useCoverPages(
+    recent.map((project) => project.id),
+    true,
+  );
 
   // The start the starting room stands for. Leaving the room lets it go: the project is still
   // made, and listed, but the person is not taken into it.
@@ -315,7 +331,11 @@ export function useProjects({
       profile,
       onProfileChange: setPicked,
       needsProvider,
-      recent,
+      recent: recent.map((project, index) =>
+        libraryProject(project, covers.pages[index]!),
+      ),
+      onCoverNear: covers.onNear,
+      onOpenLibrary,
       onOpenProject: (projectId) => onOpen(projectId),
       onConnectProvider: () => setConnecting(true),
       onImportFile: (file) => void chooseImport(file),

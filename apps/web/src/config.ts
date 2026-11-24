@@ -461,6 +461,8 @@ export const wording = {
     connectModel: "Connect a model",
     /** The projects last worked on, under the new project's prompt and in the sidebar. */
     recent: "Recent",
+    /** Beside Recent under the new project's prompt: the Projects page, with every project. */
+    allProjects: "All projects",
     /** The new project page's top right corner, as a screen reader names it. */
     corner: "Workspace and account",
   },

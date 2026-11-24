@@ -63,19 +63,38 @@ const meta = {
         id: "calculator",
         title:
           "Can you build me a calculator and a way to track daily spending",
+        stage: "building",
+        lastActivityAt: "2026-05-02T10:00:00Z",
         lastActive: "2 hours ago",
+        mockup: null,
       },
       {
         id: "calories",
         title: "Create a calorie tracking app",
+        stage: "shipped",
+        lastActivityAt: "2026-05-01T12:00:00Z",
         lastActive: "yesterday",
+        mockup: null,
       },
       {
         id: "landing",
         title: "I wanna build a personal landing page",
+        stage: "idea",
+        lastActivityAt: "2026-04-29T09:00:00Z",
         lastActive: "3 days ago",
+        mockup: null,
+      },
+      {
+        id: "bakery",
+        title: "Order list for a small bakery",
+        stage: "building",
+        lastActivityAt: "2026-04-25T09:00:00Z",
+        lastActive: "last week",
+        mockup: null,
       },
     ],
+    onCoverNear: fn(),
+    onOpenLibrary: fn(),
     onOpenProject: fn(),
     onConnectProvider: fn(),
     onImportFile: fn(),
@@ -104,6 +123,16 @@ export const OpensRecentProject: Story = {
       }),
     );
     await expect(args.onOpenProject).toHaveBeenCalledWith("calories");
+  },
+};
+
+/** All projects beside Recent opens the Projects page. */
+export const OpensAllProjects: Story = {
+  play: async ({ args, canvasElement }) => {
+    await userEvent.click(
+      within(canvasElement).getByRole("button", { name: "All projects" }),
+    );
+    await expect(args.onOpenLibrary).toHaveBeenCalled();
   },
 };
 

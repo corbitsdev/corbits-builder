@@ -12,6 +12,7 @@ import { useCoverPages } from "./project-cover.model.ts";
 import type { ProjectMenuHost } from "./project-menu.model.ts";
 import type {
   LibraryFilter,
+  LibraryProject,
   ProjectLibraryViewProps,
 } from "./project-library.view.tsx";
 
@@ -30,6 +31,19 @@ export type ProjectLibraryProps = {
     action?: NoticeAction,
   ) => void;
 };
+
+/** A project as its card shows it, with the cover page read for it so far. */
+export const libraryProject = (
+  project: ProjectSummary,
+  mockup: string | null,
+): LibraryProject => ({
+  id: project.id,
+  title: project.title,
+  stage: project.archivedAt ? "archived" : project.stage,
+  lastActivityAt: project.lastActivityAt,
+  lastActive: formatRelativeTime(project.lastActivityAt),
+  mockup,
+});
 
 function statusOf(
   loaded: boolean,
@@ -98,14 +112,9 @@ export function useProjectLibrary({
         shipped: matching("shipped").length,
         archived: matching("archived").length,
       },
-      projects: shown.map((project, index) => ({
-        id: project.id,
-        title: project.title,
-        stage: project.archivedAt ? "archived" : project.stage,
-        lastActivityAt: project.lastActivityAt,
-        lastActive: formatRelativeTime(project.lastActivityAt),
-        mockup: covers.pages[index]!,
-      })),
+      projects: shown.map((project, index) =>
+        libraryProject(project, covers.pages[index]!),
+      ),
       layout,
       onLayoutChange: writeLibraryView,
       onOpen,

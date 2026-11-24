@@ -159,6 +159,79 @@ function ViewToggle({
   );
 }
 
+export type ProjectCardsProps = {
+  projects: readonly LibraryProject[];
+  layout: ViewMode;
+  onOpen: (projectId: string) => void;
+  /** A card's cover has come within a screen of the viewport, which is when its mockup is worth reading. */
+  onCoverNear: (projectId: string) => void;
+  /** A card's options menu, opened by the trigger given; without it a card has no menu. */
+  menu?: ((projectId: string, trigger: ReactElement) => ReactNode) | undefined;
+  className?: string | undefined;
+};
+
+/** The projects as cards, tiles or a list: each opens its project, and offers its menu when there is one. */
+export function ProjectCards({
+  projects,
+  layout,
+  onOpen,
+  onCoverNear,
+  menu,
+  className,
+}: ProjectCardsProps) {
+  return (
+    <ul
+      className={
+        className === undefined ? styles.grid : `${styles.grid} ${className}`
+      }
+      data-view={layout}
+    >
+      {projects.map((project) => {
+        const cover = coverOf(project.id);
+        return (
+          <li key={project.id} className={styles.card}>
+            <button
+              type="button"
+              className={styles.cardOpen}
+              data-card-open=""
+              onClick={() => onOpen(project.id)}
+            >
+              <ProjectCoverView
+                pattern={cover.pattern}
+                style={cover.style}
+                mockup={project.mockup}
+                onNear={() => onCoverNear(project.id)}
+              />
+              <span className={styles.cardBody}>
+                <span className={styles.cardTitle}>{project.title}</span>
+                <span className={styles.cardMeta}>
+                  <Badge tone={STAGE_TONE[project.stage]}>
+                    {wording.library.filter[project.stage]}
+                  </Badge>
+                  <time dateTime={project.lastActivityAt}>
+                    {wording.library.lastActivity(project.lastActive)}
+                  </time>
+                </span>
+              </span>
+            </button>
+            {menu?.(
+              project.id,
+              <Button
+                variant="ghost"
+                size="icon"
+                className={styles.cardMenu}
+                aria-label={wording.shell.projectOptions(project.title)}
+              >
+                <Ellipsis aria-hidden="true" />
+              </Button>,
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 export function ProjectLibraryView({
   status,
   filter,
@@ -224,50 +297,13 @@ export function ProjectLibraryView({
       );
   else
     body = (
-      <ul className={styles.grid} data-view={layout}>
-        {projects.map((project) => {
-          const cover = coverOf(project.id);
-          return (
-            <li key={project.id} className={styles.card}>
-              <button
-                type="button"
-                className={styles.cardOpen}
-                data-card-open=""
-                onClick={() => onOpen(project.id)}
-              >
-                <ProjectCoverView
-                  pattern={cover.pattern}
-                  style={cover.style}
-                  mockup={project.mockup}
-                  onNear={() => onCoverNear(project.id)}
-                />
-                <span className={styles.cardBody}>
-                  <span className={styles.cardTitle}>{project.title}</span>
-                  <span className={styles.cardMeta}>
-                    <Badge tone={STAGE_TONE[project.stage]}>
-                      {wording.library.filter[project.stage]}
-                    </Badge>
-                    <time dateTime={project.lastActivityAt}>
-                      {wording.library.lastActivity(project.lastActive)}
-                    </time>
-                  </span>
-                </span>
-              </button>
-              {menu(
-                project.id,
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className={styles.cardMenu}
-                  aria-label={wording.shell.projectOptions(project.title)}
-                >
-                  <Ellipsis aria-hidden="true" />
-                </Button>,
-              )}
-            </li>
-          );
-        })}
-      </ul>
+      <ProjectCards
+        projects={projects}
+        layout={layout}
+        onOpen={onOpen}
+        onCoverNear={onCoverNear}
+        menu={menu}
+      />
     );
   return (
     <section className={styles.page} ref={section}>

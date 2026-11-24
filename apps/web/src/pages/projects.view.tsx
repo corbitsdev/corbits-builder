@@ -20,6 +20,7 @@ import { useShellReply } from "../flourish.tsx";
 import { Composer } from "../composer.tsx";
 import { HOME_COMPOSER_PLACEHOLDER } from "./home-view.ts";
 import { RoomSkeleton, type StartingWays } from "./workspace/room-skeleton.tsx";
+import { ProjectCards, type LibraryProject } from "./project-library.view.tsx";
 import styles from "./projects.module.css";
 
 /** A folder read as a project, in the words the page shows before importing it. */
@@ -60,8 +61,12 @@ export type ProjectsViewProps = {
   onProfileChange: (profile: string) => void;
   /** No model provider is connected, so the page offers to connect one first. */
   needsProvider: boolean;
-  /** The projects last worked on, latest first, with how long ago; empty, none are listed. */
-  recent: readonly { id: string; title: string; lastActive: string }[];
+  /** The projects last worked on, latest first, as their cards show them; empty, none are listed. */
+  recent: readonly LibraryProject[];
+  /** A recent card's cover has come near the screen, so its mockup is read now. */
+  onCoverNear: (projectId: string) => void;
+  /** Opens the Projects page, where every project is. */
+  onOpenLibrary: () => void;
   onOpenProject: (projectId: string) => void;
   onConnectProvider: () => void;
   onImportFile: (file: File) => void;
@@ -98,6 +103,8 @@ export function ProjectsView({
   onProfileChange,
   needsProvider,
   recent,
+  onCoverNear,
+  onOpenLibrary,
   onOpenProject,
   onConnectProvider,
   onImportFile,
@@ -261,26 +268,21 @@ export function ProjectsView({
         {folder === null ? null : <FolderBanner {...folder} busy={busy} />}
         {recent.length === 0 ? null : (
           <section className={styles.recent} aria-labelledby="recent-title">
-            <h2 id="recent-title" className={styles.recentTitle}>
-              {wording.shell.recent}
-            </h2>
-            <ul className={styles.recentList}>
-              {recent.map((project) => (
-                <li key={project.id}>
-                  <button
-                    type="button"
-                    className={styles.recentRow}
-                    title={project.title}
-                    onClick={() => onOpenProject(project.id)}
-                  >
-                    <span className={styles.recentName}>{project.title}</span>
-                    <span className={styles.recentWhen}>
-                      {project.lastActive}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
+            <div className={styles.recentHead}>
+              <h2 id="recent-title" className={styles.recentTitle}>
+                {wording.shell.recent}
+              </h2>
+              <Button variant="link" onClick={onOpenLibrary}>
+                {wording.shell.allProjects}
+              </Button>
+            </div>
+            <ProjectCards
+              className={styles.recentCards}
+              projects={recent}
+              layout="grid"
+              onOpen={onOpenProject}
+              onCoverNear={onCoverNear}
+            />
           </section>
         )}
       </section>

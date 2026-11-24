@@ -480,7 +480,8 @@ export function useApp(): AppScreen {
           onOpenSettings: openSettings,
           needsProvider:
             providersRead.data !== undefined && needsModelSetup(providers),
-          recent: recentProjects(projects),
+          projects,
+          onOpenLibrary: () => navigate("library"),
         },
       };
     if (view === "library")
