@@ -1,29 +1,49 @@
-/* The open question heads the card with Back and where it stands beside it, and each answer is a
-   row led by its checkbox, or its radio where only one may be picked. */
+/* What the question is about heads the card, with how far through the questions the person is and
+   the way out beside it; the question itself is the heading beneath, and each answer a tile led by
+   its checkbox, or its radio where only one may be picked. */
 .inBox {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
-  padding: var(--space-4) var(--space-4) var(--space-2);
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4) var(--space-2);
 }
 
-/* The question is the card's heading, read before anything else: as large as the turns' text and
-   set in bold, with where it stands and the way out quiet beside it. */
 .boxHeader {
   display: flex;
-  align-items: flex-start;
-  gap: var(--space-2);
+  align-items: center;
+  gap: var(--space-3);
   min-height: 28px;
 }
 
-.boxQuestion {
+.topic {
+  display: flex;
   flex: 1 1 0;
+  align-items: center;
+  gap: 6px;
   min-width: 0;
   margin: 0;
-  padding-top: 3px;
-  font-size: 0.9375rem;
+  overflow: hidden;
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1rem;
+  color: var(--wb-muted-foreground);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.topic svg {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  color: var(--wb-action);
+}
+
+.boxQuestion {
+  margin: 0 0 var(--space-1);
+  font-size: 1rem;
   font-weight: 600;
-  line-height: 1.375rem;
+  line-height: 1.5rem;
+  letter-spacing: -0.005em;
   color: var(--wb-foreground);
   text-wrap: pretty;
 }
@@ -32,20 +52,58 @@
   display: flex;
   flex: none;
   align-items: center;
-  gap: var(--space-1);
-  min-height: 28px;
-  font-size: 0.8125rem;
-  color: var(--wb-muted-foreground);
+  gap: var(--space-2);
 }
 
-.step p {
+/* One segment per question: those answered and the one open in the action blue, those ahead
+   faint. */
+.progress {
+  display: flex;
+  gap: 4px;
   margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.progress li {
+  width: 18px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--wb-border);
+  transition: background-color 200ms var(--ease-out);
+}
+
+.progress li[data-state="done"] {
+  background: color-mix(in oklab, var(--wb-action) 45%, var(--wb-border));
+}
+
+.progress li[data-state="open"] {
+  background: var(--wb-action);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progress li {
+    transition: none;
+  }
+}
+
+/* Read out, not shown: the segments show it. */
+.said {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 /* Quiet beside the question, as a waiting screen's Not now is. */
 .notNow {
   flex: none;
   height: 28px;
+  margin-inline-end: calc(-1 * var(--space-2));
   padding-inline: var(--space-2);
   color: var(--wb-muted-foreground);
   font-size: 0.8125rem;
@@ -117,35 +175,52 @@
 .choices {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  /* The marks line up under the question's first letter. */
-  margin-inline: calc(-1 * var(--space-2));
+  gap: 6px;
 }
 
+/* Each answer is a tile of its own, so the choices read apart at a glance; a picked one takes the
+   action blue on its edge and a wash of it inside. */
 .choice {
   display: flex;
   align-items: flex-start;
   gap: var(--space-3);
-  padding: var(--space-2);
-  border-radius: var(--radius-md);
+  padding: 10px var(--space-3);
+  border: 1px solid var(--wb-border);
+  border-radius: 10px;
+  background: var(--wb-card);
   font-size: 0.875rem;
   line-height: 1.25rem;
   color: var(--wb-foreground);
   cursor: pointer;
+  transition:
+    border-color 120ms ease,
+    background-color 120ms ease;
 }
 
 .choice:hover {
-  background: color-mix(in oklab, var(--wb-foreground) 4%, transparent);
+  border-color: var(--wb-border-strong);
+  background: color-mix(in oklab, var(--wb-foreground) 2%, var(--wb-card));
+}
+
+.choice[data-checked] {
+  border-color: color-mix(in oklab, var(--wb-action) 60%, var(--wb-border));
+  background: color-mix(in oklab, var(--wb-action) 6%, var(--wb-card));
 }
 
 .choice[data-checked] .choiceLabel {
   font-weight: 500;
 }
 
-/* The radio or checkbox shows focus on its whole row, as the own-words field does. */
+/* The radio or checkbox shows focus on its whole tile. */
 .choice:has(input:focus-visible) {
   outline: 2px solid var(--wb-ring);
-  outline-offset: -2px;
+  outline-offset: 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .choice {
+    transition: none;
+  }
 }
 
 .question:disabled .choice {
@@ -242,14 +317,15 @@
   color: var(--wb-muted-foreground);
 }
 
+/* The coordinator's pick, in the green of going ahead. */
 .recommended {
-  padding: 2px var(--space-2);
+  padding: 1px var(--space-2);
   border-radius: 999px;
-  background: var(--wb-muted);
+  background: color-mix(in oklab, var(--wb-proceed) 12%, transparent);
   font-size: 11px;
   font-weight: 500;
   line-height: 1rem;
-  color: var(--wb-muted-foreground);
+  color: var(--wb-proceed);
 }
 
 /* Why the answers did not send, just above the buttons that send them again. */

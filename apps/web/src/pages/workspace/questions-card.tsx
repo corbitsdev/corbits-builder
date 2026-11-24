@@ -13,7 +13,7 @@ import {
   useState,
   type KeyboardEvent,
 } from "react";
-import { Check, ChevronLeft } from "lucide-react";
+import { Check, ChevronLeft, MessageCircleQuestionMark } from "lucide-react";
 import { Button } from "@corbits/react-ui";
 import { Tooltip } from "@corbits/react-ui/ui/tooltip";
 import {
@@ -602,8 +602,14 @@ function OpenCard({
       inert={disabled}
       data-place="box"
     >
+      {/* What the question is about and how far through them the person is, then the question
+          itself as the card's heading. The bar's segments say where it stands; a screen reader
+          hears it as words. */}
       <header className={styles.boxHeader}>
-        <h3 className={styles.boxQuestion}>{question.question}</h3>
+        <p className={styles.topic}>
+          <MessageCircleQuestionMark aria-hidden="true" />
+          {question.header}
+        </p>
         {questions.length > 1 ? (
           <div className={styles.step}>
             {step === 0 ? null : (
@@ -619,7 +625,17 @@ function OpenCard({
                 </button>
               </Tooltip>
             )}
-            <p aria-live="polite">
+            <ol className={styles.progress} aria-hidden="true">
+              {questions.map((item, index) => (
+                <li
+                  key={item.id}
+                  data-state={
+                    index < step ? "done" : index === step ? "open" : "ahead"
+                  }
+                />
+              ))}
+            </ol>
+            <p className={styles.said} aria-live="polite">
               {text.position(step + 1, questions.length)}
             </p>
           </div>
@@ -635,6 +651,7 @@ function OpenCard({
           {wording.promptBox.waiting.notNow}
         </Button>
       </header>
+      <h3 className={styles.boxQuestion}>{question.question}</h3>
       <div ref={choices} className={styles.thread}>
         <Choices
           key={question.id}
