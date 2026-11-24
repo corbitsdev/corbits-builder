@@ -125,7 +125,10 @@ export const NotNow: Story = {
   },
 };
 
-/** A question with nothing to pick: the person types their answer in a field of its own. */
+/**
+ * A question with nothing to pick: the person types their answer in the prompt box, the one place
+ * to type, which asks for it.
+ */
 export const TypedAnswer: Story = {
   decorators: [inPromptBox],
   args: {
@@ -146,6 +149,14 @@ export const TypedAnswer: Story = {
       },
       status: "open",
     },
+  },
+  play: async ({ canvasElement }) => {
+    const fields = within(canvasElement).getAllByRole("textbox");
+    await expect(fields).toHaveLength(1);
+    await expect(fields[0]).toHaveAttribute(
+      "placeholder",
+      wording.questions.typed,
+    );
   },
 };
 

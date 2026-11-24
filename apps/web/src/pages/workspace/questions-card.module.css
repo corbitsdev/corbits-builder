@@ -7,21 +7,25 @@
   padding: var(--space-4) var(--space-4) var(--space-2);
 }
 
+/* The question is the card's heading, read before anything else: as large as the turns' text and
+   set in bold, with where it stands and the way out quiet beside it. */
 .boxHeader {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: var(--space-2);
-  min-height: 24px;
+  min-height: 28px;
 }
 
 .boxQuestion {
   flex: 1 1 0;
   min-width: 0;
   margin: 0;
-  font-size: 0.75rem;
-  font-weight: 400;
-  line-height: 1rem;
+  padding-top: 3px;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  line-height: 1.375rem;
   color: var(--wb-foreground);
+  text-wrap: pretty;
 }
 
 .step {
@@ -29,7 +33,8 @@
   flex: none;
   align-items: center;
   gap: var(--space-1);
-  font-size: 0.75rem;
+  min-height: 28px;
+  font-size: 0.8125rem;
   color: var(--wb-muted-foreground);
 }
 
@@ -40,10 +45,10 @@
 /* Quiet beside the question, as a waiting screen's Not now is. */
 .notNow {
   flex: none;
-  height: 24px;
+  height: 28px;
   padding-inline: var(--space-2);
   color: var(--wb-muted-foreground);
-  font-size: 0.75rem;
+  font-size: 0.8125rem;
 }
 
 .stepBack {
@@ -120,11 +125,11 @@
 .choice {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
+  gap: var(--space-3);
   padding: var(--space-2);
   border-radius: var(--radius-md);
-  font-size: 0.75rem;
-  line-height: 1rem;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
   color: var(--wb-foreground);
   cursor: pointer;
 }
@@ -158,6 +163,8 @@
   justify-content: center;
   width: 16px;
   height: 16px;
+  /* Centred on the label's first line. */
+  margin-top: 2px;
 }
 
 .mark input {
@@ -230,7 +237,8 @@
 }
 
 .choiceDescription {
-  font-size: 0.75rem;
+  font-size: 0.8125rem;
+  line-height: 1.125rem;
   color: var(--wb-muted-foreground);
 }
 
@@ -242,21 +250,6 @@
   font-weight: 500;
   line-height: 1rem;
   color: var(--wb-muted-foreground);
-}
-
-.own {
-  flex: 1 1 auto;
-  min-width: 0;
-  padding: 0;
-  border: 0;
-  background: none;
-  font: inherit;
-  color: inherit;
-  outline: none;
-}
-
-.own::placeholder {
-  color: var(--muted-foreground);
 }
 
 /* Why the answers did not send, just above the buttons that send them again. */

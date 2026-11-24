@@ -641,6 +641,8 @@ export const wording = {
       openScreen: "Open",
       /** Turns down a screen that answers the coordinator, sent as the person's answer to it. */
       notNow: "Not now",
+      /** Send, while words are typed beside a screen asking to approve something. */
+      makeChanges: "Make changes",
       /** The placeholder while a step waits: words sent instead go to the coordinator. */
       stepPlaceholder: "Or say what to do instead…",
     },

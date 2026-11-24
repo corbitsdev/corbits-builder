@@ -171,7 +171,7 @@ describe("questions card", () => {
     expect(html).toContain(`>${text.next}<`);
   });
 
-  test("a question with no options asks for typed words, not a pick", () => {
+  test("a question with no options asks for typed words in the box, not a pick or a field of its own", () => {
     const html = open("call-1", {
       questions: [
         {
@@ -184,7 +184,7 @@ describe("questions card", () => {
         },
       ],
     });
-    expect(html).toContain(`placeholder="${text.typed}"`);
+    expect(html).not.toContain('type="text"');
     expect(html).not.toContain(text.pickOne);
     expect(html).not.toContain("aria-describedby");
   });

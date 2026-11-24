@@ -358,14 +358,12 @@ function Choices({
   answer,
   ruleId,
   onPick,
-  onOwn,
 }: {
   name: string;
   question: Question;
   answer: Answer;
   ruleId: string;
   onPick: (index: number) => void;
-  onOwn: (own: string) => void;
 }) {
   const multi = question.multiple;
   const typed = question.options.length === 0;
@@ -414,22 +412,6 @@ function Choices({
             </label>
           );
         })}
-        {/* The person's own words go in the prompt box, unless there is nothing to pick. */}
-        {question.custom && typed ? (
-          <label
-            className={styles.choice}
-            data-checked={answer.own.trim() === "" ? undefined : ""}
-          >
-            <input
-              type="text"
-              className={styles.own}
-              aria-label={text.otherAnswer}
-              placeholder={text.typed}
-              value={answer.own}
-              onChange={(event) => onOwn(event.target.value)}
-            />
-          </label>
-        ) : null}
       </div>
     </fieldset>
   );
@@ -480,10 +462,14 @@ function OpenCard({
     question === undefined
       ? []
       : chosenOf(question, answers[step] ?? { chosen: [], own: "" });
+  // The person's own words go in the prompt box, the one place to type, even where there is
+  // nothing to pick: then the box asks for the answer itself.
   usePromptPlaceholder(
-    picked.length === 0
-      ? undefined
-      : text.addDetails(picked.map(shownLabel).join(", ")),
+    question !== undefined && question.options.length === 0
+      ? text.typed
+      : picked.length === 0
+        ? undefined
+        : text.addDetails(picked.map(shownLabel).join(", ")),
   );
   usePromptSend(
     question !== undefined && !blocked && !sending
@@ -657,7 +643,6 @@ function OpenCard({
           answer={answer}
           ruleId={`${id}-${question.id}-rule`}
           onPick={choose}
-          onOwn={(own) => setAnswer({ ...answer, own })}
         />
       </div>
       {fault !== undefined ? (
