@@ -19,6 +19,7 @@ import { Dictated } from "../dictation.jsx";
 import { useShellReply } from "../flourish.tsx";
 import { Composer } from "../composer.tsx";
 import { HOME_COMPOSER_PLACEHOLDER } from "./home-view.ts";
+import { RoomSkeleton } from "./workspace/room-skeleton.tsx";
 import styles from "./projects.module.css";
 
 /** A folder read as a project, in the words the page shows before importing it. */
@@ -42,6 +43,8 @@ export type FolderReading = {
 export type ProjectsViewProps = {
   /** What the page is busy with; the prompt and both imports wait until it is idle. */
   activity: "idle" | "starting" | "importing";
+  /** The sidebar as the person keeps it, for the room a starting project opens into. */
+  sidebar: { open: boolean; drawer: boolean; onToggleSidebar: () => void };
   /** The idea in the prompt box. */
   idea: string;
   onIdeaChange: (idea: string) => void;
@@ -78,6 +81,7 @@ export type ProjectsViewProps = {
 
 export function ProjectsView({
   activity,
+  sidebar,
   idea,
   onIdeaChange,
   onStart,
@@ -103,6 +107,20 @@ export function ProjectsView({
     if (shell.answers(idea)) return onIdeaChange("");
     onStart();
   };
+
+  // Once sent, the page becomes the room the project opens into: the sidebar beside it, the
+  // person's words at the top, the coordinator thinking under them, and the box at the foot.
+  if (starting)
+    return (
+      <div className={styles.starting} data-slot="starting-room">
+        <RoomSkeleton
+          title={idea.trim()}
+          opening={idea.trim()}
+          status={wording.newProject.starting}
+          sidebar={sidebar}
+        />
+      </div>
+    );
 
   return (
     <div className={styles.homePage} data-slot="home-page">

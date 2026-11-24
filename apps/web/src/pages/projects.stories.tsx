@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
 import { expect, fn, userEvent, within } from "storybook/test";
+import { wording } from "../config.ts";
 import { ProjectsView, type ProjectsViewProps } from "./projects.view.tsx";
 
 // Holds what the page asks its host to keep: the idea being typed and the profile picked.
@@ -24,6 +25,7 @@ const meta = {
   parameters: { layout: "fullscreen" },
   args: {
     activity: "idle",
+    sidebar: { open: true, drawer: false, onToggleSidebar: fn() },
     idea: "",
     onIdeaChange: fn(),
     onStart: fn(),
@@ -99,8 +101,39 @@ export const NoRecentProjects: Story = { args: { recent: [] } };
 
 export const WithIdea: Story = { args: { idea: IDEA } };
 
-/** The hub is creating the project; the prompt and both imports wait. */
-export const Starting: Story = { args: { idea: IDEA, activity: "starting" } };
+/**
+ * Sent, the page becomes the room the project opens into: the sidebar beside it, the person's
+ * words at the top with the coordinator thinking under them, and the box at the foot saying the
+ * project is starting.
+ */
+// The room fills the window's height, as the app's canvas gives it.
+const fullHeight: NonNullable<Story["decorators"]> = [
+  (Story) => (
+    <div style={{ height: "100vh", display: "flex", flexDirection: "column" }}>
+      <Story />
+    </div>
+  ),
+];
+
+export const Starting: Story = {
+  args: { idea: IDEA, activity: "starting" },
+  decorators: fullHeight,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    // The person's words are their message, and the project's name until it has one.
+    await expect(canvas.getAllByText(IDEA)).toHaveLength(2);
+    await expect(canvas.getAllByRole("article")).toHaveLength(2);
+    await expect(
+      canvas.getByText(wording.newProject.starting, { selector: "p" }),
+    ).toHaveAttribute("role", "status");
+  },
+};
+
+export const StartingDark: Story = {
+  args: { idea: IDEA, activity: "starting" },
+  decorators: fullHeight,
+  globals: { mode: "dark" },
+};
 
 /** Nothing can start until a model provider is connected. */
 export const NeedsProvider: Story = {

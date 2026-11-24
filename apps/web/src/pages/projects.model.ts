@@ -5,6 +5,7 @@
  * binds, which the workspace sends on arrival.
  */
 import { useState } from "react";
+import { flushSync } from "react-dom";
 import { toast } from "sonner";
 import type { ProjectImport } from "@corbits-builder/schemas/project-import";
 import {
@@ -27,6 +28,7 @@ import {
   readDirectory,
   type PickedDirectory,
 } from "../api/repository.ts";
+import { useSidebar } from "../sidebar-setting.ts";
 import { canStartProject } from "./home-view.ts";
 import { useNewProjectProfiles } from "./new-project-profiles.model.ts";
 import type { AddProviderDialogProps } from "./settings/add-provider-dialog.model.ts";
@@ -105,6 +107,7 @@ export function useProjects({
   const [idea, setIdea] = useState("");
   const [activity, setActivity] =
     useState<ProjectsViewProps["activity"]>("idle");
+  const sidebar = useSidebar();
   const [connecting, setConnecting] = useState(false);
   // A new project starts on the preferred profile until the person picks another.
   const profiles = useNewProjectProfiles();
@@ -117,7 +120,16 @@ export function useProjects({
       toast.error(wording.message.projectEmpty);
       return;
     }
-    setActivity("starting");
+    // The page turns into the room as it goes, the box gliding to the foot, where the browser can
+    // carry it across and the person has not asked for less motion.
+    const glide =
+      typeof document.startViewTransition === "function" &&
+      !matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (glide)
+      document.startViewTransition(() =>
+        flushSync(() => setActivity("starting")),
+      );
+    else setActivity("starting");
     try {
       const opening = idea.trim();
       const created = await createProject({
@@ -242,6 +254,11 @@ export function useProjects({
   return {
     view: {
       activity,
+      sidebar: {
+        open: sidebar.open,
+        drawer: sidebar.drawer,
+        onToggleSidebar: sidebar.toggle,
+      },
       idea,
       onIdeaChange: setIdea,
       onStart: () => void start(),

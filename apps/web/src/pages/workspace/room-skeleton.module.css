@@ -54,6 +54,12 @@
   animation: arrive 240ms var(--ease-out) 200ms forwards;
 }
 
+/* A project just started shows the person's words at once, with no wait before them. */
+.thread[data-opening] {
+  opacity: 1;
+  animation: none;
+}
+
 .mine,
 .name,
 .line,
@@ -194,4 +200,36 @@
   flex-direction: column;
   justify-content: center;
   padding: var(--space-4);
+}
+
+/* From the new project page into the room: the prompt box glides from the middle of the page to
+   its place at the foot, the sidebar comes in from the side, and the rest crossfades. The box is
+   named on both pages, so the browser carries it across. */
+.foot [data-slot="composer-box"] {
+  view-transition-name: prompt-box;
+}
+
+.room > [data-slot="project-sidebar"] {
+  view-transition-name: room-sidebar;
+}
+
+::view-transition-group(prompt-box) {
+  animation-duration: 480ms;
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+::view-transition-new(room-sidebar) {
+  animation: sidebar-in 420ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 260ms;
+}
+
+@keyframes sidebar-in {
+  from {
+    opacity: 0;
+    translate: -24px 0;
+  }
 }

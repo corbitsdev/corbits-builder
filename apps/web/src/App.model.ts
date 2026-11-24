@@ -511,8 +511,12 @@ export function useApp(): AppScreen {
       name: "project",
       props: {
         projectId: selected,
+        // A project just started may not be listed yet; its first words stand for its name
+        // until it is, as they did while it started.
         projectTitle:
-          openProjectSummary?.title ?? wording.shell.untitledProject,
+          openProjectSummary?.title ??
+          openingMessage?.trim() ??
+          wording.shell.untitledProject,
         ...(openProjectSummary === null
           ? {}
           : {

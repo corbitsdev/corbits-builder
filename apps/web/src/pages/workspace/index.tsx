@@ -30,6 +30,7 @@ export function StageWorkspace(props: StageWorkspaceProps) {
     return (
       <RoomSkeleton
         title={props.projectTitle}
+        opening={props.openingMessage}
         sidebar={{
           open: sidebar.open,
           drawer: sidebar.drawer,

@@ -3,13 +3,18 @@
  * with the project's name and its plan still to come, the conversation in its column, and the
  * prompt box where it will stand, saying the project is opening. Each stands where the loaded
  * room puts it, so nothing moves when the room arrives; only the faint shapes give way to what
- * they stood for. The shapes are not announced; the box's line is.
+ * they stood for. The shapes are not announced; the box's line is. A project just started has
+ * the person's own first words in place of the shapes, with the coordinator thinking under them.
  */
 import {
+  Message,
+  MessageContent,
+  MessageHeader,
   PromptInput,
   PromptInputSubmit,
   PromptInputTextarea,
   PromptInputToolbar,
+  ShimmerText,
 } from "@corbits/react-ui";
 import { Composer } from "../../composer.tsx";
 import { Fault } from "../../components.jsx";
@@ -26,17 +31,24 @@ const nothing = () => {};
 export function RoomSkeleton({
   title,
   sidebar,
+  opening,
+  status,
 }: {
   /** The project's name, as the project list has it. */
   title: string;
   /** The sidebar as the person left it, so it is already where the room will put it. */
   sidebar: { open: boolean; drawer: boolean; onToggleSidebar: () => void };
+  /** The person's first words to a project just started, shown as theirs while it opens. */
+  opening?: string | undefined;
+  /** What the box says is happening; by default, that the project is opening. */
+  status?: string | undefined;
 }) {
-  const opening = wording.message.projectLoading(title);
+  const said = status ?? wording.message.projectLoading(title);
   return (
     <StageView aria-busy="true">
       <div
         className={styles.room}
+        data-slot="room-skeleton"
         data-beside={sidebar.open && !sidebar.drawer ? "" : undefined}
       >
         <SidebarFrame
@@ -55,24 +67,23 @@ export function RoomSkeleton({
           </ul>
         </SidebarFrame>
         <div className={styles.main}>
-          <div className={styles.thread} aria-hidden="true">
-            <div className={styles.mine} style={{ width: "36%" }} />
-            <div className={styles.reply}>
-              <span className={styles.name} />
-              <span className={styles.line} />
-              <span className={styles.line} style={{ width: "92%" }} />
-              <span className={styles.line} style={{ width: "64%" }} />
+          {opening === undefined ? (
+            <Shapes />
+          ) : (
+            <div className={styles.thread} data-opening="">
+              <Message from="own" status="sent">
+                <MessageHeader name={wording.speaker.you} />
+                <MessageContent text={opening} />
+              </Message>
+              <Message from="agent" status="streaming">
+                <MessageHeader name={wording.speaker.coordinator} />
+                <ShimmerText>{wording.activity.thinkingNow}</ShimmerText>
+              </Message>
             </div>
-            <div className={styles.mine} style={{ width: "24%" }} />
-            <div className={styles.reply}>
-              <span className={styles.name} />
-              <span className={styles.line} style={{ width: "84%" }} />
-              <span className={styles.line} style={{ width: "48%" }} />
-            </div>
-          </div>
+          )}
           <div className={styles.foot}>
             <p className={styles.said} role="status">
-              {opening}
+              {said}
             </p>
             {/* The box itself, held until the room can take what is typed in it. */}
             <Composer>
@@ -83,7 +94,7 @@ export function RoomSkeleton({
                 disabled
                 aria-hidden="true"
               >
-                <PromptInputTextarea placeholder={opening} />
+                <PromptInputTextarea placeholder={said} />
                 <PromptInputToolbar>
                   <PromptInputSubmit className="ms-auto" />
                 </PromptInputToolbar>
@@ -93,6 +104,27 @@ export function RoomSkeleton({
         </div>
       </div>
     </StageView>
+  );
+}
+
+/** The turns on their way, as faint shapes: a message, a reply, a message, a reply. */
+function Shapes() {
+  return (
+    <div className={styles.thread} aria-hidden="true">
+      <div className={styles.mine} style={{ width: "36%" }} />
+      <div className={styles.reply}>
+        <span className={styles.name} />
+        <span className={styles.line} />
+        <span className={styles.line} style={{ width: "92%" }} />
+        <span className={styles.line} style={{ width: "64%" }} />
+      </div>
+      <div className={styles.mine} style={{ width: "24%" }} />
+      <div className={styles.reply}>
+        <span className={styles.name} />
+        <span className={styles.line} style={{ width: "84%" }} />
+        <span className={styles.line} style={{ width: "48%" }} />
+      </div>
+    </div>
   );
 }
 

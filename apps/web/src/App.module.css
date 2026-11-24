@@ -130,6 +130,24 @@
   border-radius: 0;
 }
 
+/* A project starting from the new project page fills the canvas as its room will, without the
+   page's corner links, which the room does not have. */
+.canvasBody:has(> [data-slot="starting-room"]) {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  max-width: none;
+  overflow: hidden;
+}
+
+.canvasBody:has(> [data-slot="starting-room"]) > * {
+  flex: 1;
+}
+
+.canvas:has([data-slot="starting-room"]) > .corner {
+  display: none;
+}
+
 /* The home page runs edge to edge; its banner keeps the page's inset. */
 .canvasBody:has(> [data-slot="home-page"]) {
   padding: 0;

@@ -12,6 +12,19 @@
 
 /* The prompt is the page: centred in the pane's height, a reading width
    wide, with the question above it. */
+/* The page's prompt box is carried into the room as the project starts; see the room skeleton. */
+.newProject [data-slot="composer-box"] {
+  view-transition-name: prompt-box;
+}
+
+/* Starting a project, the page is the room it is opening, filling the window. */
+.starting {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
 .newProject {
   display: flex;
   flex-direction: column;
