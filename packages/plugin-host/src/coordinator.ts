@@ -425,6 +425,14 @@ export const unstartedOptional = (step: {
   step.runId === undefined &&
   (step.state === "not_started" || step.state === "waiting");
 
+/** Whether a plan step still holds its group open: unfinished, and not an optional step nobody started. */
+export const leftToDo = (step: {
+  finished: boolean;
+  optional?: boolean;
+  runId?: string;
+  state: string;
+}) => !step.finished && !unstartedOptional(step);
+
 /** The names of the actions whose finished work makes a fact true. */
 export const makersIn = (catalog: Catalog) => (fact: Fact) =>
   makersOf(catalog, fact).map(({ name }) => name);
@@ -1470,11 +1478,7 @@ async function planAnswer(
   );
   const answer = `${plan}\n\n${PLAN_STEP_REMINDER}`;
   const left = steps.filter(unstartedOptional);
-  if (
-    left.length === 0 ||
-    steps.some((step) => !step.optional && !step.finished)
-  )
-    return answer;
+  if (left.length === 0 || steps.some(leftToDo)) return answer;
   const { asksApprovals } = await project.state();
   return `${answer}\n\n${optionalLeft(
     left.map(({ title }) => title),

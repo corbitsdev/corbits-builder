@@ -143,6 +143,13 @@ function project(
 // A plan step as the hub stores it with an id, shown as not started.
 type PlanStep = {
   id?: string;
+  title?: string;
+  plugin?: string;
+  action?: string;
+  input?: unknown;
+  askFirst?: boolean;
+  optional?: boolean;
+  runId?: string;
   state?: string;
   finished?: boolean;
   kind?: string;
@@ -676,6 +683,34 @@ test("a group is finished once nothing in it is left to do, so an optional step 
   expect(
     groupOf([cancelled("first"), cancelled("second"), optional], [blocked]),
   ).toMatchObject({ state: "waiting", finished: false });
+});
+
+test("the plan offers the optional steps nobody started only once nothing else is left to do", async () => {
+  const idea = project([filed("app")]);
+  const step = (id: string, state: string, optional: boolean): PlanStep => ({
+    id,
+    title: id,
+    plugin: "designer",
+    action: "mockup",
+    input: designerMockup.input,
+    askFirst: false,
+    optional,
+    state,
+    finished: state === "done",
+    kind: "workflow",
+  });
+  const tried = step("tried", "failed", true);
+  tried.runId = "run";
+  idea.state.plan = [
+    step("built", "done", false),
+    tried,
+    step("never", "not_started", true),
+  ];
+  const offer = "Every other step is done.";
+  expect((await idea.plan({ operation: "show" })).content).not.toContain(offer);
+  tried.state = "done";
+  tried.finished = true;
+  expect((await idea.plan({ operation: "show" })).content).toContain(offer);
 });
 
 test("a step whose run is held on the person's approval needs them, and its group says so", () => {

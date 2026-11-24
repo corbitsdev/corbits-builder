@@ -8,12 +8,7 @@ import {
   isWorkflowAction,
   type Catalog,
 } from "./catalog.ts";
-import {
-  gateOf,
-  makersIn,
-  unstartedOptional,
-  type Run,
-} from "./coordinator.ts";
+import { gateOf, makersIn, leftToDo, type Run } from "./coordinator.ts";
 import { holds, resolveFacts, unmet } from "./facts.ts";
 import { missingTexts, unfinishedText } from "./text.ts";
 
@@ -161,9 +156,6 @@ const FINISHED: ReadonlySet<StepState> = new Set([
   "skipped",
   "cancelled",
 ]);
-
-const leftToDo = (step: PlanStepView) =>
-  !step.finished && !unstartedOptional(step);
 
 /**
  * Where each step of a plan stands, worked out from the project's records each time, so the plan
