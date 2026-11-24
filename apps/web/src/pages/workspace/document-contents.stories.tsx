@@ -28,10 +28,10 @@ const meta = {
     current: "section-who-has-it",
     onOpen: fn(),
   },
-  // The contents sit on the window's backdrop, where the open section lifts onto the page colour.
+  // The contents sit on the room's ground, where the open section is shaded.
   decorators: [
     (Story) => (
-      <div style={{ padding: 24, background: "var(--wb-frame)" }}>
+      <div style={{ padding: 24, background: "var(--wb-background)" }}>
         <Story />
       </div>
     ),

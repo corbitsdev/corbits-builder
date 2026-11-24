@@ -47,7 +47,7 @@ const ready = {
 function Page({ children }: { children: ReactNode }) {
   return (
     <div style={{ position: "relative", height: "100vh" }}>
-      <div className={room.page} style={{ background: "var(--wb-frame)" }}>
+      <div className={room.page} style={{ background: "var(--wb-background)" }}>
         <div
           style={{
             display: "flex",

@@ -5,8 +5,8 @@
   background: linear-gradient(
     to bottom,
     transparent,
-    var(--wb-frame) 45%,
-    var(--wb-frame)
+    var(--wb-background) 45%,
+    var(--wb-background)
   );
   pointer-events: none;
 }

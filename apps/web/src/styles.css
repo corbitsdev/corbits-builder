@@ -56,7 +56,6 @@
   /* The rail sits on the page ground and the main pane is a raised sheet on
      it. Corbits brand palette: Paper White ground, Pure White sheet, a
      Bedrock Charcoal hairline; dark mode below. */
-  --wb-frame: #f2f4f5;
   --wb-pane: #ffffff;
   --wb-pane-shadow:
     0 0 0 1px color-mix(in srgb, #5c5555 10%, transparent),
@@ -157,7 +156,6 @@ body {
 /* Night: a Pure Black ground under the theme's own page colour, edged in
    Canvas Cream, the brand's structure colour on dark. */
 :root.dark {
-  --wb-frame: #000000;
   --wb-action: #6aa0f0;
   --wb-proceed: #5cb573;
   --wb-pane: var(--background);

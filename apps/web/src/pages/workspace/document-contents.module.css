@@ -55,7 +55,7 @@
 }
 
 .section[aria-current] {
-  background: var(--wb-background);
+  background: var(--wb-muted);
   color: var(--wb-foreground);
 }
 

@@ -1,5 +1,5 @@
-/* The reading view is its own scroller on the window's backdrop, so the bar and the contents stay
-   put while the page moves under them. */
+/* The reading view is its own scroller on the room's ground, so the bar and the contents stay put
+   while the page moves under them. */
 .reader {
   position: relative;
   display: flex;
@@ -8,7 +8,7 @@
   min-height: 0;
   overflow: auto;
   overscroll-behavior: contain;
-  background: var(--wb-frame);
+  background: var(--wb-background);
   container-type: inline-size;
   /* As wide as the conversation's turns, so the page and the chat read at one measure. */
   --sheet-width: 768px;
@@ -18,13 +18,10 @@
   scroll-behavior: smooth;
 }
 
-/* On dark the backdrop is pure black and so is the theme's page colour, so the sheet, the bar, the
-   contents' open section and the margin's cards would all sink into it. They take the theme's first
-   raised step instead, and the backdrop stays black around them. A card opened from its passage
-   is drawn outside the reader, so it takes the same step itself. */
-:global(.dark) .reader,
-:global(.dark) .card {
-  --wb-pane: var(--muted);
+/* On dark the theme's page colour is the ground's, so the margin's cards would sink into it. They
+   take the theme's first raised step instead. A card opened from its passage is drawn outside the
+   reader, so it takes the same step itself. */
+:global(.dark) :is(.margin, .card) {
   --wb-background: var(--muted);
 }
 
@@ -87,17 +84,11 @@
   display: none;
 }
 
-/* A sheet of paper, A4 and a page tall at the least, raised on the backdrop as the workspace's main
-   pane is. The page's height is a minimum, not an aspect ratio: a sheet narrowed by its max-width
-   would hold an aspect ratio's height and let a long text run off its foot. */
+/* The document's text on the room's ground, at the page's measure. */
 .sheet {
   box-sizing: border-box;
   width: var(--page-width);
-  min-height: calc(var(--page-width) * 1.4142);
   padding: 40px 64px 120px;
-  border-radius: 2px;
-  background: var(--wb-pane);
-  box-shadow: var(--wb-pane-shadow);
   color: var(--wb-foreground);
 }
 
@@ -390,8 +381,6 @@
   .sheet {
     width: auto;
     max-width: none;
-    min-height: 0;
     padding: 0;
-    box-shadow: none;
   }
 }
