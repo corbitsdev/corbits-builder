@@ -446,39 +446,6 @@
   font-weight: 500;
 }
 
-/* The step being worked on: a soft band of light passes through its words every two seconds. The
-   band is the page's own ground showing through the words, so it reads as light in both themes. */
-.row[data-row="step"][data-state="running"] .name,
-.app[data-state="starting"] .name {
-  background: linear-gradient(
-      90deg,
-      var(--wb-foreground) 0%,
-      var(--wb-foreground) 42%,
-      color-mix(in oklab, var(--wb-foreground) 30%, var(--card)) 50%,
-      var(--wb-foreground) 58%,
-      var(--wb-foreground) 100%
-    )
-    100% 0 / 250% 100%;
-  background-clip: text;
-  color: transparent;
-  animation: shimmer 2s var(--ease-out) infinite;
-}
-
-@keyframes shimmer {
-  to {
-    background-position: 0 0;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .row[data-row="step"][data-state="running"] .name,
-  .app[data-state="starting"] .name {
-    background: none;
-    color: var(--wb-foreground);
-    animation: none;
-  }
-}
-
 /* A dot sits in a 14px box at the row's end, so every mark lines up in one column. */
 .dot {
   display: grid;

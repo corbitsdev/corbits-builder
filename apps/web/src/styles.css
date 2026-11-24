@@ -83,6 +83,9 @@
   /* Every yes or move-forward button: Yes, go ahead; Approve; Continue; Use Concept B. */
   --wb-proceed: #2f7c40;
   --wb-proceed-foreground: #ffffff;
+  /* Moving across the screen, as the chat's edge does going full screen; the library has an
+     ease-out for things that come and go, but none for travel. */
+  --wb-ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
   --wb-font-ui: var(--font-sans);
   --wb-font-mono: var(--font-mono);
   /* Controls and supporting text (DESIGN.md), between the library's

@@ -11,14 +11,14 @@
   background: var(--wb-background);
   box-shadow: var(--wb-shadow);
   transition:
-    border-color 120ms ease,
-    box-shadow 120ms ease;
+    border-color var(--duration-micro) ease,
+    box-shadow var(--duration-micro) ease;
 }
 
 /* A comment just started settles in beside its passage. The ones already there are simply in place
    when the page opens, rather than all arriving at once. */
 .card[data-entering] {
-  animation: global(settle-in) 180ms cubic-bezier(0.23, 1, 0.32, 1);
+  animation: global(settle-in) var(--duration-standard) var(--ease-out);
 }
 
 .card:is(:hover, :focus-within, [data-paired]) {
@@ -63,7 +63,7 @@
 @media (hover: hover) {
   .actions {
     opacity: 0;
-    transition: opacity 120ms ease;
+    transition: opacity var(--duration-micro) ease;
   }
 
   .card:is(:hover, :focus-within, [data-paired]) .actions {

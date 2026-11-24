@@ -393,7 +393,7 @@ function AppLine({
       onClick={onOpen}
     >
       {/* The library's success tone is the brand's orange, so the app's dot is drawn here, green
-          while the app is up. Starting, it turns and its words shimmer as a running step's do. */}
+          while the app is up. Starting, it turns as a running step's does. */}
       <span className={styles.dot}>
         {app === "starting" ? (
           <Working />
@@ -628,12 +628,12 @@ function PlanTree({
 
 /**
  * One step of the plan: its name, and under it a line saying where it stands. The one at work
- * shimmers with a ring turning at its end, and its line counts how long it has run; one that waits
- * on the person is shaded and says so; one that failed is red and says so. What a run last did is
- * often a tool's own words, so it is kept to the row's tooltip. Until a step starts, its line holds its settings, Ask me first and, where it is optional,
- * Skip, each lit while it is on, so how the plan will go is read off the rows rather than hidden
- * in a menu. Once a step has made something it opens it; once the app is built, its step says how
- * it runs.
+ * turns at its end, and its line counts how long it has run; one that waits on the person is
+ * shaded and says so; one that failed is red and says so. What a run last did is often a tool's
+ * own words, so it is kept to the row's tooltip. Until a step starts, its line holds its settings,
+ * Ask me first and, where it is optional, Skip, each lit while it is on, so how the plan will go is
+ * read off the rows rather than hidden in a menu. Once a step has made something it opens it; once
+ * the app is built, its step says how it runs.
  */
 function PlanRow({
   row,

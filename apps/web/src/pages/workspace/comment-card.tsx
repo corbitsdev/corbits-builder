@@ -41,6 +41,8 @@ function leave(card: HTMLElement | null, then: (() => void) | undefined) {
   // Inert while it leaves, so a second press cannot remove it twice.
   card.inert = true;
   const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  // The app's own timing, read off the page, so leaving keeps pace with everything else.
+  const tokens = getComputedStyle(card);
   const fade = card.animate(
     still
       ? [{ opacity: 1 }, { opacity: 0 }]
@@ -49,8 +51,9 @@ function leave(card: HTMLElement | null, then: (() => void) | undefined) {
           { opacity: 0, transform: "scale(0.98)" },
         ],
     {
-      duration: 140,
-      easing: "cubic-bezier(0.23, 1, 0.32, 1)",
+      duration:
+        Number.parseFloat(tokens.getPropertyValue("--duration-micro")) || 150,
+      easing: tokens.getPropertyValue("--ease-out").trim() || "ease-out",
       fill: "forwards",
     },
   );

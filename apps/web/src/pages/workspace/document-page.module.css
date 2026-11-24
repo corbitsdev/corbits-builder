@@ -316,7 +316,7 @@
   z-index: 60;
   width: min(var(--card-width), calc(100vw - 16px));
   transform-origin: top left;
-  animation: grow-in 150ms ease-out;
+  animation: grow-in var(--duration-micro) var(--ease-out);
 }
 
 /* It grows from the passage it was opened from: down from the line, or up when it opens above. */

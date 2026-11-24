@@ -210,7 +210,7 @@ type Story = StoryObj<typeof meta>;
 
 /**
  * While a ready-made plan runs: its steps, with no row for the plan itself. The finished steps
- * are quiet, the one being worked on is the brightest row and shimmers, and the steps ahead are
+ * are quiet, the one being worked on is the brightest row and turns, and the steps ahead are
  * fainter. There is no app yet.
  */
 export const Planning: Story = {};
