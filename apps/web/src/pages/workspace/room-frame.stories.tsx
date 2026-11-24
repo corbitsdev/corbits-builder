@@ -1,12 +1,8 @@
 import type { CSSProperties } from "react";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import type { Viewport } from "storybook/viewport";
-import { Mark } from "../../components.tsx";
-import {
-  RoomFrame,
-  type RoomFrameProps,
-  type RoomFrameSide,
-} from "./room-frame.tsx";
+import { SidebarFrame } from "./project-sidebar.view.tsx";
+import { RoomFrame, type RoomFrameSide } from "./room-frame.tsx";
 
 const viewports = {
   w1920: {
@@ -48,27 +44,6 @@ const box: CSSProperties = {
   fontSize: "var(--text-sm)",
 };
 
-/** As the home page draws the product's mark: 22px, 8px from the row's start. */
-function TitlePill() {
-  return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: "var(--space-2)",
-        height: "100%",
-        padding: "0 var(--space-3) 0 var(--space-2)",
-        borderRadius: "var(--radius-lg)",
-        background: "var(--card)",
-        fontWeight: 600,
-      }}
-    >
-      <Mark size={22} />
-      <span>Bakery orders</span>
-    </div>
-  );
-}
-
 function SidebarList() {
   return (
     <ul
@@ -89,30 +64,42 @@ function SidebarList() {
   );
 }
 
+/** The page as a view in the main pane lays itself: its own scroller, edge to edge, its content
+ * held to the frame's column, with the prompt box at the column's foot. */
 function Page({ sections }: { sections: number }) {
   return (
-    <div style={{ display: "grid", gap: "var(--space-4)" }}>
-      {Array.from({ length: sections }, (_, index) => (
-        <div key={index} style={{ ...box, height: "12rem" }}>
-          Page section {index + 1}
+    <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
+      <div
+        style={{
+          display: "grid",
+          gap: "var(--space-4)",
+          boxSizing: "border-box",
+          maxWidth: "var(--frame-column)",
+          minHeight: "100%",
+          margin: "0 auto",
+          padding: "var(--space-2) var(--space-4) 0",
+        }}
+      >
+        {Array.from({ length: sections }, (_, index) => (
+          <div key={index} style={{ ...box, height: "12rem" }}>
+            Page section {index + 1}
+          </div>
+        ))}
+        <div
+          style={{
+            ...box,
+            position: "sticky",
+            bottom: "var(--space-2)",
+            alignSelf: "end",
+            height: "7rem",
+            borderStyle: "solid",
+            background: "var(--wb-background)",
+            boxShadow: "var(--wb-shadow)",
+          }}
+        >
+          Prompt box
         </div>
-      ))}
-    </div>
-  );
-}
-
-function PromptBox() {
-  return (
-    <div
-      style={{
-        ...box,
-        height: "7rem",
-        borderStyle: "solid",
-        background: "var(--wb-background)",
-        boxShadow: "var(--wb-shadow)",
-      }}
-    >
-      Prompt box
+      </div>
     </div>
   );
 }
@@ -128,12 +115,18 @@ const meta = {
   title: "Components/Workspace/Room frame",
   component: RoomFrame,
   parameters: { layout: "fullscreen", viewport: { options: viewports } },
+  decorators: [
+    (Story) => (
+      <div
+        style={{ display: "flex", flexDirection: "column", height: "100vh" }}
+      >
+        <Story />
+      </div>
+    ),
+  ],
   args: {
-    title: <TitlePill />,
-    sidebar: <SidebarList />,
-    sidebarOpen: false,
+    sidebar: null,
     side: { state: "empty" },
-    prompt: <PromptBox />,
     children: <Page sections={3} />,
   },
 } satisfies Meta<typeof RoomFrame>;
@@ -142,11 +135,38 @@ export default meta;
 
 type Story = StoryObj<typeof meta>;
 
+/** Below 79rem, as the room has it, the sidebar is a drawer. */
 function at(
   viewport: keyof typeof viewports,
-  args: Partial<RoomFrameProps>,
+  {
+    sidebarOpen = false,
+    side = { state: "empty" },
+    sections = 3,
+  }: { sidebarOpen?: boolean; side?: RoomFrameSide; sections?: number },
 ): Story {
-  return { args, globals: { viewport: { value: viewport } } };
+  const drawer = viewport === "w1024" || viewport === "w768";
+  return {
+    args: {
+      sidebar: <Sidebar open={sidebarOpen} drawer={drawer} />,
+      side,
+      children: <Page sections={sections} />,
+    },
+    globals: { viewport: { value: viewport } },
+  };
+}
+
+/** The sidebar as the room draws it, with stand-in rows. */
+function Sidebar({ open, drawer }: { open: boolean; drawer: boolean }) {
+  return (
+    <SidebarFrame
+      title="Bakery orders"
+      open={open}
+      drawer={drawer}
+      onToggleSidebar={() => {}}
+    >
+      <SidebarList />
+    </SidebarFrame>
+  );
 }
 
 export const W1920TitleOnly = at("w1920", { side: showing });
@@ -183,9 +203,9 @@ export const W768TitleOnly = at("w768", {});
 export const W768Drawer = at("w768", { sidebarOpen: true });
 export const W768Sheet = at("w768", { side: showing });
 
-/** The window scrolls the page, its scrollbar at the window's edge, under the prompt box. */
+/** The page scrolls itself, its scrollbar at the window's edge, under the prompt box. */
 export const LongPage = at("w1440", {
   sidebarOpen: true,
   side: showing,
-  children: <Page sections={20} />,
+  sections: 20,
 });

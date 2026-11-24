@@ -8,8 +8,6 @@
   gap: var(--space-2);
   min-height: 0;
   padding: var(--space-6) var(--space-4);
-  /* In the room, centred at the window's middle with the prompt box, not the canvas's. */
-  padding-inline-end: calc(var(--space-4) + 2 * var(--chat-shift, 0px));
   font-family: var(--sketch-font, inherit);
   text-align: center;
 }

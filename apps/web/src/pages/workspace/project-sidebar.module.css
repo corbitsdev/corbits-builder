@@ -39,6 +39,8 @@
   height: 100%;
   /* Below the project's name, which floats over the panel's top. */
   padding-block-start: 56px;
+  /* It stands over the page's margin, or over the page as a drawer. */
+  background: var(--wb-background);
   transition:
     opacity var(--speed) var(--ease-out),
     visibility 0s;
@@ -74,15 +76,11 @@
   translate: 0;
 }
 
-/* Beside the page the sidebar stands on the room's own ground; over it, as a drawer, it needs one. */
-.sidebar[data-drawer] .panel {
-  background: var(--wb-background);
-}
-
+/* In one place open or closed, the window's top left corner. */
 .toggle {
   position: absolute;
   inset-block-start: var(--space-2);
-  inset-inline-start: var(--space-3);
+  inset-inline-start: var(--space-2);
   z-index: 6;
   display: flex;
   align-items: center;
@@ -101,16 +99,11 @@
   white-space: nowrap;
   cursor: pointer;
   background: transparent;
-  transition:
-    background-color var(--duration-micro) var(--ease-out),
-    translate var(--speed) var(--ease-out);
+  transition: background-color var(--duration-micro) var(--ease-out);
 }
 
-/* Closed, it stands on the page itself, a step in from the page's rounded corner, so it reads as
-   the page's own title rather than a tab stuck to its edge. */
+/* Closed, it stands on the page itself on a ground of its own, so it reads as something to press. */
 .sidebar:not([data-open]) .toggle {
-  translate: var(--space-1) var(--space-2);
-  /* The open sidebar's ground, folded to its name, so it reads as something to press. */
   background: var(--card);
 }
 
@@ -152,8 +145,8 @@
    the plan never leaves the corner, and long plans scroll inside it. */
 .glance {
   position: absolute;
-  inset-block-start: calc(var(--space-2) * 2 + 2.5rem + var(--space-2));
-  inset-inline-start: calc(var(--space-3) + var(--space-1));
+  inset-block-start: calc(var(--space-2) + 2.5rem + var(--space-2));
+  inset-inline-start: var(--space-2);
   z-index: 6;
   display: flex;
   flex-direction: column;
@@ -184,13 +177,6 @@
 
 .sidebar[data-instant] .glance {
   transition: none;
-}
-
-/* Where the page has no room beside its middle for the card, the name alone stays. */
-@container room (max-width: 80rem) {
-  .glance {
-    display: none;
-  }
 }
 
 .glanceHead {

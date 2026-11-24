@@ -49,6 +49,7 @@ import { Banner, BannerAction, Fault } from "../../components.jsx";
 import { Composer } from "../../composer.tsx";
 import { Dictated } from "../../dictation.jsx";
 import { useShellReply } from "../../flourish.tsx";
+import { useNarrowWindow } from "../../sidebar-setting.ts";
 import {
   ArtifactPane,
   type ArtifactPaneContent,
@@ -68,6 +69,7 @@ import {
   ProjectSidebarView,
   type ProjectSidebarViewProps,
 } from "./project-sidebar.view.tsx";
+import { RoomFrame } from "./room-frame.tsx";
 import { SketchingShown } from "./sketching.tsx";
 import type { StatusPillContent } from "./status-pill.tsx";
 import { StageView } from "./stage-view.tsx";
@@ -264,12 +266,6 @@ export type RoomContent = {
 
 export type TabStatus = ScreenStatus & { tab: string; onOpen: () => void };
 
-/**
- * Below this width of the room, the sidebar is a drawer over the page and the plugin space a sheet
- * over the main area, since neither has room for a column.
- */
-const NARROW_ROOM_PX = 900;
-
 export type RoomViewProps = RoomContent & RoomSlots;
 
 export function RoomView({
@@ -292,22 +288,11 @@ export function RoomView({
   const conversationRef = useRef<HTMLElement>(null);
   const shell = useShellReply(conversationRef);
   const closeProject = () => onProjectOpenChange(false);
-  // The sidebar sits beside the page and the plugin space beside the main area; in a room too
-  // narrow for that the sidebar is a drawer, shut until the person opens it, and shut again once
-  // they pick something in it, and the space is a sheet.
-  const roomRef = useRef<HTMLDivElement>(null);
-  const [narrow, setNarrow] = useState(false);
+  // On a window too narrow for the sidebar beside the column it is a drawer, shut until the person
+  // opens it, and shut again once they pick something in it.
+  const mainRef = useRef<HTMLDivElement>(null);
+  const narrow = useNarrowWindow();
   const [drawerOpen, setDrawerOpen] = useState(false);
-  // Measured before the first paint too, so a phone never draws the wide room first.
-  useLayoutEffect(() => {
-    const room = roomRef.current;
-    if (room === null) return;
-    const measure = () => setNarrow(room.clientWidth < NARROW_ROOM_PX);
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(room);
-    return () => observer.disconnect();
-  }, []);
   useEffect(() => {
     if (!narrow) setDrawerOpen(false);
   }, [narrow]);
@@ -417,7 +402,7 @@ export function RoomView({
       // An open chat sheet takes the key to put itself back, whichever listener hears it first;
       // the view closes on the next one.
       const sheet =
-        roomRef.current?.querySelector(
+        mainRef.current?.querySelector(
           '[data-slot="chat-sheet"]:not([data-state="closed"])',
         ) ?? null;
       if (sheet === null) closeProject();
@@ -487,19 +472,24 @@ export function RoomView({
     );
   return (
     <StageView aria-label={`Conversation for ${title}`}>
-      <div ref={roomRef} className={styles.room}>
-        <ProjectSidebarView
-          {...sidebar}
-          open={narrow ? drawerOpen : sidebar.open}
-          drawer={narrow}
-          onToggleSidebar={
-            narrow ? () => setDrawerOpen(!drawerOpen) : sidebar.onToggleSidebar
-          }
-          onOpenApp={leaveDrawer(sidebar.onOpenApp)}
-          onOpenStep={leaveDrawer(sidebar.onOpenStep)}
-        />
-        {/* The page beside the sidebar: the conversation, and what covers it. */}
-        <div className={styles.main} data-slot="room-main">
+      <RoomFrame
+        sidebar={
+          <ProjectSidebarView
+            {...sidebar}
+            open={narrow ? drawerOpen : sidebar.open}
+            drawer={narrow}
+            onToggleSidebar={
+              narrow
+                ? () => setDrawerOpen(!drawerOpen)
+                : sidebar.onToggleSidebar
+            }
+            onOpenApp={leaveDrawer(sidebar.onOpenApp)}
+            onOpenStep={leaveDrawer(sidebar.onOpenStep)}
+          />
+        }
+        side={{ state: "empty" }}
+      >
+        <div ref={mainRef} className={styles.main} data-slot="room-main">
           <section
             ref={conversationRef}
             className={styles.conversationPane}
@@ -589,7 +579,7 @@ export function RoomView({
             </div>
           ) : null}
         </div>
-      </div>
+      </RoomFrame>
       {shell.reply}
     </StageView>
   );

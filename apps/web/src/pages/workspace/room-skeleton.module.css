@@ -1,57 +1,24 @@
-/* The room while it loads keeps the loaded room's measures: the sidebar beside a canvas, the
-   conversation in the middle of the window, and the prompt box on the turns' measure at the
-   canvas's foot. The widths and the shift are the room's own sums (index.module.css), so nothing
-   moves or changes width when the room arrives, at any window width. */
+/* The room while it loads stands in the loaded room's frame: the sidebar over the window's left
+   margin, the conversation in the frame's column, and the prompt box on the turns' measure at the
+   window's foot, so nothing moves or changes width when the room arrives, at any window width. */
 .room {
-  /* 1 where the sidebar stands beside the page, 0 where it is a drawer over it; and whether it is
-     open there. */
-  --sidebar-beside: 0;
-  --sidebar-open: 0;
-
-  position: relative;
   display: flex;
   flex: 1 1 auto;
-  min-width: 0;
+  flex-direction: column;
   min-height: 0;
-  overflow: hidden;
-  background: var(--wb-background);
-}
-
-.room[data-beside] {
-  --sidebar-beside: 1;
-}
-
-.room[data-beside][data-open] {
-  --sidebar-open: 1;
 }
 
 .main {
-  position: relative;
   display: flex;
   flex: 1;
   flex-direction: column;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  container: canvas / inline-size;
-}
-
-/* As wide as the chat can be in the middle of the window clear of an open sidebar, and moved back
-   by half of what the sidebar takes, as in the room. */
-.main > * {
-  --chat-width: min(
-    48rem,
-    100cqw + var(--rail-width) *
-      (var(--sidebar-open) - 2 * var(--sidebar-beside)) - 2 * var(--space-5) *
-      var(--sidebar-beside)
-  );
-  --chat-shift: calc(var(--rail-width) * var(--sidebar-open) / 2);
 }
 
 .thread,
 .foot {
-  position: relative;
-  inset-inline-start: calc(-1 * var(--chat-shift));
   box-sizing: border-box;
   width: 100%;
   margin-inline: auto;
@@ -64,7 +31,7 @@
   flex: 1;
   flex-direction: column;
   gap: var(--space-8);
-  max-width: var(--chat-width);
+  max-width: var(--frame-column);
   min-height: 0;
   padding: calc(2.75rem + var(--space-5)) var(--space-4) 0;
   overflow: hidden;
@@ -120,7 +87,7 @@
 /* The prompt box on the turns' measure, the line saying what is opening read out above it. */
 .foot {
   flex: none;
-  max-width: min(46rem + 2 * var(--space-4), var(--chat-width));
+  max-width: calc(46rem + 2 * var(--space-4));
 }
 
 .said {
@@ -227,7 +194,7 @@
   view-transition-name: prompt-box;
 }
 
-.room > [data-slot="project-sidebar"] {
+.room [data-slot="project-sidebar"] {
   view-transition-name: room-sidebar;
 }
 

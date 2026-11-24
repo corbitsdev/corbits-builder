@@ -39,20 +39,14 @@
   flex-shrink: 0;
 }
 
-/* The page stands at the window's middle, as the chat does, so it stays still as the sidebar opens
-   and closes: the sidebar takes the room left of it, and the margin keeps the rest. The contents
-   stand against the page's left edge as the margin's cards do against its right, not out at the
-   canvas's. In the room the page is the chat's width, which the sidebar's opening does not change. */
+/* The page stands at the reader's middle, as the chat does. The contents stand against the page's
+   left edge as the margin's cards do against its right, not out at the reader's. */
 .layout {
-  --page-width: min(
-    var(--sheet-width),
-    var(--chat-width, var(--sheet-width)),
-    100cqi - 2 * var(--space-4)
-  );
+  --page-width: min(var(--sheet-width), 100cqi - 2 * var(--space-4));
 
   display: grid;
   grid-template-columns:
-    minmax(0, calc((100% - var(--page-width)) / 2 - var(--chat-shift, 0px)))
+    minmax(0, calc((100% - var(--page-width)) / 2))
     auto minmax(0, 1fr);
   padding: 14px 0 96px;
 }
@@ -68,8 +62,8 @@
   /* Level with the page's top edge, and held there as the page scrolls past. */
   top: 8px;
   align-self: start;
-  /* Below the project's name, where the closed sidebar leaves it over this corner. */
-  padding: calc(8px + var(--corner-clear, 0px)) var(--space-8) 0 var(--space-4);
+  /* Below the project's name, which stands over this corner in the room. */
+  padding: calc(8px + 3rem) var(--space-8) 0 var(--space-4);
 }
 
 .column {

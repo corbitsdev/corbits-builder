@@ -1,26 +1,7 @@
-.room {
-  /* The prompt box's width: the turns' text measure inside their 48rem column, so the box's edges
-     line up with the words above it, and a document's page runs a little wider either side. */
-  --box-measure: 46rem;
-
-  position: relative;
-  display: flex;
-  flex-direction: row;
-  flex: 1 1 auto;
-  min-height: 0;
-  min-width: 0;
-  overflow: hidden;
-  background: var(--wb-background);
-  /* The closed sidebar keeps the plan in sight only where the room leaves space beside the page. */
-  container: room / inline-size;
-  /* Runs with the sidebar's width, at its speeds, so the chat can keep its place as it moves. */
-  transition: --sidebar-open var(--duration-standard) var(--ease-out);
-}
-
 /* A document's contents and the closed sidebar's plan card would both stand in the margin left of
    the page, one over the other. While the page is open its contents keep the margin; the plan is
    a press away on the project's name. */
-.room:has(
+[data-slot="room-frame"]:has(
     [data-slot="room-project"]:not([hidden]) [data-slot="document-contents"]
   )
   [data-slot="plan-glance"] {
@@ -28,71 +9,25 @@
 }
 
 /* Open, the sidebar takes the margin left of the page, so a document's contents leave it at once
-   rather than squeeze as it slides in. Once it has closed they fade back in its place. */
-.room:has([data-slot="project-sidebar"][data-open])
+   rather than show under it as it slides in. Once it has closed they fade back in its place. */
+[data-slot="room-frame"]:has([data-slot="project-sidebar"][data-open])
   [data-slot="document-contents"] {
   display: none;
 }
 
-.room [data-slot="document-contents"] {
+.page [data-slot="document-contents"] {
   animation: global(fade-in) var(--duration-micro) var(--ease-out)
     var(--duration-standard) both;
 }
 
-/* Closed, the sidebar leaves the project's name over the page's top left corner, where a document's
-   contents start, so the page keeps that corner clear for it. */
-.room:has([data-slot="project-sidebar"]:not([data-open]))
-  [data-slot="room-project"] {
-  --corner-clear: 3rem;
-}
-
-/* How far open the sidebar beside the page is, from 0 to 1. Registered, so it eases frame by frame. */
-@property --sidebar-open {
-  syntax: "<number>";
-  inherits: true;
-  initial-value: 0;
-}
-
-/* 1 where the sidebar stands beside the page when open, 0 where it is a drawer over it. */
-@property --sidebar-beside {
-  syntax: "<number>";
-  inherits: true;
-  initial-value: 0;
-}
-
-/* The chat's width, and how far it moves back towards the sidebar to stay where it was. Registered,
-   so they are worked out against the canvas where they are set and passed down as lengths. */
-@property --chat-width {
-  syntax: "<length>";
-  inherits: true;
-  /* 48rem; a registered initial value takes no font-relative unit. */
-  initial-value: 768px;
-}
-
-@property --chat-shift {
-  syntax: "<length>";
-  inherits: true;
-  initial-value: 0px;
-}
-
-.room:has(> [data-slot="project-sidebar"]:not([data-drawer])) {
-  --sidebar-beside: 1;
-}
-
-.room:has(> [data-slot="project-sidebar"][data-open]:not([data-drawer])) {
-  --sidebar-open: 1;
-
-  transition-duration: var(--duration-large);
-}
-
-.room:has(> [data-slot="project-sidebar"][data-instant]) {
-  transition: none;
-}
-
-/* The canvas beside the sidebar, edge to edge to the window's: the conversation, the project view
-   over it and the plugin sheet over both; the plugin space's column stands beside it. What it holds
-   is centred in it. Its own stacking context, so what covers it stays under the sidebar's drawer. */
+/* The frame's main pane, the whole window under the sidebar: the conversation, the project view
+   over it and the plugin sheet over both. What each holds keeps to the frame's column. Its own
+   stacking context, so what covers it stays under the sidebar. */
 .main {
+  /* The prompt box's width: the turns' text measure inside their 48rem column, so the box's edges
+     line up with the words above it, and a document's page runs a little wider either side. */
+  --box-measure: 46rem;
+
   position: relative;
   isolation: isolate;
   display: flex;
@@ -101,28 +36,6 @@
   min-height: 0;
   overflow: hidden;
   background: var(--wb-background);
-  container: canvas / inline-size;
-}
-
-/* With the sidebar closed, or a drawer, the project's name floats in the canvas's top corner. Where
-   the canvas is too narrow for what runs along its top to pass beside it, that drops below it. */
-@container canvas (max-width: 56rem) {
-  .room:has(
-      > [data-slot="project-sidebar"]:is(:not([data-open]), [data-drawer])
-    )
-    .top {
-    min-height: 3.75rem;
-  }
-
-  .room:has(
-      > [data-slot="project-sidebar"]:is(:not([data-open]), [data-drawer])
-    )
-    .page
-    [data-slot="document-page"]
-    > [data-slot="pane-bar"] {
-    top: 3.625rem;
-    margin-top: 3.625rem;
-  }
 }
 
 .conversationPane {
@@ -198,39 +111,12 @@
   }
 }
 
-/* The chat stays in the middle of the window as the sidebar opens and closes, not of the canvas
-   beside it, so it never slides. It is as wide as it can be in the middle of the window clear of an
-   open sidebar, open or not, so it never grows or shrinks either. The window is the canvas and
-   however much of the sidebar is showing. The project view's page and box work it out the same way
-   against the same canvas. */
-:is(.conversation, .page) {
-  --chat-width: min(
-    48rem,
-    100cqw + var(--rail-width) *
-      (var(--sidebar-open) - 2 * var(--sidebar-beside)) - 2 * var(--space-5) *
-      var(--sidebar-beside)
-  );
-  --chat-shift: calc(var(--rail-width) * var(--sidebar-open) / 2);
-}
-
 .conversation {
   display: flex;
   flex-direction: column;
   flex: 1;
   min-height: 0;
   position: relative;
-}
-
-.conversation [data-slot="conversation-column"],
-.conversation > :is([data-slot="composer"], .archived, .notice) {
-  position: relative;
-  inset-inline-start: calc(-1 * var(--chat-shift));
-}
-
-/* The way back to the latest message stands at the chat's middle; placed by its own inset, it
-   moves by a margin. */
-.conversation [data-slot="conversation-scroll-button"] {
-  margin-inline-start: calc(-1 * var(--chat-shift));
 }
 
 .conversation > :last-child {
@@ -250,15 +136,12 @@
   bottom: calc(var(--space-2) + 32px + var(--space-3));
 }
 
-/* The prompt box, and what stands in its place, keep the box's measure in the middle of the canvas
-   however wide it is, and under the turns no wider than they are. */
+/* The prompt box, and what stands in its place, keep the box's measure in the middle of the window
+   however wide it is. */
 :is(.conversation, .page) > :is([data-slot="composer"], .archived, .notice) {
   box-sizing: border-box;
   width: 100%;
-  max-width: min(
-    calc(var(--box-measure) + 2 * var(--space-4)),
-    var(--chat-width)
-  );
+  max-width: calc(var(--box-measure) + 2 * var(--space-4));
   margin-inline: auto;
 }
 
@@ -456,8 +339,8 @@
 }
 
 /* Over a written page it stands just beyond the page's top right corner, level with its top edge,
-   so it reads as closing the page. The page is the chat's width at the window's middle, as the
-   document lays it; where the canvas leaves no room beside it, the button keeps to the corner. */
+   so it reads as closing the page. The page is 768px at the window's middle, as the document lays
+   it; where the window leaves no room beside it, the button keeps to the corner. */
 .page:has(
     > [data-slot="artifact-pane"]
       [data-slot="panel-pane"][data-state="active"]
@@ -467,9 +350,7 @@
   top: 14px;
   right: auto;
   left: min(
-    50% - var(--chat-shift) +
-      min(768px, var(--chat-width), 100% - 2 * var(--space-4)) / 2 +
-      var(--space-3),
+    50% + min(768px, 100% - 2 * var(--space-4)) / 2 + var(--space-3),
     100% - 36px - var(--space-3)
   );
 }
@@ -477,8 +358,7 @@
 /* Above whatever the page lays over itself, its bar's popovers and panels among them. */
 .page > [data-slot="composer"] {
   position: absolute;
-  /* At the window's middle with the page, so it too stays still as the sidebar opens and closes. */
-  inset-inline: 0 calc(2 * var(--chat-shift));
+  inset-inline: 0;
   bottom: 0;
   z-index: 4;
 }

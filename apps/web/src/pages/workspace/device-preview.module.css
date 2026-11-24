@@ -34,11 +34,8 @@
   border-radius: 0;
 }
 
-/* Over the room, the phone stands at the window's middle with the prompt box rather than the
-   canvas's, so it stays still as the sidebar opens and closes. */
 .preview[data-fill][data-device="phone"] > .bezel {
   border-inline: 1px solid var(--wb-border);
-  translate: calc(-1 * var(--chat-shift, 0px)) 0;
 }
 
 .expanded {

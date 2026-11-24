@@ -17,8 +17,9 @@ export const SIDEBAR_KEY = "builder-project-sidebar";
 /** Shut until the person opens it, so a project opens on its work. */
 export const SIDEBAR_DEFAULT = "closed";
 
-// The width below which a project's room makes its sidebar a drawer.
-const NARROW_QUERY = "(max-width: 899px)";
+// The width below which a project's room makes its sidebar a drawer: too narrow for the sidebar
+// beside the room's column, as room-frame.module.css lays it.
+const NARROW_QUERY = "(width < 79rem)";
 
 export const parseSidebarOpen = (raw: string): "open" | "closed" | null =>
   raw === "open" || raw === "closed" ? raw : null;
@@ -31,8 +32,12 @@ function subscribeNarrow(changed: () => void): () => void {
 
 const readNarrow = () => window.matchMedia(NARROW_QUERY).matches;
 
+/** The window is too narrow for the sidebar beside the page, so it is a drawer over it. */
+export const useNarrowWindow = () =>
+  useSyncExternalStore(subscribeNarrow, readNarrow, () => false);
+
 export function useSidebar() {
-  const narrow = useSyncExternalStore(subscribeNarrow, readNarrow, () => false);
+  const narrow = useNarrowWindow();
   const stored = useStoredPreference(
     SIDEBAR_KEY,
     parseSidebarOpen,

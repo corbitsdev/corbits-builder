@@ -25,6 +25,7 @@ import {
   SidebarFrame,
   type ProjectSidebarViewProps,
 } from "./project-sidebar.view.tsx";
+import { RoomFrame } from "./room-frame.tsx";
 import styles from "./room-skeleton.module.css";
 import { StageView } from "./stage-view.tsx";
 
@@ -75,90 +76,91 @@ export function RoomSkeleton({
   }, [takesCursor]);
   return (
     <StageView aria-busy="true">
-      <div
-        className={styles.room}
-        data-slot="room-skeleton"
-        data-beside={sidebar.drawer ? undefined : ""}
-        data-open={sidebar.open ? "" : undefined}
-      >
-        {ways === undefined ? (
-          <SidebarFrame
-            title={title}
-            open={sidebar.open}
-            drawer={sidebar.drawer}
-            onToggleSidebar={sidebar.onToggleSidebar}
-          >
-            <ul className={styles.plan} aria-hidden="true">
-              {PLAN_ROWS.map((width, index) => (
-                <li key={index} className={styles.step}>
-                  <span className={styles.dot} />
-                  <span className={styles.bar} style={{ width }} />
-                </li>
-              ))}
-            </ul>
-          </SidebarFrame>
-        ) : (
-          <ProjectSidebarView
-            project={title}
-            {...sidebar}
-            plan={[]}
-            app="not_built"
-            appOpen={false}
-            shown={null}
-            onOpenApp={nothing}
-            onOpenStep={nothing}
-            {...ways}
-          />
-        )}
-        <div className={styles.main}>
-          {opening === undefined ? (
-            <Shapes />
-          ) : (
-            <div className={styles.thread} data-opening="">
-              <Message
-                from="own"
-                status="sent"
-                aria-label={wording.speaker.you}
+      <div className={styles.room} data-slot="room-skeleton">
+        <RoomFrame
+          sidebar={
+            ways === undefined ? (
+              <SidebarFrame
+                title={title}
+                open={sidebar.open}
+                drawer={sidebar.drawer}
+                onToggleSidebar={sidebar.onToggleSidebar}
               >
-                <MessageContent text={opening} />
-              </Message>
-              <Message
-                from="agent"
-                status="streaming"
-                aria-label={wording.speaker.coordinator}
-              >
-                <ShimmerText>{wording.activity.thinkingNow}</ShimmerText>
-              </Message>
-            </div>
-          )}
-          <div className={styles.foot}>
-            <p className={styles.said} role="status">
-              {said}
-            </p>
-            {/* What is typed waits in the box until the room is there to send it. */}
-            <Composer>
-              <PromptInput
-                value={draft?.value ?? ""}
-                onValueChange={draft?.onValueChange ?? nothing}
-                onSubmit={nothing}
-                canSubmit={false}
-                disabled={draft === undefined}
-                aria-hidden={draft === undefined ? "true" : undefined}
-              >
-                {/* The room's own box, so nothing in it changes when the room arrives. What is
+                <ul className={styles.plan} aria-hidden="true">
+                  {PLAN_ROWS.map((width, index) => (
+                    <li key={index} className={styles.step}>
+                      <span className={styles.dot} />
+                      <span className={styles.bar} style={{ width }} />
+                    </li>
+                  ))}
+                </ul>
+              </SidebarFrame>
+            ) : (
+              <ProjectSidebarView
+                project={title}
+                {...sidebar}
+                plan={[]}
+                app="not_built"
+                appOpen={false}
+                shown={null}
+                onOpenApp={nothing}
+                onOpenStep={nothing}
+                {...ways}
+              />
+            )
+          }
+          side={{ state: "empty" }}
+        >
+          <div className={styles.main}>
+            {opening === undefined ? (
+              <Shapes />
+            ) : (
+              <div className={styles.thread} data-opening="">
+                <Message
+                  from="own"
+                  status="sent"
+                  aria-label={wording.speaker.you}
+                >
+                  <MessageContent text={opening} />
+                </Message>
+                <Message
+                  from="agent"
+                  status="streaming"
+                  aria-label={wording.speaker.coordinator}
+                >
+                  <ShimmerText>{wording.activity.thinkingNow}</ShimmerText>
+                </Message>
+              </div>
+            )}
+            <div className={styles.foot}>
+              <p className={styles.said} role="status">
+                {said}
+              </p>
+              {/* What is typed waits in the box until the room is there to send it. */}
+              <Composer>
+                <PromptInput
+                  value={draft?.value ?? ""}
+                  onValueChange={draft?.onValueChange ?? nothing}
+                  onSubmit={nothing}
+                  canSubmit={false}
+                  disabled={draft === undefined}
+                  aria-hidden={draft === undefined ? "true" : undefined}
+                >
+                  {/* The room's own box, so nothing in it changes when the room arrives. What is
                     opening is read out by the line above, not written into the box: a project's
                     name can be the person's whole first message. */}
-                <PromptInputTextarea
-                  ref={boxRef}
-                  placeholder={wording.composer.reply}
-                />
-                <PromptInputToolbar>
-                  <PromptInputSubmit className="ms-auto" />
-                </PromptInputToolbar>
-              </PromptInput>
-            </Composer>
+                  <PromptInputTextarea
+                    ref={boxRef}
+                    placeholder={wording.composer.reply}
+                  />
+                  <PromptInputToolbar>
+                    <PromptInputSubmit className="ms-auto" />
+                  </PromptInputToolbar>
+                </PromptInput>
+              </Composer>
+            </div>
           </div>
-        </div>
+        </RoomFrame>
       </div>
     </StageView>
   );
