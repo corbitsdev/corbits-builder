@@ -346,7 +346,6 @@ export function protectedSteps(
       (step) => step.runId !== undefined || step.answered !== undefined,
     );
     const reasonOf = (step: PlanStepView): ProtectedStep["reason"] | null => {
-      if (step.cancelled) return null;
       if (
         step.approval &&
         !step.finished &&

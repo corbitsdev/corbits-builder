@@ -67,3 +67,20 @@ test("a plan is under way once one of its own steps has begun, not because a ste
     { step: built, reason: "done" },
   ]);
 });
+
+test("a skipped step is not held for its approval, since it will not run", () => {
+  const skipped: PlanStepView = {
+    id: "design",
+    title: "Design the look",
+    plugin: "designer",
+    action: "mockup",
+    input: {},
+    askFirst: false,
+    approval: { of: ["product_requirements"], when: "required" },
+    declined: { by: "person", at: "2026-01-01T00:00:00.000Z" },
+    state: "skipped",
+    finished: true,
+    kind: "workflow",
+  };
+  expect(protectedSteps([skipped], records)).toEqual([]);
+});
