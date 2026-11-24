@@ -764,7 +764,7 @@ export function DocumentPage({
   );
 }
 
-/** Download and Share, each named in words beside its icon. */
+/** Download and Share, each an outlined button named in words beside its icon. */
 function FileActions({ files }: { files: PaneBarGroup }) {
   if (files.length === 0) return null;
   return (
@@ -778,7 +778,7 @@ function FileActions({ files }: { files: PaneBarGroup }) {
         <Button
           key={action.id}
           type="button"
-          variant="ghost"
+          variant="outline"
           size="sm"
           className={styles.file}
           title={action.label}

@@ -152,26 +152,22 @@
 .files {
   display: flex;
   align-items: center;
-  gap: 0;
+  gap: var(--space-2);
 }
 
-/* Quiet beside the title: small grey words, well under its weight. */
+/* Small beside the title, well under its weight, but outlined so it reads as something to press. */
 .file {
-  gap: 5px;
-  height: 1.5rem;
-  padding-inline: 6px;
-  color: var(--wb-muted-foreground);
-  font-size: 0.75rem;
-  font-weight: 400;
-}
-
-.file:hover {
+  gap: 6px;
+  height: 1.75rem;
+  padding-inline: 10px;
   color: var(--wb-foreground);
+  font-size: 0.8125rem;
+  font-weight: 500;
 }
 
 .file > svg {
-  width: 13px;
-  height: 13px;
+  width: 14px;
+  height: 14px;
 }
 
 /* The title, with Download and Share across from its first line, their words ending at the
@@ -184,7 +180,7 @@
 
 .head > .files {
   flex-shrink: 0;
-  margin: 3px -6px 0 auto;
+  margin: 0 0 0 auto;
   user-select: none;
 }
 
