@@ -204,6 +204,15 @@
   line-height: var(--text-xs--line-height);
 }
 
+/* No plan yet: one quiet line where the steps will be. */
+.planEmpty {
+  margin: 0;
+  padding: 0 var(--space-2);
+  color: var(--wb-muted-foreground);
+  font-size: var(--text-xs);
+  line-height: var(--text-xs--line-height);
+}
+
 .planCount {
   color: var(--wb-muted-foreground);
   font-variant-numeric: tabular-nums;

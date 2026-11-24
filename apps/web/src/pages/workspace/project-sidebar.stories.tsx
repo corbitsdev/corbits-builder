@@ -273,14 +273,15 @@ export const NoApp: Story = {
 };
 
 /**
- * No plan, as in a new project or one asked for something too small to plan: the sidebar lists
- * nothing and makes up no row, and the links stay at its foot.
+ * No plan, as in a new project or one asked for something too small to plan: the sidebar makes up
+ * no row, says in one line that the steps will show there, and the links stay at its foot.
  */
 export const NoPlan: Story = {
   args: { plan: [] },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(canvas.queryByRole("tree")).toBeNull();
+    await expect(canvas.getByText(words.noPlan)).toBeVisible();
     await expect(
       canvas.getByRole("button", { name: words.projectSettings }),
     ).toBeVisible();

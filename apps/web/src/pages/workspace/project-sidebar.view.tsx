@@ -503,8 +503,14 @@ function PlanTree({
     setFocused(key);
     items.current.get(key)?.focus();
   };
-  // With no plan, as for a request too small to plan, there is nothing to list and nothing is said.
-  if (plan.length === 0) return null;
+  // With no plan yet, the place the steps will take says so, rather than standing empty.
+  if (plan.length === 0)
+    return (
+      <section className={styles.plan}>
+        <h2 className={styles.planHead}>{words.plan}</h2>
+        <p className={styles.planEmpty}>{words.noPlan}</p>
+      </section>
+    );
   const onKeyDown = (event: KeyboardEvent<HTMLUListElement>) => {
     // A row's menu is drawn elsewhere on the page, but its keys still pass through here.
     if (
