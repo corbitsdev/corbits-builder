@@ -29,7 +29,13 @@ const meta = {
   parameters: { layout: "fullscreen" },
   args: {
     activity: "idle",
-    sidebar: { open: true, drawer: false, onToggleSidebar: fn() },
+    sidebar: {
+      open: true,
+      drawer: false,
+      onToggleSidebar: fn(),
+      onHome: fn(),
+      onSettings: fn(),
+    },
     idea: "",
     onIdeaChange: fn(),
     followUp: "",

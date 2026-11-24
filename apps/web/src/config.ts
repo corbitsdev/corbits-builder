@@ -515,6 +515,10 @@ export const wording = {
       failed: "Didn't start",
     },
     openApp: "Open app",
+    /** The mark at the sidebar's top opens a menu that leaves the page. */
+    menu: "Menu",
+    backToProjects: "Back to projects",
+    settings: "Settings",
     projectSettings: "Project settings",
     workspaceSettings: "Workspace settings",
     account: "Account",

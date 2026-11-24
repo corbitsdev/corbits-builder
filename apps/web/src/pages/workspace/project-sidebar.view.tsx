@@ -29,6 +29,12 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { SidebarItem } from "@corbits/react-ui";
+import {
+  Menu,
+  MenuContent,
+  MenuItem,
+  MenuTrigger,
+} from "@corbits/react-ui/ui/menu";
 import { wording } from "../../config.ts";
 import { Mark } from "../../components.jsx";
 import { clock, useElapsedMs } from "./elapsed.tsx";
@@ -88,7 +94,14 @@ export type SidebarAppState =
   | "stopped"
   | "failed";
 
-export type ProjectSidebarViewProps = {
+/** Where the mark's menu leads, in a project and outside one. */
+export type MarkWays = {
+  /** Back to the projects, on the home page. */
+  onHome: () => void;
+  onSettings: () => void;
+};
+
+export type ProjectSidebarViewProps = MarkWays & {
   project: string;
   /** Closed, only the project's name shows, to open it again. */
   open: boolean;
@@ -126,6 +139,8 @@ export function ProjectSidebarView({
   shown,
   waitsOn = null,
   onToggleSidebar,
+  onHome,
+  onSettings,
   onOpenApp,
   onOpenStep,
   onProjectSettings,
@@ -139,6 +154,8 @@ export function ProjectSidebarView({
       open={open}
       drawer={drawer}
       onToggleSidebar={onToggleSidebar}
+      onHome={onHome}
+      onSettings={onSettings}
       plan={
         <PlanTree
           plan={plan}
@@ -178,8 +195,8 @@ export function ProjectSidebarView({
 }
 
 /**
- * The sidebar's frame, in a project and outside one: a card with the name and the mark, and a
- * toggle that opens and closes it, from anywhere with the shortcut too. Under the name, open or
+ * The sidebar's frame, in a project and outside one: a card with the name and the mark, whose menu
+ * leads back to the projects or to Settings, and a toggle that opens and closes it, from anywhere with the shortcut too. Under the name, open or
  * closed and in one place, is the plan; open, the card grows around it with the rest of what the
  * sidebar holds. Narrow, it is a drawer over the page, the plan shown only while open.
  */
@@ -189,9 +206,11 @@ export function SidebarFrame({
   open,
   drawer,
   onToggleSidebar,
+  onHome,
+  onSettings,
   plan = null,
   children,
-}: {
+}: MarkWays & {
   /** What a screen reader calls the sidebar. */
   label?: string;
   title: string;
@@ -232,9 +251,21 @@ export function SidebarFrame({
     >
       <div className={styles.card}>
         <div className={styles.head}>
-          <span className={styles.mark}>
-            <Mark size={28} />
-          </span>
+          <Menu>
+            <MenuTrigger asChild>
+              <button
+                type="button"
+                className={styles.mark}
+                aria-label={words.menu}
+              >
+                <Mark size={28} />
+              </button>
+            </MenuTrigger>
+            <MenuContent align="start">
+              <MenuItem onSelect={onHome}>{words.backToProjects}</MenuItem>
+              <MenuItem onSelect={onSettings}>{words.settings}</MenuItem>
+            </MenuContent>
+          </Menu>
           <span className={styles.project}>{title}</span>
           <button
             type="button"

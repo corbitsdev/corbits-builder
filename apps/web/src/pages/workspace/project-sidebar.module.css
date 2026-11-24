@@ -127,8 +127,11 @@
 
 .mark {
   flex: none;
+  padding: 0;
   overflow: hidden;
+  border: 0;
   border-radius: var(--radius-md);
+  background: none;
 }
 
 .project {

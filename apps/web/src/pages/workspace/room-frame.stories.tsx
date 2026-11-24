@@ -153,6 +153,8 @@ function Sidebar({ open, drawer }: { open: boolean; drawer: boolean }) {
       open={open}
       drawer={drawer}
       onToggleSidebar={() => {}}
+      onHome={() => {}}
+      onSettings={() => {}}
       plan={<SidebarList rows={4} />}
     >
       <SidebarList rows={3} />

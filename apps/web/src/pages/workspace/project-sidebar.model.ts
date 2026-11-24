@@ -82,6 +82,8 @@ export function useProjectSidebar(input: ProjectSidebarInput): {
       waitsOn: input.waitsOn,
       onToggleSidebar: () =>
         writeStoredPreference(SIDEBAR_KEY, open ? "closed" : "open"),
+      onHome: input.onNewProject,
+      onSettings: () => input.onOpenSettings(),
       onOpenApp: () => input.onOpen(LIVE_TAB),
       onOpenStep: input.onOpen,
       onProjectSettings: () => setSettingsOpen(true),

@@ -23,6 +23,7 @@ import { wording } from "../../config.ts";
 import {
   ProjectSidebarView,
   SidebarFrame,
+  type MarkWays,
   type ProjectSidebarViewProps,
 } from "./project-sidebar.view.tsx";
 import { RoomFrame } from "./room-frame.tsx";
@@ -51,7 +52,11 @@ export function RoomSkeleton({
   /** The project's name, as the project list has it. */
   title: string;
   /** The sidebar as the person left it, so it is already where the room will put it. */
-  sidebar: { open: boolean; drawer: boolean; onToggleSidebar: () => void };
+  sidebar: MarkWays & {
+    open: boolean;
+    drawer: boolean;
+    onToggleSidebar: () => void;
+  };
   /** The person's first words to a project just started, shown as theirs while it opens. */
   opening?: string | undefined;
   /** What the box says is happening; by default, that the project is opening. */
@@ -85,6 +90,8 @@ export function RoomSkeleton({
                 open={sidebar.open}
                 drawer={sidebar.drawer}
                 onToggleSidebar={sidebar.onToggleSidebar}
+                onHome={sidebar.onHome}
+                onSettings={sidebar.onSettings}
                 plan={
                   <ul className={styles.plan} aria-hidden="true">
                     {PLAN_ROWS.map((width, index) => (

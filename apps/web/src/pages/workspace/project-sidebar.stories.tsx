@@ -189,6 +189,8 @@ const meta = {
     appOpen: false,
     shown: null,
     onToggleSidebar: fn(),
+    onHome: fn(),
+    onSettings: fn(),
     onOpenApp: fn(),
     onOpenStep: fn(),
     onProjectSettings: fn(),
@@ -441,6 +443,22 @@ export const Closed: Story = {
     await expect(
       canvas.queryByRole("button", { name: words.projectSettings }),
     ).toBeNull();
+  },
+};
+
+/** The mark opens a menu, from the keyboard too, back to the projects or to Settings. */
+export const MarkMenu: Story = {
+  play: async ({ args, canvasElement }) => {
+    within(canvasElement).getByRole("button", { name: words.menu }).focus();
+    await userEvent.keyboard("{Enter}");
+    const menu = within(document.body);
+    await expect(
+      menu.getByRole("menuitem", { name: words.settings }),
+    ).toBeVisible();
+    await userEvent.click(
+      menu.getByRole("menuitem", { name: words.backToProjects }),
+    );
+    await expect(args.onHome).toHaveBeenCalled();
   },
 };
 

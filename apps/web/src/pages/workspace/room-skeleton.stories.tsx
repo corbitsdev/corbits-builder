@@ -24,7 +24,13 @@ type Story = StoryObj<typeof RoomSkeleton>;
 
 const opened = {
   title: "Weather dashboard",
-  sidebar: { open: true, drawer: false, onToggleSidebar: fn() },
+  sidebar: {
+    open: true,
+    drawer: false,
+    onToggleSidebar: fn(),
+    onHome: fn(),
+    onSettings: fn(),
+  },
 };
 
 export const Loading: Story = {

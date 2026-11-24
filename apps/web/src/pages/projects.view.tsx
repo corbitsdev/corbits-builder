@@ -20,6 +20,7 @@ import { useShellReply } from "../flourish.tsx";
 import { Composer } from "../composer.tsx";
 import { HOME_COMPOSER_PLACEHOLDER } from "./home-view.ts";
 import { RoomSkeleton, type StartingWays } from "./workspace/room-skeleton.tsx";
+import type { MarkWays } from "./workspace/project-sidebar.view.tsx";
 import { ProjectCards, type LibraryProject } from "./project-library.view.tsx";
 import styles from "./projects.module.css";
 
@@ -45,7 +46,11 @@ export type ProjectsViewProps = {
   /** What the page is busy with; the prompt and both imports wait until it is idle. */
   activity: "idle" | "starting" | "importing";
   /** The sidebar as the person keeps it, for the room a starting project opens into. */
-  sidebar: { open: boolean; drawer: boolean; onToggleSidebar: () => void };
+  sidebar: MarkWays & {
+    open: boolean;
+    drawer: boolean;
+    onToggleSidebar: () => void;
+  };
   /** The idea in the prompt box. */
   idea: string;
   onIdeaChange: (idea: string) => void;

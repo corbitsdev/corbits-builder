@@ -47,6 +47,8 @@ export function StageWorkspace(props: StageWorkspaceProps) {
           open: sidebar.open,
           drawer: sidebar.drawer,
           onToggleSidebar: sidebar.toggle,
+          onHome: props.onNewProject,
+          onSettings: () => props.onOpenSettings(),
         }}
       />
     );

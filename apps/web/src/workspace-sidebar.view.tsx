@@ -61,6 +61,8 @@ export function WorkspaceSidebarView({
       open={open}
       drawer={drawer}
       onToggleSidebar={onToggleSidebar}
+      onHome={onNewProject}
+      onSettings={onWorkspaceSettings}
     >
       <ul className={styles.rows}>
         <Row
