@@ -27,8 +27,10 @@ import {
   APP_EXCLUDED_DIRECTORIES,
   AssetServiceError,
   DEFAULT_ASSET_REF,
+  pushRunGrants,
   type AssetService,
   type RepoStore,
+  type SidecarRouter,
 } from "@intx/hub-sessions";
 import type { AppBundle } from "@corbits-builder/schemas/artifact";
 import {
@@ -353,6 +355,7 @@ export function createAppRepositoryRoutes(
   db: DB["db"],
   assets: AssetService,
   authenticate: MiddlewareHandler<AppEnv>,
+  sidecarRouter: Pick<SidecarRouter, "sendRunGrants">,
 ) {
   const coordinatorRun = alias(workflowRun, "coordinator_run");
 
@@ -365,6 +368,7 @@ export function createAppRepositoryRoutes(
     const projectId = c.req.param("projectId")!;
     const [run] = await db
       .select({
+        address: workflowRun.address,
         bundle: workflowRunLaunchSpec.frozenApprovalBundle,
         action: runAction.action,
         values: project.values,
@@ -405,6 +409,7 @@ export function createAppRepositoryRoutes(
       projectId,
       runPrincipalId: caller.id,
       runId: caller.refId,
+      address: run.address,
       firstBuild: isFirstBuild(run.action),
       starter: run.values["stack.starter"],
     };
@@ -439,14 +444,15 @@ export function createAppRepositoryRoutes(
           run.tenantId,
           run.projectId,
         );
-        for (const { tool, effect } of coderToolEffects(preferences.value))
-          await setRunToolGrantEffect(
-            db,
-            run.tenantId,
-            run.runId,
-            tool,
-            effect,
-          );
+        const changed = await Promise.all(
+          coderToolEffects(preferences.value).map(({ tool, effect }) =>
+            setRunToolGrantEffect(db, run.tenantId, run.runId, tool, effect),
+          ),
+        );
+        // The sidecar otherwise holds the old ask until its next trigger, and the coder installs in
+        // this one.
+        if (run.address !== null && changed.some((id) => id !== null))
+          await pushRunGrants(sidecarRouter, [run.address]);
         if (
           run.firstBuild &&
           typeof run.starter === "string" &&
@@ -498,7 +504,7 @@ export function createAppRepositoryRoutes(
       tags: ["Projects"],
       operationId: "readApprovedPackages",
       description:
-        "The packages the calling coder run installs without asking: those the approved version of each of the project's documents declares, and none while the run's install_packages is denied.",
+        "The packages the calling coder run installs without asking: any while its install_packages is allowed, those the approved version of each of the project's documents declares, and none while the run's install_packages is denied.",
       security: [{ coordinatorBearer: [] }],
       responses: {
         200: {

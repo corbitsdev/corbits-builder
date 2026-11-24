@@ -56,17 +56,18 @@ export async function approvedVersion(
 }
 
 /**
- * The packages a coder run installs without asking: those each document declares in the version
- * the person approved, read from that version, so a revision not yet approved adds none. A run
- * whose install_packages is denied, or that holds none, is given none, so a document never widens
- * what the run may install.
+ * The packages a coder run installs without asking: any while its install_packages is allowed,
+ * and those each document declares in the version the person approved, read from that version, so
+ * a revision not yet approved adds none. A run whose install_packages is denied, or that holds
+ * none, is given none, so a document never widens what the run may install.
  */
 export async function preapprovedPackages<T extends { kind: string }>(
   installs: "allow" | "ask" | "deny" | undefined,
   documents: readonly T[],
   approved: (document: T) => Promise<string | undefined>,
 ): Promise<ApprovedPackages> {
-  if (installs === undefined || installs === "deny") return { documents: [] };
+  if (installs === undefined || installs === "deny")
+    return { anyPackage: false, documents: [] };
   const declared = [];
   for (const document of documents) {
     if (!isDocumentKind(document.kind)) continue;
@@ -74,7 +75,7 @@ export async function preapprovedPackages<T extends { kind: string }>(
     const packages = content === undefined ? [] : declaredPackages(content);
     if (packages.length) declared.push({ kind: document.kind, packages });
   }
-  return { documents: declared };
+  return { anyPackage: installs === "allow", documents: declared };
 }
 
 /** The packages a coder run whose install_packages grant is installs may install without asking. */

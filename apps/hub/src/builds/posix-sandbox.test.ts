@@ -3,11 +3,12 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  realpath,
   rm,
   symlink,
   writeFile,
 } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { SandboxManager } from "@anthropic-ai/sandbox-runtime";
 import { rgPath } from "@vscode/ripgrep";
@@ -226,6 +227,100 @@ sandboxTest(
     }
   },
   60_000,
+);
+
+sandboxTest(
+  "a package's install script reads, writes and reaches nothing outside its build",
+  async () => {
+    const root = await realpath(
+      await mkdtemp(join(tmpdir(), "builder-hostile-test-")),
+    );
+    let executor:
+      | Awaited<ReturnType<typeof createPosixBuildExecutor>>
+      | undefined;
+    try {
+      const data = join(root, "data");
+      const workspace = join(data, "jobs", "project-a", "workspace");
+      const otherProject = join(data, "jobs", "project-b", "workspace");
+      const hubData = join(data, "hub-secrets.json");
+      await mkdir(join(workspace, "server"), { recursive: true });
+      await mkdir(join(workspace, "hostile"));
+      await mkdir(otherProject, { recursive: true });
+      await writeFile(join(otherProject, "app.ts"), "other-project-sentinel");
+      await writeFile(hubData, "hub-data-sentinel");
+      await writeFile(join(workspace, "server", ".env"), "SECRET=env-sentinel");
+      const attempts = {
+        home: `require("node:fs").readdirSync(${JSON.stringify(homedir())})`,
+        otherProject: `require("node:fs").readFileSync(${JSON.stringify(join(otherProject, "app.ts"))}, "utf8")`,
+        hubData: `require("node:fs").readFileSync(${JSON.stringify(hubData)}, "utf8")`,
+        env: `require("node:fs").readFileSync(${JSON.stringify(join(workspace, "server", ".env"))}, "utf8")`,
+        writeOtherProject: `require("node:fs").writeFileSync(${JSON.stringify(join(otherProject, "pwned"))}, "x")`,
+        writeHost: `require("node:fs").writeFileSync(${JSON.stringify(join(root, "pwned"))}, "x")`,
+        outsideHost: `await fetch("https://example.com", { signal: AbortSignal.timeout(5000) })`,
+      };
+      await writeFile(
+        join(workspace, "hostile", "probe.js"),
+        [
+          "const results = {};",
+          ...Object.entries(attempts).map(
+            ([name, attempt]) =>
+              `try { const got = ${attempt}; results[${JSON.stringify(name)}] = got === undefined ? "succeeded" : String(got).slice(0, 80); } catch (error) { results[${JSON.stringify(name)}] = "failed: " + String(error?.message ?? error).slice(0, 200); }`,
+          ),
+          `require("node:fs").writeFileSync(${JSON.stringify(join(workspace, "results.json"))}, JSON.stringify(results));`,
+        ].join("\n"),
+      );
+      await writeFile(
+        join(workspace, "hostile", "package.json"),
+        JSON.stringify({
+          name: "hostile",
+          version: "1.0.0",
+          scripts: { postinstall: "bun probe.js" },
+        }),
+      );
+      await writeFile(
+        join(workspace, "package.json"),
+        JSON.stringify({
+          name: "app",
+          dependencies: { hostile: "file:./hostile" },
+          trustedDependencies: ["hostile"],
+        }),
+      );
+      executor = await createPosixBuildExecutor(
+        workspace,
+        { commandTimeoutMs: 60_000, maxToolResultBytes: 10_000 },
+        await buildPackageLayout(),
+      );
+      const installed = await executor.run(
+        {
+          id: crypto.randomUUID(),
+          name: "run_shell",
+          arguments: { command: "bun install" },
+        },
+        new AbortController().signal,
+      );
+      expect(installed.isError).not.toBe(true);
+      const results = JSON.parse(
+        await readFile(join(workspace, "results.json"), "utf8"),
+      );
+      const denied = expect.stringMatching(/^failed: EPERM/);
+      expect(results).toEqual({
+        home: denied,
+        otherProject: denied,
+        hubData: denied,
+        env: denied,
+        writeOtherProject: denied,
+        writeHost: denied,
+        // The sandbox's own refusal, so a host merely unreachable from this machine can't pass.
+        outsideHost: expect.stringContaining("host is not on the allow list"),
+      });
+      expect(await Bun.file(join(otherProject, "pwned")).exists()).toBe(false);
+      expect(await Bun.file(join(root, "pwned")).exists()).toBe(false);
+    } finally {
+      await executor?.dispose();
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+  120_000,
 );
 
 // A real sandbox whose workspace holds files, with programs allowed to keep running in it.

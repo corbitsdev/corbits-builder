@@ -1,4 +1,7 @@
-import { expect, test } from "bun:test";
+import { afterAll, expect, test } from "bun:test";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { ToolCall } from "@intx/types/runtime";
 import {
   PACKAGE_INSTALL_TOOL,
@@ -31,10 +34,13 @@ const versions: Record<number, string> = {
 const approved = async (document: { kind: string; approvedVersion: number }) =>
   document.kind === "design" ? "{}" : versions[document.approvedVersion];
 
+const workspace = await mkdtemp(join(tmpdir(), "package-gate-"));
+afterAll(() => rm(workspace, { recursive: true, force: true }));
+
 function gate(installs: "allow" | "ask" | "deny") {
   const commands: string[] = [];
   const packageGate = createPackageGate(
-    "/workspace",
+    workspace,
     {
       run: async (call) => {
         commands.push(String(call.arguments["command"]));
@@ -43,16 +49,23 @@ function gate(installs: "allow" | "ask" | "deny") {
     },
     () => preapprovedPackages(installs, documents, approved),
   );
-  const install = (packages: string[]) =>
+  const install = (packages: string[], name = PLANNED_INSTALL_TOOL) =>
     packageGate.run(
       {
         id: "call-1",
-        name: PLANNED_INSTALL_TOOL,
+        name,
         arguments: { workspace: "server", packages },
       } satisfies ToolCall,
       AbortSignal.timeout(1000),
     );
-  return { commands, install };
+  const shell = async (command: string) => {
+    const refused = await packageGate.refuseShell(
+      { id: "call-1", name: "run_shell", arguments: { command } },
+      AbortSignal.timeout(1000),
+    );
+    return refused && JSON.parse(String(refused.content)).code;
+  };
+  return { commands, install, shell };
 }
 
 test("only install_packages waits for the person; the approved plan's install does not", () => {
@@ -109,12 +122,14 @@ test("a run whose installs are denied installs nothing the plan names", async ()
   expect((await install(["xlsx"])).isError).toBe(true);
   expect(commands).toEqual([]);
   expect(await preapprovedPackages(undefined, documents, approved)).toEqual({
+    anyPackage: false,
     documents: [],
   });
 });
 
 test("the list is the approved version's, so a revision not yet approved pre-approves nothing new", async () => {
   expect(await preapprovedPackages("ask", documents, approved)).toEqual({
+    anyPackage: false,
     documents: [{ kind: "build_plan", packages: ["xlsx@0.18.5", "date-fns"] }],
   });
   const { commands, install } = gate("ask");
@@ -123,5 +138,35 @@ test("the list is the approved version's, so a revision not yet approved pre-app
   // A document with no approved version declares nothing.
   expect(
     await preapprovedPackages("ask", documents, async () => undefined),
-  ).toEqual({ documents: [] });
+  ).toEqual({ anyPackage: false, documents: [] });
+});
+
+test("a bare bun install takes a hand-added package only while the run installs any package", async () => {
+  await writeFile(
+    join(workspace, "package.json"),
+    JSON.stringify({ dependencies: { "date-fns": "4.1.0" } }),
+  );
+  expect(await gate("allow").shell("bun install")).toBeUndefined();
+  expect(await gate("ask").shell("bun install")).toBe(
+    "package_install_refused",
+  );
+});
+
+test("every install refuses a package from outside the registry, and the shell installs only bare", async () => {
+  const { commands, install, shell } = gate("allow");
+  expect(await shell("bun add date-fns")).toBe("package_install_refused");
+  expect(await shell("npx some-tool")).toBe("package_install_refused");
+  for (const spec of [
+    "github:someone/thing",
+    "https://example.com/thing.tgz",
+    "file:../thing",
+  ]) {
+    await writeFile(
+      join(workspace, "package.json"),
+      JSON.stringify({ dependencies: { "date-fns": "4.1.0", thing: spec } }),
+    );
+    expect(await shell("bun install")).toBe("package_source_refused");
+    expect((await install(["zod"], PACKAGE_INSTALL_TOOL)).isError).toBe(true);
+  }
+  expect(commands).toEqual([]);
 });

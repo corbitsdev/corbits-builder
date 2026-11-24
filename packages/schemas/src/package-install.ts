@@ -22,8 +22,10 @@ export const packageName = (spec: string) => spec.replace(/(?<=.)@.*$/, "");
 const pinnedVersion = (spec: string) =>
   spec.slice(packageName(spec).length + 1) || undefined;
 
-// The packages the approved version of each of the project's documents declares, by its kind.
+// Whether the run installs any package without asking, and the packages the approved version of
+// each of the project's documents declares, by its kind.
 export const ApprovedPackages = type({
+  anyPackage: "boolean",
   documents: type({ kind: "string", packages: "string[]" }).array(),
 });
 export type ApprovedPackages = typeof ApprovedPackages.infer;

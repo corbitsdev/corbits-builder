@@ -21,7 +21,7 @@ const SHELL_REFUSES =
 export const packageInstallDefinitions = [
   {
     name: PACKAGE_INSTALL_TOOL,
-    description: `Install npm packages with bun add ${WHERE}. The person approves each install first, so install a package the approved build plan names with ${PLANNED_INSTALL_TOOL} instead. When an install is declined, build without those packages. ${SHELL_REFUSES}`,
+    description: `Install npm packages with bun add ${WHERE}. Depending on the person's settings, an install may wait for their approval; a package the approved build plan names installs without waiting through ${PLANNED_INSTALL_TOOL}. When an install is declined, build without those packages. ${SHELL_REFUSES}`,
     inputSchema,
   },
   {
@@ -88,11 +88,59 @@ export function createPackageGate(
     isError: true,
   });
 
+  const declared = async () => {
+    const names = new Set<string>();
+    const unregistered = new Set<string>();
+    // Bun.Glob matches nothing for a brace pattern whose branches hold a "/", so one per layout.
+    const manifests = (
+      await Promise.all(
+        ["package.json", "*/package.json", "packages/*/package.json"].map(
+          (pattern) =>
+            Array.fromAsync(
+              new Bun.Glob(pattern).scan({ cwd: workspace, onlyFiles: true }),
+            ),
+        ),
+      )
+    ).flat();
+    for (const path of manifests) {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(await readFile(join(workspace, path), "utf8"));
+      } catch (error) {
+        if (
+          (hasCode(error) && error.code === "ENOENT") ||
+          error instanceof SyntaxError
+        )
+          continue;
+        throw error;
+      }
+      const manifest = Manifest(parsed);
+      if (manifest instanceof type.errors) continue;
+      for (const field of DEPENDENCY_FIELDS)
+        for (const [name, spec] of Object.entries(manifest[field] ?? {}))
+          if (spec.startsWith("workspace:")) continue;
+          // An installed name could otherwise point at any alias, git repository, URL or file.
+          else if (/[:/]/.test(spec)) unregistered.add(`${name}@${spec}`);
+          else names.add(name);
+    }
+    return { names, unregistered };
+  };
+  const refuseSources = (call: ToolCall, unregistered: Set<string>) =>
+    refuse(call, {
+      code: "package_source_refused",
+      packages: [...unregistered],
+      summary:
+        "Dependencies come from the npm registry by version; these do not.",
+    });
+
   const install = async (
     call: ToolCall,
     input: PackageInstallInput,
     signal: AbortSignal,
   ): Promise<ToolResult> => {
+    // bun add resolves every package.json, not only the packages it is given.
+    const { unregistered } = await declared();
+    if (unregistered.size) return refuseSources(call, unregistered);
     const result = await executor.run(
       {
         id: call.id,
@@ -110,7 +158,10 @@ export function createPackageGate(
     handles: (name: string) =>
       name === PACKAGE_INSTALL_TOOL || name === PLANNED_INSTALL_TOOL,
     /** Refuses a command line that fetches packages around the gate. */
-    async refuseShell(call: ToolCall): Promise<ToolResult | undefined> {
+    async refuseShell(
+      call: ToolCall,
+      signal: AbortSignal,
+    ): Promise<ToolResult | undefined> {
       const command = call.arguments["command"];
       if (typeof command !== "string") return undefined;
       if (FETCHING_COMMAND.test(command))
@@ -120,50 +171,11 @@ export function createPackageGate(
             "Install packages with install_packages, not the shell, then run what they install with bun run, or with app_status when it keeps running.",
         });
       if (!BARE_INSTALL.test(command)) return undefined;
-      const names = new Set<string>();
-      const unregistered = new Set<string>();
-      // Bun.Glob matches nothing for a brace pattern whose branches hold a "/", so one per layout.
-      const manifests = (
-        await Promise.all(
-          ["package.json", "*/package.json", "packages/*/package.json"].map(
-            (pattern) =>
-              Array.fromAsync(
-                new Bun.Glob(pattern).scan({ cwd: workspace, onlyFiles: true }),
-              ),
-          ),
-        )
-      ).flat();
-      for (const path of manifests) {
-        let parsed: unknown;
-        try {
-          parsed = JSON.parse(await readFile(join(workspace, path), "utf8"));
-        } catch (error) {
-          if (
-            (hasCode(error) && error.code === "ENOENT") ||
-            error instanceof SyntaxError
-          )
-            continue;
-          throw error;
-        }
-        const manifest = Manifest(parsed);
-        if (manifest instanceof type.errors) continue;
-        for (const field of DEPENDENCY_FIELDS)
-          for (const [name, spec] of Object.entries(manifest[field] ?? {}))
-            if (spec.startsWith("workspace:")) continue;
-            // An installed name could otherwise point at any alias, git repository, URL or file.
-            else if (/[:/]/.test(spec)) unregistered.add(`${name}@${spec}`);
-            else names.add(name);
-      }
-      if (unregistered.size)
-        return refuse(call, {
-          code: "package_source_refused",
-          packages: [...unregistered],
-          summary:
-            "Dependencies come from the npm registry by version; these do not.",
-        });
+      const { names, unregistered } = await declared();
+      if (unregistered.size) return refuseSources(call, unregistered);
       const installed = await installedPackages(workspace);
       const added = [...names].filter((name) => !installed.has(name));
-      return added.length
+      return added.length && !(await approved(signal)).anyPackage
         ? refuse(call, {
             code: "package_install_refused",
             packages: added,

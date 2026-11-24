@@ -157,10 +157,9 @@ test("how a project runs in production names no path outside the app and no seco
     );
 });
 
-test("a coder run installs any package without asking only when its person turned that on", () => {
-  expect(coderToolEffects({ install_any_package: "yes" })).toEqual([
+test("a coder run installs any package without asking unless its person turned that off", () => {
+  expect(coderToolEffects(null)).toEqual([
     { tool: "install_packages", effect: "allow" },
   ]);
   expect(coderToolEffects({ install_any_package: "no" })).toEqual([]);
-  expect(coderToolEffects(null)).toEqual([]);
 });

@@ -76,6 +76,8 @@ export async function undeclaredImports(workspace: string, path: string) {
     directory = dirname(directory);
     own = await manifest(join(directory, "package.json"));
   }
+  // Without a package.json the project is not an npm one, so nothing is installed for it.
+  if (!own) return undefined;
   const known = new Set([
     ...declared(own),
     ...declared(await manifest(join(workspace, "package.json"))),
