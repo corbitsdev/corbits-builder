@@ -39,7 +39,7 @@ import {
   type DispatchRoom,
 } from "./dispatch-card.tsx";
 import { humanFault } from "./human-fault.ts";
-import type { SpaceScreenProps } from "./plugin-screens.tsx";
+import { SLOT, type SpaceScreenProps } from "./plugin-screens.tsx";
 import { screenWords } from "./roles.ts";
 import { roomStatus, type RoomStatusFacts } from "./room-status.ts";
 import type { BoxWaiting } from "./room.view.tsx";
@@ -116,8 +116,11 @@ export type PromptBoxRoom = {
 export type PromptBox = {
   /** The one card the box holds. */
   waiting: BoxWaiting | null;
-  /** The first plugin screen waiting, which the plugin space shows. */
-  space: { key: string; title: string } | null;
+  /**
+   * The first plugin screen waiting: one for the page opens in the plugin space, any other in the
+   * box's card once it is the box's turn; null while none is shown.
+   */
+  space: { key: string; title: string; place: "page" | "box" } | null;
   spaceScreen: SpaceScreenProps | null;
   /** The pill's line and button. */
   status: StatusPillContent | null;
@@ -273,8 +276,27 @@ export function usePromptBox(room: PromptBoxRoom): PromptBox {
   })();
 
   const first = spaceScreens(waiting)[0];
+  const shown =
+    first === undefined || first.from === "question"
+      ? undefined
+      : listed.find(
+          (screen) =>
+            screen.plugin === first.plugin && screen.action === first.action,
+        );
+  // A plugin draws a screen for the page or for the conversation. One for the page opens beside the
+  // room; any other is answered in the box, so it waits there until it is the box's card.
+  const place: "page" | "box" =
+    first?.from === "question"
+      ? questionScreen !== undefined && screenOf(questionScreen)?.page === true
+        ? "page"
+        : "box"
+      : shown !== undefined && SLOT[shown.render] === "page"
+        ? "page"
+        : "box";
+  const held =
+    first !== undefined && place === "box" && card?.key !== first.key;
   const spaceScreen = ((): SpaceScreenProps | null => {
-    if (first === undefined) return null;
+    if (first === undefined || held) return null;
     if (first.from === "question") {
       if (openQuestion === undefined || !showsScreen(openQuestion)) return null;
       return {
@@ -291,10 +313,6 @@ export function usePromptBox(room: PromptBoxRoom): PromptBox {
         },
       };
     }
-    const shown = listed.find(
-      (screen) =>
-        screen.plugin === first.plugin && screen.action === first.action,
-    );
     const Listed = shown === undefined ? undefined : screenOf(shown)?.listed;
     if (shown === undefined || Listed === undefined) return null;
     return {
@@ -371,7 +389,10 @@ export function usePromptBox(room: PromptBoxRoom): PromptBox {
 
   return {
     waiting: boxWaiting,
-    space: first === undefined ? null : { key: first.key, title: first.title },
+    space:
+      first === undefined || held
+        ? null
+        : { key: first.key, title: first.title, place },
     spaceScreen,
     status,
     restarts: sendWarning(waiting),

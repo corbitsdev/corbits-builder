@@ -80,7 +80,10 @@ import styles from "./index.module.css";
 export type RoomSlots = {
   /** The reading pane's own such parts. */
   paneParts: ArtifactPaneSlots;
-  /** The plugin screen the plugin space shows, the first that waits; null while none does. */
+  /**
+   * The plugin screen waiting first, drawn where its plugin says: in the plugin space, or inside
+   * the box's card; null while none does.
+   */
   pluginSpace: ReactNode;
   /**
    * The conversation for the chat sheet that pulls up around the prompt box over the project view
@@ -250,10 +253,11 @@ export type RoomContent = {
   /** What the prompt box holds for the person to deal with; null while nothing waits. */
   waiting: BoxWaiting | null;
   /**
-   * The plugin screen waiting first, which the plugin space shows by this name; null while none
-   * does, and then there is no space. Its key changes when another screen takes its place.
+   * The plugin screen waiting first, by this name, and where its plugin draws it: a screen for the
+   * page opens in the plugin space, any other inside the box's card. Null while none does, and
+   * then there is no space. Its key changes when another screen takes its place.
    */
-  space: { key: string; title: string } | null;
+  space: { key: string; title: string; place: "page" | "box" } | null;
   documentPane: ArtifactPaneContent;
   /** Where each plugin tab that says so stands, beside the plan, each opening its tab. */
   tabStatus: readonly TabStatus[];
@@ -348,8 +352,10 @@ export function RoomView({
   // wide window, as a sheet on a narrow one, and Close puts it away. Closed on a wide window, the
   // column stays mounted out of sight, so the screen's forward action stays in the box.
   const [sheetOpen, setSheetOpen] = useState(false);
-  const sheetShown = narrow && sheetOpen && space !== null;
-  const columnShown = !narrow && sheetOpen && space !== null;
+  // Only a screen its plugin draws for the page stands beside the room; any other is in the box.
+  const side = space?.place === "page" ? space : null;
+  const sheetShown = narrow && sheetOpen && side !== null;
+  const columnShown = !narrow && sheetOpen && side !== null;
   const spaceShown = sheetShown || columnShown;
   const headingRef = useRef<HTMLHeadingElement>(null);
   const inputRef = dock.kind === "composer" ? dock.inputRef : null;
@@ -429,7 +435,11 @@ export function RoomView({
   const dockInConversation = !projectOpen && !sheetShown;
   // A screen in the plugin space reaches the box: its forward action, placeholder and Send.
   const ports = useBoxPorts();
-  const card = waitingCard(waiting, openSpace);
+  const card = waitingCard(
+    waiting,
+    openSpace,
+    space?.place === "box" ? pluginSpace : null,
+  );
   const conversationDock = (
     <RoomDockView
       dock={dock}
@@ -466,7 +476,7 @@ export function RoomView({
   );
   // The screen the box lists is the one that hands its action to the box; any other keeps its own.
   const spaceScreen =
-    space === null ? null : (
+    side === null ? null : (
       <InBox ports={ports} as={waiting?.kind === "screen" ? "space" : null}>
         {pluginSpace}
       </InBox>
@@ -558,10 +568,10 @@ export function RoomView({
               {dockInProject ? roomDock : null}
             </div>
           ) : null}
-          {sheetShown && space !== null ? (
+          {sheetShown && side !== null ? (
             <div className={styles.page} data-slot="room-space-sheet">
               <PluginSpace
-                title={space.title}
+                title={side.title}
                 as="sheet"
                 headingRef={headingRef}
                 onClose={closeSheet}
@@ -572,9 +582,9 @@ export function RoomView({
             </div>
           ) : null}
         </div>
-        {!narrow && space !== null ? (
+        {!narrow && side !== null ? (
           <PluginSpace
-            title={space.title}
+            title={side.title}
             as="column"
             headingRef={headingRef}
             onClose={closeSheet}
@@ -589,10 +599,14 @@ export function RoomView({
   );
 }
 
-/** What waits on the person as the card the prompt box holds; a screen's card opens the space. */
+/**
+ * What waits on the person as the card the prompt box holds. A screen for the page has a card that
+ * opens the space; any other screen is the card, its actions in the box's row as every card's are.
+ */
 function waitingCard(
   waiting: BoxWaiting | null,
   openSpace: () => void,
+  screen: ReactNode,
 ): ReactNode {
   if (waiting === null) return undefined;
   switch (waiting.kind) {
@@ -644,6 +658,7 @@ function waitingCard(
         />
       );
     case "screen":
+      if (screen !== null) return screen;
       return (
         <ScreenCard
           title={waiting.title}

@@ -18,6 +18,11 @@ import { projectOutline, type OutlineAppState } from "./project-outline.ts";
 import designer from "@plugins/designer/package.json";
 import pickColours from "@plugins/designer/src/pick-colours/definition.ts";
 import PickColoursView from "@plugins/designer/src/pick-colours/view.tsx";
+import looks from "@plugins/designer/src/looks/definition.ts";
+import LooksView from "@plugins/designer/src/looks/view.tsx";
+import writer from "@plugins/writer/package.json";
+import approve from "@plugins/writer/src/approve/definition.ts";
+import ApproveView from "@plugins/writer/src/approve/view.tsx";
 import { question } from "./prompt-box.fixtures.ts";
 import { ScreenStory, storyScreen } from "./screen-story.tsx";
 import { LIVE_TAB } from "./tab-follow.ts";
@@ -839,8 +844,9 @@ const pickColoursScreen = storyScreen(
 const screenNotNow = fn();
 
 /**
- * A plugin's screen waits: the box names the screen with Not now and Open, and the screen's forward
- * action stands where Send is. The plugin space stays closed until the person opens it.
+ * A screen its plugin draws for the page waits: the box names it with Not now and Open, and the
+ * screen's forward action stands where Send is. The plugin space stays closed until the person
+ * opens it.
  */
 export const ScreenWaiting: Story = {
   args: {
@@ -850,7 +856,7 @@ export const ScreenWaiting: Story = {
       onNotNow: screenNotNow,
       disabled: false,
     },
-    space: { key: "screen:story", title: "Pick colours" },
+    space: { key: "screen:story", title: "Pick colours", place: "page" },
     pluginSpace: (
       <ScreenStory
         screen={pickColoursScreen}
@@ -863,6 +869,122 @@ export const ScreenWaiting: Story = {
       />
     ),
   },
+};
+
+const looksScreen = storyScreen(
+  "@corbits-builder/designer looks",
+  designer.builder.actions["looks"],
+  { screen: looks, view: LooksView, data: undefined },
+);
+
+const approveScreen = storyScreen(
+  "@corbits-builder/writer approve",
+  writer.builder.actions["approve"],
+  { screen: approve, view: ApproveView, data: undefined },
+);
+
+/**
+ * A screen its plugin draws for the conversation is the box's card: its choices over the words,
+ * its forward action where Send is, and no space beside the room.
+ */
+export const ScreenInBox: Story = {
+  args: {
+    waiting: {
+      kind: "screen",
+      title: "How many looks to compare",
+      onNotNow: undefined,
+      disabled: false,
+    },
+    space: {
+      key: "screen:looks",
+      title: "How many looks to compare",
+      place: "box",
+    },
+    pluginSpace: (
+      <ScreenStory
+        screen={looksScreen}
+        state="open"
+        input={{ current: "two" }}
+        project={{}}
+      />
+    ),
+  },
+  play: async ({ canvasElement }) => {
+    const box = canvasElement.querySelector<HTMLElement>(
+      '[data-slot="composer"]',
+    );
+    await expect(box).not.toBeNull();
+    if (box === null) return;
+    await expect(
+      within(box).getByRole("group", {
+        name: "How many looks do you want to compare?",
+      }),
+    ).toBeInTheDocument();
+    await expect(
+      within(box).getByRole("button", { name: "Compare two looks" }),
+    ).toBeInTheDocument();
+    await expect(
+      within(canvasElement).queryByRole("button", {
+        name: wording.promptBox.waiting.openScreen,
+      }),
+    ).not.toBeInTheDocument();
+    await expect(
+      canvasElement.querySelector('[data-slot="plugin-space"]'),
+    ).toBeNull();
+  },
+};
+
+export const ScreenInBoxDark: Story = {
+  ...ScreenInBox,
+  globals: { mode: "dark" },
+};
+
+/** Approving documents is asked in the box, with Approve where Send is. */
+export const ApproveInBox: Story = {
+  args: {
+    waiting: {
+      kind: "screen",
+      title: "Approve the documents",
+      onNotNow: undefined,
+      disabled: false,
+    },
+    space: {
+      key: "screen:approve",
+      title: "Approve the documents",
+      place: "box",
+    },
+    pluginSpace: (
+      <ScreenStory
+        screen={approveScreen}
+        state="open"
+        input={{ kinds: ["build_plan"] }}
+        project={{}}
+        output={{
+          approved: [
+            { kind: "build_plan", artifactId: "artifact-plan", version: 2 },
+          ],
+        }}
+      />
+    ),
+  },
+  play: async ({ canvasElement }) => {
+    const box = canvasElement.querySelector<HTMLElement>(
+      '[data-slot="composer"]',
+    );
+    await expect(box).not.toBeNull();
+    if (box === null) return;
+    await expect(
+      within(box).getByText("Ready to approve the build plan?"),
+    ).toBeInTheDocument();
+    await expect(
+      canvasElement.querySelector('[data-slot="plugin-space"]'),
+    ).toBeNull();
+  },
+};
+
+export const ApproveInBoxDark: Story = {
+  ...ApproveInBox,
+  globals: { mode: "dark" },
 };
 
 /** Not now turns the screen down from the box, without opening it. */
