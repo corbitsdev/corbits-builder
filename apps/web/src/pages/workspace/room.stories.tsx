@@ -127,8 +127,6 @@ function sidebarOf(
     appOpen: false,
     shown: null,
     onToggleSidebar: fn(),
-    onAskFirst: fn(),
-    onDecline: fn(),
     onOpenApp: fn(),
     onOpenStep: fn(),
     onProjectSettings: fn(),

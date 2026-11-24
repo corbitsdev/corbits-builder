@@ -45,28 +45,9 @@ async function changePlanStep(
   }
 }
 
-export const declinePlanStep = (projectId: string, stepId: string) =>
-  changePlanStep((client, tenantId) =>
-    client.declinePlanStep(tenantId, projectId, stepId),
-  );
-
-export const restorePlanStep = (projectId: string, stepId: string) =>
-  changePlanStep((client, tenantId) =>
-    client.restorePlanStep(tenantId, projectId, stepId),
-  );
-
 export const goAheadPlanStep = (projectId: string, stepId: string) =>
   changePlanStep((client, tenantId) =>
     client.goAheadPlanStep(tenantId, projectId, stepId),
-  );
-
-export const setPlanStepAskFirst = (
-  projectId: string,
-  stepId: string,
-  askFirst: boolean,
-) =>
-  changePlanStep((client, tenantId) =>
-    client.setPlanStepAskFirst(tenantId, projectId, stepId, askFirst),
   );
 
 export async function readArtifact(

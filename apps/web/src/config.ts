@@ -494,24 +494,7 @@ export const wording = {
       working: "Working",
       needsYou: "Waiting on you",
       failed: "Didn't finish",
-    },
-    /** A step's settings, under its name until it starts, each lit while it is on. */
-    stepSettings: {
-      askFirst: "Ask me first",
-      skip: "Skip",
-    },
-    /** A step's menu: what can be done to it, each said as what choosing it will do. */
-    rowMenu: (name: string) => `More for ${name}`,
-    stepMenu: {
-      pause: "Pause before this step",
-      dontPause: "Don't pause",
-      skip: "Skip this step",
-      keep: "Keep this step",
-      /** The same, in a row that covers more than one step with settings, naming the step. */
-      pauseBefore: (step: string) => `Pause before: ${step}`,
-      dontPauseBefore: (step: string) => `Don't pause before: ${step}`,
-      skipStep: (step: string) => `Skip: ${step}`,
-      keepStep: (step: string) => `Keep: ${step}`,
+      skipped: "Skipped",
     },
     /** The plan kept in sight under the project's name while the sidebar is closed. */
     glance: {

@@ -189,8 +189,6 @@ const meta = {
     appOpen: false,
     shown: null,
     onToggleSidebar: fn(),
-    onAskFirst: fn(),
-    onDecline: fn(),
     onOpenApp: fn(),
     onOpenStep: fn(),
     onProjectSettings: fn(),
@@ -512,40 +510,10 @@ export const Keyboard: Story = {
 };
 
 /**
- * A step's row shows what will happen to it: its settings stand under its name, lit while on, and
- * its name says them too. Its menu, from Enter on the row, is the keyboard's way to them and says
- * what each choice will do: on a step that pauses, Don't pause; Skip shows only on an optional step.
+ * Steps still ahead show only their names. A skipped step says so under its name, and the row's
+ * accessible name says which step will pause before it starts.
  */
-export const StepMenu: Story = {
-  play: async ({ canvasElement, args }) => {
-    const canvas = within(canvasElement);
-    const requirements = canvas.getByRole("treeitem", {
-      name: /^Write the requirements/,
-    });
-    await expect(requirements).toHaveAccessibleName(
-      `Write the requirements, ${words.stepState.to_do}, ${words.pausesFirst}`,
-    );
-    await expect(requirements).toHaveAttribute("aria-haspopup", "menu");
-    requirements.focus();
-    await userEvent.keyboard("{Enter}");
-    const page = within(document.body);
-    const dontPause = await page.findByRole("menuitem", {
-      name: words.stepMenu.dontPause,
-    });
-    await expect(
-      page.queryByRole("menuitem", { name: words.stepMenu.skip }),
-    ).toBeNull();
-    await userEvent.click(dontPause);
-    await expect(args.onAskFirst).toHaveBeenCalledWith("requirements", false);
-    await expect(requirements).toHaveFocus();
-  },
-};
-
-/**
- * Before a step starts, its settings are in sight under its name: Ask me first on every step, Skip
- * on an optional one, each lit while on. A press turns one over.
- */
-export const StepSettingsInSight: Story = {
+export const StepsBeforeTheyStart: Story = {
   args: {
     plan: [
       row("brief", "Write the brief", "done"),
@@ -563,71 +531,23 @@ export const StepSettingsInSight: Story = {
       row("visit", "Visit the market stalls", "declined", { declined: true }),
     ],
   },
-  play: async ({ canvasElement, args }) => {
+  play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    const requirements = canvas.getByRole("treeitem", {
-      name: /^Write the requirements/,
-    });
-    const ask = within(requirements).getByText(words.stepSettings.askFirst);
-    await expect(ask.closest("button")).toHaveAttribute("data-on");
-    await userEvent.click(ask);
-    await expect(args.onAskFirst).toHaveBeenCalledWith("requirements", false);
-    const research = canvas.getByRole("treeitem", {
-      name: /^Research other bakeries/,
-    });
-    await userEvent.click(within(research).getByText(words.stepSettings.skip));
-    await expect(args.onDecline).toHaveBeenCalledWith("research", true);
-    // A skipped step offers only to take the skip back.
-    const visit = canvas.getByRole("treeitem", {
-      name: /^Visit the market stalls/,
-    });
     await expect(
-      within(visit).queryByText(words.stepSettings.askFirst),
-    ).toBeNull();
+      canvas.getByRole("treeitem", { name: /^Write the requirements/ }),
+    ).toHaveAccessibleName(
+      `Write the requirements, ${words.stepState.to_do}, ${words.pausesFirst}`,
+    );
+    await expect(
+      canvas.getByRole("treeitem", {
+        name: `Visit the market stalls, ${words.skipped}`,
+      }),
+    ).toHaveTextContent(words.stepNow.skipped);
+    await expect(canvas.queryByRole("switch", { hidden: true })).toBeNull();
     await expect(
       within(
         canvas.getByRole("treeitem", { name: /^Compare approaches/ }),
       ).getByText(/^\d+:\d{2}$/),
-    ).toBeVisible();
-  },
-};
-
-export const StepSettingsInSightDark: Story = {
-  args: { ...StepSettingsInSight.args },
-  globals: { mode: "dark" },
-};
-
-/** An optional step's menu offers to skip it; once skipped, it offers to keep it. */
-export const SkipMenu: Story = {
-  args: {
-    plan: [
-      row("brief", "Write the brief", "done"),
-      row("research", "Research other bakeries", "to_do", { declined: false }),
-      row("visit", "Visit the market stalls", "declined", { declined: true }),
-    ],
-  },
-  play: async ({ canvasElement, args }) => {
-    const canvas = within(canvasElement);
-    const visit = canvas.getByRole("treeitem", {
-      name: `Visit the market stalls, ${words.skipped}`,
-    });
-    visit.focus();
-    await userEvent.keyboard("{Enter}");
-    const page = within(document.body);
-    await userEvent.click(
-      await page.findByRole("menuitem", { name: words.stepMenu.keep }),
-    );
-    await expect(args.onDecline).toHaveBeenCalledWith("visit", false);
-    const research = canvas.getByRole("treeitem", {
-      name: /^Research other bakeries/,
-    });
-    research.focus();
-    await userEvent.keyboard("{Enter}");
-    await expect(
-      await page.findByRole("menuitem", { name: words.stepMenu.skip }),
-    ).toBeVisible();
-    await expect(
-      page.getByRole("menuitem", { name: words.stepMenu.pause }),
     ).toBeVisible();
   },
 };

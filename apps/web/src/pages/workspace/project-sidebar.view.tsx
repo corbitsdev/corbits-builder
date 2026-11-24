@@ -22,7 +22,6 @@ import {
   ArrowUpRight,
   Building2,
   CircleUser,
-  Ellipsis,
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
@@ -30,12 +29,6 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { SidebarItem } from "@corbits/react-ui";
-import {
-  Menu,
-  MenuContent,
-  MenuItem,
-  MenuTrigger,
-} from "@corbits/react-ui/ui/menu";
 import { wording } from "../../config.ts";
 import { Mark } from "../../components.jsx";
 import { clock, useElapsedMs } from "./elapsed.tsx";
@@ -83,7 +76,7 @@ export type SidebarRow = {
   startedAt: string | null;
   /** The run's last activity, or why it failed; null while it has said none. */
   summary: string | null;
-  /** The step it is, whose settings its menu changes. */
+  /** The steps the row covers; the next one to do says whether Builder pauses before it. */
   steps: readonly SidebarStep[];
 };
 
@@ -113,8 +106,6 @@ export type ProjectSidebarViewProps = {
    */
   waitsOn?: string | null;
   onToggleSidebar: () => void;
-  onAskFirst: (stepId: string, askFirst: boolean) => void;
-  onDecline: (stepId: string, declined: boolean) => void;
   onOpenApp: () => void;
   /** Opens what a step made, on its tab. */
   onOpenStep: (tab: string) => void;
@@ -134,8 +125,6 @@ export function ProjectSidebarView({
   shown,
   waitsOn = null,
   onToggleSidebar,
-  onAskFirst,
-  onDecline,
   onOpenApp,
   onOpenStep,
   onProjectSettings,
@@ -156,8 +145,6 @@ export function ProjectSidebarView({
         app={app}
         shown={shown}
         waitsOn={waitsOn}
-        onAskFirst={onAskFirst}
-        onDecline={onDecline}
         onOpenStep={onOpenStep}
       />
       {/* The app has its own line only where no step of the plan makes it. */}
@@ -455,8 +442,6 @@ type TreeRow = {
   name: string;
   /** What Enter or Space, or a press, does on it. */
   activate: (() => void) | null;
-  /** It has a menu, which Shift+F10 or the context-menu key opens. */
-  menu: boolean;
 };
 
 /** What every row of the tree takes to hold the tree's one tab stop. */
@@ -467,41 +452,29 @@ type TreeItemProps = Required<
 /**
  * The plan's steps, as a tree of one level with a single tab stop, after the WAI-ARIA tree view
  * pattern: the arrows move between rows, Home and End jump, a letter finds the next row starting
- * with it, Enter or Space opens what a row made or else the row's menu, and Shift+F10 or the
- * context-menu key opens a row's menu.
+ * with it, and Enter or Space opens what a row made.
  */
 function PlanTree({
   plan,
   app,
   shown,
   waitsOn,
-  onAskFirst,
-  onDecline,
   onOpenStep,
 }: {
   plan: readonly SidebarRow[];
   app: SidebarAppState;
   shown: string | null;
   waitsOn: string | null;
-  onAskFirst: (stepId: string, askFirst: boolean) => void;
-  onDecline: (stepId: string, declined: boolean) => void;
   onOpenStep: (tab: string) => void;
 }) {
-  // The row whose menu is open.
-  const [menu, setMenu] = useState<string | null>(null);
   const headingId = `plan-${useId()}`;
   const opener = ({ opens }: SidebarRow) =>
     opens === null ? null : () => onOpenStep(opens);
-  const rows = plan.map((row): TreeRow => {
-    const key = rowKey(row.id);
-    const menu = row.steps.some(stepHasMenu);
-    return {
-      key,
-      name: row.name,
-      activate: opener(row) ?? (menu ? () => setMenu(key) : null),
-      menu,
-    };
-  });
+  const rows = plan.map((row): TreeRow => ({
+    key: rowKey(row.id),
+    name: row.name,
+    activate: opener(row),
+  }));
   const items = useRef(new Map<string, HTMLElement>());
   const [focused, setFocused] = useState<string | null>(null);
   // Tab enters at the row last focused, else the first.
@@ -522,12 +495,6 @@ function PlanTree({
       </section>
     );
   const onKeyDown = (event: KeyboardEvent<HTMLUListElement>) => {
-    // A row's menu is drawn elsewhere on the page, but its keys still pass through here.
-    if (
-      event.target instanceof Node &&
-      !event.currentTarget.contains(event.target)
-    )
-      return;
     // The row the key was pressed on, which is the tab stop unless focus got there unannounced.
     const on =
       [...items.current].find(([, element]) => element === event.target)?.[0] ??
@@ -556,13 +523,6 @@ function PlanTree({
       case " ":
         row.activate?.();
         break;
-      case "ContextMenu":
-        if (row.menu) setMenu(row.key);
-        break;
-      case "F10":
-        if (!event.shiftKey) return;
-        if (row.menu) setMenu(row.key);
-        break;
       default: {
         if (event.key.length !== 1 || event.key === " ") return;
         const letter = event.key.toLowerCase();
@@ -585,12 +545,6 @@ function PlanTree({
     onFocus: (event) => {
       if (event.target === event.currentTarget) setFocused(key);
     },
-  });
-  const menuOf = (key: string, name: string): RowMenuProps => ({
-    label: words.rowMenu(name),
-    open: menu === key,
-    onOpenChange: (open) => setMenu(open ? key : null),
-    onClosed: () => focus(key),
   });
   const counted = plan.filter((row) => row.state !== "declined");
   const done = counted.filter((row) => row.state === "done").length;
@@ -617,18 +571,6 @@ function PlanTree({
             current={row.opens !== null && row.opens === shown}
             waits={row.opens !== null && row.opens === waitsOn}
             onOpen={opener(row)}
-            onAskFirst={onAskFirst}
-            onDecline={onDecline}
-            menu={
-              row.steps.some(stepHasMenu) ? (
-                <RowStepsMenu
-                  steps={row.steps.filter(stepHasMenu)}
-                  menu={menuOf(rowKey(row.id), row.name)}
-                  onAskFirst={onAskFirst}
-                  onDecline={onDecline}
-                />
-              ) : null
-            }
             {...itemProps(rowKey(row.id))}
           />
         ))}
@@ -642,9 +584,7 @@ function PlanTree({
  * turns at its end, and its line counts how long it has run; one that waits on the person, or whose
  * document the waiting card opened, says so; one that failed is red and says so. The one whose
  * document is on the page is shaded. What a run last did is often a tool's own words, so it is kept
- * to the row's tooltip. Until a step starts, its line holds its settings, Ask me first and, where
- * it is optional, Skip, each lit while it is on, so how the plan will go is read off the rows rather
- * than hidden in a menu. Once a step has made something it opens it; once the app is built, its
+ * to the row's tooltip. Once a step has made something it opens it; once the app is built, its
  * step says how it runs.
  */
 function PlanRow({
@@ -653,9 +593,6 @@ function PlanRow({
   current,
   waits,
   onOpen,
-  onAskFirst,
-  onDecline,
-  menu,
   ...item
 }: {
   row: SidebarRow;
@@ -667,9 +604,6 @@ function PlanRow({
   waits: boolean;
   /** Opens what it made; null while there is nothing to show. */
   onOpen: (() => void) | null;
-  onAskFirst: (stepId: string, askFirst: boolean) => void;
-  onDecline: (stepId: string, declined: boolean) => void;
-  menu: ReactNode;
 } & TreeItemProps) {
   const state = waits && row.state !== "failed" ? "needs_you" : row.state;
   const next = row.steps.find(
@@ -684,13 +618,6 @@ function PlanRow({
     ...(doing === null ? [] : [doing]),
     ...(pauses ? [words.pausesFirst] : []),
   ].join(", ");
-  // The settings stand under the name only while they can change and the row is one step's; a row
-  // of several keeps them in its menu, which names each step.
-  const own = row.steps.filter(stepHasMenu);
-  const settings =
-    own.length === 1 && (state === "to_do" || state === "declined")
-      ? own[0]
-      : undefined;
   const line =
     state === "running" ? (
       <span className={styles.doing}>
@@ -704,12 +631,8 @@ function PlanRow({
       </span>
     ) : state === "failed" ? (
       <span className={styles.doing}>{words.stepNow.failed}</span>
-    ) : settings !== undefined ? (
-      <StepSettings
-        step={settings}
-        onAskFirst={onAskFirst}
-        onDecline={onDecline}
-      />
+    ) : state === "declined" ? (
+      <span className={styles.doing}>{words.stepNow.skipped}</span>
     ) : doing === null ? null : (
       <span className={styles.doing} aria-live="polite">
         {doing}
@@ -719,24 +642,11 @@ function PlanRow({
     <li
       role="treeitem"
       aria-level={1}
-      aria-haspopup={menu === null ? undefined : "menu"}
       aria-label={said}
       aria-current={current ? "page" : undefined}
       className={styles.item}
       title={row.summary === null ? row.name : `${row.name}: ${row.summary}`}
-      onClick={
-        onOpen === null
-          ? undefined
-          : (event) => {
-              // The row's buttons and the menu it opens are not the row.
-              if (
-                event.target instanceof Element &&
-                event.target.closest("button, [role='menu']") !== null
-              )
-                return;
-              onOpen();
-            }
-      }
+      onClick={onOpen ?? undefined}
       {...item}
     >
       <span
@@ -755,7 +665,6 @@ function PlanRow({
             <Working />
           </span>
         ) : null}
-        {menu}
       </span>
     </li>
   );
@@ -765,63 +674,6 @@ function PlanRow({
 function RunningFor({ since }: { since: string | null }) {
   const seconds = Math.floor(useElapsedMs(since) / 1000);
   return <span className={styles.clock}>{clock(seconds)}</span>;
-}
-
-// A press on a setting leaves focus where it was, so the row it sits in is not ringed as though
-// the keyboard had moved there.
-const keepFocus = (event: { preventDefault: () => void }) =>
-  event.preventDefault();
-
-/**
- * A step's settings before it starts, as two small switches under its name: Ask me first, and Skip
- * where the step is optional. Each switch is blue and set over while it is on; a press turns it. They are for
- * the pointer; the keyboard reaches the same settings through the row's menu, and the row's name
- * says how they stand.
- */
-function StepSettings({
-  step,
-  onAskFirst,
-  onDecline,
-}: {
-  step: SidebarStep;
-  onAskFirst: (stepId: string, askFirst: boolean) => void;
-  onDecline: (stepId: string, declined: boolean) => void;
-}) {
-  const { id, askFirst, declined } = step;
-  return (
-    <span className={styles.settings} aria-hidden="true">
-      {askFirst === null || declined === true ? null : (
-        <button
-          type="button"
-          role="switch"
-          aria-checked={askFirst}
-          tabIndex={-1}
-          className={styles.setting}
-          data-on={askFirst ? "" : undefined}
-          onMouseDown={keepFocus}
-          onClick={() => onAskFirst(id, !askFirst)}
-        >
-          <span className={styles.switch} />
-          {words.stepSettings.askFirst}
-        </button>
-      )}
-      {declined === null ? null : (
-        <button
-          type="button"
-          role="switch"
-          aria-checked={declined}
-          tabIndex={-1}
-          className={styles.setting}
-          data-on={declined ? "" : undefined}
-          onMouseDown={keepFocus}
-          onClick={() => onDecline(id, !declined)}
-        >
-          <span className={styles.switch} />
-          {words.stepSettings.skip}
-        </button>
-      )}
-    </span>
-  );
 }
 
 /**
@@ -834,111 +686,5 @@ function Working() {
       <circle cx="7" cy="7" r="5" data-part="track" />
       <path d="M7 2a5 5 0 0 1 5 5" data-part="arc" />
     </svg>
-  );
-}
-
-const stepHasMenu = (step: SidebarStep) =>
-  step.askFirst !== null || step.declined !== null;
-
-type RowMenuProps = {
-  label: string;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  /** The menu has closed, by a choice or by Escape. */
-  onClosed: () => void;
-};
-
-/**
- * A row's menu, from its button or the keyboard. The button is for the pointer only: the row
- * itself holds focus and says it has a menu, which Shift+F10 opens.
- */
-function RowMenu({
-  label,
-  open,
-  onOpenChange,
-  onClosed,
-  children,
-}: RowMenuProps & { children: ReactNode }) {
-  return (
-    <Menu open={open} onOpenChange={onOpenChange}>
-      <MenuTrigger asChild>
-        <button
-          type="button"
-          className={styles.more}
-          tabIndex={-1}
-          aria-hidden="true"
-          title={label}
-          onClick={(event) => event.stopPropagation()}
-        >
-          <Ellipsis />
-        </button>
-      </MenuTrigger>
-      {/* Opened under its button and kept to the sidebar's width, so it never spills onto the page. */}
-      <MenuContent
-        align="end"
-        className={styles.menu}
-        aria-label={label}
-        onCloseAutoFocus={(event) => {
-          event.preventDefault();
-          onClosed();
-        }}
-      >
-        {children}
-      </MenuContent>
-    </Menu>
-  );
-}
-
-/**
- * A row's menu: the settings of the steps it covers. Each item says what choosing it will do, so
- * the row, not the menu, shows how things stand; where the row covers more than one step with
- * settings, each item names its step.
- */
-function RowStepsMenu({
-  steps,
-  menu,
-  onAskFirst,
-  onDecline,
-}: {
-  steps: readonly SidebarStep[];
-  menu: RowMenuProps;
-  onAskFirst: (stepId: string, askFirst: boolean) => void;
-  onDecline: (stepId: string, declined: boolean) => void;
-}) {
-  const named = steps.length > 1;
-  const said = words.stepMenu;
-  return (
-    <RowMenu {...menu}>
-      {steps.flatMap(({ id, name, askFirst, declined }) => [
-        askFirst === null || declined === true ? null : (
-          <MenuItem
-            key={`${id}:ask`}
-            onSelect={() => onAskFirst(id, !askFirst)}
-          >
-            {askFirst
-              ? named
-                ? said.dontPauseBefore(name)
-                : said.dontPause
-              : named
-                ? said.pauseBefore(name)
-                : said.pause}
-          </MenuItem>
-        ),
-        declined === null ? null : (
-          <MenuItem
-            key={`${id}:skip`}
-            onSelect={() => onDecline(id, !declined)}
-          >
-            {declined
-              ? named
-                ? said.keepStep(name)
-                : said.keep
-              : named
-                ? said.skipStep(name)
-                : said.skip}
-          </MenuItem>
-        ),
-      ])}
-    </RowMenu>
   );
 }

@@ -1933,7 +1933,6 @@ export function useRoom({
     shown: projectOpen && !nothingYet ? shownTab : null,
     waitsOn,
     onOpen: openProject,
-    reload: () => reloadRef.current(),
   });
   const emptyConversation = () => {
     if (archived) return "archived";
