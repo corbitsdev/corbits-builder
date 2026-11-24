@@ -5,7 +5,7 @@
  */
 import { StatusDot } from "@corbits/react-ui";
 import { MenuGroup, MenuItem, MenuLabel } from "@corbits/react-ui/ui/menu";
-import { Check, ChevronDown, Palette, SunMoon } from "lucide-react";
+import { Check, Layers, Palette, PanelsTopLeft, SunMoon } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -30,7 +30,7 @@ import {
 import { DevicePreview, type PreviewDevice } from "./device-preview.tsx";
 import { mockupLook, tweakCss, type LookTweaks } from "./mockup-look.ts";
 import type { TweakPanelProps } from "./mockup-tweaks.view.tsx";
-import type { PaneBarGroup } from "./pane-bar.tsx";
+import type { PaneBarAction, PaneBarGroup } from "./pane-bar.tsx";
 import styles from "./design-preview.module.css";
 
 const spoken = (name: string) =>
@@ -56,6 +56,84 @@ export const draftBadge = (working: boolean): PaneBarGroup => [
     note: true,
   },
 ];
+
+/**
+ * The bar's menu of the mockup's screens and the shown screen's states, once the page has listed
+ * more than one; `goto` takes the place's hash and `previewOf` the preview the menu fits within.
+ */
+export function screenActions(
+  screens: FrameScreens,
+  shown: FrameShown | null,
+  goto: (hash: string) => void,
+  previewOf: () => Element | null | undefined,
+): PaneBarAction[] {
+  const current = screens.find((entry) => entry.screen === shown?.screen);
+  // Portaled outside the pane, so the grid reads the pane's width when it opens to wrap within it.
+  const fitPane = (grid: HTMLDivElement | null) => {
+    const pane = previewOf();
+    if (grid !== null && pane)
+      grid.style.maxWidth = `min(${String(pane.clientWidth)}px, var(--radix-dropdown-menu-content-available-width, 100vw) - 0.75rem)`;
+  };
+  return [
+    ...(screens.length > 1 || (screens[0]?.states.length ?? 0) > 1
+      ? [
+          {
+            id: "screen",
+            label: wording.preview.screen,
+            // An icon, not the screen's name: the bar stands up the pane's edge, where a name
+            // would widen it. The menu ticks the screen shown.
+            icon: <PanelsTopLeft size={16} aria-hidden="true" />,
+            menu: (
+              <div className={styles.screenMenu} ref={fitPane}>
+                {screens.map((entry) => (
+                  <MenuGroup
+                    key={entry.screen}
+                    className={styles.screenColumn}
+                    aria-label={spoken(entry.screen)}
+                  >
+                    <MenuLabel aria-hidden="true">
+                      {spoken(entry.screen)}
+                    </MenuLabel>
+                    {(entry.states.length === 0 ? [null] : entry.states).map(
+                      (state) => (
+                        <MenuItem
+                          key={state ?? ""}
+                          onSelect={() => goto(stateHash(entry.screen, state))}
+                        >
+                          <MenuItemLabel>
+                            {stateName(state)}
+                            {entry === current && shown?.state === state ? (
+                              <Check size={14} aria-label="Shown" />
+                            ) : null}
+                          </MenuItemLabel>
+                        </MenuItem>
+                      ),
+                    )}
+                  </MenuGroup>
+                ))}
+              </div>
+            ),
+          },
+        ]
+      : []),
+    ...(current !== undefined && current.states.length > 1
+      ? [
+          {
+            id: "states",
+            label: wording.preview.states(spoken(current.screen)),
+            icon: <Layers size={16} aria-hidden="true" />,
+            row: current.states.map((state) => ({
+              id: `state:${state}`,
+              label: stateName(state),
+              text: stateName(state),
+              active: shown?.state === state,
+              onSelect: () => goto(stateHash(current.screen, state)),
+            })),
+          },
+        ]
+      : []),
+  ];
+}
 
 export type MockupFrameViewProps = {
   files: DesignFiles;
@@ -177,75 +255,13 @@ export function MockupFrameView({
   );
   const tell = (message: object) =>
     frame.current?.contentWindow?.postMessage(message, "*");
-  const current = screens.find((entry) => entry.screen === shown?.screen);
-  // Portaled outside the pane, so the grid reads the pane's width when it opens to wrap within it.
-  const fitPane = (grid: HTMLDivElement | null) => {
-    const pane = frame.current?.closest('[data-slot="device-preview"]');
-    if (grid !== null && pane)
-      grid.style.maxWidth = `min(${String(pane.clientWidth)}px, var(--radix-dropdown-menu-content-available-width, 100vw) - 0.75rem)`;
-  };
   const screenGroup: PaneBarGroup = [
-    ...(screens.length > 1 || (screens[0]?.states.length ?? 0) > 1
-      ? [
-          {
-            id: "screen",
-            label: wording.preview.screen,
-            text:
-              current === undefined
-                ? wording.preview.screen
-                : spoken(current.screen),
-            icon: <ChevronDown size={12} aria-hidden="true" />,
-            menu: (
-              <div className={styles.screenMenu} ref={fitPane}>
-                {screens.map((entry) => (
-                  <MenuGroup
-                    key={entry.screen}
-                    className={styles.screenColumn}
-                    aria-label={spoken(entry.screen)}
-                  >
-                    <MenuLabel aria-hidden="true">
-                      {spoken(entry.screen)}
-                    </MenuLabel>
-                    {(entry.states.length === 0 ? [null] : entry.states).map(
-                      (state) => (
-                        <MenuItem
-                          key={state ?? ""}
-                          onSelect={() =>
-                            tell({ designGoto: stateHash(entry.screen, state) })
-                          }
-                        >
-                          <MenuItemLabel>
-                            {stateName(state)}
-                            {entry === current && shown?.state === state ? (
-                              <Check size={14} aria-label="Shown" />
-                            ) : null}
-                          </MenuItemLabel>
-                        </MenuItem>
-                      ),
-                    )}
-                  </MenuGroup>
-                ))}
-              </div>
-            ),
-          },
-        ]
-      : []),
-    ...(current !== undefined && current.states.length > 1
-      ? [
-          {
-            id: "states",
-            label: wording.preview.states(spoken(current.screen)),
-            row: current.states.map((state) => ({
-              id: `state:${state}`,
-              label: stateName(state),
-              text: stateName(state),
-              active: shown?.state === state,
-              onSelect: () =>
-                tell({ designGoto: stateHash(current.screen, state) }),
-            })),
-          },
-        ]
-      : []),
+    ...screenActions(
+      screens,
+      shown,
+      (hash) => tell({ designGoto: hash }),
+      () => frame.current?.closest('[data-slot="device-preview"]'),
+    ),
     {
       id: "tweak",
       label: wording.tweak.open,

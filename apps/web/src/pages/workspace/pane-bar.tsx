@@ -114,7 +114,8 @@ function ActionButton({
   upright: boolean;
 }) {
   // Standing up the edge, a strip of words would stack into a column of uneven chips, so it is
-  // drawn as one button naming the pressed one, with the others in its menu.
+  // drawn as one button with the others in its menu: the strip's own icon where it has one, as
+  // its neighbours are, or else the pressed one's words.
   if (action.row && upright && action.row.some((item) => item.text)) {
     const pressed = action.row.find((item) => item.active);
     return (
@@ -123,8 +124,12 @@ function ActionButton({
         action={{
           id: action.id,
           label: action.label,
-          text: pressed?.text ?? action.label,
-          icon: <ChevronDown size={12} aria-hidden="true" />,
+          ...(action.icon === undefined
+            ? {
+                text: pressed?.text ?? action.label,
+                icon: <ChevronDown size={12} aria-hidden="true" />,
+              }
+            : { icon: action.icon }),
           menu: action.row.map((item) => (
             <MenuItem
               key={item.id}
