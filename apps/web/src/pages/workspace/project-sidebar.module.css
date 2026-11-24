@@ -93,52 +93,60 @@
   background: var(--wb-background);
 }
 
-/* In one place open or closed, the window's top left corner. */
-.toggle {
+/* The title row: the mark and the project's name, which only say whose sidebar it is, and the
+   toggle at its end. It spans the card's width in one place open or closed, so opening only grows
+   the card around it; closed, it is the card's top alone. */
+.head {
   position: absolute;
-  inset-block-start: var(--space-2);
-  inset-inline-start: var(--space-2);
+  inset-block-start: var(--inset);
+  inset-inline-start: var(--inset);
   z-index: 6;
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  /* Sized by its words, not by the closed sidebar, which has no width to give it. */
-  width: max-content;
-  max-width: calc(var(--width) - 24px);
+  box-sizing: border-box;
+  width: var(--width);
   height: 2.5rem;
-  /* The mark's left edge lines up with Plan's words below it. */
-  padding: 0 var(--space-2) 0 var(--space-1);
-  border: 0;
+  padding: 0 var(--space-1) 0 var(--space-2);
   border-radius: var(--radius-lg);
   color: var(--wb-foreground);
-  font: inherit;
-  text-align: start;
   white-space: nowrap;
-  cursor: pointer;
-  background: transparent;
-  transition: background-color var(--duration-micro) var(--ease-out);
 }
 
-/* Closed, it stands on the page itself on a ground of its own, so it reads as something to press. */
-.sidebar:not([data-open]) .toggle {
+.sidebar:not([data-open]) .head {
   background: var(--card);
 }
 
-.toggle:hover,
-.sidebar:not([data-open]) .toggle:hover {
+.toggle {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  margin-inline-start: auto;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-md);
+  color: var(--wb-muted-foreground);
+  background: transparent;
+  cursor: pointer;
+  transition:
+    background-color var(--duration-micro) var(--ease-out),
+    color var(--duration-micro) var(--ease-out);
+}
+
+.toggle:hover {
   background: var(--wb-muted);
+  color: var(--wb-foreground);
+}
+
+.toggle:active {
+  background: var(--wb-selected);
 }
 
 .toggle > svg {
-  flex: none;
   width: 16px;
   height: 16px;
-  margin: 4px;
-  color: var(--wb-muted-foreground);
-}
-
-.toggle:hover > svg {
-  color: var(--wb-foreground);
 }
 
 .mark {

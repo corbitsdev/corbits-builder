@@ -227,24 +227,27 @@ export function SidebarFrame({
       data-instant={byKey ? "" : undefined}
       aria-label={label}
     >
-      <button
-        type="button"
-        className={styles.toggle}
-        aria-expanded={open}
-        aria-controls={bodyId}
-        aria-keyshortcuts={shortcut.key}
-        title={`${open ? words.closeSidebar : words.openSidebar} (${shortcut.words})`}
-        onClick={() => {
-          setByKey(false);
-          onToggleSidebar();
-        }}
-      >
+      <div className={styles.head}>
         <span className={styles.mark}>
           <Mark size={28} />
         </span>
         <span className={styles.project}>{title}</span>
-        <Icon aria-hidden="true" />
-      </button>
+        <button
+          type="button"
+          className={styles.toggle}
+          aria-label={title}
+          aria-expanded={open}
+          aria-controls={bodyId}
+          aria-keyshortcuts={shortcut.key}
+          title={`${open ? words.closeSidebar : words.openSidebar} (${shortcut.words})`}
+          onClick={() => {
+            setByKey(false);
+            onToggleSidebar();
+          }}
+        >
+          <Icon aria-hidden="true" />
+        </button>
+      </div>
       {/* Kept while open, out of sight, so it can fade as the panel takes its place. */}
       {drawer ? null : glance}
       <div className={styles.room}>
