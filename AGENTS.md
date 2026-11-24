@@ -64,6 +64,10 @@ These are the ones no check catches:
   shows only whether a secret is set.
 - Conventional Commits (`<type>(<scope>): <description>`), one logical change
   per commit and per pull request.
-- Comments explain why, not what the code already says.
+- Comments explain why, not what the code already says, even where older code
+  describes its fields at length.
+- A rule or status is defined once and read everywhere else. The plan's shapes
+  and its rules for when work is finished live in `@corbits-builder/schemas/plan`;
+  `bun run lint` refuses a second test of a step's state for skipped or cancelled.
 - Prompts describe the task and the domain. Turn order, reply termination and
   loop detection are the inference loop's job.
