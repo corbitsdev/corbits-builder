@@ -353,9 +353,10 @@
   background-color: color-mix(in oklab, var(--wb-action) 10%, transparent);
 }
 
-/* Without room beside the page for the contents, an 8rem column with its padding, they give way to
-   it, and Download and Share stand above the page instead. */
-@container (width < 64rem) {
+/* The contents need 10rem to read without breaking a word; with the side's 3rem of padding on each
+   side of the 48rem page, that is a 74rem reader. Narrower, they give way, and Download and Share
+   stand above the page instead. */
+@container (width < 74rem) {
   .side {
     grid-column: 2;
     grid-row: 1;
