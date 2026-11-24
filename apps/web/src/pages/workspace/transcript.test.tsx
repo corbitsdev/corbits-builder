@@ -111,6 +111,19 @@ describe("conversation transcript", () => {
         <RoomThread
           shows={shows}
           thinking
+          runs={[
+            {
+              at: 3,
+              dispatch: {
+                key: "run-coder",
+                call: "run-coder",
+                tool: "execute",
+                role: "coder",
+                kind: "build",
+                pending: false,
+              },
+            },
+          ]}
           standing={(unit) => {
             const row = workUnitStanding(unit, {
               artifacts: [],
@@ -173,6 +186,10 @@ describe("conversation transcript", () => {
             },
           ]}
         />,
+      );
+      // A run with no hand-off in view is a row too, and goes by the same switch.
+      expect(html.includes('data-item-id="work:run-coder"')).toBe(
+        shows.specialists,
       );
       const row = html.slice(html.indexOf('data-item-id="work:call-writer"'));
       return {
