@@ -479,6 +479,11 @@ export const wording = {
       skipStep: (step: string) => `Skip: ${step}`,
       keepStep: (step: string) => `Keep: ${step}`,
     },
+    /** The plan kept in sight under the project's name while the sidebar is closed. */
+    glance: {
+      label: "Plan",
+      progress: (done: number, steps: number) => `${done} of ${steps} done`,
+    },
     /** Read after a step's name, and shown on its pause mark. */
     pausesFirst: "pauses for you before it starts",
     skipped: "skipped",

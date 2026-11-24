@@ -137,6 +137,96 @@
   white-space: nowrap;
 }
 
+/* Closed beside the page, the plan stays in sight in a card under the project's name, on the same
+   ground as the name, its rows as the sidebar draws them. It comes in once the sidebar has gone, and
+   long plans scroll inside it. */
+.glance {
+  position: absolute;
+  inset-block-start: calc(var(--space-2) * 2 + 2.5rem + var(--space-2));
+  inset-inline-start: calc(var(--space-3) + var(--space-1));
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  width: calc(var(--width) - var(--space-4));
+  max-height: min(24rem, 100dvh - 6rem);
+  padding: var(--space-2) var(--space-1) var(--space-1);
+  border-radius: var(--radius-lg);
+  background: var(--card);
+  animation: glance-in var(--duration-standard) var(--ease-out)
+    var(--duration-standard) both;
+}
+
+.sidebar[data-instant] .glance {
+  animation: none;
+}
+
+/* Where the page has no room beside its middle for the card, the name alone stays. */
+@container room (max-width: 80rem) {
+  .glance {
+    display: none;
+  }
+}
+
+@keyframes glance-in {
+  from {
+    opacity: 0;
+    translate: 0 calc(-1 * var(--space-1));
+  }
+}
+
+.glanceHead {
+  margin: 0;
+  padding: 0 var(--space-2);
+  color: var(--wb-muted-foreground);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  line-height: var(--text-xs--line-height);
+}
+
+.glanceRows {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.glance .row {
+  height: 1.75rem;
+}
+
+.glanceOpen {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-md);
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  background: transparent;
+  cursor: pointer;
+}
+
+.glanceOpen:focus-visible {
+  outline: 2px solid var(--wb-ring);
+  outline-offset: -2px;
+}
+
+/* Said to a screen reader only. */
+.said {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 /* The rows scroll below the project's name, never under it. */
 .body {
   display: flex;

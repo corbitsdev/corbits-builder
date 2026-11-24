@@ -3,8 +3,9 @@
  * as the coordinator saved it, each step opening what it made once it is made, and, where no step
  * makes the app, a line saying how the app stands, which opens it. Kept at the bottom, smaller and greyer, are
  * the links that leave it: the project's settings and secrets, the other projects, and the
- * workspace's settings and the person's account. Closed, only the project's name stays. Where the
- * room is narrow it is a drawer over the page. Its frame, foot and links are the workspace
+ * workspace's settings and the person's account. Closed, the project's name stays, and while the
+ * plan is under way a small card under it keeps the plan in sight. Where the room is narrow it is a
+ * drawer over the page. Its frame, foot and links are the workspace
  * sidebar's too, outside a project.
  */
 import {
@@ -143,6 +144,7 @@ export function ProjectSidebarView({
       open={open}
       drawer={drawer}
       onToggleSidebar={onToggleSidebar}
+      glance={<PlanGlance plan={plan} shown={shown} onOpenStep={onOpenStep} />}
     >
       <PlanTree
         label={project}
@@ -198,6 +200,7 @@ export function SidebarFrame({
   open,
   drawer,
   onToggleSidebar,
+  glance = null,
   children,
 }: {
   /** What a screen reader calls the sidebar. */
@@ -206,6 +209,8 @@ export function SidebarFrame({
   open: boolean;
   drawer: boolean;
   onToggleSidebar: () => void;
+  /** What stays in sight under the name while the sidebar is closed beside the page. */
+  glance?: ReactNode;
   children: ReactNode;
 }) {
   const bodyId = `project-sidebar-${useId()}`;
@@ -253,12 +258,93 @@ export function SidebarFrame({
         <span className={styles.project}>{title}</span>
         <Icon aria-hidden="true" />
       </button>
+      {open || drawer ? null : glance}
       <div className={styles.room}>
         <div id={bodyId} className={styles.panel} inert={!open}>
           <div className={styles.body}>{children}</div>
         </div>
       </div>
     </aside>
+  );
+}
+
+/**
+ * The plan in sight while the sidebar is closed: a small card under the project's name with how
+ * many steps are done and each step as its row in the sidebar marks it, so the work can be followed
+ * without opening the sidebar. It shows only while the plan is under way; once every step has
+ * finished, only the name stays. A step that has made something opens it, as its row does.
+ */
+function PlanGlance({
+  plan,
+  shown,
+  onOpenStep,
+}: {
+  plan: readonly SidebarRow[];
+  shown: string | null;
+  onOpenStep: (tab: string) => void;
+}) {
+  const underWay = plan.some(
+    (row) =>
+      row.state === "to_do" ||
+      row.state === "running" ||
+      row.state === "needs_you",
+  );
+  if (!underWay) return null;
+  const counted = plan.filter((row) => row.state !== "declined");
+  const done = counted.filter((row) => row.state === "done").length;
+  return (
+    <section
+      className={styles.glance}
+      data-slot="plan-glance"
+      aria-label={words.glance.label}
+    >
+      <p className={styles.glanceHead}>
+        {words.glance.progress(done, counted.length)}
+      </p>
+      <ul className={styles.glanceRows}>
+        {plan.map((row) => {
+          const state =
+            row.state === "declined"
+              ? words.skipped
+              : words.stepState[row.state];
+          const line = (
+            <span
+              className={styles.row}
+              data-row="step"
+              data-state={row.state}
+              data-opens={row.opens === null ? undefined : ""}
+            >
+              <span className={styles.name}>{row.name}</span>
+              {/* Its colour says where it stands; a screen reader hears it said. */}
+              <span className={styles.said}>, {state}</span>
+            </span>
+          );
+          const { opens } = row;
+          return (
+            <li
+              key={row.id}
+              aria-current={
+                opens !== null && opens === shown ? "page" : undefined
+              }
+              className={styles.item}
+              title={row.name}
+            >
+              {opens === null ? (
+                line
+              ) : (
+                <button
+                  type="button"
+                  className={styles.glanceOpen}
+                  onClick={() => onOpenStep(opens)}
+                >
+                  {line}
+                </button>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 }
 

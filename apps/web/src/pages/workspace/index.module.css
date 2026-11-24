@@ -14,6 +14,8 @@
   min-width: 0;
   overflow: hidden;
   background: var(--wb-background);
+  /* The closed sidebar keeps the plan in sight only where the room leaves space beside the page. */
+  container: room / inline-size;
   /* Runs with the sidebar's width, at its speeds, so the chat can keep its place as it moves. */
   transition: --sidebar-open var(--duration-standard) var(--ease-out);
 }
