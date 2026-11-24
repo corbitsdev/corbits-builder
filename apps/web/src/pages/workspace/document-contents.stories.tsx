@@ -9,6 +9,7 @@ const meta = {
   args: {
     title: "Problem brief",
     sections: [
+      { id: "section-in-short", title: "In short", commented: false },
       { id: "section-who-has-it", title: "Who has it", commented: true },
       {
         id: "section-what-it-must-do",

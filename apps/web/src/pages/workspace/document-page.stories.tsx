@@ -14,6 +14,11 @@ import { splitLeadingHeading } from "./reading-selection.ts";
 /** The Problem brief as the hi-fi page shows it. */
 export const PROBLEM_BRIEF = `# Problem brief
 
+## In short
+
+- **Cake orders get lost** between the phone and the paper
+- The first version **takes orders online** and nothing else
+
 Small bakeries take cake orders by phone and on paper, and lose some of them on busy days.
 
 ## Who has it

@@ -58,6 +58,17 @@ describe("a written document's page", () => {
     expect(html).toContain(">Problem brief</h1>");
   });
 
+  test("keeps a section that opens the text as a section, not the title", () => {
+    const html = page({
+      document: {
+        ...brief,
+        content: "## In short\n\n- Orders get lost.\n\n## Who has it\n",
+      },
+    });
+    expect(html).toContain(">Problem brief</h1>");
+    expect(html).toContain(`id="section-in-short">In short</h`);
+  });
+
   test("shows neither the project nor when the version was filed on the page", () => {
     const html = page();
     expect(html).not.toContain("Bakery orders<");
