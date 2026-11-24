@@ -78,6 +78,7 @@ function Room(args: RoomViewProps) {
           ...sidebar,
           open: sidebarOpen,
           appOpen: onScreen === LIVE_TAB,
+          shown: onScreen,
           onToggleSidebar: () => setSidebarOpen(!sidebarOpen),
           onOpenApp: () => {
             open(LIVE_TAB);

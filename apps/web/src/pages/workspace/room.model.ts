@@ -746,6 +746,17 @@ export function useRoom({
     openQuestion !== undefined && showsScreen(openQuestion)
       ? openQuestion
       : undefined;
+  // A document opened from the screen waiting in the box, so the plan can say it waits on the
+  // person while that screen stays unanswered.
+  const [openedFromScreen, setOpenedFromScreen] = useState<{
+    signal: string;
+    id: string;
+  } | null>(null);
+  const waitsOn =
+    openedFromScreen !== null &&
+    screenQuestion?.signalName === openedFromScreen.signal
+      ? openedFromScreen.id
+      : null;
 
   useEffect(() => {
     setApprovalBusy(false);
@@ -1625,7 +1636,11 @@ export function useRoom({
             .at(-1),
     documents: {
       list: shownDocuments,
-      open: openDocument,
+      open: (id) => {
+        if (screenQuestion !== undefined)
+          setOpenedFromScreen({ signal: screenQuestion.signalName, id });
+        openDocument(id);
+      },
     },
     reply: {
       drafted: value.trim().length > 0,
@@ -1878,6 +1893,7 @@ export function useRoom({
     documents: paneDocuments,
     appShown: liveApp !== null,
     shown: projectOpen && !nothingYet ? shownTab : null,
+    waitsOn,
     onOpen: openProject,
     reload: () => reloadRef.current(),
   });

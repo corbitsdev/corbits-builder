@@ -230,6 +230,29 @@ export const BuildingDark: Story = {
   globals: { mode: "dark" },
 };
 
+/**
+ * The build plan opened from the approval waiting in the prompt box: its step is shaded as the one
+ * on the page, and says it waits on the person until they answer.
+ */
+export const DocumentWaitsOnYou: Story = {
+  args: { ...buildingArgs, shown: "build_plan", waitsOn: "build_plan" },
+  play: async ({ canvasElement }) => {
+    const step = within(canvasElement).getByRole("treeitem", {
+      name: /^Plan the build/,
+    });
+    await expect(step).toHaveAttribute("aria-current", "page");
+    await expect(step).toHaveAccessibleName(
+      `Plan the build, ${words.stepState.needs_you}`,
+    );
+    await expect(step).toHaveTextContent(words.stepNow.needsYou);
+  },
+};
+
+export const DocumentWaitsOnYouDark: Story = {
+  ...DocumentWaitsOnYou,
+  globals: { mode: "dark" },
+};
+
 /** The app is starting: its row turns until it is up. */
 export const AppStarting: Story = {
   args: { ...buildingArgs, app: "starting" },

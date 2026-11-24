@@ -432,13 +432,11 @@
   background: transparent;
 }
 
-/* What waits on the person is shaded, so it stands out without a mark of its own. */
-.row[data-row="step"][data-state="needs_you"],
-.row[data-row="step"][data-state="needs_you"]:hover {
+/* The step whose document is on the page is the one shaded, as a selected row is, so the person
+   sees where in the plan they are reading. What waits on them says so in its own line instead. */
+.item[aria-current] > .row[data-row="step"],
+.item[aria-current] > .row[data-row="step"]:hover {
   background: var(--wb-muted);
-}
-
-.item[aria-current] > .row[data-row="step"] {
   font-weight: 500;
 }
 

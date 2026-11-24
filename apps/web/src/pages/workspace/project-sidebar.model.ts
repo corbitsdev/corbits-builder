@@ -55,6 +55,8 @@ export type ProjectSidebarInput = SidebarWays & {
   appShown: boolean;
   /** The tab on the page; null while the chat fills the room. */
   shown: string | null;
+  /** The document opened from what waits in the prompt box, while it still waits; else null. */
+  waitsOn: string | null;
   /** Opens the project view on a tab. */
   onOpen: (tab: string) => void;
   /** Reads the room again once the hub has a step's change. */
@@ -118,6 +120,7 @@ export function useProjectSidebar(input: ProjectSidebarInput): {
       app: outline.app,
       appOpen: shown === LIVE_TAB,
       shown,
+      waitsOn: input.waitsOn,
       onToggleSidebar: () =>
         writeStoredPreference(SIDEBAR_KEY, open ? "closed" : "open"),
       onAskFirst: (stepId, askFirst) =>

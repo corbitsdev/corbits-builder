@@ -107,6 +107,11 @@ export type ProjectSidebarViewProps = {
   appOpen: boolean;
   /** The tab on the page, whose step is marked; null while the chat fills the room. */
   shown: string | null;
+  /**
+   * The document opened from what waits in the prompt box, while it still waits: its step says it
+   * waits on the person. Null or absent while nothing was opened that way.
+   */
+  waitsOn?: string | null;
   onToggleSidebar: () => void;
   onAskFirst: (stepId: string, askFirst: boolean) => void;
   onDecline: (stepId: string, declined: boolean) => void;
@@ -127,6 +132,7 @@ export function ProjectSidebarView({
   app,
   appOpen,
   shown,
+  waitsOn = null,
   onToggleSidebar,
   onAskFirst,
   onDecline,
@@ -149,6 +155,7 @@ export function ProjectSidebarView({
         plan={plan}
         app={app}
         shown={shown}
+        waitsOn={waitsOn}
         onAskFirst={onAskFirst}
         onDecline={onDecline}
         onOpenStep={onOpenStep}
@@ -466,6 +473,7 @@ function PlanTree({
   plan,
   app,
   shown,
+  waitsOn,
   onAskFirst,
   onDecline,
   onOpenStep,
@@ -473,6 +481,7 @@ function PlanTree({
   plan: readonly SidebarRow[];
   app: SidebarAppState;
   shown: string | null;
+  waitsOn: string | null;
   onAskFirst: (stepId: string, askFirst: boolean) => void;
   onDecline: (stepId: string, declined: boolean) => void;
   onOpenStep: (tab: string) => void;
@@ -605,6 +614,7 @@ function PlanTree({
             row={row}
             app={row.app ? app : null}
             current={row.opens !== null && row.opens === shown}
+            waits={row.opens !== null && row.opens === waitsOn}
             onOpen={opener(row)}
             onAskFirst={onAskFirst}
             onDecline={onDecline}
@@ -628,17 +638,19 @@ function PlanTree({
 
 /**
  * One step of the plan: its name, and under it a line saying where it stands. The one at work
- * turns at its end, and its line counts how long it has run; one that waits on the person is
- * shaded and says so; one that failed is red and says so. What a run last did is often a tool's
- * own words, so it is kept to the row's tooltip. Until a step starts, its line holds its settings,
- * Ask me first and, where it is optional, Skip, each lit while it is on, so how the plan will go is
- * read off the rows rather than hidden in a menu. Once a step has made something it opens it; once
- * the app is built, its step says how it runs.
+ * turns at its end, and its line counts how long it has run; one that waits on the person, or whose
+ * document the waiting card opened, says so; one that failed is red and says so. The one whose
+ * document is on the page is shaded. What a run last did is often a tool's own words, so it is kept
+ * to the row's tooltip. Until a step starts, its line holds its settings, Ask me first and, where
+ * it is optional, Skip, each lit while it is on, so how the plan will go is read off the rows rather
+ * than hidden in a menu. Once a step has made something it opens it; once the app is built, its
+ * step says how it runs.
  */
 function PlanRow({
   row,
   app,
   current,
+  waits,
   onOpen,
   onAskFirst,
   onDecline,
@@ -650,13 +662,15 @@ function PlanRow({
   app: SidebarAppState | null;
   /** What it made is on the page. */
   current: boolean;
+  /** What waits in the prompt box opened what it made, so it waits on the person too. */
+  waits: boolean;
   /** Opens what it made; null while there is nothing to show. */
   onOpen: (() => void) | null;
   onAskFirst: (stepId: string, askFirst: boolean) => void;
   onDecline: (stepId: string, declined: boolean) => void;
   menu: ReactNode;
 } & TreeItemProps) {
-  const { state } = row;
+  const state = waits && row.state !== "failed" ? "needs_you" : row.state;
   const next = row.steps.find(
     (step) => step.state === "to_do" && step.declined !== true,
   );
