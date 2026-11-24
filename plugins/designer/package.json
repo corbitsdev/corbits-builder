@@ -132,6 +132,7 @@
         "host": [
           "design",
           "mockupFrame",
+          "commentCard",
           "earlierAnswer"
         ]
       },

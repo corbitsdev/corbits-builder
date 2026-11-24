@@ -68,17 +68,7 @@ function leave(card: HTMLElement | null, then: (() => void) | undefined) {
   fade.finished.then(settle, settle);
 }
 
-export function CommentCard({
-  state,
-  comment,
-  paired = false,
-  saving = false,
-  saveFailed = false,
-  onSave,
-  onCancel,
-  onEdit,
-  onDelete,
-}: {
+export type CommentCardProps = {
   state: CommentState;
   /** While writing, what the field starts with. */
   comment: string;
@@ -90,7 +80,19 @@ export function CommentCard({
   onCancel?: () => void;
   onEdit?: () => void;
   onDelete?: () => void;
-}) {
+};
+
+export function CommentCard({
+  state,
+  comment,
+  paired = false,
+  saving = false,
+  saveFailed = false,
+  onSave,
+  onCancel,
+  onEdit,
+  onDelete,
+}: CommentCardProps) {
   const cardRef = useRef<HTMLElement>(null);
   const wasWriting = useRef(state === "writing");
   // A card that first shows as a field is a comment just started; one shown saved was already there.

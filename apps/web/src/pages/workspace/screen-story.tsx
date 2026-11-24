@@ -21,6 +21,7 @@ import {
 } from "@corbits-builder/plugin";
 import type { ReadyPlanOffer } from "@corbits-builder/schemas/project";
 import type { QuestionAnswer } from "@corbits-builder/schemas/conversation";
+import { CommentCard } from "./comment-card.tsx";
 import { MockupFrame } from "./mockup-frame.tsx";
 import { ClosedQuestions } from "./questions-card.tsx";
 import { sampleDesign } from "./sample-design.ts";
@@ -49,6 +50,7 @@ export const storySupplies: HostSupplies = {
     approval: { option: "design-option-2" },
   },
   mockupFrame: MockupFrame,
+  commentCard: CommentCard,
   earlierAnswer: undefined,
   documents: {
     list: [

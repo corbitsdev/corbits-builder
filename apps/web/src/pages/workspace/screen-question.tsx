@@ -34,6 +34,7 @@ import { SettledFrame } from "@corbits-builder/plugin-ui/screen-card";
 import { wording } from "../../config.ts";
 import { Fault, InlineNote } from "../../components.jsx";
 import type { DesignFiles } from "./design-bundle.ts";
+import type { CommentCardProps } from "./comment-card.tsx";
 import type { MockupFrameProps } from "./mockup-frame.tsx";
 import { SettledReply, useAnswer } from "./questions-card.tsx";
 import styles from "./screen-question.module.css";
@@ -72,6 +73,8 @@ export type HostSupplies = {
   design: ReviewedDesign | null;
   /** A design bundle drawn in the design pane's own sandboxed frame. */
   mockupFrame: ComponentType<MockupFrameProps>;
+  /** The card a comment is written and kept in on the project's pages. */
+  commentCard: ComponentType<CommentCardProps>;
   /** The output of the latest question the coordinator asked with the same screen, if answered. */
   earlierAnswer: unknown;
   /** The project's filed documents, and a way to open one over the room by its kind. */
@@ -94,6 +97,7 @@ export type Tenants = { project: string; workspace: string };
 export type ViewResources = {
   design: HostSupplies["design"];
   mockupFrame: HostSupplies["mockupFrame"];
+  commentCard: HostSupplies["commentCard"];
   earlierAnswer: unknown;
   documents: { list: readonly ShownDocument[] };
   designConcepts: readonly ChoosableConcept[];
@@ -127,6 +131,7 @@ export type ChoosableConcept = {
 const SUPPLIED: ReadonlySet<string> = new Set<keyof HostSupplies>([
   "design",
   "mockupFrame",
+  "commentCard",
   "earlierAnswer",
   "documents",
   "designConcepts",
@@ -354,6 +359,7 @@ export function screenHost<In, Out, Data, Prepared>(
           resources: {
             design: host.design,
             mockupFrame: host.mockupFrame,
+            commentCard: host.commentCard,
             earlierAnswer: host.earlierAnswer,
             documents: { list: host.documents.list },
             designConcepts: host.designConcepts,
@@ -495,6 +501,7 @@ export function listedHost(
           resources: {
             design: host.design,
             mockupFrame: host.mockupFrame,
+            commentCard: host.commentCard,
             earlierAnswer: undefined,
             documents: { list: host.documents.list },
             designConcepts: host.designConcepts,

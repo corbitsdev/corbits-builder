@@ -168,6 +168,7 @@ import type {
   ProjectInfoDialogProps,
 } from "../project-menu.model.ts";
 import { parseBundle } from "./design-bundle.ts";
+import { CommentCard } from "./comment-card.tsx";
 import { MockupFrame } from "./mockup-frame.tsx";
 import type {
   ChoosableConcept,
@@ -1643,6 +1644,7 @@ export function useRoom({
     design: reviewedDesign(),
     designConcepts: choosableConcepts(),
     mockupFrame: MockupFrame,
+    commentCard: CommentCard,
     // The last round's answer on the same screen, so the person sees what they asked for before.
     earlierAnswer:
       screenQuestion === undefined
