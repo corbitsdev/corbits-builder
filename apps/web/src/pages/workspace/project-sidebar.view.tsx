@@ -306,6 +306,11 @@ function PlanGlance({
               <span className={styles.name}>{row.name}</span>
               {/* Its type says where it stands; a screen reader hears it said. */}
               <span className={styles.said}>, {state}</span>
+              {row.state === "running" ? (
+                <span className={styles.dot}>
+                  <Working />
+                </span>
+              ) : null}
             </span>
           );
           const { opens } = row;
@@ -599,7 +604,7 @@ function PlanTree({
 /**
  * One step of the plan: its name alone, with no icon. Where it
  * stands is said by its words and colour: done ones are quiet, ones still ahead fainter, the one at
- * work shimmers, and one that failed is red. One that waits on the person is shaded. A step that
+ * work shimmers with a ring turning at its end, and one that failed is red. One that waits on the person is shaded. A step that
  * will not happen is struck through, and one that will pause for the person first carries a pause
  * mark, so neither setting hides in its menu. Once a step has made something it opens it; once the
  * app is built, its step says how it runs.
@@ -672,6 +677,11 @@ function PlanRow({
             </span>
           )}
         </span>
+        {state === "running" ? (
+          <span className={styles.dot}>
+            <Working />
+          </span>
+        ) : null}
         {pauses ? (
           <span className={styles.dot} title={words.pausesFirst}>
             <svg
