@@ -884,18 +884,27 @@ export const ScreenNotNow: Story = {
   },
 };
 
-/** A plugin's own screen answers nothing, so it has Open alone and simply waits. */
+/** A plugin's own screen answers nothing, but Not now still sets it aside for now. */
 export const ScreenOfItsOwn: Story = {
   args: {
     ...ScreenWaiting.args,
-    waiting: { kind: "screen", title: "Pick colours", disabled: false },
+    waiting: {
+      kind: "screen",
+      title: "Pick colours",
+      onNotNow: fn(),
+      disabled: false,
+    },
   },
-  play: async ({ canvasElement }) => {
-    await expect(
-      within(canvasElement).queryByRole("button", {
+  play: async ({ canvasElement, args }) => {
+    await userEvent.click(
+      within(canvasElement).getByRole("button", {
         name: wording.promptBox.waiting.notNow,
       }),
-    ).toBeNull();
+    );
+    const waiting = args.waiting;
+    await expect(
+      waiting?.kind === "screen" ? waiting.onNotNow : undefined,
+    ).toHaveBeenCalled();
   },
 };
 

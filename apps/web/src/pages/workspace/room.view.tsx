@@ -193,7 +193,7 @@ export type BoxWaiting =
   | {
       kind: "screen";
       title: string;
-      /** Answers the screen with Not now; absent where the screen answers nothing. */
+      /** Turns the screen down, or sets it aside for now where it answers nothing. */
       onNotNow?: (() => void) | undefined;
       disabled: boolean;
     };

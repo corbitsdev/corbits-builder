@@ -51,8 +51,8 @@ export function StepCard({
 
 /**
  * A plugin's screen waiting in the plugin space: Open takes the person to it, and Not now turns
- * down one the coordinator asked with. The screen's own forward action reaches the box from the
- * space.
+ * down one the coordinator asked with, or sets aside one a plugin showed of its own accord. The
+ * screen's own forward action reaches the box from the space.
  */
 export function ScreenCard({
   title,
@@ -62,7 +62,7 @@ export function ScreenCard({
 }: {
   title: string;
   onOpen: () => void;
-  /** Turns the screen down; absent where it answers nothing, so it simply waits. */
+  /** Turns the screen down, or sets it aside for now. */
   onNotNow?: (() => void) | undefined;
   disabled?: boolean;
 }) {
