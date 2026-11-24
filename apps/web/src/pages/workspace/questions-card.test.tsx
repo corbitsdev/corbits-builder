@@ -9,7 +9,9 @@ import {
   QuestionsCard,
   answerLabels,
   enterAnswer,
+  isRecommended,
   keyIntent,
+  shownLabel,
   withWords,
 } from "./questions-card.tsx";
 
@@ -239,6 +241,21 @@ describe("questions card", () => {
     expect(html).toContain(text.answeredInChat);
     expect(html).toContain("Actually, let&#x27;s build a game.");
     expect(html).not.toContain("<dl");
+  });
+});
+
+describe("the coordinator's recommendation", () => {
+  test("is read however the model writes the mark, and left off the label", () => {
+    for (const label of [
+      "Bakery owners (Recommended)",
+      "Bakery owners (recommended)",
+      "Bakery owners  (RECOMMENDED) ",
+    ]) {
+      expect(isRecommended(label)).toBe(true);
+      expect(shownLabel(label)).toBe("Bakery owners");
+    }
+    expect(isRecommended("Recommended reading")).toBe(false);
+    expect(shownLabel("Counter staff")).toBe("Counter staff");
   });
 });
 

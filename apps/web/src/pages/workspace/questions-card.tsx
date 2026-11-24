@@ -137,14 +137,17 @@ export function useAnswer<Draft>(
   };
 }
 
-/** The coordinator marks the option it recommends by ending its label with this. */
-const recommendedSuffix = "(Recommended)";
+/**
+ * The coordinator marks the option it recommends by ending its label with "(Recommended)". A model
+ * does not always write it exactly so, so its case and the spaces around it do not matter.
+ */
+const recommendedMark = /\s*\(recommended\)\s*$/i;
+
+export const isRecommended = (label: string) => recommendedMark.test(label);
 
 /** A label as the person's answer reads back: the coordinator's recommendation is not theirs to repeat. */
-function shownLabel(label: string): string {
-  return label.endsWith(recommendedSuffix)
-    ? label.slice(0, -recommendedSuffix.length).trimEnd()
-    : label;
+export function shownLabel(label: string): string {
+  return label.replace(recommendedMark, "");
 }
 
 function answered(answer: Answer): boolean {
@@ -341,7 +344,7 @@ function OptionText({ label, description }: Question["options"][number]) {
     <span className={styles.choiceText}>
       <span className={styles.choiceLabel}>
         {shownLabel(label)}
-        {label.endsWith(recommendedSuffix) ? (
+        {isRecommended(label) ? (
           <span className={styles.recommended}>{text.recommended}</span>
         ) : null}
       </span>
