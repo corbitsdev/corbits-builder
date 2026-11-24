@@ -458,11 +458,6 @@ export const wording = {
       workspace: "Workspace",
     },
     noPlan: "Nothing made yet",
-    /** What a row of the plan is named for what its step makes, where no document's tab names it. */
-    makes: {
-      app: "App",
-      design_option: "Design",
-    } as Record<string, string>,
     /** Read after a step's name, since its mark alone does not say it. */
     stepState: {
       to_do: "to do",

@@ -31,21 +31,7 @@ const step = (
   ...settings,
 });
 
-// What each row of the stories makes, which its icon shows.
-const KINDS: Record<string, string> = {
-  brief: "problem_brief",
-  constraints: "constraints",
-  approaches: "approaches",
-  requirements: "product_requirements",
-  research: "research",
-  design: "design_option",
-  build_plan: "build_plan",
-  build: "app",
-  manual: "user_manual",
-  publish: "published",
-};
-
-/** A thing the project makes, made by one step of the same name; it opens what it made once it has. */
+/** A step of the plan, a row of its own; it opens what it made once the project has it. */
 const row = (
   id: string,
   name: string,
@@ -56,69 +42,94 @@ const row = (
   id,
   name,
   state,
-  doing: null,
   app: false,
-  makes: KINDS[id] ?? null,
+  makes: null,
   opens: null,
   steps: [step(id, name, state, settings)],
+  children: [],
   ...fields,
 });
 
+/** A step that has made a document the project view can open, of the given kind. */
+const made = (kind: string) => ({ makes: kind, opens: kind });
+
+/** A ready-made plan's group, with its steps under it. */
+const group = (
+  id: string,
+  name: string,
+  state: SidebarStepState,
+  children: SidebarRow[],
+): SidebarRow => ({
+  id,
+  name,
+  state,
+  app: false,
+  makes: null,
+  opens: null,
+  steps: [],
+  children,
+});
+
 const planning = [
-  row("brief", "Brief", "done", {}, { opens: "problem_brief" }),
-  row("constraints", "Constraints", "done", {}, { opens: "constraints" }),
-  row("approaches", "Approaches", "running"),
-  row("requirements", "Requirements", "to_do", { askFirst: true }),
-  row("research", "Research", "to_do", { declined: false }),
-  row("design", "Design"),
-  row("build", "App", "to_do", {}, { app: true }),
+  group("web-app", "Build a web app", "running", [
+    row("brief", "Write the brief", "done", {}, made("problem_brief")),
+    row("constraints", "List the constraints", "done", {}, made("constraints")),
+    row("approaches", "Compare approaches", "running"),
+    row("requirements", "Write the requirements", "to_do", { askFirst: true }),
+    row("research", "Research other bakeries", "to_do", { declined: false }),
+    row("design", "Design the look"),
+    row("build", "Build the app", "to_do", {}, { app: true }),
+  ]),
 ];
 
 const building = [
-  row("brief", "Brief", "done", {}, { opens: "problem_brief" }),
-  row(
-    "requirements",
-    "Requirements",
-    "done",
-    {},
-    { opens: "product_requirements" },
-  ),
-  row(
-    "design",
-    "Design",
-    "done",
-    {},
-    {
-      opens: "design",
-      steps: [
-        step("looks", "Choose how many looks", "done"),
-        step("design", "Design the look", "done"),
-      ],
-    },
-  ),
-  row("build_plan", "Build plan", "done", {}, { opens: "build_plan" }),
-  row("build", "App", "done", {}, { app: true, opens: LIVE_TAB }),
-  row("manual", "User manual", "running"),
+  group("web-app", "Build a web app", "running", [
+    row("brief", "Write the brief", "done", {}, made("problem_brief")),
+    row(
+      "requirements",
+      "Write the requirements",
+      "done",
+      {},
+      made("product_requirements"),
+    ),
+    row("looks", "Choose how many looks", "done"),
+    row("design", "Design the look", "done", {}, made("design")),
+    row("build_plan", "Plan the build", "done", {}, made("build_plan")),
+    row(
+      "build",
+      "Build the app",
+      "done",
+      {},
+      { app: true, makes: "app", opens: LIVE_TAB },
+    ),
+    row("manual", "Write the user manual", "running"),
+  ]),
 ];
 
-/** Published after the build: one row for the whole ready-made plan, saying what waits on the person. */
+/** Published after the build: a second ready-made plan, one of its steps waiting on the person. */
 const publishing = [
   ...building,
-  row(
-    "publish",
-    "Published on Cloudflare",
-    "needs_you",
-    {},
-    {
-      doing: "Confirm where your app goes",
-      steps: [
-        step("ready", "Check your app is ready for Cloudflare", "done"),
-        step("where", "Confirm where your app goes", "needs_you"),
-        step("go", "Publish the app to Cloudflare"),
-        step("live", "Confirm the saved version is the one live"),
-      ],
-    },
-  ),
+  group("publish", "Publish on Cloudflare", "needs_you", [
+    row("ready", "Check your app is ready for Cloudflare", "done"),
+    row("where", "Confirm where your app goes", "needs_you"),
+    row("go", "Publish the app to Cloudflare"),
+    row("live", "Confirm the saved version is the one live"),
+  ]),
+];
+
+/**
+ * A plan the coordinator wrote from plugin actions, with no ready-made plan: research, a question,
+ * then a command-line tool built and tried. None of its steps makes anything the project view
+ * opens, so every row only says where its step stands.
+ */
+const coordinatorPlan = [
+  row("look", "Look at how other bakeries take orders", "done"),
+  row("compare", "Compare order formats", "done"),
+  row("ask", "Ask which format to read", "needs_you"),
+  row("tool", "Build the order import tool", "to_do", { askFirst: true }),
+  row("try", "Try the tool on last week's orders", "to_do", {
+    declined: false,
+  }),
 ];
 
 // Holds what the page would: what is on the page and whether the sidebar is out, so a story can
@@ -211,8 +222,9 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 /**
- * While planning: the finished steps are quiet, the one being worked on is the brightest row and
- * turns, and the steps ahead are fainter. There is no app yet.
+ * While a ready-made plan runs: its group heads its steps. The finished steps are quiet, and those
+ * that filed something show it; the one being worked on is the brightest row and turns, and the
+ * steps ahead are fainter. There is no app yet.
  */
 export const Planning: Story = {};
 
@@ -277,9 +289,31 @@ export const NoApp: Story = {
 export const NewProject: Story = { args: { plan: [] } };
 
 /**
- * A ready-made plan whose steps make nothing of their own until its end is one row, named for what
- * it makes, saying under its name what waits on the person.
+ * A plan the coordinator wrote itself, its steps mostly making nothing: each is a row of its own,
+ * saying only where it stands, and nothing is made up to stand for what they lead to.
  */
+export const CoordinatorPlan: Story = {
+  args: { plan: coordinatorPlan },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const rows = canvas.getAllByRole("treeitem");
+    await expect(rows.map((item) => item.getAttribute("aria-level"))).toEqual(
+      coordinatorPlan.map(() => "1"),
+    );
+    await expect(
+      canvas.getByRole("treeitem", { name: /^Ask which format to read/ }),
+    ).toHaveAccessibleName(
+      `Ask which format to read, ${words.stepState.needs_you}`,
+    );
+  },
+};
+
+export const CoordinatorPlanDark: Story = {
+  args: { plan: coordinatorPlan },
+  globals: { mode: "dark" },
+};
+
+/** Two ready-made plans, one after the other: the second's step waiting on the person is shaded. */
 export const Publishing: Story = { args: { plan: publishing, app: "running" } };
 
 export const PublishingDark: Story = {
@@ -361,24 +395,28 @@ export const LongPlan: Story = {
 export const Closed: Story = { args: { ...buildingArgs, open: false } };
 
 /**
- * The list is a tree with one tab stop, which lands on its first row. The arrows move between rows,
- * and Home and End jump to either end.
+ * The list is a tree with one tab stop, which lands on its first row. The arrows move through every
+ * row, a group's steps included, the left arrow goes from a step to its group, and Home and End jump
+ * to either end.
  */
 export const Keyboard: Story = {
   args: buildingArgs,
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    const first = canvas.getByRole("treeitem", { name: /^Brief/ });
+    const first = canvas.getByRole("treeitem", { name: /^Build a web app/ });
+    await expect(first).toHaveAttribute("aria-expanded", "true");
     while (document.activeElement !== first) await userEvent.tab();
     await userEvent.keyboard("{ArrowDown}");
-    await expect(
-      canvas.getByRole("treeitem", { name: /^Requirements/ }),
-    ).toHaveFocus();
+    const brief = canvas.getByRole("treeitem", { name: /^Write the brief/ });
+    await expect(brief).toHaveFocus();
+    await expect(brief).toHaveAttribute("aria-level", "2");
     await userEvent.keyboard("{End}");
     await expect(
-      canvas.getByRole("treeitem", { name: /^User manual/ }),
+      canvas.getByRole("treeitem", { name: /^Write the user manual/ }),
     ).toHaveFocus();
-    await userEvent.keyboard("{Home}");
+    await userEvent.keyboard("{ArrowLeft}");
+    await expect(first).toHaveFocus();
+    await userEvent.keyboard("{End}{Home}");
     await expect(first).toHaveFocus();
   },
 };
@@ -392,10 +430,10 @@ export const StepMenu: Story = {
   play: async ({ canvasElement, args }) => {
     const canvas = within(canvasElement);
     const requirements = canvas.getByRole("treeitem", {
-      name: /^Requirements/,
+      name: /^Write the requirements/,
     });
     await expect(requirements).toHaveAccessibleName(
-      `Requirements, ${words.stepState.to_do}, ${words.pausesFirst}`,
+      `Write the requirements, ${words.stepState.to_do}, ${words.pausesFirst}`,
     );
     await expect(requirements).toHaveAttribute("aria-haspopup", "menu");
     requirements.focus();
@@ -460,27 +498,30 @@ export const DrawerDark: Story = {
 };
 
 /**
- * A row whose thing is made opens it, and is marked while it is on the page; the app's row opens
- * the app. One with nothing to show yet is only where the work stands, and pressing it does
- * nothing.
+ * A step that has made something opens it, and is marked while it is on the page; the step that
+ * built the app opens the app. A step with nothing to show, or the group over it, is only where the
+ * work stands, and pressing it does nothing.
  */
 export const OpensWhatARowMade: Story = {
   args: buildingArgs,
   play: async ({ args, canvasElement }) => {
     const canvas = within(canvasElement);
     const requirements = canvas.getByRole("treeitem", {
-      name: /^Requirements/,
+      name: /^Write the requirements/,
     });
     await userEvent.click(requirements);
     await expect(args.onOpenStep).toHaveBeenCalledWith("product_requirements");
     await expect(requirements).toHaveAttribute("aria-current", "page");
     await userEvent.click(
-      canvas.getByRole("treeitem", { name: /^User manual/ }),
+      canvas.getByRole("treeitem", { name: /^Write the user manual/ }),
+    );
+    await userEvent.click(
+      canvas.getByRole("treeitem", { name: /^Choose how many looks/ }),
     );
     await expect(args.onOpenStep).toHaveBeenCalledTimes(1);
-    const app = canvas.getByRole("treeitem", { name: /^App/ });
+    const app = canvas.getByRole("treeitem", { name: /^Build the app/ });
     await expect(app).toHaveAccessibleName(
-      `App, ${words.stepState.done}, ${words.appNow.running}`,
+      `Build the app, ${words.stepState.done}, ${words.appNow.running}`,
     );
     await userEvent.click(app);
     await expect(args.onOpenStep).toHaveBeenLastCalledWith(LIVE_TAB);
@@ -489,39 +530,31 @@ export const OpensWhatARowMade: Story = {
 };
 
 /**
- * A row covering several steps says what waits on the person under its name, and its menu names
- * each step whose settings it changes.
+ * A group has no menu of its own: each of its steps has its own, and choosing in one changes only
+ * that step.
  */
-export const RowOfSeveralSteps: Story = {
+export const GroupOfSteps: Story = {
   args: {
     plan: [
-      row(
-        "design",
-        "Design",
-        "to_do",
-        {},
-        {
-          steps: [
-            step("looks", "Choose how many looks", "to_do", {
-              declined: false,
-            }),
-            step("design", "Design the look", "to_do", { askFirst: true }),
-          ],
-        },
-      ),
+      group("design", "Design the app", "to_do", [
+        row("looks", "Choose how many looks", "to_do", { declined: false }),
+        row("look", "Design the look", "to_do", { askFirst: true }),
+      ]),
     ],
   },
   play: async ({ args, canvasElement }) => {
-    const design = within(canvasElement).getByRole("treeitem", {
-      name: /^Design/,
+    const canvas = within(canvasElement);
+    await expect(
+      canvas.getByRole("treeitem", { name: /^Design the app/ }),
+    ).not.toHaveAttribute("aria-haspopup");
+    const looks = canvas.getByRole("treeitem", {
+      name: /^Choose how many looks/,
     });
-    design.focus();
+    looks.focus();
     await userEvent.keyboard("{Enter}");
     const page = within(document.body);
     await userEvent.click(
-      await page.findByRole("menuitem", {
-        name: words.stepMenu.skipStep("Choose how many looks"),
-      }),
+      await page.findByRole("menuitem", { name: words.stepMenu.skip }),
     );
     await expect(args.onDecline).toHaveBeenCalledWith("looks", true);
   },

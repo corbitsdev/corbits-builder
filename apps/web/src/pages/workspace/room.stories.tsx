@@ -4,7 +4,6 @@ import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 import { wording } from "../../config.ts";
 import { AppView } from "../../App.view.tsx";
 import app from "../../App.stories.tsx";
-import { isDocumentKind } from "@corbits-builder/schemas/artifact";
 import type { PlanView } from "@corbits-builder/schemas/project";
 import type { ArtifactPaneProps } from "./artifact-pane.tsx";
 import documentPane, {
@@ -102,16 +101,7 @@ function outlineOf(
 ) {
   return projectOutline({
     plan,
-    documents: (pane.documents ?? []).map((item) => ({
-      ...item,
-      written: isDocumentKind(item.id),
-    })),
-    draft: (pane.draft ?? null) !== null,
-    concepts: (pane.concepts ?? []).map((concept) => ({
-      label: concept.label,
-      drawn: concept.content !== undefined,
-    })),
-    manual: (pane.manual ?? null) !== null,
+    documents: pane.documents ?? [],
     app: { shown: (pane.liveApp ?? null) !== null, state: app },
   });
 }

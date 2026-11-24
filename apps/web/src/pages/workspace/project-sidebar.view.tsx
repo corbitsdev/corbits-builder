@@ -1,7 +1,7 @@
 /**
- * An open project's sidebar: the project's name, which opens and closes it, then what the project
- * makes, each thing opening once it is made, and, where no row makes the app, a line saying how the
- * app stands, which opens it. Kept at the bottom, smaller and greyer, are
+ * An open project's sidebar: the project's name, which opens and closes it, then the project's plan
+ * as the coordinator saved it, each step opening what it made once it is made, and, where no step
+ * makes the app, a line saying how the app stands, which opens it. Kept at the bottom, smaller and greyer, are
  * the links that leave it: the project's settings and secrets, the other projects, and the
  * workspace's settings and the person's account. Closed, only the project's name stays. Where the
  * room is narrow it is a drawer over the page. Its frame, foot and links are the workspace
@@ -20,20 +20,17 @@ import {
 import {
   AppWindow,
   ArrowUpRight,
-  BookOpen,
   Building2,
+  Circle,
   CircleAlert,
+  CircleCheck,
+  CircleDot,
+  CircleSlash,
   CircleUser,
   Ellipsis,
-  File,
   FileText,
   Folder,
-  Globe,
-  ListChecks,
   Lock,
-  NotebookText,
-  Package,
-  Palette,
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
@@ -81,23 +78,28 @@ export type SidebarStep = {
 };
 
 /**
- * One thing the project makes, as the plan lists it: a document, the app, or what a ready-made
- * plan ends in. It covers the steps taken to make it, whose settings its menu changes.
+ * One entry of the plan: a step, or a ready-made plan's group with its steps under it. A step that
+ * makes nothing is listed as much as one that makes something.
  */
 export type SidebarRow = {
   id: string;
   name: string;
   state: SidebarStepState;
-  /** What it is at, under its name, when the name alone does not say; null otherwise. */
-  doing: string | null;
   /** It makes the project's app: once built it opens the app and says how it runs. */
   app: boolean;
-  /** The kind of thing it makes, which its icon shows; null where nothing says. */
+  /** What it made that the project has, which its icon shows: "app", or a document's kind. */
   makes: string | null;
   /** The tab of what it made, which the row opens; null while there is nothing to show. */
   opens: string | null;
+  /** The step it is, whose settings its menu changes; none for a group. */
   steps: readonly SidebarStep[];
+  /** A group's steps; none for a step. */
+  children: readonly SidebarRow[];
 };
+
+/** Every row of the plan, a group's steps after it. */
+const everyRow = (plan: readonly SidebarRow[]): SidebarRow[] =>
+  plan.flatMap((row) => [row, ...row.children]);
 
 /** How the project's app stands, as its line says it. */
 export type SidebarAppState =
@@ -169,8 +171,8 @@ export function ProjectSidebarView({
         onDecline={onDecline}
         onOpenStep={onOpenStep}
       />
-      {/* The app has its own line only where no row of the plan makes it. */}
-      {plan.some((row) => row.app) ? null : (
+      {/* The app has its own line only where no step of the plan makes it. */}
+      {everyRow(plan).some((row) => row.app) ? null : (
         <AppLine app={app} open={appOpen} onOpen={onOpenApp} />
       )}
       <SidebarFoot>
@@ -378,6 +380,8 @@ type TreeRow = {
   activate: (() => void) | null;
   /** It has a menu, which Shift+F10 or the context-menu key opens. */
   menu: boolean;
+  /** The group it is under, which the left arrow moves to; null at the top. */
+  parent: string | null;
 };
 
 /** What every row of the tree takes to hold the tree's one tab stop. */
@@ -386,10 +390,11 @@ type TreeItemProps = Required<
 >;
 
 /**
- * What the project makes, as a tree of one level with a single tab stop, after the WAI-ARIA tree
- * view pattern: the arrows move between rows, Home and End jump, a letter finds the next row
- * starting with it, Enter or Space opens what a row made or else the row's menu, and Shift+F10 or
- * the context-menu key opens a row's menu. Until there is a plan it says nothing is made yet.
+ * The plan, as a tree two levels deep with a single tab stop, after the WAI-ARIA tree view pattern:
+ * a group's steps always show under it; the up and down arrows move through every row, the left
+ * arrow goes from a step to its group, Home and End jump, a letter finds the next row starting with
+ * it, Enter or Space opens what a row made or else the row's menu, and Shift+F10 or the
+ * context-menu key opens a row's menu. Until there is a plan it says nothing is made yet.
  */
 function PlanTree({
   label,
@@ -412,16 +417,19 @@ function PlanTree({
   const [menu, setMenu] = useState<string | null>(null);
   const opener = ({ opens }: SidebarRow) =>
     opens === null ? null : () => onOpenStep(opens);
-  const rows = plan.map((row): TreeRow => {
-    const key = rowKey(row.id);
-    const menu = row.steps.some(stepHasMenu);
-    return {
-      key,
-      name: row.name,
-      activate: opener(row) ?? (menu ? () => setMenu(key) : null),
-      menu,
-    };
-  });
+  const rows = plan.flatMap((top) =>
+    [top, ...top.children].map((row): TreeRow => {
+      const key = rowKey(row.id);
+      const menu = row.steps.some(stepHasMenu);
+      return {
+        key,
+        name: row.name,
+        activate: opener(row) ?? (menu ? () => setMenu(key) : null),
+        menu,
+        parent: row === top ? null : rowKey(top.id),
+      };
+    }),
+  );
   const items = useRef(new Map<string, HTMLElement>());
   const [focused, setFocused] = useState<string | null>(null);
   // Tab enters at the row last focused, else the first.
@@ -458,6 +466,10 @@ function PlanTree({
         break;
       case "ArrowUp":
         move(rows[index - 1]);
+        break;
+      case "ArrowLeft":
+        if (row.parent === null) return;
+        focus(row.parent);
         break;
       case "Home":
         move(rows[0]);
@@ -512,63 +524,79 @@ function PlanTree({
       className={styles.tree}
       onKeyDown={onKeyDown}
     >
-      {plan.map((row) => (
-        <PlanRow
-          key={row.id}
-          row={row}
-          app={row.app ? app : null}
-          current={row.opens !== null && row.opens === shown}
-          onOpen={opener(row)}
-          menu={
-            row.steps.some(stepHasMenu) ? (
-              <RowStepsMenu
-                steps={row.steps.filter(stepHasMenu)}
-                menu={menuOf(rowKey(row.id), row.name)}
-                onAskFirst={onAskFirst}
-                onDecline={onDecline}
-              />
-            ) : null
-          }
-          {...itemProps(rowKey(row.id))}
-        />
-      ))}
+      {plan.map((top) => {
+        const planRow = (row: SidebarRow, level: 1 | 2, under?: ReactNode) => (
+          <PlanRow
+            key={row.id}
+            row={row}
+            level={level}
+            app={row.app ? app : null}
+            current={row.opens !== null && row.opens === shown}
+            onOpen={opener(row)}
+            menu={
+              row.steps.some(stepHasMenu) ? (
+                <RowStepsMenu
+                  steps={row.steps.filter(stepHasMenu)}
+                  menu={menuOf(rowKey(row.id), row.name)}
+                  onAskFirst={onAskFirst}
+                  onDecline={onDecline}
+                />
+              ) : null
+            }
+            {...itemProps(rowKey(row.id))}
+          >
+            {under}
+          </PlanRow>
+        );
+        return planRow(
+          top,
+          1,
+          top.children.length === 0 ? undefined : (
+            <ul role="group" className={styles.tree}>
+              {top.children.map((row) => planRow(row, 2))}
+            </ul>
+          ),
+        );
+      })}
     </ul>
   );
 }
 
-// What a row makes, by its kind, so the list reads as the things themselves: a document of a kind
-// not named here is a page, and a ready-made plan's end that names no outcome is a package.
-const KIND_ICONS: Record<string, LucideIcon> = {
-  app: AppWindow,
-  published: Globe,
-  problem_brief: NotebookText,
-  product_requirements: FileText,
-  design: Palette,
-  design_option: Palette,
-  build_plan: ListChecks,
-  user_manual: BookOpen,
+// Where a step stands, by an icon as well as its words and colour; running and failed draw their own.
+const STATE_ICONS: Record<SidebarStepState, LucideIcon> = {
+  to_do: Circle,
+  running: Circle,
+  needs_you: CircleDot,
+  done: CircleCheck,
+  failed: CircleAlert,
+  declined: CircleSlash,
 };
 
-const kindIcon = (makes: string | null): LucideIcon =>
-  makes === null ? Package : (KIND_ICONS[makes] ?? File);
+/** A row's icon: what it made once the project has it, else where it stands. */
+const rowIcon = ({ makes, opens, state }: SidebarRow): LucideIcon =>
+  opens === null ? STATE_ICONS[state] : makes === "app" ? AppWindow : FileText;
 
 /**
- * One thing the project makes: its icon, then its name. Where it stands is said by its words and
- * its icon: made ones are quiet, ones still ahead fainter, the one being made shimmers with the
- * spinner in its icon's place, and one that failed shows the alert in red. One that waits on the
- * person is shaded, with what it waits for under its name. A thing that will not be made is struck
- * through, and one whose next step will pause for the person first carries a pause mark, so neither
- * setting hides in its menu. Once the app is built, its row says how it runs.
+ * One step of the plan, or a group with its steps under it: its icon, then its name. Where it
+ * stands is said by its words and its icon: done ones are quiet, ones still ahead fainter, the one
+ * at work shimmers with the spinner in its icon's place, and one that failed shows the alert in
+ * red. One that waits on the person is shaded. A step that will not happen is struck through, and
+ * one that will pause for the person first carries a pause mark, so neither setting hides in its
+ * menu. Once a step has made something it shows what, and opens it; once the app is built, its
+ * step says how it runs.
  */
 function PlanRow({
   row,
+  level,
   app,
   current,
   onOpen,
   menu,
+  children,
   ...item
 }: {
   row: SidebarRow;
+  level: 1 | 2;
   /** How the app stands, on the row that makes it; null on every other. */
   app: SidebarAppState | null;
   /** What it made is on the page. */
@@ -576,6 +604,8 @@ function PlanRow({
   /** Opens what it made; null while there is nothing to show. */
   onOpen: (() => void) | null;
   menu: ReactNode;
+  /** A group's steps, as a group of the tree. */
+  children?: ReactNode;
 } & TreeItemProps) {
   const { state } = row;
   const next = row.steps.find(
@@ -583,8 +613,8 @@ function PlanRow({
   );
   const pauses = state === "to_do" && next?.askFirst === true;
   const live = state === "done" && app !== null && app !== "not_built";
-  const doing = live ? words.appNow[app] : row.doing;
-  const Kind = kindIcon(row.makes);
+  const doing = live ? words.appNow[app] : null;
+  const Icon = rowIcon(row);
   const said = [
     row.name,
     state === "declined" ? words.skipped : words.stepState[state],
@@ -594,7 +624,8 @@ function PlanRow({
   return (
     <li
       role="treeitem"
-      aria-level={1}
+      aria-level={level}
+      aria-expanded={row.children.length === 0 ? undefined : true}
       aria-haspopup={menu === null ? undefined : "menu"}
       aria-label={said}
       aria-current={current ? "page" : undefined}
@@ -604,10 +635,12 @@ function PlanRow({
         onOpen === null
           ? undefined
           : (event) => {
-              // The row's menu button and the menu it opens are not the row.
+              // The row's menu button and the menu it opens are not the row, nor are a group's steps.
               if (
                 event.target instanceof Element &&
-                event.target.closest("button, [role='menu']") !== null
+                (event.target.closest("button, [role='menu']") !== null ||
+                  event.target.closest("[role='treeitem']") !==
+                    event.currentTarget)
               )
                 return;
               onOpen();
@@ -618,6 +651,7 @@ function PlanRow({
       <span
         className={styles.row}
         data-row="step"
+        data-group={row.children.length === 0 ? undefined : ""}
         data-state={state}
         data-opens={onOpen === null ? undefined : ""}
       >
@@ -627,7 +661,7 @@ function PlanRow({
           ) : state === "failed" || (live && app === "failed") ? (
             <CircleAlert data-state="failed" aria-hidden="true" />
           ) : (
-            <Kind aria-hidden="true" />
+            <Icon aria-hidden="true" />
           )}
         </span>
         <span className={styles.text}>
@@ -651,6 +685,7 @@ function PlanRow({
         ) : null}
         {menu}
       </span>
+      {children}
     </li>
   );
 }

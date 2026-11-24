@@ -1,10 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { wording } from "../../config.ts";
-import { conceptTab } from "./design-concept.ts";
-import { DRAFT_TAB, LIVE_TAB, MANUAL_TAB, MOCKUP_TAB } from "./tab-follow.ts";
+import { LIVE_TAB } from "./tab-follow.ts";
 import {
   building,
-  designing,
+  coordinatorPlan,
   filed,
   newProject,
   planGroup,
@@ -12,7 +10,6 @@ import {
   planStep,
 } from "./project-outline.fixtures.ts";
 import {
-  fileTab,
   outlineApp,
   outlinePlan,
   outlineStep,
@@ -74,275 +71,103 @@ describe("a step's row", () => {
 });
 
 describe("the plan", () => {
-  const webApp = (
-    steps: Parameters<typeof planGroup>[2],
-    name?: string,
-    outcome?: "published",
-  ) =>
-    planGroup("web-app", "A ready-made plan for a web app", steps, {
-      plan: "web-app",
-      ...(name === undefined ? {} : { name }),
-      ...(outcome === undefined ? {} : { outcome }),
-    });
-
-  test("is empty while the project has none", () => {
+  test("is empty while the project has none, with no row made up", () => {
     expect(outlinePlan([])).toEqual([]);
+    expect(projectOutline(newProject).plan).toEqual([]);
   });
 
-  test("is a row for each thing made, named as its tab is, holding the steps before it that make nothing", () => {
-    const rows = outlinePlan([
-      webApp([
-        planStep("requirements", "done", {
-          makes: ["product_requirements"],
-        }),
-        planStep("looks", "done", { optional: true }),
-        planStep("mockup", "running", {
-          title: "Design the look",
-          makes: ["design_option"],
-        }),
-        planStep("build", "not_started", { makes: ["app"] }),
-      ]),
+  test("lists a plan the coordinator wrote step by step, each named and standing as saved", () => {
+    const rows = projectOutline(coordinatorPlan).plan;
+    expect(rows.map((row) => [row.name, row.state])).toEqual([
+      ["Look at how other bakeries take orders", "done"],
+      ["Compare order formats", "done"],
+      ["Ask which format to read", "needs_you"],
+      ["Build the order import tool", "to_do"],
+      ["Try the tool on last week's orders", "to_do"],
     ]);
-    expect(rows.map((row) => row.name)).toEqual([
-      wording.documentTab["product_requirements"]!,
-      wording.projectShell.makes["design_option"]!,
-      wording.projectShell.makes["app"]!,
-    ]);
-    expect(rows.map((row) => row.steps.length)).toEqual([1, 2, 1]);
-    expect(rows.map((row) => row.app)).toEqual([false, false, true]);
-    expect(rows.map((row) => row.makes)).toEqual([
-      "product_requirements",
-      "design_option",
-      "app",
-    ]);
+    expect(rows.every((row) => row.children.length === 0)).toBe(true);
   });
 
-  test("steps after the last thing made are one row named for what their plan makes, showing its outcome", () => {
-    const rows = outlinePlan([
-      webApp(
-        [
-          planStep("ready", "done"),
-          planStep("where", "needs_you", {
-            title: "Confirm where your app goes",
-          }),
-          planStep("live", "not_started"),
-        ],
-        "Published on Cloudflare",
-        "published",
-      ),
-    ]);
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({
-      name: "Published on Cloudflare",
-      state: "needs_you",
-      doing: "Confirm where your app goes",
-      makes: "published",
-    });
+  test("a step that makes nothing is a row of its own, opening nothing", () => {
+    const [look] = projectOutline(coordinatorPlan).plan;
+    expect(look).toMatchObject({ makes: null, opens: null, app: false });
   });
 
-  test("steps after the last thing made join its row when their plan names nothing", () => {
-    const rows = outlinePlan([
-      webApp([
-        planStep("manual", "done", { makes: ["user_manual"] }),
-        planStep("review", "running", { title: "Review the manual" }),
-      ]),
+  test("each step row carries its own settings for its menu", () => {
+    const rows = projectOutline(coordinatorPlan).plan;
+    expect(rows[3]!.steps).toEqual([
+      {
+        id: "tool",
+        name: "Build the order import tool",
+        state: "to_do",
+        askFirst: true,
+        declined: null,
+      },
     ]);
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({
-      name: wording.documentTab["user_manual"],
+    expect(rows[4]!.steps[0]!.declined).toBe(false);
+  });
+
+  test("a ready-made plan's group is a row with its steps under it, in order", () => {
+    const [group, ...rest] = projectOutline(planning).plan;
+    expect(rest).toEqual([]);
+    expect(group).toMatchObject({
+      id: "web-app",
+      name: "Build a web app",
       state: "running",
-      doing: "Review the manual",
+      steps: [],
+      opens: null,
     });
+    expect(group!.children.map((row) => [row.id, row.state])).toEqual([
+      ["brief", "done"],
+      ["constraints", "done"],
+      ["approaches", "running"],
+      ["research", "to_do"],
+      ["requirements", "needs_you"],
+    ]);
   });
 
-  test("a step outside a group is a row of its own, named for it when it makes nothing", () => {
+  test("a group and steps outside it keep the plan's order", () => {
     const rows = outlinePlan([
-      planStep("brief", "done", { makes: ["problem_brief"] }),
-      planStep("call", "not_started", { title: "Call the bakery" }),
+      planStep("first", "done"),
+      planGroup("group", "A group", [planStep("inside", "running")]),
+      planStep("last", "not_started"),
     ]);
-    expect(rows.map((row) => row.name)).toEqual([
-      wording.documentTab["problem_brief"]!,
-      "Call the bakery",
-    ]);
+    expect(rows.map((row) => row.id)).toEqual(["first", "group", "last"]);
+    expect(rows[1]!.children.map((row) => row.id)).toEqual(["inside"]);
   });
 
-  test("reads as its steps stand: what waits on the person first, then a failure, then work", () => {
-    const state = (...states: Parameters<typeof planStep>[1][]) =>
-      outlinePlan([
-        webApp(
-          states.map((each, index) => planStep(`s${String(index)}`, each)),
-          "Published",
-        ),
-      ])[0]?.state;
-    expect(state("done", "needs_you", "failed")).toBe("needs_you");
-    expect(state("failed", "running")).toBe("failed");
-    expect(state("done", "running")).toBe("running");
-    expect(state("done", "done")).toBe("done");
-    expect(state("done", "not_started")).toBe("to_do");
-    expect(state("skipped", "cancelled")).toBe("declined");
-  });
-
-  test("says nothing under its name while the step that makes it is the one at work", () => {
-    const [row] = outlinePlan([
-      planStep("build", "running", { makes: ["app"] }),
-    ]);
-    expect(row?.doing).toBeNull();
-  });
-
-  test("opens the first thing it made that the project has, and the app once it is shown", () => {
-    const { files } = projectOutline(designing);
-    const opens = (makes: string[], appShown = false) =>
-      outlinePlan([planStep("step", "done", { makes })], files, appShown)[0]
-        ?.opens;
-    expect(opens(["gone", "product_requirements"])).toBe(
-      "product_requirements",
-    );
-    expect(opens(["design_option"])).toBe(DRAFT_TAB);
-    expect(opens(["build_plan"])).toBeNull();
-    expect(opens(["app"])).toBeNull();
-    expect(opens(["app"], true)).toBe(LIVE_TAB);
-  });
-});
-
-describe("the files", () => {
-  test("a new project has none", () => {
-    expect(projectOutline(newProject).files).toEqual([]);
-  });
-
-  test("a document's row is named as its tab was, and marked while a version is unread", () => {
-    const [brief, constraints] = projectOutline(planning).files;
-    expect(brief).toMatchObject({
-      id: "problem_brief",
-      name: wording.documentTab["problem_brief"],
-      state: "ready",
-      newVersion: false,
-      printable: true,
-      removable: false,
-      parts: [],
+  test("a step opens what it made once the project has it, and not before", () => {
+    const step = planStep("brief", "done", { makes: ["problem_brief"] });
+    expect(outlinePlan([step])[0]).toMatchObject({ makes: null, opens: null });
+    expect(outlinePlan([step], [filed("problem_brief")])[0]).toMatchObject({
+      makes: "problem_brief",
       opens: "problem_brief",
     });
-    expect(constraints?.newVersion).toBe(true);
   });
 
-  test("a document of a kind no tab names keeps its own title", () => {
-    const [notes] = projectOutline({
-      ...newProject,
-      documents: [filed("market_notes", { title: "Market notes" })],
-    }).files;
-    expect(notes?.name).toBe("Market notes");
+  test("of several things a step makes, it opens the first the project has", () => {
+    const step = planStep("write", "done", { makes: ["plan", "notes"] });
+    expect(outlinePlan([step], [filed("notes")])[0]!.opens).toBe("notes");
   });
 
-  test("follow the project's flow, with the manual after the build plan and attached files last", () => {
-    expect(projectOutline(building).files.map((file) => file.id)).toEqual([
+  test("the step that makes the app stands for it, and opens it once it can be shown", () => {
+    const step = planStep("build", "running", { makes: ["app"] });
+    expect(outlinePlan([step])[0]).toMatchObject({ app: true, opens: null });
+    expect(outlinePlan([step], [], true)[0]).toMatchObject({
+      app: true,
+      makes: "app",
+      opens: LIVE_TAB,
+    });
+  });
+
+  test("each step opens what it made among the project view.s documents", () => {
+    const rows = projectOutline(building).plan;
+    expect(rows.map((row) => row.opens)).toEqual([
       "problem_brief",
       "design",
-      "build_plan",
-      MANUAL_TAB,
-      "approval_package",
-      "material:menu.pdf",
+      LIVE_TAB,
+      null,
     ]);
-  });
-
-  test("written documents print; the design, the package and attached files do not", () => {
-    const printable = projectOutline(building)
-      .files.filter((file) => file.printable)
-      .map((file) => file.id);
-    expect(printable).toEqual(["problem_brief", "build_plan"]);
-  });
-
-  test("an attached file can be removed, and only it", () => {
-    const removable = projectOutline(building)
-      .files.filter((file) => file.removable)
-      .map((file) => file.name);
-    expect(removable).toEqual(["Spring menu.pdf"]);
-  });
-
-  test("the filed design reads as its plan, with its mockup under it", () => {
-    const design = projectOutline(building).files.find(
-      (file) => file.id === "design",
-    );
-    expect(design).toMatchObject({
-      name: wording.documentTab["design"],
-      state: "ready",
-      newVersion: true,
-      opens: "design",
-    });
-    expect(design?.parts).toEqual([
-      {
-        id: MOCKUP_TAB,
-        name: wording.design.mockupTab,
-        state: "ready",
-        newVersion: true,
-      },
-    ]);
-  });
-
-  test("a design being drawn has its row before it is filed, with the mockup and concepts drawn under it", () => {
-    const design = projectOutline(designing).files.find(
-      (file) => file.id === "design",
-    );
-    expect(design?.state).toBe("drawing");
-    expect(design?.parts).toEqual([
-      {
-        id: DRAFT_TAB,
-        name: wording.design.mockupTab,
-        state: "drawing",
-        newVersion: false,
-      },
-      {
-        id: conceptTab("Bold"),
-        name: wording.design.conceptTab(1, "Bold"),
-        state: "ready",
-        newVersion: false,
-      },
-      {
-        id: conceptTab("Calm"),
-        name: wording.design.conceptTab(2, "Calm"),
-        state: "drawing",
-        newVersion: false,
-      },
-    ]);
-    // With no plan to read yet, the row opens the mockup being drawn.
-    expect(design?.opens).toBe(DRAFT_TAB);
-  });
-
-  test("a new mockup drawn over a filed design shows on the same row, with the writing dots", () => {
-    const design = projectOutline({ ...building, draft: true }).files.find(
-      (file) => file.id === "design",
-    );
-    expect(design?.state).toBe("ready");
-    expect(design?.parts.map((part) => [part.id, part.state])).toEqual([
-      [DRAFT_TAB, "drawing"],
-    ]);
-  });
-
-  test("an unfiled design whose concepts are all drawn waits on a pick, with no writing dots", () => {
-    const design = projectOutline({
-      ...designing,
-      draft: false,
-      concepts: [
-        { label: "Bold", drawn: true },
-        { label: "Calm", drawn: true },
-      ],
-    }).files.find((file) => file.id === "design");
-    expect(design?.state).toBe("ready");
-    expect(design?.opens).toBe(conceptTab("Bold"));
-  });
-
-  test("concepts with no mockup drawn open the first concept", () => {
-    const design = projectOutline({
-      ...designing,
-      draft: false,
-    }).files.find((file) => file.id === "design");
-    expect(design?.opens).toBe(conceptTab("Bold"));
-  });
-
-  test("a row or a part opens its tab", () => {
-    const { files } = projectOutline(designing);
-    expect(fileTab(files, "product_requirements")).toBe("product_requirements");
-    expect(fileTab(files, "design")).toBe(DRAFT_TAB);
-    expect(fileTab(files, conceptTab("Calm"))).toBe(conceptTab("Calm"));
-    expect(fileTab(files, "gone")).toBeNull();
   });
 });
 

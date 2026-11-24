@@ -6,7 +6,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { isDocumentKind } from "@corbits-builder/schemas/artifact";
 import type { PlanView } from "@corbits-builder/schemas/project";
 import {
   declinePlanStep,
@@ -24,7 +23,6 @@ import type {
   ProjectInfoDialogProps,
 } from "../project-menu.model.ts";
 import type { PaneDocument } from "./artifact-pane.tsx";
-import type { DesignConcept } from "./design-concept.ts";
 import { SIDEBAR_KEY, parseSidebarOpen } from "../../sidebar-setting.ts";
 import { humanFault } from "./human-fault.ts";
 import { liveAppQuery } from "./live-app.model.ts";
@@ -49,10 +47,6 @@ export type ProjectSidebarInput = SidebarWays & {
   plan: PlanView["steps"];
   /** The filed documents the project view shows. */
   documents: readonly PaneDocument[];
-  /** The design's mockup is being drawn and not yet filed. */
-  draft: boolean;
-  concepts: readonly DesignConcept[];
-  manual: boolean;
   /** The project view can show an app, built or being built. */
   appShown: boolean;
   /** The tab on the page; null while the chat fills the room. */
@@ -78,19 +72,7 @@ export function useProjectSidebar(input: ProjectSidebarInput): {
   const app = useQuery({ ...liveAppQuery(projectId), enabled: input.appShown });
   const outline = projectOutline({
     plan: input.plan,
-    documents: input.documents.map((item) => ({
-      id: item.id,
-      title: item.title,
-      unread: item.unread,
-      removable: item.removable,
-      written: isDocumentKind(item.id),
-    })),
-    draft: input.draft,
-    concepts: input.concepts.map((concept) => ({
-      label: concept.label,
-      drawn: concept.content !== undefined,
-    })),
-    manual: input.manual,
+    documents: input.documents,
     app: { shown: input.appShown, state: app.data?.state },
   });
   const change = async (send: () => Promise<unknown>) => {

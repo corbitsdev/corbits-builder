@@ -1,9 +1,10 @@
 /**
- * Sample projects as the sidebar's outline reads them, from a new project to one whose app runs,
- * for the outline's tests and the room's stories.
+ * Sample projects as the sidebar's outline reads them: one with no plan, a ready-made plan under
+ * way, a plan the coordinator wrote whose steps mostly make nothing, and one whose app runs, for the
+ * outline's tests and the room's stories.
  */
 import type { PlanView } from "@corbits-builder/schemas/project";
-import type { OutlineDocument, OutlineInput } from "./project-outline.ts";
+import type { OutlineInput } from "./project-outline.ts";
 
 type PlanChild = Exclude<PlanView["steps"][number], { steps: unknown }>;
 type PlanGroup = Extract<PlanView["steps"][number], { steps: unknown }>;
@@ -31,40 +32,37 @@ export const planGroup = (
   fields: Partial<PlanGroup> = {},
 ): PlanGroup => ({ id, title, state: "running", steps, ...fields });
 
-export const filed = (
-  id: string,
-  fields: Partial<OutlineDocument> = {},
-): OutlineDocument => ({
-  id,
-  title: id,
-  unread: false,
-  removable: false,
-  written: true,
-  ...fields,
-});
+/** Something the project view can open, by the kind its tab is named for. */
+export const filed = (id: string) => ({ id });
 
 const noApp: OutlineInput["app"] = { shown: false, state: undefined };
 
-/** Opened a moment ago: no plan, no files, no app. */
+/** Opened a moment ago, or asked for something too small to plan: no plan, no files, no app. */
 export const newProject: OutlineInput = {
   plan: [],
   documents: [],
-  draft: false,
-  concepts: [],
-  manual: false,
   app: noApp,
 };
 
-/** The ready-made plan under way: the brief filed, the constraints filed again since last read. */
+/** A ready-made plan under way: the brief and constraints filed, the approaches being compared. */
 export const planning: OutlineInput = {
   plan: [
     planGroup(
       "web-app",
       "Build a web app",
       [
-        planStep("brief", "done", { title: "Write the brief" }),
-        planStep("constraints", "done", { title: "List the constraints" }),
-        planStep("approaches", "running", { title: "Compare approaches" }),
+        planStep("brief", "done", {
+          title: "Write the brief",
+          makes: ["problem_brief"],
+        }),
+        planStep("constraints", "done", {
+          title: "List the constraints",
+          makes: ["constraints"],
+        }),
+        planStep("approaches", "running", {
+          title: "Compare approaches",
+          makes: ["approaches"],
+        }),
         planStep("research", "not_started", {
           title: "Research other bakeries",
           optional: true,
@@ -72,58 +70,69 @@ export const planning: OutlineInput = {
         planStep("requirements", "needs_you", {
           title: "Write the requirements",
           askFirst: true,
+          makes: ["product_requirements"],
         }),
       ],
       { plan: "web-app" },
     ),
   ],
-  documents: [
-    filed("problem_brief", { title: "Problem brief" }),
-    filed("constraints", { title: "Constraints", unread: true }),
-  ],
-  draft: false,
-  concepts: [],
-  manual: false,
+  documents: [filed("problem_brief"), filed("constraints")],
   app: noApp,
 };
 
-/** The designer drawing: the mockup still a draft and two concepts, one filed, none chosen. */
-export const designing: OutlineInput = {
-  ...planning,
-  documents: [
-    filed("problem_brief"),
-    filed("constraints"),
-    filed("approaches"),
-    filed("product_requirements"),
+/**
+ * A plan the coordinator wrote from plugin actions, with no ready-made plan: research by a worker,
+ * then a coder building a command-line tool. Most of its steps make nothing the project files.
+ */
+export const coordinatorPlan: OutlineInput = {
+  plan: [
+    planStep("look", "done", {
+      title: "Look at how other bakeries take orders",
+      plugin: "worker",
+      action: "research",
+    }),
+    planStep("compare", "done", {
+      title: "Compare order formats",
+      plugin: "worker",
+      action: "research",
+    }),
+    planStep("ask", "needs_you", {
+      title: "Ask which format to read",
+      kind: "screen",
+      plugin: "worker",
+      action: "ask",
+    }),
+    planStep("tool", "not_started", {
+      title: "Build the order import tool",
+      plugin: "coder",
+      action: "change",
+      askFirst: true,
+    }),
+    planStep("try", "not_started", {
+      title: "Try the tool on last week's orders",
+      kind: "check",
+      plugin: "coder",
+      action: "run",
+      optional: true,
+    }),
   ],
-  draft: true,
-  concepts: [
-    { label: "Bold", drawn: true },
-    { label: "Calm", drawn: false },
-  ],
+  documents: [],
+  app: noApp,
 };
 
-/** The app built and running, with every kind of file the project can have. */
+/** The app built and running, the manual still being written. */
 export const building: OutlineInput = {
   plan: [
-    planStep("brief", "done"),
-    planStep("design", "done"),
-    planStep("build", "done"),
+    planStep("brief", "done", { makes: ["problem_brief"] }),
+    planStep("design", "done", { makes: ["design"] }),
+    planStep("build", "done", { makes: ["app"] }),
     planStep("manual", "not_started", { optional: true }),
   ],
   documents: [
-    filed("material:menu.pdf", {
-      title: "Spring menu.pdf",
-      removable: true,
-      written: false,
-    }),
-    filed("approval_package", { written: false }),
+    filed("material:menu.pdf"),
     filed("build_plan"),
-    filed("design", { written: false, unread: true }),
+    filed("design"),
     filed("problem_brief"),
   ],
-  draft: false,
-  concepts: [],
-  manual: true,
   app: { shown: true, state: "running" },
 };
