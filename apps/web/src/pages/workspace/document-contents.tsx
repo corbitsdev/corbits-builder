@@ -1,7 +1,7 @@
 /**
- * A written document's sections beside its page: the document's name, then each section under a
- * thin rail. The section being read is shaded, and a section someone has commented on carries a
- * comment mark. A toggle at the head folds them away and brings them back.
+ * A written document's sections beside its page, under a thin rail. The section being read is
+ * shaded, and a section someone has commented on carries a comment mark. The title is already on
+ * the page, so the head is a short label that folds the list away and brings it back.
  */
 import { useId, useState } from "react";
 import { ChevronDown, MessageSquare } from "lucide-react";
@@ -17,17 +17,15 @@ export type DocumentSection = {
 };
 
 export function DocumentContents({
-  title,
   sections,
   current,
   onOpen,
 }: {
-  title: string;
   sections: readonly DocumentSection[];
   /** The section being read, by its anchor; null at the top of the page. */
   current: string | null;
-  /** Scrolls the page to a section, or to its top for null. */
-  onOpen: (id: string | null) => void;
+  /** Scrolls the page to a section. */
+  onOpen: (id: string) => void;
 }) {
   const words = wording.documentViewer;
   const listId = `contents-${useId()}`;
@@ -39,28 +37,16 @@ export function DocumentContents({
       data-slot="document-contents"
       aria-label={words.contentsLabel}
     >
-      <div className={styles.head}>
-        <button
-          type="button"
-          className={styles.toggle}
-          aria-label={words.contentsToggle}
-          aria-expanded={open}
-          aria-controls={listed ? listId : undefined}
-          title={words.contentsToggle}
-          onClick={() => setOpen(!open)}
-        >
-          <ChevronDown size={14} aria-hidden="true" />
-        </button>
-        {open ? (
-          <button
-            type="button"
-            className={styles.document}
-            onClick={() => onOpen(null)}
-          >
-            {title}
-          </button>
-        ) : null}
-      </div>
+      <button
+        type="button"
+        className={styles.toggle}
+        aria-expanded={open}
+        aria-controls={listed ? listId : undefined}
+        onClick={() => setOpen(!open)}
+      >
+        <ChevronDown size={14} aria-hidden="true" />
+        {words.contentsToggle}
+      </button>
       {listed ? (
         <ol id={listId} className={styles.sections}>
           {sections.map((section) => (

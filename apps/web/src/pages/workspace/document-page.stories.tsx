@@ -227,7 +227,7 @@ export const LongScrolled: Story = {
   },
 };
 
-/** A document with no sections: the contents name the document alone. */
+/** A document with no sections: the contents show their label alone. */
 export const NoSections: Story = {
   args: {
     title: "Interview notes",

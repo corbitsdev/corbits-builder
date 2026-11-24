@@ -7,7 +7,6 @@ const meta = {
   title: "Components/Workspace/DocumentContents",
   component: DocumentContents,
   args: {
-    title: "Problem brief",
     sections: [
       { id: "section-in-short", title: "In short", commented: false },
       { id: "section-who-has-it", title: "Who has it", commented: true },
@@ -49,7 +48,7 @@ export const WithComments: Story = {};
 /** At the top of the page no section is open yet. */
 export const AtTheTop: Story = { args: { current: null } };
 
-/** The toggle at the head folds the contents away, leaving only itself, and brings them back. */
+/** The label at the head folds the sections away, leaving only itself, and brings them back. */
 export const Collapsed: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -59,7 +58,6 @@ export const Collapsed: Story = {
     await userEvent.click(toggle);
     await expect(toggle).toHaveAttribute("aria-expanded", "false");
     await expect(canvas.queryByRole("list")).toBeNull();
-    await expect(canvas.queryByText("Problem brief")).toBeNull();
     await userEvent.click(toggle);
     await expect(canvas.getByRole("list")).toBeVisible();
   },

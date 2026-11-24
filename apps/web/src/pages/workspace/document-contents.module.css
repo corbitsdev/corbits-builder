@@ -7,7 +7,7 @@
   max-width: 100%;
 }
 
-.document,
+.toggle,
 .section {
   display: flex;
   align-items: center;
@@ -25,42 +25,16 @@
     background-color 120ms ease;
 }
 
-/* The toggle, then the document's name across from it. */
-.head {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-}
-
-.head > .document {
-  flex: 1;
-  width: auto;
-  min-width: 0;
-}
-
+/* A list to read down, not a menu: rows close together, each the height of its line and a little. */
 .toggle {
-  display: grid;
-  flex: none;
-  place-items: center;
-  width: 1.5rem;
-  height: 1.5rem;
-  padding: 0;
-  border: 0;
-  border-radius: var(--radius-md);
-  background: transparent;
+  gap: 6px;
+  padding: 4px;
   color: var(--wb-muted-foreground);
-  cursor: pointer;
-  transition:
-    color 120ms ease,
-    background-color 120ms ease;
-}
-
-.toggle:hover {
-  background: var(--wb-muted);
-  color: var(--wb-foreground);
+  font-weight: 500;
 }
 
 .toggle > svg {
+  flex: none;
   transition: rotate 120ms ease;
 }
 
@@ -68,19 +42,12 @@
   rotate: -90deg;
 }
 
-/* A list to read down, not a menu: rows close together, each the height of its line and a little. */
-.document {
-  padding: 4px 10px 4px 4px;
-  color: var(--wb-foreground);
-  font-weight: 500;
-}
-
-/* The rail starts under the document's name and runs the length of its sections. */
+/* The rail starts under the label and runs the length of the sections. */
 .sections {
   display: flex;
   flex-direction: column;
   gap: 0;
-  margin: 2px 0 0 12px;
+  margin: 2px 0 0 10px;
   padding: 0 0 0 12px;
   border-left: 1px solid var(--wb-border);
   list-style: none;
@@ -93,7 +60,7 @@
 }
 
 .section:hover,
-.document:hover {
+.toggle:hover {
   color: var(--wb-foreground);
 }
 
@@ -112,7 +79,7 @@
   min-width: 0;
 }
 
-.document:focus-visible,
+.toggle:focus-visible,
 .section:focus-visible {
   outline-offset: -2px;
 }

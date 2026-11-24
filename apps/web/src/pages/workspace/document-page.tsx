@@ -634,15 +634,13 @@ export function DocumentPage({
   };
 
   // The reader's scroll behaviour is smooth unless the person asks for less motion.
-  const open = (id: string | null) => {
+  const open = (id: string) => {
     chosen.current = id;
     setCurrent(id);
     settleJump();
-    if (id === null) scroller.current?.scrollTo({ top: 0 });
-    else
-      headingsRef.current
-        .find((heading) => heading.id === id)
-        ?.scrollIntoView({ block: "start" });
+    headingsRef.current
+      .find((heading) => heading.id === id)
+      ?.scrollIntoView({ block: "start" });
   };
 
   const commented = new Set(places.map((place) => place.section));
@@ -679,7 +677,6 @@ export function DocumentPage({
         <div className={styles.side}>
           <FileActions files={files} />
           <DocumentContents
-            title={title}
             sections={contents}
             current={current}
             onOpen={open}
