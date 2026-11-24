@@ -56,8 +56,12 @@ export const storySupplies: HostSupplies = {
         title: "Build plan",
         artifactId: "artifact-plan",
         version: 2,
-        summary:
-          "A web app for a small bakery to take Saturday orders, built in two weeks.",
+        // As a document's own In short section reads: a few points, each a line or two.
+        summary: [
+          "- A web app for a small bakery to take **Saturday orders** online, built in two weeks.",
+          "- Customers pick cakes, choose a **pickup time** and pay a deposit; the shop sees every order in **one list**.",
+          "- Not in the first version: delivery, loyalty points, or more than one shop.",
+        ].join("\n"),
       },
     ],
     open: () => undefined,
