@@ -63,7 +63,7 @@ function Page({ children }: { children: ReactNode }) {
               margin: "64px auto 0",
               padding: "40px 64px",
               flex: 1,
-              background: "var(--wb-pane)",
+              background: "var(--wb-background)",
               color: "var(--wb-foreground)",
             }}
           >

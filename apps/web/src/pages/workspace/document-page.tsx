@@ -794,7 +794,6 @@ function FileActions({ files }: { files: PaneBarGroup }) {
   return (
     <div
       className={styles.files}
-      data-slot="document-files"
       role="group"
       aria-label={wording.documentViewer.file}
     >
