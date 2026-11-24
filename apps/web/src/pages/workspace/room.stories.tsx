@@ -606,6 +606,11 @@ export const SidebarClosed: Story = {
   },
 };
 
+/** Put away while the coordinator's plan is under way: the plan stays in sight under the name. */
+export const SidebarClosedPlanUnderWay: Story = {
+  args: { sidebar: { ...sidebarOf({}, coordinatorPlan.plan), open: false } },
+};
+
 /** Put away beside the open project view, whose header leaves the corner to the toggle. */
 export const SidebarClosedProjectOpen: Story = {
   args: {

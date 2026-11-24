@@ -370,10 +370,62 @@ export const LongPlan: Story = {
 };
 
 /**
- * Closed, the page takes the whole window; only the project's name floats top left, as the control
- * that opens the sidebar again.
+ * Closed, the page takes the whole window; the project's name floats top left, as the control that
+ * opens the sidebar again, and while the plan is under way a card under it keeps the plan in sight.
  */
-export const Closed: Story = { args: { ...buildingArgs, open: false } };
+export const Closed: Story = {
+  args: { ...buildingArgs, open: false },
+  play: async ({ canvasElement }) => {
+    const glance = within(canvasElement).getByRole("region", {
+      name: words.glance.label,
+    });
+    await expect(glance).toHaveTextContent(words.glance.progress(6, 7));
+    await expect(within(glance).getAllByRole("listitem")).toHaveLength(7);
+  },
+};
+
+export const ClosedDark: Story = {
+  args: { ...buildingArgs, open: false },
+  globals: { mode: "dark" },
+};
+
+/** A step in the card that has made something opens it, as its row in the sidebar does. */
+export const ClosedOpensWhatAStepMade: Story = {
+  args: { ...buildingArgs, open: false },
+  play: async ({ args, canvasElement }) => {
+    const glance = within(canvasElement).getByRole("region", {
+      name: words.glance.label,
+    });
+    await userEvent.click(
+      within(glance).getByRole("button", { name: /Design the look/ }),
+    );
+    await expect(args.onOpenStep).toHaveBeenCalledWith("design");
+  },
+};
+
+/** Once every step has finished, the plan has nothing to follow, so only the name stays. */
+export const ClosedPlanFinished: Story = {
+  args: {
+    ...buildingArgs,
+    open: false,
+    plan: building.map((each) => ({ ...each, state: "done" })),
+  },
+  play: async ({ canvasElement }) => {
+    await expect(
+      within(canvasElement).queryByRole("region", { name: words.glance.label }),
+    ).toBeNull();
+  },
+};
+
+/** Closed with no plan, only the name stays. */
+export const ClosedNoPlan: Story = {
+  args: { ...buildingArgs, open: false, plan: [] },
+  play: async ({ canvasElement }) => {
+    await expect(
+      within(canvasElement).queryByRole("region", { name: words.glance.label }),
+    ).toBeNull();
+  },
+};
 
 /**
  * The list is a tree with one tab stop, which lands on its first row. The arrows move between rows,
