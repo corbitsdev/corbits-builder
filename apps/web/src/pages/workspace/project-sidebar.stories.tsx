@@ -152,7 +152,7 @@ function Clickable(args: ProjectSidebarViewProps) {
   );
 }
 
-/** The sidebar stands on the project's ground at the window's full height, beside an empty page. */
+/** The sidebar on the room's ground at the window's full height, so its card and title row show. */
 function Shell({ children }: { children: ReactNode }) {
   return (
     <div
@@ -160,19 +160,10 @@ function Shell({ children }: { children: ReactNode }) {
         position: "relative",
         display: "flex",
         height: "100vh",
-        background: "var(--card)",
+        background: "var(--wb-background)",
       }}
     >
       {children}
-      <div
-        style={{
-          flex: 1,
-          margin: 8,
-          borderRadius: "var(--radius-lg)",
-          background: "var(--wb-pane)",
-          boxShadow: "var(--wb-pane-shadow)",
-        }}
-      />
     </div>
   );
 }
