@@ -26,7 +26,12 @@ import type { PaneDocument } from "./artifact-pane.tsx";
 import { SIDEBAR_KEY, parseSidebarOpen } from "../../sidebar-setting.ts";
 import { humanFault } from "./human-fault.ts";
 import { liveAppQuery } from "./live-app.model.ts";
-import { projectOutline } from "./project-outline.ts";
+import {
+  pendingStepChanges,
+  projectOutline,
+  withStepChanges,
+  type StepChange,
+} from "./project-outline.ts";
 import type { ProjectSidebarViewProps } from "./project-sidebar.view.tsx";
 import { LIVE_TAB } from "./tab-follow.ts";
 
@@ -74,11 +79,34 @@ export function useProjectSidebar(input: ProjectSidebarInput): {
     documents: input.documents,
     app: { shown: input.appShown, state: app.data?.state },
   });
-  const change = async (send: () => Promise<unknown>) => {
+  // What the person has just set, shown until the hub's plan has it too, so a press turns the
+  // switch at once. One the hub refuses goes back.
+  const [changes, setChanges] = useState<ReadonlyMap<string, StepChange>>(
+    () => new Map(),
+  );
+  // Each new read of the plan lets go of what it has caught up with.
+  const [readPlan, setReadPlan] = useState(input.plan);
+  if (readPlan !== input.plan) {
+    setReadPlan(input.plan);
+    setChanges((now) => pendingStepChanges(outline.plan, now));
+  }
+  const change = async (
+    stepId: string,
+    set: StepChange,
+    send: () => Promise<unknown>,
+  ) => {
+    setChanges((now) =>
+      new Map(now).set(stepId, { ...now.get(stepId), ...set }),
+    );
     try {
       await send();
       input.reload();
     } catch (cause) {
+      setChanges((now) => {
+        const next = new Map(now);
+        next.delete(stepId);
+        return next;
+      });
       toast.error(humanFault(cause, wording.conversation.plan.notChanged));
     }
   };
@@ -86,16 +114,18 @@ export function useProjectSidebar(input: ProjectSidebarInput): {
     sidebar: {
       project: input.title,
       open,
-      plan: outline.plan,
+      plan: withStepChanges(outline.plan, changes),
       app: outline.app,
       appOpen: shown === LIVE_TAB,
       shown,
       onToggleSidebar: () =>
         writeStoredPreference(SIDEBAR_KEY, open ? "closed" : "open"),
       onAskFirst: (stepId, askFirst) =>
-        void change(() => setPlanStepAskFirst(projectId, stepId, askFirst)),
+        void change(stepId, { askFirst }, () =>
+          setPlanStepAskFirst(projectId, stepId, askFirst),
+        ),
       onDecline: (stepId, declined) =>
-        void change(() =>
+        void change(stepId, { declined }, () =>
           (declined ? declinePlanStep : restorePlanStep)(projectId, stepId),
         ),
       onOpenApp: () => input.onOpen(LIVE_TAB),

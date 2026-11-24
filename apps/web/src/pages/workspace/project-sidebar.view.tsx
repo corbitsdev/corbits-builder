@@ -23,12 +23,10 @@ import {
   Building2,
   CircleUser,
   Ellipsis,
-  Hand,
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
   Settings,
-  SkipForward,
   type LucideIcon,
 } from "lucide-react";
 import { SidebarItem } from "@corbits/react-ui";
@@ -739,9 +737,14 @@ function RunningFor({ since }: { since: string | null }) {
   return <span className={styles.clock}>{clock(seconds)}</span>;
 }
 
+// A press on a setting leaves focus where it was, so the row it sits in is not ringed as though
+// the keyboard had moved there.
+const keepFocus = (event: { preventDefault: () => void }) =>
+  event.preventDefault();
+
 /**
- * A step's settings before it starts, as two small buttons under its name: Ask me first, and Skip
- * where the step is optional. Each is lit while it is on and a press turns it over. They are for
+ * A step's settings before it starts, as two small switches under its name: Ask me first, and Skip
+ * where the step is optional. Each switch is blue and set over while it is on; a press turns it. They are for
  * the pointer; the keyboard reaches the same settings through the row's menu, and the row's name
  * says how they stand.
  */
@@ -760,24 +763,30 @@ function StepSettings({
       {askFirst === null || declined === true ? null : (
         <button
           type="button"
+          role="switch"
+          aria-checked={askFirst}
           tabIndex={-1}
           className={styles.setting}
           data-on={askFirst ? "" : undefined}
+          onMouseDown={keepFocus}
           onClick={() => onAskFirst(id, !askFirst)}
         >
-          <Hand aria-hidden="true" />
+          <span className={styles.switch} />
           {words.stepSettings.askFirst}
         </button>
       )}
       {declined === null ? null : (
         <button
           type="button"
+          role="switch"
+          aria-checked={declined}
           tabIndex={-1}
           className={styles.setting}
           data-on={declined ? "" : undefined}
+          onMouseDown={keepFocus}
           onClick={() => onDecline(id, !declined)}
         >
-          <SkipForward aria-hidden="true" />
+          <span className={styles.switch} />
           {words.stepSettings.skip}
         </button>
       )}

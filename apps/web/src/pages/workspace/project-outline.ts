@@ -143,6 +143,66 @@ export function outlinePlan(
   );
 }
 
+/** A setting the person has just changed on a step, shown before the hub's plan has it. */
+export type StepChange = { askFirst?: boolean; declined?: boolean };
+
+/**
+ * The plan with the person's latest settings laid over it, so a press shows at once rather than
+ * after the hub has answered and the plan has been read again. Skipping a step declines it;
+ * keeping it puts it back among the steps to do, asking first or not as it did before.
+ */
+export function withStepChanges(
+  rows: readonly OutlineRow[],
+  changes: ReadonlyMap<string, StepChange>,
+): OutlineRow[] {
+  if (changes.size === 0) return [...rows];
+  return rows.map((row) => {
+    const steps = row.steps.map((step) => {
+      const change = changes.get(step.id);
+      if (change === undefined) return step;
+      const declined = change.declined ?? step.declined;
+      const askFirst =
+        declined === true
+          ? null
+          : (change.askFirst ??
+            step.askFirst ??
+            (declined === false ? false : null));
+      const state =
+        change.declined === true
+          ? "declined"
+          : change.declined === false && step.state === "declined"
+            ? "to_do"
+            : step.state;
+      return { ...step, declined, askFirst, state } satisfies OutlineStep;
+    });
+    const only = steps.length === 1 ? steps[0] : undefined;
+    return only === undefined
+      ? { ...row, steps }
+      : { ...row, state: only.state, steps };
+  });
+}
+
+/** The changes the hub's plan does not have yet; the rest it has caught up with. */
+export function pendingStepChanges(
+  rows: readonly OutlineRow[],
+  changes: ReadonlyMap<string, StepChange>,
+): ReadonlyMap<string, StepChange> {
+  const steps = new Map(
+    rows.flatMap((row) => row.steps.map((step) => [step.id, step] as const)),
+  );
+  const pending = new Map(
+    [...changes].filter(([id, change]) => {
+      const step = steps.get(id);
+      if (step === undefined) return false;
+      return (
+        (change.askFirst !== undefined && change.askFirst !== step.askFirst) ||
+        (change.declined !== undefined && change.declined !== step.declined)
+      );
+    }),
+  );
+  return pending.size === changes.size ? changes : pending;
+}
+
 /**
  * How the app stands: not built while the project has none to show; starting while the hub has not
  * said, since keeping the project open starts it; else as the hub says.

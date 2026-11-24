@@ -13,7 +13,9 @@ import {
   outlineApp,
   outlinePlan,
   outlineStep,
+  pendingStepChanges,
   projectOutline,
+  withStepChanges,
 } from "./project-outline.ts";
 
 describe("a step's row", () => {
@@ -194,5 +196,37 @@ describe("the app", () => {
     ] as const)
       expect(outlineApp({ shown: true, state })).toBe(state);
     expect(projectOutline(building).app).toBe("running");
+  });
+});
+
+describe("a setting the person just changed", () => {
+  const rows = outlinePlan([
+    planStep("manual", "not_started", { optional: true }),
+  ]);
+
+  test("shows at once, before the hub's plan has it", () => {
+    const asked = withStepChanges(
+      rows,
+      new Map([["manual", { askFirst: true }]]),
+    );
+    expect(asked[0]!.steps[0]).toMatchObject({ askFirst: true });
+    const skipped = withStepChanges(
+      rows,
+      new Map([["manual", { declined: true }]]),
+    );
+    expect(skipped[0]).toMatchObject({ state: "declined" });
+    expect(skipped[0]!.steps[0]).toMatchObject({
+      declined: true,
+      askFirst: null,
+    });
+  });
+
+  test("is let go once the hub's plan has caught up", () => {
+    const changes = new Map([["manual", { askFirst: true }]]);
+    expect(pendingStepChanges(rows, changes).size).toBe(1);
+    const caughtUp = outlinePlan([
+      planStep("manual", "not_started", { optional: true, askFirst: true }),
+    ]);
+    expect(pendingStepChanges(caughtUp, changes).size).toBe(0);
   });
 });
