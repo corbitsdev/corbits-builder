@@ -36,6 +36,8 @@ export type ScreenWords = {
   label: (input: unknown) => string | undefined;
   chose: (output: unknown) => string | undefined;
   reply: string | undefined;
+  /** The screen asks the person to accept something, such as approving a document. */
+  decides: boolean;
 };
 let screens: ReadonlyMap<string, ScreenWords> = new Map();
 
@@ -124,6 +126,7 @@ export function installRoles({
               : chose(output);
           },
           reply,
+          decides: screen.decision !== undefined,
         };
         return [[`${builder.handle} ${action}`, words] as const];
       }),

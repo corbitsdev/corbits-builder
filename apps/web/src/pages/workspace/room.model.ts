@@ -1844,8 +1844,13 @@ export function useRoom({
       onStop: promptBox.onStop,
       suggestedReplies: replies,
       onReply: (reply) => void deliver(reply),
+      // Words typed beside a screen asking to approve something ask for changes instead.
       sendLabel:
-        stagedItems === null ? null : wording.questions.sendBack(stagedItems),
+        stagedItems !== null
+          ? wording.questions.sendBack(stagedItems)
+          : promptBox.decides && value.trim() !== ""
+            ? wording.promptBox.waiting.makeChanges
+            : null,
       ...(commentDrafts.box === null
         ? {}
         : {

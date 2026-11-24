@@ -1169,9 +1169,7 @@ export const wording = {
     pickAny: "Pick any that apply",
     selected: (picked: number, count: number) =>
       `${String(picked)} of ${String(count)} selected`,
-    /** The field where the person types their own answer. */
-    otherAnswer: "Your own answer",
-    /** The field of a question with no options to pick from. */
+    /** The prompt box under a question with no options to pick from. */
     typed: "Type your answer…",
     back: "Back",
     next: "Continue",

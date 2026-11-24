@@ -125,6 +125,11 @@ export type PromptBox = {
   restarts: string | null;
   /** A specialist is at work, so Stop stands where Send is while the box is empty. */
   working: boolean;
+  /**
+   * The coordinator waits on a screen asking the person to accept something, such as approving a
+   * document; words typed instead ask for changes.
+   */
+  decides: boolean;
   onStop: () => void;
 };
 
@@ -201,6 +206,10 @@ export function usePromptBox(room: PromptBoxRoom): PromptBox {
   };
 
   const card = boxCard(waiting);
+  const decides =
+    card?.kind === "screen" &&
+    card.from === "question" &&
+    screenWords(card.plugin, card.action)?.decides === true;
   const boxWaiting = ((): BoxWaiting | null => {
     if (card === null) return null;
     switch (card.kind) {
@@ -244,9 +253,11 @@ export function usePromptBox(room: PromptBoxRoom): PromptBox {
           kind: "screen",
           title: card.title,
           // A screen that answers the coordinator takes words as its answer, so Not now is one;
-          // one a plugin shows of its own accord is set aside for now.
-          onNotNow:
-            card.from === "question"
+          // one a plugin shows of its own accord is set aside for now. One that asks to accept
+          // something has no Not now: typing what should change is the way past it.
+          onNotNow: decides
+            ? undefined
+            : card.from === "question"
               ? () =>
                   void room.onAnswer(card.signalName, {
                     reply: wording.promptBox.waiting.notNow,
@@ -365,6 +376,7 @@ export function usePromptBox(room: PromptBoxRoom): PromptBox {
     status,
     restarts: sendWarning(waiting),
     working: working.length > 0,
+    decides,
     onStop: stop,
   };
 }
