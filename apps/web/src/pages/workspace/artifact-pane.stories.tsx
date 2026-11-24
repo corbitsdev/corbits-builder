@@ -13,7 +13,9 @@ import {
   type PaneDocument,
 } from "./artifact-pane.tsx";
 import type { DeliverableState } from "./deliverable-block.tsx";
-import designConcept from "./design-concepts.stories.tsx";
+import designConcept, {
+  Sketching as sketchingConcept,
+} from "./design-concepts.stories.tsx";
 import { ConceptMockupView } from "./design-concepts.view.tsx";
 import liveApp from "./live-app.stories.tsx";
 import { LiveAppView } from "./live-app.view.tsx";
@@ -199,6 +201,23 @@ export const Concepts: Story = {
       label,
       content: JSON.stringify(sampleDesign),
     })),
+  },
+};
+
+/** A concept whose designer has not drafted it yet is a sketch until they do. */
+export const ConceptSketching: Story = {
+  args: {
+    documents: [],
+    selectedId: null,
+    concepts: [{ label: "Sleek modern" }],
+    conceptMockup: (concept, frame) => (
+      <ConceptMockupView
+        {...designConcept.args}
+        {...sketchingConcept.args}
+        label={concept.label}
+        {...frame}
+      />
+    ),
   },
 };
 

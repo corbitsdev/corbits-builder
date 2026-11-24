@@ -5,6 +5,7 @@
  * space beside them both, where every plugin screen opens.
  */
 import {
+  useCallback,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -71,6 +72,7 @@ import {
   ProjectSidebarView,
   type ProjectSidebarViewProps,
 } from "./project-sidebar.view.tsx";
+import { SketchingShown } from "./sketching.tsx";
 import { StatusMark, type StatusPillContent } from "./status-pill.tsx";
 import { StageView } from "./stage-view.tsx";
 import { RoomThread, type RoomThreadContent } from "./transcript.tsx";
@@ -441,6 +443,12 @@ export function RoomView({
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [projectOpen, sheetOpen]);
+  // How many sketches at work are on the project's page.
+  const [sketches, setSketches] = useState(0);
+  const showSketch = useCallback(() => {
+    setSketches((count) => count + 1);
+    return () => setSketches((count) => count - 1);
+  }, []);
   // The prompt box stays in reach under whatever covers the conversation.
   const dockInSheet = sheetShown;
   const dockInProject = projectOpen && !sheetShown;
@@ -460,10 +468,12 @@ export function RoomView({
       answersShell={shell.answers}
     />
   );
+  const projectDock =
+    dockInProject && sketches > 0 ? sketchingDock(dock) : dock;
   // Full screen is the room's own conversation: what the chat was pulled up over is put away.
   const roomDock = (
     <RoomDockView
-      dock={dock}
+      dock={projectDock}
       ports={ports}
       waiting={card}
       fold={
@@ -574,12 +584,14 @@ export function RoomView({
               data-slot="room-project"
               hidden={!projectOpen}
             >
-              <ArtifactPane
-                {...documentPane}
-                {...paneParts}
-                paneRef={paneRef}
-                open={projectOpen}
-              />
+              <SketchingShown value={showSketch}>
+                <ArtifactPane
+                  {...documentPane}
+                  {...paneParts}
+                  paneRef={paneRef}
+                  open={projectOpen}
+                />
+              </SketchingShown>
               {/* Shown only under a box floating over a written page, which runs on beneath it. */}
               <div className={styles.footFade}>
                 <FootFade />
@@ -711,6 +723,16 @@ function EmptyConversation({ empty }: { empty: "archived" | "new" | null }) {
       />
     );
   return null;
+}
+
+/**
+ * A sketch at work on the page already says work is under way, so the box over it does not say it
+ * again; a status with something to press, such as Try again, still shows.
+ */
+function sketchingDock(dock: RoomDock): RoomDock {
+  return dock.kind === "composer" && dock.status?.onAction === undefined
+    ? { ...dock, status: null }
+    : dock;
 }
 
 /** Takes a shell request typed into the composer, so it is answered rather than sent. */

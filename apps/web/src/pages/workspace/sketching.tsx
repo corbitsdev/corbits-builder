@@ -2,7 +2,13 @@
  * An app taking shape, drawn as a sketch with a few short lines under it: a concept's designer
  * drafting it, or the Builder writing the first app. It moves only while that work is under way.
  */
-import type { CSSProperties, ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { clock, useElapsedMs } from "./elapsed.tsx";
 import styles from "./sketching.module.css";
 
@@ -21,6 +27,12 @@ const AppSketch = () => (
   </div>
 );
 
+/**
+ * Told while a sketch at work is on the page, so whatever else would say the same work is under
+ * way, such as the pill above the prompt box, can leave that to it. The call returns its undoing.
+ */
+export const SketchingShown = createContext<(() => () => void) | null>(null);
+
 export function Sketching({
   working,
   style,
@@ -31,6 +43,11 @@ export function Sketching({
   style?: CSSProperties;
   children: ReactNode;
 }) {
+  const shown = useContext(SketchingShown);
+  useEffect(
+    () => (working && shown !== null ? shown() : undefined),
+    [working, shown],
+  );
   return (
     <div
       className={styles.sketching}
