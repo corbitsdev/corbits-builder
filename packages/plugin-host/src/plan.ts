@@ -8,7 +8,12 @@ import {
   isWorkflowAction,
   type Catalog,
 } from "./catalog.ts";
-import { gateOf, makersIn, type Run } from "./coordinator.ts";
+import {
+  gateOf,
+  makersIn,
+  unstartedOptional,
+  type Run,
+} from "./coordinator.ts";
 import { holds, resolveFacts, unmet } from "./facts.ts";
 import { missingTexts, unfinishedText } from "./text.ts";
 
@@ -157,14 +162,8 @@ const FINISHED: ReadonlySet<StepState> = new Set([
   "cancelled",
 ]);
 
-// An optional step nobody started leaves nothing to do; one that started keeps its group open.
 const leftToDo = (step: PlanStepView) =>
-  !step.finished &&
-  !(
-    step.optional &&
-    step.runId === undefined &&
-    (step.state === "not_started" || step.state === "waiting")
-  );
+  !step.finished && !unstartedOptional(step);
 
 /**
  * Where each step of a plan stands, worked out from the project's records each time, so the plan

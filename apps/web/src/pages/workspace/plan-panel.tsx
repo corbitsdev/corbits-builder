@@ -72,9 +72,9 @@ function markOf(step: PlanChild): PlanMark {
   return "open";
 }
 
-// A skipped or cancelled step will not happen, so it is neither done nor still to do.
-const dropped = (step: PlanChild) =>
-  step.state === "skipped" || step.state === "cancelled";
+// A step the hub calls finished without it being done will not happen, so it is neither done nor
+// still to do.
+const dropped = (step: PlanChild) => step.finished && step.state !== "done";
 
 const actionSteps = (steps: readonly PlanStep[]): PlanChild[] =>
   steps.flatMap((step) => ("steps" in step ? step.steps : [step]));

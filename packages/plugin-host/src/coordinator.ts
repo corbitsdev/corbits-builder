@@ -114,6 +114,7 @@ type SavedPlanChild = {
   declined?: { by: string; at: string };
   state: string;
   finished: boolean;
+  runId?: string;
 };
 /**
  * A step of the plan: an action step, or a group that only holds action steps, with the handle of
@@ -130,7 +131,7 @@ export type SavedPlanStep =
 /** A step of the plan as saved: one with no id is new, and the host gives it one. */
 type PlanChildWrite = Omit<
   SavedPlanChild,
-  "id" | "declined" | "state" | "finished"
+  "id" | "declined" | "state" | "finished" | "runId"
 > & {
   id?: string;
 };
@@ -410,6 +411,19 @@ const makersOf = (catalog: Catalog, fact: Fact) =>
   catalog.actions.filter((action) =>
     (action.builder.returns ?? []).some((made) => makes(made, fact)),
   );
+
+/**
+ * An optional step nobody started leaves nothing to do: it does not hold its group open, and the
+ * coordinator offers it once the rest is done. One that started keeps its group open.
+ */
+export const unstartedOptional = (step: {
+  optional?: boolean;
+  runId?: string;
+  state: string;
+}) =>
+  step.optional === true &&
+  step.runId === undefined &&
+  (step.state === "not_started" || step.state === "waiting");
 
 /** The names of the actions whose finished work makes a fact true. */
 export const makersIn = (catalog: Catalog) => (fact: Fact) =>
@@ -1455,9 +1469,7 @@ async function planAnswer(
     },
   );
   const answer = `${plan}\n\n${PLAN_STEP_REMINDER}`;
-  const left = steps.filter(
-    (step) => step.optional && step.state === "not_started",
-  );
+  const left = steps.filter(unstartedOptional);
   if (
     left.length === 0 ||
     steps.some((step) => !step.optional && !step.finished)
