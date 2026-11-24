@@ -3,7 +3,7 @@ import { wording } from "../../config.ts";
 import { useState, type ReactNode } from "react";
 import type { Decorator, Meta, StoryObj } from "@storybook/react-vite";
 import type { PromptQuestion } from "@corbits-builder/schemas/conversation";
-import { fn } from "storybook/test";
+import { expect, fn, userEvent, within } from "storybook/test";
 import { composer } from "./prompt-box.fixtures.ts";
 import { QuestionsCard } from "./questions-card.tsx";
 import { RoomDockView } from "./room.view.tsx";
@@ -107,6 +107,21 @@ export const OneQuestion: Story = {
       asked: { questions: [ask.questions[1]!] },
       status: "open",
     },
+  },
+};
+
+/** Not now leaves the questions without choosing, saying so as the reply. */
+export const NotNow: Story = {
+  decorators: [inPromptBox],
+  play: async ({ canvasElement, args }) => {
+    await userEvent.click(
+      within(canvasElement).getByRole("button", {
+        name: wording.promptBox.waiting.notNow,
+      }),
+    );
+    await expect(args.onAnswer).toHaveBeenCalledWith({
+      reply: wording.promptBox.waiting.notNow,
+    });
   },
 };
 
