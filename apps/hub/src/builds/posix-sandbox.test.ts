@@ -239,23 +239,23 @@ sandboxTest(
       | Awaited<ReturnType<typeof createPosixBuildExecutor>>
       | undefined;
     try {
-      const data = join(root, "data");
-      const workspace = join(data, "jobs", "project-a", "workspace");
-      const otherProject = join(data, "jobs", "project-b", "workspace");
-      const hubData = join(data, "hub-secrets.json");
+      const hubDataDir = join(root, "data");
+      const workspace = join(hubDataDir, "jobs", "project-a", "workspace");
+      const otherProject = join(hubDataDir, "jobs", "project-b", "workspace");
+      const hubSecretsFile = join(hubDataDir, "hub-secrets.json");
       await mkdir(join(workspace, "hostile"), { recursive: true });
       await mkdir(otherProject, { recursive: true });
       await writeFile(join(otherProject, "app.ts"), "other-project-sentinel");
-      await writeFile(hubData, "hub-data-sentinel");
+      await writeFile(hubSecretsFile, "hub-data-sentinel");
       await writeFile(join(workspace, ".env"), "SECRET=env-sentinel");
       const attempts = {
-        home: `require("node:fs").readdirSync(${JSON.stringify(homedir())})`,
-        otherProject: `require("node:fs").readFileSync(${JSON.stringify(join(otherProject, "app.ts"))}, "utf8")`,
-        hubData: `require("node:fs").readFileSync(${JSON.stringify(hubData)}, "utf8")`,
-        env: `require("node:fs").readFileSync(${JSON.stringify(join(workspace, ".env"))}, "utf8")`,
+        readHome: `require("node:fs").readdirSync(${JSON.stringify(homedir())})`,
+        readOtherProject: `require("node:fs").readFileSync(${JSON.stringify(join(otherProject, "app.ts"))}, "utf8")`,
+        readHubSecrets: `require("node:fs").readFileSync(${JSON.stringify(hubSecretsFile)}, "utf8")`,
+        readEnv: `require("node:fs").readFileSync(${JSON.stringify(join(workspace, ".env"))}, "utf8")`,
         writeOtherProject: `require("node:fs").writeFileSync(${JSON.stringify(join(otherProject, "pwned"))}, "x")`,
         writeHost: `require("node:fs").writeFileSync(${JSON.stringify(join(root, "pwned"))}, "x")`,
-        outsideHost: `await fetch("https://example.com", { signal: AbortSignal.timeout(5000) })`,
+        fetchOutside: `await fetch("https://example.com", { signal: AbortSignal.timeout(5000) })`,
       };
       await writeFile(
         join(workspace, "hostile", "probe.js"),
@@ -301,16 +301,18 @@ sandboxTest(
       const results = JSON.parse(
         await readFile(join(workspace, "results.json"), "utf8"),
       );
-      const denied = expect.stringMatching(/^failed: EPERM/);
+      const failed = expect.stringMatching(/^failed: /);
+      // macOS refuses a hidden file; Linux shows an empty file in its place.
+      const hidden = expect.not.stringContaining("sentinel");
       expect(results).toEqual({
-        home: denied,
-        otherProject: denied,
-        hubData: denied,
-        env: denied,
-        writeOtherProject: denied,
-        writeHost: denied,
+        readHome: failed,
+        readOtherProject: hidden,
+        readHubSecrets: hidden,
+        readEnv: hidden,
+        writeOtherProject: failed,
+        writeHost: failed,
         // The sandbox's own refusal, so a host merely unreachable from this machine can't pass.
-        outsideHost: expect.stringContaining("host is not on the allow list"),
+        fetchOutside: expect.stringContaining("host is not on the allow list"),
       });
       expect(await Bun.file(join(otherProject, "pwned")).exists()).toBe(false);
       expect(await Bun.file(join(root, "pwned")).exists()).toBe(false);

@@ -45,6 +45,22 @@ export const Manifest = type({
 });
 const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
 
+export async function readManifest(path: string) {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(await readFile(path, "utf8"));
+  } catch (error) {
+    if (
+      (hasCode(error) && error.code === "ENOENT") ||
+      error instanceof SyntaxError
+    )
+      return undefined;
+    throw error;
+  }
+  const manifest = Manifest(parsed);
+  return manifest instanceof type.errors ? undefined : manifest;
+}
+
 export const DEPENDENCY_FIELDS = [
   "dependencies",
   "devDependencies",
@@ -88,47 +104,35 @@ export function createPackageGate(
     isError: true,
   });
 
-  const readDependencies = async () => {
-    const registry = new Set<string>();
-    const unregistered = new Set<string>();
+  const readWorkspaceDependencies = async () => {
+    const registryPackages = new Set<string>();
+    const outsideRegistry = new Set<string>();
     // Bun.Glob matches nothing for a brace pattern whose branches hold a "/", so one per layout.
-    const manifests = (
-      await Promise.all(
-        ["package.json", "*/package.json", "packages/*/package.json"].map(
-          (pattern) =>
-            Array.fromAsync(
-              new Bun.Glob(pattern).scan({ cwd: workspace, onlyFiles: true }),
-            ),
-        ),
-      )
-    ).flat();
-    for (const path of manifests) {
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(await readFile(join(workspace, path), "utf8"));
-      } catch (error) {
-        if (
-          (hasCode(error) && error.code === "ENOENT") ||
-          error instanceof SyntaxError
-        )
-          continue;
-        throw error;
+    for (const pattern of [
+      "package.json",
+      "*/package.json",
+      "packages/*/package.json",
+    ]) {
+      const glob = new Bun.Glob(pattern);
+      for await (const path of glob.scan({ cwd: workspace, onlyFiles: true })) {
+        const manifest = await readManifest(join(workspace, path));
+        if (!manifest) continue;
+        for (const field of DEPENDENCY_FIELDS) {
+          for (const [name, spec] of Object.entries(manifest[field] ?? {})) {
+            if (spec.startsWith("workspace:")) continue;
+            // An installed name could otherwise point at any alias, git repository, URL or file.
+            if (/[:/]/.test(spec)) outsideRegistry.add(`${name}@${spec}`);
+            else registryPackages.add(name);
+          }
+        }
       }
-      const manifest = Manifest(parsed);
-      if (manifest instanceof type.errors) continue;
-      for (const field of DEPENDENCY_FIELDS)
-        for (const [name, spec] of Object.entries(manifest[field] ?? {}))
-          if (spec.startsWith("workspace:")) continue;
-          // An installed name could otherwise point at any alias, git repository, URL or file.
-          else if (/[:/]/.test(spec)) unregistered.add(`${name}@${spec}`);
-          else registry.add(name);
     }
-    return { registry, unregistered };
+    return { registryPackages, outsideRegistry };
   };
-  const refuseUnregistered = (call: ToolCall, unregistered: Set<string>) =>
+  const refuseOutsideRegistry = (call: ToolCall, specs: Set<string>) =>
     refuse(call, {
       code: "package_source_refused",
-      packages: [...unregistered],
+      packages: [...specs],
       summary:
         "Dependencies come from the npm registry by version; these do not.",
     });
@@ -139,8 +143,9 @@ export function createPackageGate(
     signal: AbortSignal,
   ): Promise<ToolResult> => {
     // bun add resolves every package.json, not only the packages it is given.
-    const { unregistered } = await readDependencies();
-    if (unregistered.size) return refuseUnregistered(call, unregistered);
+    const { outsideRegistry } = await readWorkspaceDependencies();
+    if (outsideRegistry.size)
+      return refuseOutsideRegistry(call, outsideRegistry);
     const result = await executor.run(
       {
         id: call.id,
@@ -171,17 +176,21 @@ export function createPackageGate(
             "Install packages with install_packages, not the shell, then run what they install with bun run, or with app_status when it keeps running.",
         });
       if (!BARE_INSTALL.test(command)) return undefined;
-      const { registry, unregistered } = await readDependencies();
-      if (unregistered.size) return refuseUnregistered(call, unregistered);
+      const { registryPackages, outsideRegistry } =
+        await readWorkspaceDependencies();
+      if (outsideRegistry.size)
+        return refuseOutsideRegistry(call, outsideRegistry);
       const installed = await installedPackages(workspace);
-      const added = [...registry].filter((name) => !installed.has(name));
-      return added.length && !(await approved(signal)).anyPackage
-        ? refuse(call, {
-            code: "package_install_refused",
-            packages: added,
-            summary: "Add these packages with install_packages.",
-          })
-        : undefined;
+      const notYetInstalled = [...registryPackages].filter(
+        (name) => !installed.has(name),
+      );
+      if (!notYetInstalled.length) return undefined;
+      if ((await approved(signal)).installsFreely) return undefined;
+      return refuse(call, {
+        code: "package_install_refused",
+        packages: notYetInstalled,
+        summary: "Add these packages with install_packages.",
+      });
     },
     async run(call: ToolCall, signal: AbortSignal): Promise<ToolResult> {
       const input = PackageInstallInput(call.arguments);

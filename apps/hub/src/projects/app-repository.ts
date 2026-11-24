@@ -444,14 +444,18 @@ export function createAppRepositoryRoutes(
           run.tenantId,
           run.projectId,
         );
-        const changed = await Promise.all(
-          coderToolEffects(preferences.value).map(({ tool, effect }) =>
-            setRunToolGrantEffect(db, run.tenantId, run.runId, tool, effect),
-          ),
-        );
-        // A sidecar receives grants only before each trigger, and the coder installs in this one.
-        if (run.address !== null && changed.some((id) => id !== null))
-          await pushRunGrants(sidecarRouter, [run.address]);
+        for (const { tool, effect } of coderToolEffects(preferences.value)) {
+          const changedPrincipalId = await setRunToolGrantEffect(
+            db,
+            run.tenantId,
+            run.runId,
+            tool,
+            effect,
+          );
+          // A sidecar receives grants only before each trigger, and the coder installs in this one.
+          if (changedPrincipalId !== null && run.address !== null)
+            await pushRunGrants(sidecarRouter, [run.address]);
+        }
         if (
           run.firstBuild &&
           typeof run.starter === "string" &&
