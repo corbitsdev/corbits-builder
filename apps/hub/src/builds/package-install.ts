@@ -108,24 +108,27 @@ export function createPackageGate(
     const registryPackages = new Set<string>();
     const outsideRegistry = new Set<string>();
     // Bun.Glob matches nothing for a brace pattern whose branches hold a "/", so one per layout.
-    for (const pattern of [
-      "package.json",
-      "*/package.json",
-      "packages/*/package.json",
-    ]) {
-      const glob = new Bun.Glob(pattern);
-      for await (const path of glob.scan({ cwd: workspace, onlyFiles: true })) {
-        const manifest = await readManifest(join(workspace, path));
-        if (!manifest) continue;
-        for (const field of DEPENDENCY_FIELDS) {
-          for (const [name, spec] of Object.entries(manifest[field] ?? {})) {
-            if (spec.startsWith("workspace:")) continue;
-            // An installed name could otherwise point at any alias, git repository, URL or file.
-            if (/[:/]/.test(spec)) outsideRegistry.add(`${name}@${spec}`);
-            else registryPackages.add(name);
-          }
-        }
-      }
+    const manifestPaths = await Promise.all(
+      ["package.json", "*/package.json", "packages/*/package.json"].map(
+        (pattern) =>
+          Array.fromAsync(
+            new Bun.Glob(pattern).scan({ cwd: workspace, onlyFiles: true }),
+          ),
+      ),
+    );
+    const manifests = await Promise.all(
+      manifestPaths.flat().map((path) => readManifest(join(workspace, path))),
+    );
+    const dependencies = manifests.flatMap((manifest) =>
+      DEPENDENCY_FIELDS.flatMap((field) =>
+        Object.entries(manifest?.[field] ?? {}),
+      ),
+    );
+    for (const [name, spec] of dependencies) {
+      if (spec.startsWith("workspace:")) continue;
+      // An installed name could otherwise point at any alias, git repository, URL or file.
+      if (/[:/]/.test(spec)) outsideRegistry.add(`${name}@${spec}`);
+      else registryPackages.add(name);
     }
     return { registryPackages, outsideRegistry };
   };
