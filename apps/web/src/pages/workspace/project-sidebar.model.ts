@@ -14,6 +14,7 @@ import type { SettingsTab } from "../settings/settings.view.tsx";
 import type {
   MenuProject,
   ProjectInfoDialogProps,
+  ProjectMenuHost,
 } from "../project-menu.model.ts";
 import type { PaneDocument } from "./artifact-pane.tsx";
 import {
@@ -59,6 +60,8 @@ export function useProjectSidebar(input: ProjectSidebarInput): {
   sidebar: ProjectSidebarProps;
   /** Project settings, while open. */
   projectSettings: ProjectInfoDialogProps | null;
+  /** The project's own menu, opened from its name; null until the project list has it. */
+  projectMenu: ProjectMenuHost | null;
 } {
   const { projectId, shown } = input;
   const open =
@@ -101,5 +104,15 @@ export function useProjectSidebar(input: ProjectSidebarInput): {
             onError: input.onProjectError,
           }
         : null,
+    projectMenu:
+      input.project === undefined
+        ? null
+        : {
+            project: input.project,
+            onChanged: input.onProjectChanged,
+            onError: input.onProjectError,
+            // Archived or deleted, the project is no longer one to work in, so the person goes home.
+            onGone: input.onNewProject,
+          },
   };
 }

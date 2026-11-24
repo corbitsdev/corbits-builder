@@ -10,6 +10,7 @@ import {
   type SidebarStepState,
 } from "./project-sidebar.view.tsx";
 import { LIVE_TAB } from "./tab-follow.ts";
+import { ProjectMenuView } from "../project-menu.view.tsx";
 
 const words = wording.projectShell;
 
@@ -443,6 +444,37 @@ export const Closed: Story = {
     await expect(
       canvas.queryByRole("button", { name: words.projectSettings }),
     ).toBeNull();
+  },
+};
+
+/** The project's name opens the project's own menu, as its card on the projects page does. */
+export const NameMenu: Story = {
+  args: {
+    menu: (trigger) => (
+      <ProjectMenuView
+        trigger={trigger}
+        align="start"
+        archived={false}
+        shipped={false}
+        onShowInfo={fn()}
+        onRename={fn()}
+        onExport={fn()}
+        onToggleShipped={fn()}
+        onToggleArchived={fn()}
+        onDelete={fn()}
+        infoDialog={null}
+        exportDialog={null}
+      />
+    ),
+  },
+  play: async ({ canvasElement }) => {
+    within(canvasElement)
+      .getByRole("button", { name: "Bakery orders", expanded: false })
+      .focus();
+    await userEvent.keyboard("{Enter}");
+    await expect(
+      within(document.body).getByRole("menuitem", { name: "Rename" }),
+    ).toBeVisible();
   },
 };
 

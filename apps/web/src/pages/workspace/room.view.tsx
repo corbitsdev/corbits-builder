@@ -10,6 +10,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  type ReactElement,
   type ReactNode,
   type RefObject,
 } from "react";
@@ -90,6 +91,8 @@ export type RoomSlots = {
    * Absent, no box has a handle.
    */
   chat?: ReactNode;
+  /** The project's own menu, opened from its name in the sidebar; absent, the name is just shown. */
+  projectMenu?: ((trigger: ReactElement) => ReactNode) | undefined;
 };
 
 /**
@@ -281,6 +284,7 @@ export function RoomView({
   paneParts,
   pluginSpace,
   chat,
+  projectMenu,
 }: RoomViewProps) {
   const { projectReady, projectOpen, documentShown, onProjectOpenChange } =
     layout;
@@ -488,6 +492,7 @@ export function RoomView({
         sidebar={
           <ProjectSidebarView
             {...sidebar}
+            menu={projectMenu}
             open={narrow ? drawerOpen : sidebar.open}
             drawer={narrow}
             onToggleSidebar={

@@ -80,7 +80,7 @@
   transition: none;
 }
 
-/* The title row: the mark and the project's name, which only say whose sidebar it is, and the
+/* The title row: the mark and the project's name, each opening its own menu, and the
    toggle at its end, across the card's width. */
 .head {
   display: flex;
@@ -136,7 +136,13 @@
 
 .project {
   min-width: 0;
+  padding: 0;
   overflow: hidden;
+  border: 0;
+  background: none;
+  color: inherit;
+  font-family: inherit;
+  text-align: start;
   font-size: var(--wb-text-control);
   font-weight: 600;
   line-height: var(--wb-text-control--line-height);

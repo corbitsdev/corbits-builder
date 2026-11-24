@@ -16,6 +16,7 @@ import {
   useState,
   type ComponentProps,
   type KeyboardEvent,
+  type ReactElement,
   type ReactNode,
 } from "react";
 import {
@@ -103,6 +104,8 @@ export type MarkWays = {
 
 export type ProjectSidebarViewProps = MarkWays & {
   project: string;
+  /** The project's own menu, opened from its name; absent, the name is only shown. */
+  menu?: ((trigger: ReactElement) => ReactNode) | undefined;
   /** Closed, only the project's name shows, to open it again. */
   open: boolean;
   /** The room is narrow, so the open sidebar lies over the page. */
@@ -131,6 +134,7 @@ export type ProjectSidebarViewProps = MarkWays & {
 
 export function ProjectSidebarView({
   project,
+  menu,
   open,
   drawer,
   plan,
@@ -151,6 +155,7 @@ export function ProjectSidebarView({
   return (
     <SidebarFrame
       title={project}
+      titleMenu={menu}
       open={open}
       drawer={drawer}
       onToggleSidebar={onToggleSidebar}
@@ -203,6 +208,7 @@ export function ProjectSidebarView({
 export function SidebarFrame({
   label = words.sidebar,
   title,
+  titleMenu,
   open,
   drawer,
   onToggleSidebar,
@@ -214,6 +220,8 @@ export function SidebarFrame({
   /** What a screen reader calls the sidebar. */
   label?: string;
   title: string;
+  /** A menu opened from the name, given the button that opens it; absent, the name is only shown. */
+  titleMenu?: ((trigger: ReactElement) => ReactNode) | undefined;
   open: boolean;
   drawer: boolean;
   onToggleSidebar: () => void;
@@ -266,7 +274,15 @@ export function SidebarFrame({
               <MenuItem onSelect={onSettings}>{words.settings}</MenuItem>
             </MenuContent>
           </Menu>
-          <span className={styles.project}>{title}</span>
+          {titleMenu === undefined ? (
+            <span className={styles.project}>{title}</span>
+          ) : (
+            titleMenu(
+              <button type="button" className={styles.project}>
+                {title}
+              </button>,
+            )
+          )}
           <button
             type="button"
             className={styles.toggle}

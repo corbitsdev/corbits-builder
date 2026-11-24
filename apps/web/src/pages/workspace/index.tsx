@@ -4,7 +4,7 @@ import { QuestionOutcomes } from "./question-outcome.tsx";
  * the agents file, without making chat inert during document review.
  */
 import { EnableAiDialog } from "../model-setup.tsx";
-import { ProjectInfoDialog } from "../project-menu.tsx";
+import { ProjectInfoDialog, ProjectMenu } from "../project-menu.tsx";
 import { ApprovalRoundsPanel } from "./approval-rounds.tsx";
 import { ConceptMockup } from "./design-concepts.tsx";
 import { LiveApp } from "./live-app.tsx";
@@ -61,6 +61,7 @@ function ReadyRoom(props: ReadyRoomProps) {
   const {
     view,
     projectSettings,
+    projectMenu,
     enableAi,
     liveApp,
     spaceScreen,
@@ -79,6 +80,13 @@ function ReadyRoom(props: ReadyRoomProps) {
         }
         pluginSpace={
           spaceScreen === null ? null : <SpaceScreen {...spaceScreen} />
+        }
+        projectMenu={
+          projectMenu === null
+            ? undefined
+            : (trigger) => (
+                <ProjectMenu {...projectMenu} trigger={trigger} align="start" />
+              )
         }
         paneParts={{
           liveApp: liveApp === null ? null : <LiveApp {...liveApp} />,

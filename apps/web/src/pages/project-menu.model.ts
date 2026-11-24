@@ -42,8 +42,8 @@ export type ProjectMenuHost = {
     complete?: boolean,
     action?: NoticeAction,
   ) => void;
-  /** The project is gone; a host showing it should leave. */
-  onDeleted?: () => void;
+  /** The project was archived or deleted; a host showing it should leave. */
+  onGone?: () => void;
 };
 
 export type ProjectInfoDialogProps = {
@@ -87,7 +87,7 @@ export function useProjectMenu({
   onChanged,
   onError,
   onNotice,
-  onDeleted,
+  onGone,
 }: ProjectMenuHost): {
   view: Omit<
     ProjectMenuViewProps,
@@ -139,15 +139,15 @@ export function useProjectMenu({
       onToggleShipped: () =>
         void act(() => shipProject(project.id, !project.shippedAt)),
       onToggleArchived: () =>
-        void act(() =>
-          project.archivedAt
-            ? restoreProject(project.id)
-            : archiveProject(project.id),
-        ),
+        void act(async () => {
+          if (project.archivedAt) return restoreProject(project.id);
+          await archiveProject(project.id);
+          onGone?.();
+        }),
       onDelete: () =>
         void act(async () => {
           await archiveProject(project.id);
-          onDeleted?.();
+          onGone?.();
         }),
     },
     infoDialog: infoOpen
