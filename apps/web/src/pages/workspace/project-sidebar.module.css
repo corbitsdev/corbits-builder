@@ -223,10 +223,10 @@
 /* A step is a stop on the timeline: its circle in a column of its own, joined to its neighbours by
    a thin line, and its name beside it, at the links' size and rhythm. Each row draws its own half
    of the line either side of its circle, since the next row's ground covers anything drawn past
-   its edge. The line takes the text's colour after a done step and the muted one elsewhere. */
+   its edge. The line is darker after a done step and light after the one at work. */
 .step {
-  --line: var(--wb-muted-foreground);
-  --line-in: var(--wb-muted-foreground);
+  --line: var(--wb-border);
+  --line-in: var(--wb-border);
 
   position: relative;
   display: grid;
@@ -265,13 +265,13 @@
 }
 
 .step[data-state="done"] {
-  --line: var(--wb-foreground);
+  --line: var(--wb-muted-foreground);
 
   color: var(--wb-foreground);
 }
 
 .step[data-state="done"] + .step {
-  --line-in: var(--wb-foreground);
+  --line-in: var(--wb-muted-foreground);
 }
 
 .step[data-state="running"] {
