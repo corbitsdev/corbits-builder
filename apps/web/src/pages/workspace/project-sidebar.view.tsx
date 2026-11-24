@@ -465,16 +465,10 @@ function PlanTree({
       if (event.target === event.currentTarget) setFocused(key);
     },
   });
-  const counted = plan.filter((row) => row.state !== "declined");
-  const done = counted.filter((row) => row.state === "done").length;
   return (
     <section className={styles.steps}>
-      {/* The steps are named as the plan, with how far it has gone beside the name. */}
-      <h2 className={styles.planHead}>
-        <span id={headingId}>{words.plan}</span>
-        <span className={styles.planCount}>
-          {words.progress(done, counted.length)}
-        </span>
+      <h2 id={headingId} className={styles.planHead}>
+        {words.plan}
       </h2>
       <ul
         role="tree"

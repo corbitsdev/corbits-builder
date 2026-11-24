@@ -497,8 +497,6 @@ export const wording = {
       needsYou: "Waiting on you",
       failed: "Didn't finish",
     },
-    /** How far the plan has gone, beside its name. */
-    progress: (done: number, steps: number) => `${done} of ${steps} done`,
     /** Read after a step's name, and shown on its pause mark. */
     pausesFirst: "pauses for you before it starts",
     skipped: "skipped",

@@ -436,8 +436,7 @@ export const Closed: Story = {
   args: { ...buildingArgs, open: false },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(canvas.getByRole("tree")).toBeVisible();
-    await expect(canvas.getByText(words.progress(6, 7))).toBeVisible();
+    await expect(canvas.getByRole("tree", { name: words.plan })).toBeVisible();
     await expect(canvas.getAllByRole("treeitem")).toHaveLength(7);
     await expect(
       canvas.queryByRole("button", { name: words.projectSettings }),
