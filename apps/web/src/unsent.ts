@@ -7,6 +7,18 @@ const store = createBrowserStore(
   "until this page reloads",
 );
 
+/** Where a project's prompt box keeps what is typed and not yet sent. */
+export const composerKey = (projectId: string) =>
+  `unsent:composer:${projectId}`;
+
+/** Moves what is kept under one key to another, once the place it belongs exists. */
+export function moveUnsent(from: string, to: string): void {
+  const value = store.read(from);
+  if (value === null) return;
+  store.write(to, value);
+  store.write(from, null);
+}
+
 export function useUnsent(
   key: string,
 ): [string, (value: SetStateAction<string>) => void] {

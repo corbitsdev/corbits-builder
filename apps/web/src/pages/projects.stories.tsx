@@ -4,15 +4,19 @@ import { expect, fn, userEvent, within } from "storybook/test";
 import { wording } from "../config.ts";
 import { ProjectsView, type ProjectsViewProps } from "./projects.view.tsx";
 
-// Holds what the page asks its host to keep: the idea being typed and the profile picked.
+// Holds what the page asks its host to keep: the idea being typed, what is typed while it starts
+// and the profile picked.
 function Page(args: ProjectsViewProps) {
   const [idea, setIdea] = useState(args.idea);
+  const [followUp, setFollowUp] = useState(args.followUp);
   const [profile, setProfile] = useState(args.profile);
   return (
     <ProjectsView
       {...args}
       idea={idea}
       onIdeaChange={setIdea}
+      followUp={followUp}
+      onFollowUpChange={setFollowUp}
       profile={profile}
       onProfileChange={setProfile}
     />
@@ -28,6 +32,8 @@ const meta = {
     sidebar: { open: true, drawer: false, onToggleSidebar: fn() },
     idea: "",
     onIdeaChange: fn(),
+    followUp: "",
+    onFollowUpChange: fn(),
     onStart: fn(),
     profiles: [
       {
@@ -126,6 +132,13 @@ export const Starting: Story = {
     await expect(
       canvas.getByText(wording.newProject.starting, { selector: "p" }),
     ).toHaveAttribute("role", "status");
+    // The cursor is already in the room's box, which takes more words while sending waits.
+    const box = canvas.getByRole("textbox");
+    await expect(box).toHaveFocus();
+    await userEvent.keyboard("Keep it short");
+    await expect(box).toHaveValue("Keep it short");
+    await userEvent.keyboard("{Enter}");
+    await expect(box).toHaveValue("Keep it short");
   },
 };
 

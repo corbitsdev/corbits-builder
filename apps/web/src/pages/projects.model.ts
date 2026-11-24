@@ -29,6 +29,7 @@ import {
   type PickedDirectory,
 } from "../api/repository.ts";
 import { useSidebar } from "../sidebar-setting.ts";
+import { composerKey, moveUnsent, useUnsent } from "../unsent.ts";
 import { canStartProject } from "./home-view.ts";
 import { useNewProjectProfiles } from "./new-project-profiles.model.ts";
 import type { AddProviderDialogProps } from "./settings/add-provider-dialog.model.ts";
@@ -42,6 +43,10 @@ export type ProjectsProps = {
   /** The projects last worked on, latest first, each with when; empty, none are listed. */
   recent: ProjectsViewProps["recent"];
 };
+
+// Kept apart from every project's own box, since the project does not exist yet; a start that
+// fails leaves it here for the next.
+const STARTING_KEY = "unsent:composer:starting";
 
 // A folder read as a project, with the files the reading suggests leaving out, ticked from the
 // start, which the person can keep.
@@ -105,6 +110,8 @@ export function useProjects({
   providerDialog: AddProviderDialogProps;
 } {
   const [idea, setIdea] = useState("");
+  // What the person types into the room while it starts, until the project it belongs to exists.
+  const [followUp, setFollowUp] = useUnsent(STARTING_KEY);
   const [activity, setActivity] =
     useState<ProjectsViewProps["activity"]>("idle");
   const sidebar = useSidebar();
@@ -137,6 +144,7 @@ export function useProjects({
         ...(profile === undefined ? {} : { profile }),
       });
       setIdea("");
+      moveUnsent(STARTING_KEY, composerKey(created.projectId));
       onChanged();
       // The hub mailed the opening sentence to the coordinator; the workspace
       // shows it until the conversation records it.
@@ -261,6 +269,8 @@ export function useProjects({
       },
       idea,
       onIdeaChange: setIdea,
+      followUp,
+      onFollowUpChange: setFollowUp,
       onStart: () => void start(),
       profiles: profiles.options,
       profile,

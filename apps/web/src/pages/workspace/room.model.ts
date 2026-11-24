@@ -11,7 +11,7 @@ import type { AnswerOutcome } from "./question-outcome.tsx";
  * its room and starts its coordinator; `useRoom` works on the loaded snapshot.
  */
 import { wording } from "../../config.ts";
-import { useUnsent } from "../../unsent.ts";
+import { composerKey, useUnsent } from "../../unsent.ts";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   queryOptions,
@@ -671,7 +671,7 @@ export function useRoom({
   const [sent, setSent] = useState<SentMessage[]>(() =>
     openingDraft(projectId, openingMessage),
   );
-  const [value, setValue] = useUnsent(`unsent:composer:${projectId}`);
+  const [value, setValue] = useUnsent(composerKey(projectId));
   const [sending, setSending] = useState(false);
   const [sendFailed, setSendFailed] = useState(false);
   const [sendFault, setSendFault] = useState<string | null>(null);
@@ -781,6 +781,18 @@ export function useRoom({
     dispatchSeen.current.clear();
     runCards.current.clear();
     setStoppedHere(new Set());
+  }, [projectId, openingMessage]);
+
+  // A project just started could be typed into while it opened, and the box that was typed in
+  // is gone; the cursor carries on in this one, after the words.
+  useEffect(() => {
+    if (openingMessage === undefined) return;
+    const active = document.activeElement;
+    if (active !== null && active !== document.body) return;
+    const box = composerRef.current;
+    if (box === null) return;
+    box.focus();
+    box.setSelectionRange(box.value.length, box.value.length);
   }, [projectId, openingMessage]);
 
   // The durable mirror is the committed transcript. The stream fills the gap

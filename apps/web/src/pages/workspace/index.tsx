@@ -17,6 +17,7 @@ import {
   type StageWorkspaceProps,
 } from "./room.model.ts";
 import { useSidebar } from "../../sidebar-setting.ts";
+import { composerKey, useUnsent } from "../../unsent.ts";
 import { RoomFault, RoomSkeleton } from "./room-skeleton.tsx";
 import { RoomView } from "./room.view.tsx";
 import { RoomThread } from "./transcript.tsx";
@@ -26,11 +27,13 @@ import { WrittenDocument } from "./written-document.tsx";
 export function StageWorkspace(props: StageWorkspaceProps) {
   const gate = useRoomGate(props);
   const sidebar = useSidebar();
+  const [draft, setDraft] = useUnsent(composerKey(props.projectId));
   if (gate.state === "loading")
     return (
       <RoomSkeleton
         title={props.projectTitle}
         opening={props.openingMessage}
+        draft={{ value: draft, onValueChange: setDraft }}
         sidebar={{
           open: sidebar.open,
           drawer: sidebar.drawer,

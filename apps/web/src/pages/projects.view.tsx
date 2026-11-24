@@ -48,6 +48,9 @@ export type ProjectsViewProps = {
   /** The idea in the prompt box. */
   idea: string;
   onIdeaChange: (idea: string) => void;
+  /** What is typed into the room's box while the project starts, for the room to send. */
+  followUp: string;
+  onFollowUpChange: (followUp: string) => void;
   onStart: () => void;
   /** The model profiles a project can start on; the picker is absent when there are none. */
   profiles: readonly PromptInputModelOption[];
@@ -84,6 +87,8 @@ export function ProjectsView({
   sidebar,
   idea,
   onIdeaChange,
+  followUp,
+  onFollowUpChange,
   onStart,
   profiles,
   profile,
@@ -117,6 +122,7 @@ export function ProjectsView({
           title={idea.trim()}
           opening={idea.trim()}
           status={wording.newProject.starting}
+          draft={{ value: followUp, onValueChange: onFollowUpChange }}
           sidebar={sidebar}
         />
       </div>

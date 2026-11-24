@@ -15,6 +15,7 @@ import {
   PromptInputToolbar,
   ShimmerText,
 } from "@corbits/react-ui";
+import { useEffect, useRef } from "react";
 import { Composer } from "../../composer.tsx";
 import { Fault } from "../../components.jsx";
 import { wording } from "../../config.ts";
@@ -32,6 +33,7 @@ export function RoomSkeleton({
   sidebar,
   opening,
   status,
+  draft,
 }: {
   /** The project's name, as the project list has it. */
   title: string;
@@ -41,8 +43,19 @@ export function RoomSkeleton({
   opening?: string | undefined;
   /** What the box says is happening; by default, that the project is opening. */
   status?: string | undefined;
+  /** What is typed into the box, kept for the room; without it the box takes nothing. */
+  draft?: { value: string; onValueChange: (value: string) => void } | undefined;
 }) {
   const said = status ?? wording.message.projectLoading(title);
+  const boxRef = useRef<HTMLTextAreaElement>(null);
+  // A project just started was being typed about a moment ago, so the cursor stays in the box.
+  const takesCursor = draft !== undefined && opening !== undefined;
+  useEffect(() => {
+    const box = boxRef.current;
+    if (!takesCursor || box === null) return;
+    box.focus();
+    box.setSelectionRange(box.value.length, box.value.length);
+  }, [takesCursor]);
   return (
     <StageView aria-busy="true">
       <div
@@ -91,19 +104,23 @@ export function RoomSkeleton({
             <p className={styles.said} role="status">
               {said}
             </p>
-            {/* The box itself, held until the room can take what is typed in it. */}
+            {/* What is typed waits in the box until the room is there to send it. */}
             <Composer>
               <PromptInput
-                value=""
-                onValueChange={nothing}
+                value={draft?.value ?? ""}
+                onValueChange={draft?.onValueChange ?? nothing}
                 onSubmit={nothing}
-                disabled
-                aria-hidden="true"
+                canSubmit={false}
+                disabled={draft === undefined}
+                aria-hidden={draft === undefined ? "true" : undefined}
               >
-                {/* The room's own empty box, so nothing in it changes when the room arrives. What is
+                {/* The room's own box, so nothing in it changes when the room arrives. What is
                     opening is read out by the line above, not written into the box: a project's
                     name can be the person's whole first message. */}
-                <PromptInputTextarea placeholder={wording.composer.reply} />
+                <PromptInputTextarea
+                  ref={boxRef}
+                  placeholder={wording.composer.reply}
+                />
                 <PromptInputToolbar>
                   <PromptInputSubmit className="ms-auto" />
                 </PromptInputToolbar>
