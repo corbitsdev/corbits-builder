@@ -61,7 +61,8 @@
   /* Level with the page's top edge, and held there as the page scrolls past. */
   top: 8px;
   align-self: start;
-  padding: 8px var(--space-8) 0 var(--space-4);
+  /* Download and Share sit 20px down, centred on the line of the 36px close button 16px down. */
+  padding: 6px var(--space-8) 0 var(--space-4);
 }
 
 .column {
@@ -90,7 +91,8 @@
 .sheet {
   box-sizing: border-box;
   width: var(--page-width);
-  padding: 40px 64px 120px;
+  /* The title stands level with the contents, under Download and Share and the gap after them. */
+  padding: 46px 64px 120px;
   color: var(--wb-foreground);
 }
 
