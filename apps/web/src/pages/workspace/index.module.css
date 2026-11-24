@@ -281,23 +281,6 @@
   }
 }
 
-/* The prompt box floats over the project view's foot: a written page runs on under it over a fade
-   into the page's backdrop, so its last lines read clearly as they scroll beneath it, and a design
-   or the live app ends above it. Each keeps clear of the box by its height, which the room sets on
-   the page. */
-.footFade {
-  display: none;
-}
-
-.page:has(
-    > [data-slot="artifact-pane"]
-      [data-slot="panel-pane"][data-state="active"]
-      [data-slot="document-page"]
-  )
-  > .footFade {
-  display: contents;
-}
-
 /* The project view's way back to the chat, in its top corner on the floating rail's look so it
    reads as a control over the view rather than part of the page beneath. */
 .close {

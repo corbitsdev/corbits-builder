@@ -148,7 +148,7 @@ function body(source: string) {
 const meta = {
   title: "Screens/Workspace/DocumentPage",
   component: DocumentPage,
-  // The fade's story reads the same document.
+  // The written document's stories read the same document.
   excludeStories: ["PROBLEM_BRIEF"],
   parameters: { layout: "fullscreen" },
   args: {

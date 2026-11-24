@@ -67,7 +67,7 @@
 
 /* An app, a mockup or a sheet ends above the prompt box and what stands on it, so none of it is
    ever covered, and what it centres it centres on all of it. A written page runs on beneath the
-   box instead, over its fade. */
+   box instead, and its own foot keeps its last lines clear of it. */
 .content > .fill:not(:has([data-slot="document-page"])) {
   --box-height: 0px;
 
