@@ -79,7 +79,7 @@
 }
 
 .alert[data-mark="needs_you"] {
-  background: var(--wb-primary);
+  background: var(--wb-proceed);
 }
 
 /* On a phone the project control keeps only its icon; its name stays its accessible name. */

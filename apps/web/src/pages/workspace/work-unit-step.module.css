@@ -22,7 +22,7 @@
    pushing the row's words aside. */
 .waiting > span:last-of-type {
   flex-shrink: 1;
-  color: var(--wb-primary);
+  color: var(--wb-proceed);
   text-align: end;
 }
 
