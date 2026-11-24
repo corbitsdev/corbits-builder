@@ -56,9 +56,12 @@ export async function approvedVersion(
 }
 
 /**
- * The packages a coder run installs without asking: those each document declares in the version
- * the person approved, read from that version, so a revision not yet approved adds none. A run
- * whose install_packages is denied, or that holds none, is given none, so a document never widens
+ * The packages a coder run installs without asking, given its install_packages grant.
+ *
+ * An "allow" grant installs any registry package freely. Each document also adds the packages
+ * declared in its approved version. A revision not yet approved adds nothing.
+ *
+ * A run whose grant is "deny", or that holds no grant, gets nothing. So a document never widens
  * what the run may install.
  */
 export async function preapprovedPackages<T extends { kind: string }>(
@@ -66,7 +69,8 @@ export async function preapprovedPackages<T extends { kind: string }>(
   documents: readonly T[],
   approved: (document: T) => Promise<string | undefined>,
 ): Promise<ApprovedPackages> {
-  if (installs === undefined || installs === "deny") return { documents: [] };
+  if (installs === undefined || installs === "deny")
+    return { installsFreely: false, documents: [] };
   const declared = [];
   for (const document of documents) {
     if (!isDocumentKind(document.kind)) continue;
@@ -74,7 +78,7 @@ export async function preapprovedPackages<T extends { kind: string }>(
     const packages = content === undefined ? [] : declaredPackages(content);
     if (packages.length) declared.push({ kind: document.kind, packages });
   }
-  return { documents: declared };
+  return { installsFreely: installs === "allow", documents: declared };
 }
 
 /** The packages a coder run whose install_packages grant is installs may install without asking. */
