@@ -35,6 +35,7 @@ import {
   templateField,
   unmet,
 } from "./facts.ts";
+import { leftToDo, unstartedOptional } from "./finished.ts";
 import { fields } from "./search/fields.ts";
 import type { Strategy } from "./search/words.ts";
 import {
@@ -411,27 +412,6 @@ const makersOf = (catalog: Catalog, fact: Fact) =>
   catalog.actions.filter((action) =>
     (action.builder.returns ?? []).some((made) => makes(made, fact)),
   );
-
-/**
- * An optional step nobody started leaves nothing to do: it does not hold its group open, and the
- * coordinator offers it once the rest is done. One that started keeps its group open.
- */
-export const unstartedOptional = (step: {
-  optional?: boolean;
-  runId?: string;
-  state: string;
-}) =>
-  step.optional === true &&
-  step.runId === undefined &&
-  (step.state === "not_started" || step.state === "waiting");
-
-/** Whether a plan step still holds its group open: unfinished, and not an optional step nobody started. */
-export const leftToDo = (step: {
-  finished: boolean;
-  optional?: boolean;
-  runId?: string;
-  state: string;
-}) => !step.finished && !unstartedOptional(step);
 
 /** The names of the actions whose finished work makes a fact true. */
 export const makersIn = (catalog: Catalog) => (fact: Fact) =>

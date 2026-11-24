@@ -5,6 +5,12 @@ import {
   type PlanRecords,
   type PlanStep as SavedStep,
 } from "@corbits-builder/plugin-host/plan";
+import {
+  PlanView,
+  PlanWrite,
+  type PlanChildWrite,
+  type PlanStepWrite,
+} from "@corbits-builder/schemas/project";
 import { CATALOG } from "./catalog.ts";
 import { createExecuteTools } from "./tools.ts";
 
@@ -36,7 +42,7 @@ function project(
   following: string[] = [],
   preferences: Record<string, string> = {},
 ) {
-  const state = { artifacts, following, plan: [] as PlanStep[] };
+  const state = { artifacts, following, plan: [] as ViewStep[] };
   const deployed: string[] = [];
   const mailed: string[] = [];
   const approvals: unknown[] = [];
@@ -85,7 +91,7 @@ function project(
     }
     if (path.endsWith("/checks")) return Response.json({ checks: [] });
     if (path.endsWith("/plan")) {
-      if (body) state.plan = body.steps.map(stored);
+      if (body) state.plan = PlanWrite.assert(body).steps.map(stored);
       return Response.json({
         steps: state.plan,
         updatedAt: null,
@@ -140,29 +146,40 @@ function project(
   };
 }
 
-// A plan step as the hub stores it with an id, shown as not started.
-type PlanStep = {
-  id?: string;
-  title?: string;
-  plugin?: string;
-  action?: string;
-  input?: unknown;
-  askFirst?: boolean;
-  optional?: boolean;
-  runId?: string;
-  state?: string;
-  finished?: boolean;
-  kind?: string;
-  steps?: PlanStep[];
-};
+// A plan step as the hub reads it back once saved: given an id, and not started.
+type ViewStep = PlanView["steps"][number];
+type ViewChild = Exclude<ViewStep, { steps: unknown }>;
 let lastId = 0;
-function stored(step: PlanStep): PlanStep {
-  step.id ??= `s${++lastId}`;
-  step.state = "not_started";
-  step.finished = false;
-  if (step.steps) step.steps.forEach(stored);
-  else step.kind = "workflow";
-  return step;
+function storedChild(step: PlanChildWrite): ViewChild {
+  const view: ViewChild = {
+    id: step.id ?? `s${++lastId}`,
+    title: step.title,
+    plugin: step.plugin,
+    action: step.action,
+    input: step.input,
+    askFirst: step.askFirst,
+    state: "not_started",
+    finished: false,
+    kind: "workflow",
+  };
+  if (step.optional) view.optional = step.optional;
+  if (step.approval) view.approval = step.approval;
+  if (step.requires) view.requires = step.requires;
+  return view;
+}
+const stepsOf = (step: ViewStep | undefined) =>
+  step !== undefined && "steps" in step ? step.steps : [];
+function stored(step: PlanStepWrite): ViewStep {
+  if (!("steps" in step)) return storedChild(step);
+  const group: ViewStep = {
+    id: step.id ?? `s${++lastId}`,
+    title: step.title,
+    state: "not_started",
+    finished: false,
+    steps: step.steps.map(storedChild),
+  };
+  if (step.plan) group.plan = step.plan;
+  return group;
 }
 
 const change = {
@@ -424,7 +441,7 @@ test("execute on build-web-app is turned to plan add, which puts the plan's step
   expect(added.isError).toBeUndefined();
   expect(idea.state.following).toEqual(["build-web-app"]);
   expect(idea.state.plan).toHaveLength(1);
-  expect(idea.state.plan[0]?.steps).toHaveLength(6);
+  expect(stepsOf(idea.state.plan[0])).toHaveLength(6);
   expect(added.content).toContain(
     "The project is now following the build-web-app plan.",
   );
@@ -494,9 +511,7 @@ test("on build-web-app, the build plan is drafted while the person reviews a fil
 test("build-web-app asks how many looks before the mockup step; the answer sets the preference and does the step, and handing approvals over skips it", async () => {
   const idea = project([]);
   await idea.plan({ operation: "add", plan: "build-web-app" });
-  const titles = (idea.state.plan[0]?.steps ?? []).map(
-    (step) => "title" in step && step.title,
-  );
+  const titles = stepsOf(idea.state.plan[0]).map(({ title }) => title);
   expect(titles.indexOf("Choose how many looks")).toBe(
     titles.indexOf("Design the look") - 1,
   );
@@ -687,7 +702,11 @@ test("a group is finished once nothing in it is left to do, so an optional step 
 
 test("the plan offers the optional steps nobody started only once nothing else is left to do", async () => {
   const idea = project([filed("app")]);
-  const step = (id: string, state: string, optional: boolean): PlanStep => ({
+  const step = (
+    id: string,
+    state: ViewChild["state"],
+    optional: boolean,
+  ): ViewChild => ({
     id,
     title: id,
     plugin: "designer",

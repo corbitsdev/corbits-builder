@@ -8,7 +8,8 @@ import {
   isWorkflowAction,
   type Catalog,
 } from "./catalog.ts";
-import { gateOf, makersIn, leftToDo, type Run } from "./coordinator.ts";
+import { gateOf, makersIn, type Run } from "./coordinator.ts";
+import { leftToDo, stepFinished } from "./finished.ts";
 import { holds, resolveFacts, unmet } from "./facts.ts";
 import { missingTexts, unfinishedText } from "./text.ts";
 
@@ -151,12 +152,6 @@ export type PlanRecords = {
 
 const DECLINED_SUMMARY = "declined by the person";
 
-const FINISHED: ReadonlySet<StepState> = new Set([
-  "done",
-  "skipped",
-  "cancelled",
-]);
-
 /**
  * Where each step of a plan stands, worked out from the project's records each time, so the plan
  * never says a step is done when the records say otherwise. A step's run is the one started for it
@@ -263,7 +258,7 @@ export function planState(
       return "not_started";
     };
     view.state = state();
-    view.finished = FINISHED.has(view.state);
+    view.finished = stepFinished(view.state);
     if (view.state === "skipped" && step.declined)
       view.summary = DECLINED_SUMMARY;
     if (view.state === "failed" && run?.status === "completed")
