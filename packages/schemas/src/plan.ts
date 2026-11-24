@@ -155,3 +155,23 @@ export const leftToDo = (step: {
   runId?: string;
   state: PlanStepStateName;
 }) => !step.finished && !unstartedOptional(step);
+
+/**
+ * Where a finished group stands: "cancelled" when every finished step in it was cancelled, else
+ * "done".
+ */
+export const endedState = (
+  steps: readonly { state: PlanStepStateName; finished: boolean }[],
+): "done" | "cancelled" => {
+  const ended = steps.filter((step) => step.finished);
+  return ended.length > 0 && ended.every((step) => step.state === "cancelled")
+    ? "cancelled"
+    : "done";
+};
+
+/**
+ * Whether the person's yes can still drop a plan step: one done stays as the record of the work, and
+ * one cancelled is dropped already.
+ */
+export const droppable = (state: PlanStepStateName) =>
+  state !== "done" && state !== "cancelled";

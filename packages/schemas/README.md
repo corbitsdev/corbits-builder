@@ -25,6 +25,8 @@ others:
   approaches filed with a document version.
 - `project.ts`, `project-status.ts`, `project-import.ts`: project listing,
   live run state and imported project files.
+- `plan.ts`: the project's plan, where each step and group stands, and the
+  rules for when its work is finished.
 - `conversation.ts`, `activity.ts`: chat mail and tool activity on the wire.
 - `models.ts`, `settings.ts`, `preferences.ts`: providers,
   profiles and per-person settings.

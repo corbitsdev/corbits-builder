@@ -362,7 +362,7 @@ the plan cannot say a step is done when the records say otherwise:
   each missing fact and what makes it true;
 - anything else has not started.
 
-A group takes its state from its steps. The person declines and restores
+A step is finished once it is done, skipped or cancelled, and a group once nothing in it is left to do: every step is finished, apart from optional steps nobody started. A finished group reads done, or cancelled when every finished step in it was cancelled; an unfinished one takes its state from its steps. These shapes and rules are defined once in `@corbits-builder/schemas/plan`; the hub's plan read marks every step and group `finished`, and the coordinator, the plugins and the interface read that mark. The person declines and restores
 optional steps, sets "ask me first" and gives the go-ahead from the plan in the
 interface; each goes to the hub, which tells the coordinator in a note.
 

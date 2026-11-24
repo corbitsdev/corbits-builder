@@ -88,6 +88,17 @@ module.exports = {
       to: { path: "^(apps|plugins)/" },
     },
     {
+      name: "schemas-stay-at-the-bottom",
+      comment:
+        "Schemas hold the shapes and rules every layer reads, such as the plan and when its work is finished, so they depend on nothing but other schemas.",
+      severity: "error",
+      from: { path: "^packages/schemas/" },
+      to: {
+        path: "^(apps|packages|plugins|workflows)/",
+        pathNot: "^packages/schemas/",
+      },
+    },
+    {
       name: "browser-files-stay-off-node",
       comment:
         "The interface bundles each plugin's definitions and views, so nothing they reach may need Node or Bun; a browser build only externalizes those modules and the page fails when it loads.",

@@ -10,6 +10,7 @@ import {
 } from "./catalog.ts";
 import { gateOf, makersIn, type Run } from "./coordinator.ts";
 import {
+  endedState,
   leftToDo,
   stepFinished,
   type PlanStepStateName,
@@ -228,13 +229,8 @@ export function planState(
     if (any("failed")) view.state = "failed";
     else if (any("needs_you")) view.state = "needs_you";
     else if (any("running")) view.state = "running";
-    else if (next === undefined) {
-      const ended = children.filter((child) => child.finished);
-      view.state =
-        ended.length > 0 && ended.every((child) => child.state === "cancelled")
-          ? "cancelled"
-          : "done";
-    } else {
+    else if (next === undefined) view.state = endedState(children);
+    else {
       view.state = next.state;
       if (next.needs) view.needs = next.needs;
     }

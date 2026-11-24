@@ -17,11 +17,12 @@ import type {
 } from "@corbits-builder/schemas/project";
 import {
   Approval,
+  droppable,
   type PlanStepStateName,
 } from "@corbits-builder/schemas/plan";
 import { SpecialistInstruction } from "@corbits-builder/schemas/native-specialist";
 
-export { Approval };
+export { Approval, droppable };
 export type { ReadyPlanOffer, Removes, ScreenStatus };
 
 /** The value an arktype type checked, or undefined when the check failed. */
@@ -803,13 +804,6 @@ export type StepStatus = {
   state: PlanStepStateName;
   summary: string | undefined;
 };
-
-/**
- * Whether the person's yes can still drop a plan step: one done stays as the record of the work, and
- * one cancelled is dropped already.
- */
-export const droppable = (state: PlanStepStateName) =>
-  state !== "done" && state !== "cancelled";
 
 // A run the coordinator started for a plugin action, as a screen reads it.
 export type RunRead = {
