@@ -141,6 +141,10 @@ function Choose({
   };
 
   const usable = picked !== undefined && "option" in picked.approval;
+  const note =
+    picked !== undefined && "unavailable" in picked.approval
+      ? picked.approval.unavailable
+      : undefined;
   const forward = (
     <Button
       type="button"
@@ -203,17 +207,15 @@ function Choose({
           }))}
         />
       </div>
-      <div className={styles.bar}>
-        <ScreenActions
-          note={
-            picked !== undefined && "unavailable" in picked.approval
-              ? picked.approval.unavailable
-              : undefined
-          }
-        >
-          {toBox === null ? forward : null}
-        </ScreenActions>
-      </div>
+      {/* With the forward action in the prompt box, the bar stands only to say why a pick can't
+          be used, so no empty strip is left under the concepts. */}
+      {toBox === null || note !== undefined ? (
+        <div className={styles.bar}>
+          <ScreenActions note={note}>
+            {toBox === null ? forward : null}
+          </ScreenActions>
+        </div>
+      ) : null}
       {/* In the box it stands only once it can be used; until then the box's own Send waits. */}
       {toBox?.(usable ? forward : null)}
     </section>
