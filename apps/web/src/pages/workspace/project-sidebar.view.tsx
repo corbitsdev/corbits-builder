@@ -22,11 +22,13 @@ import {
   Menu,
   MenuContent,
   MenuItem,
+  MenuSeparator,
   MenuTrigger,
 } from "@corbits/react-ui/ui/menu";
 import { wording } from "../../config.ts";
 import { Mark } from "../../components.jsx";
 import { clock, useElapsedMs } from "./elapsed.tsx";
+import menuStyles from "../project-menu.module.css";
 import styles from "./project-sidebar.module.css";
 
 const words = wording.projectShell;
@@ -255,8 +257,15 @@ export function SidebarFrame({
                 <Mark size={28} />
               </button>
             </MenuTrigger>
-            <MenuContent align="start">
+            {/* Beside the header, over the page, so it never covers the plan. */}
+            <MenuContent
+              className={menuStyles.menu}
+              side="right"
+              align="start"
+              sideOffset={8}
+            >
               <MenuItem onSelect={onHome}>{words.backToProjects}</MenuItem>
+              <MenuSeparator />
               <MenuItem onSelect={onSettings}>{words.settings}</MenuItem>
             </MenuContent>
           </Menu>

@@ -92,6 +92,7 @@ const archived: LibraryProject = {
 
 const menu: Omit<ProjectMenuViewProps, "trigger"> = {
   align: "end",
+  side: "bottom",
   archived: false,
   shipped: false,
   onShowInfo: fn(),

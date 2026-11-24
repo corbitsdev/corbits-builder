@@ -35,3 +35,21 @@
     gap: var(--space-1);
   }
 }
+
+/* The project's menu and the sidebar's: roomy, in groups, lifted like the room's cards. */
+.menu {
+  min-width: 14rem;
+  padding: 6px;
+  border-radius: var(--radius-lg);
+  box-shadow:
+    var(--wb-pane-shadow),
+    0 8px 24px rgb(0 0 0 / 0.16);
+}
+
+.menu > [role="menuitem"] {
+  padding: 8px 10px;
+}
+
+.menu > [role="separator"] {
+  margin: 6px 4px;
+}

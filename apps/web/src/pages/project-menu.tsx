@@ -24,11 +24,14 @@ type ProjectMenuProps = ProjectMenuHost & {
   /** The element that opens the menu: the rail row's ellipsis, the top bar's title. */
   trigger: ReactElement;
   align?: "start" | "end";
+  /** Which side of the trigger it opens on: below it, or beside it to the right. */
+  side?: "bottom" | "right";
 };
 
 export function ProjectMenu({
   trigger,
   align = "end",
+  side = "bottom",
   ...host
 }: ProjectMenuProps) {
   const { view, infoDialog, exportDialog } = useProjectMenu(host);
@@ -37,6 +40,7 @@ export function ProjectMenu({
       {...view}
       trigger={trigger}
       align={align}
+      side={side}
       infoDialog={
         infoDialog === null ? null : <ProjectInfoDialog {...infoDialog} />
       }

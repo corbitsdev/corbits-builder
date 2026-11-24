@@ -29,6 +29,7 @@ export type ProjectMenuViewProps = {
   /** The element that opens the menu: the rail row's ellipsis, the top bar's title. */
   trigger: ReactElement;
   align: "start" | "end";
+  side: "bottom" | "right";
   /** An archived project refuses every change until it is unarchived, so it offers only that. */
   archived: boolean;
   /** A shipped project offers to reopen rather than to mark it shipped. */
@@ -48,6 +49,7 @@ export type ProjectMenuViewProps = {
 export function ProjectMenuView({
   trigger,
   align,
+  side,
   archived,
   shipped,
   onShowInfo,
@@ -71,9 +73,15 @@ export function ProjectMenuView({
         }}
       >
         <MenuTrigger asChild>{trigger}</MenuTrigger>
-        <MenuContent align={align}>
+        <MenuContent
+          className={styles.menu}
+          side={side}
+          align={align}
+          sideOffset={side === "right" ? 8 : 4}
+        >
           <MenuItem onSelect={onShowInfo}>Project info…</MenuItem>
           <MenuItem onSelect={onRename}>Rename</MenuItem>
+          <MenuSeparator />
           <MenuItem onSelect={onExport}>Export</MenuItem>
           {archived ? null : (
             <MenuItem onSelect={onToggleShipped}>

@@ -435,6 +435,7 @@ export const NameMenu: Story = {
       <ProjectMenuView
         trigger={trigger}
         align="start"
+        side="right"
         archived={false}
         shipped={false}
         onShowInfo={fn()}

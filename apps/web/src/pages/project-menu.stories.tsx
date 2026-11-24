@@ -51,6 +51,7 @@ const meta = {
   args: {
     trigger: <Button>Bakery orders</Button>,
     align: "start",
+    side: "bottom",
     archived: false,
     shipped: false,
     onShowInfo: fn(),

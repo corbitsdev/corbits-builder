@@ -75,7 +75,12 @@ function ReadyRoom(props: ReadyRoomProps) {
           projectMenu === null
             ? undefined
             : (trigger) => (
-                <ProjectMenu {...projectMenu} trigger={trigger} align="start" />
+                <ProjectMenu
+                  {...projectMenu}
+                  trigger={trigger}
+                  side="right"
+                  align="start"
+                />
               )
         }
         paneParts={{
