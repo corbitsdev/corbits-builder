@@ -377,13 +377,6 @@
   outline-offset: -2px;
 }
 
-/* Says what Send carries while a screen has feedback staged, so the one send control names its load. */
-.sendLabel {
-  color: var(--wb-muted-foreground);
-  font-size: 0.8125rem;
-  white-space: nowrap;
-}
-
 .replies {
   display: flex;
   flex-wrap: wrap;

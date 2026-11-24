@@ -264,6 +264,30 @@ export const StepGoAheadTyping: Story = {
 export const ScreenWaiting: Story = { args: { waiting: "screen" } };
 
 /**
+ * Typing over a document's approval asks for changes, so Send says so on itself: one blue pill,
+ * Make changes before the arrow, with no words beside it.
+ */
+export const ScreenWaitingTyping: Story = {
+  args: {
+    dock: {
+      ...composer,
+      text: "Make the summary shorter",
+      sendLabel: wording.promptBox.waiting.makeChanges,
+    },
+    waiting: "screen",
+  },
+  play: async ({ canvasElement }) => {
+    const send = within(canvasElement).getByRole("button", {
+      name: wording.promptBox.waiting.makeChanges,
+    });
+    await expect(send).toHaveAttribute(
+      "data-label",
+      wording.promptBox.waiting.makeChanges,
+    );
+  },
+};
+
+/**
  * A tool asks before it runs: what would run in a block beneath the ask, Not yet beside it, and
  * Yes where Send stands.
  */

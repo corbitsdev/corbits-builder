@@ -1064,18 +1064,12 @@ function RoomComposerView({
                     data-slot="composer-actions"
                     hidden={typed}
                   />
-                  {sendLabel === null ? null : (
-                    <span
-                      className={styles.sendLabel}
-                      data-slot="send-label"
-                      aria-hidden="true"
-                    >
-                      {sendLabel}
-                    </span>
-                  )}
+                  {/* Where Send carries something of its own, it says so on itself, a pill
+                      with its words before the arrow. */}
                   <PromptInputSubmit
                     {...(stopping ? { onStop } : {})}
                     aria-label={sendLabel ?? undefined}
+                    data-label={sendLabel ?? undefined}
                     aria-busy={busy || undefined}
                   />
                 </>
