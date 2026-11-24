@@ -25,12 +25,30 @@
   initial-value: 0;
 }
 
-/* How far the chat moves back towards the sidebar to stay where it was. Registered, so it is worked
-   out against the canvas where it is set and passed down as a length. */
+/* 1 where the sidebar stands beside the page when open, 0 where it is a drawer over it. */
+@property --sidebar-beside {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0;
+}
+
+/* The chat's width, and how far it moves back towards the sidebar to stay where it was. Registered,
+   so they are worked out against the canvas where they are set and passed down as lengths. */
+@property --chat-width {
+  syntax: "<length>";
+  inherits: true;
+  /* 48rem; a registered initial value takes no font-relative unit. */
+  initial-value: 768px;
+}
+
 @property --chat-shift {
   syntax: "<length>";
   inherits: true;
   initial-value: 0px;
+}
+
+.room:has(> [data-slot="project-sidebar"]:not([data-drawer])) {
+  --sidebar-beside: 1;
 }
 
 .room:has(> [data-slot="project-sidebar"][data-open]:not([data-drawer])) {
@@ -154,12 +172,16 @@
 
 .conversation {
   /* The chat stays in the middle of the window as the sidebar opens and closes, not of the canvas
-     beside it, so it never slides. Where the canvas has too little room either side of the chat's
-     column for that, the chat moves only as far as it must to stay clear of the sidebar. */
-  --chat-shift: min(
-    var(--rail-width) * var(--sidebar-open) / 2,
-    max(0px, (100cqw - 48rem) / 2 - var(--space-5))
+     beside it, so it never slides. It is as wide as it can be in the middle of the window clear of
+     an open sidebar, open or not, so it never grows or shrinks either. The window is the canvas
+     and however much of the sidebar is showing. */
+  --chat-width: min(
+    48rem,
+    100cqw + var(--rail-width) *
+      (var(--sidebar-open) - 2 * var(--sidebar-beside)) - 2 * var(--space-5) *
+      var(--sidebar-beside)
   );
+  --chat-shift: calc(var(--rail-width) * var(--sidebar-open) / 2);
 
   display: flex;
   flex-direction: column;
@@ -192,11 +214,14 @@
 }
 
 /* The prompt box, and what stands in its place, keep the box's measure in the middle of the canvas
-   however wide it is. */
+   however wide it is, and under the turns no wider than they are. */
 :is(.conversation, .page) > :is([data-slot="composer"], .archived, .notice) {
   box-sizing: border-box;
   width: 100%;
-  max-width: calc(var(--box-measure) + 2 * var(--space-4));
+  max-width: min(
+    calc(var(--box-measure) + 2 * var(--space-4)),
+    var(--chat-width)
+  );
   margin-inline: auto;
 }
 

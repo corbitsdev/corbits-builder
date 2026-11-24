@@ -15,7 +15,8 @@
   > [data-slot="conversation-column"] {
   box-sizing: border-box;
   width: 100%;
-  max-width: 48rem;
+  /* The room narrows it where it must keep clear of the sidebar. */
+  max-width: var(--chat-width, 48rem);
   margin-inline: auto;
 }
 
