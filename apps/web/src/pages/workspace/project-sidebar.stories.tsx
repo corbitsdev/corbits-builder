@@ -43,7 +43,6 @@ const row = (
   name,
   state,
   app: false,
-  makes: null,
   opens: null,
   steps: [step(id, name, state, settings)],
   children: [],
@@ -51,7 +50,7 @@ const row = (
 });
 
 /** A step that has made a document the project view can open, of the given kind. */
-const made = (kind: string) => ({ makes: kind, opens: kind });
+const made = (kind: string) => ({ opens: kind });
 
 /** A ready-made plan's group, with its steps under it. */
 const group = (
@@ -64,7 +63,6 @@ const group = (
   name,
   state,
   app: false,
-  makes: null,
   opens: null,
   steps: [],
   children,
@@ -95,13 +93,7 @@ const building = [
     row("looks", "Choose how many looks", "done"),
     row("design", "Design the look", "done", {}, made("design")),
     row("build_plan", "Plan the build", "done", {}, made("build_plan")),
-    row(
-      "build",
-      "Build the app",
-      "done",
-      {},
-      { app: true, makes: "app", opens: LIVE_TAB },
-    ),
+    row("build", "Build the app", "done", {}, { app: true, opens: LIVE_TAB }),
     row("manual", "Write the user manual", "running"),
   ]),
 ];

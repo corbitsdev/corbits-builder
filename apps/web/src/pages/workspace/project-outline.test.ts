@@ -90,7 +90,7 @@ describe("the plan", () => {
 
   test("a step that makes nothing is a row of its own, opening nothing", () => {
     const [look] = projectOutline(coordinatorPlan).plan;
-    expect(look).toMatchObject({ makes: null, opens: null, app: false });
+    expect(look).toMatchObject({ opens: null, app: false });
   });
 
   test("each step row carries its own settings for its menu", () => {
@@ -138,9 +138,8 @@ describe("the plan", () => {
 
   test("a step opens what it made once the project has it, and not before", () => {
     const step = planStep("brief", "done", { makes: ["problem_brief"] });
-    expect(outlinePlan([step])[0]).toMatchObject({ makes: null, opens: null });
+    expect(outlinePlan([step])[0]!.opens).toBeNull();
     expect(outlinePlan([step], [filed("problem_brief")])[0]).toMatchObject({
-      makes: "problem_brief",
       opens: "problem_brief",
     });
   });
@@ -155,7 +154,6 @@ describe("the plan", () => {
     expect(outlinePlan([step])[0]).toMatchObject({ app: true, opens: null });
     expect(outlinePlan([step], [], true)[0]).toMatchObject({
       app: true,
-      makes: "app",
       opens: LIVE_TAB,
     });
   });

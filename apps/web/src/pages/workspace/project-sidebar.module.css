@@ -188,7 +188,7 @@
   list-style: none;
 }
 
-/* A group's steps sit under it, set in by an icon's width, so the group reads as theirs. */
+/* A group's steps sit under it, set in, so the group reads as theirs. */
 .tree .tree {
   margin-block-start: 2px;
   padding-inline-start: var(--space-4);
@@ -277,27 +277,8 @@
   padding-block: var(--space-1);
 }
 
-/* What a row makes, as an icon before its name in its colour, a line high so it stays level with
-   the name when what it is at shows under it. The spinner or the alert takes its place. */
-.icon {
-  display: grid;
-  flex: none;
-  place-items: center;
-  width: 16px;
-  height: var(--wb-text-control--line-height);
-}
-
-.icon > svg {
-  width: 16px;
-  height: 16px;
-}
-
-.icon > .working {
-  width: 13px;
-  height: 13px;
-}
-
-.icon > [data-state="failed"] {
+/* A step that failed says so in red, as its words say it. */
+.row[data-row="step"][data-state="failed"] .name {
   color: var(--destructive);
 }
 

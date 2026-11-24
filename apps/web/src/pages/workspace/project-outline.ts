@@ -40,8 +40,6 @@ export type OutlineRow = {
   state: OutlineStepState;
   /** It makes the project's app, so it stands for the app's own line. */
   app: boolean;
-  /** What it made that the project has, which its icon shows: "app", or the kind of a document. */
-  makes: string | null;
   /** The tab of what it made, once the project has it; null while there is nothing to show. */
   opens: string | null;
   /** The step it is, whose settings its menu changes; none for a group, whose steps have theirs. */
@@ -137,7 +135,6 @@ export function outlinePlan(
       name: step.title,
       state: stepState(step),
       app: made.includes("app"),
-      makes,
       opens: makes === null ? null : makes === "app" ? LIVE_TAB : makes,
       steps: [outlineStep(step)],
       children: [],
@@ -150,7 +147,6 @@ export function outlinePlan(
           name: entry.title,
           state: stepState({ state: entry.state }),
           app: false,
-          makes: null,
           opens: null,
           steps: [],
           children: entry.steps.map(stepRow),

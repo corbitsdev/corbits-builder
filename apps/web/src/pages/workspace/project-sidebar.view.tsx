@@ -18,17 +18,10 @@ import {
   type ReactNode,
 } from "react";
 import {
-  AppWindow,
   ArrowUpRight,
   Building2,
-  Circle,
-  CircleAlert,
-  CircleCheck,
-  CircleDot,
-  CircleSlash,
   CircleUser,
   Ellipsis,
-  FileText,
   Folder,
   Lock,
   PanelLeftClose,
@@ -87,8 +80,6 @@ export type SidebarRow = {
   state: SidebarStepState;
   /** It makes the project's app: once built it opens the app and says how it runs. */
   app: boolean;
-  /** What it made that the project has, which its icon shows: "app", or a document's kind. */
-  makes: string | null;
   /** The tab of what it made, which the row opens; null while there is nothing to show. */
   opens: string | null;
   /** The step it is, whose settings its menu changes; none for a group. */
@@ -563,28 +554,13 @@ function PlanTree({
   );
 }
 
-// Where a step stands, by an icon as well as its words and colour; running and failed draw their own.
-const STATE_ICONS: Record<SidebarStepState, LucideIcon> = {
-  to_do: Circle,
-  running: Circle,
-  needs_you: CircleDot,
-  done: CircleCheck,
-  failed: CircleAlert,
-  declined: CircleSlash,
-};
-
-/** A row's icon: what it made once the project has it, else where it stands. */
-const rowIcon = ({ makes, opens, state }: SidebarRow): LucideIcon =>
-  opens === null ? STATE_ICONS[state] : makes === "app" ? AppWindow : FileText;
-
 /**
- * One step of the plan, or a group with its steps under it: its icon, then its name. Where it
- * stands is said by its words and its icon: done ones are quiet, ones still ahead fainter, the one
- * at work shimmers with the spinner in its icon's place, and one that failed shows the alert in
- * red. One that waits on the person is shaded. A step that will not happen is struck through, and
- * one that will pause for the person first carries a pause mark, so neither setting hides in its
- * menu. Once a step has made something it shows what, and opens it; once the app is built, its
- * step says how it runs.
+ * One step of the plan, or a group with its steps under it: its name alone, with no icon. Where it
+ * stands is said by its words and colour: done ones are quiet, ones still ahead fainter, the one at
+ * work shimmers, and one that failed is red. One that waits on the person is shaded. A step that
+ * will not happen is struck through, and one that will pause for the person first carries a pause
+ * mark, so neither setting hides in its menu. Once a step has made something it opens it; once the
+ * app is built, its step says how it runs.
  */
 function PlanRow({
   row,
@@ -615,7 +591,6 @@ function PlanRow({
   const pauses = state === "to_do" && next?.askFirst === true;
   const live = state === "done" && app !== null && app !== "not_built";
   const doing = live ? words.appNow[app] : null;
-  const Icon = rowIcon(row);
   const said = [
     row.name,
     state === "declined" ? words.skipped : words.stepState[state],
@@ -656,15 +631,6 @@ function PlanRow({
         data-state={state}
         data-opens={onOpen === null ? undefined : ""}
       >
-        <span className={styles.icon}>
-          {state === "running" || (live && app === "starting") ? (
-            <Working />
-          ) : state === "failed" || (live && app === "failed") ? (
-            <CircleAlert data-state="failed" aria-hidden="true" />
-          ) : (
-            <Icon aria-hidden="true" />
-          )}
-        </span>
         <span className={styles.text}>
           <span className={styles.name}>{row.name}</span>
           {doing === null ? null : (
