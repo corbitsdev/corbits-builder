@@ -210,6 +210,12 @@
   margin-top: 0;
 }
 
+/* A section heading that opens the text keeps its step above, so under the title every section
+   is set off the same. */
+.sheet [data-slot="prose"] > :is(h2, h3, h4):first-child {
+  margin-top: 24px;
+}
+
 .sheet [data-slot="prose"] li {
   padding-left: 2px;
   line-height: 1.5rem;
