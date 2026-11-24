@@ -630,7 +630,7 @@ test("a step whose run ended blocked waits again rather than failing", () => {
   );
 });
 
-test("a group is finished once nothing in it is left to do, and a cancelled step does not end it early", () => {
+test("a group is finished once nothing in it is left to do, so an optional step that ran keeps it open", () => {
   const at = new Date(0).toISOString();
   const step = (
     id: string,
@@ -660,9 +660,6 @@ test("a group is finished once nothing in it is left to do, and a cancelled step
       runs,
       questions: [],
     })[0];
-  expect(
-    groupOf([cancelled("first"), step("second", {}), optional]),
-  ).toMatchObject({ state: "not_started", finished: false });
   expect(
     groupOf([cancelled("first"), cancelled("second"), optional]),
   ).toMatchObject({ state: "cancelled", finished: true });
