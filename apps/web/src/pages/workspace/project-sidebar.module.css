@@ -312,6 +312,16 @@
   background: var(--wb-foreground);
 }
 
+/* Skipped: the outline struck through, so it never reads as a step still to do. */
+.step[data-state="declined"] .circle::before {
+  background: linear-gradient(
+    135deg,
+    transparent 40%,
+    var(--wb-muted-foreground) 40% 60%,
+    transparent 60%
+  );
+}
+
 /* In progress, at work or waiting on the person: half filled. */
 .step:is([data-state="running"], [data-state="needs_you"]) .circle::before {
   border-color: var(--wb-foreground);

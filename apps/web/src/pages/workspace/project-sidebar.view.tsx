@@ -525,6 +525,8 @@ function PlanRow({
       </span>
     ) : state === "failed" ? (
       <span className={styles.doing}>{words.stepNow.failed}</span>
+    ) : state === "declined" ? (
+      <span className={styles.doing}>{words.stepNow.skipped}</span>
     ) : doing === null ? null : (
       <span className={styles.doing} aria-live="polite">
         {doing}

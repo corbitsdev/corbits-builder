@@ -491,6 +491,7 @@ export const wording = {
       working: "Working",
       needsYou: "Waiting on you",
       failed: "Didn't finish",
+      skipped: "Skipped",
     },
     /** Read after a step's name, and shown on its pause mark. */
     pausesFirst: "pauses for you before it starts",

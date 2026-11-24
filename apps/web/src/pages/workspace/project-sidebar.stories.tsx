@@ -572,7 +572,7 @@ export const StepsBeforeTheyStart: Story = {
       canvas.getByRole("treeitem", {
         name: `Visit the market stalls, ${words.skipped}`,
       }),
-    ).toHaveTextContent(/^Visit the market stalls$/);
+    ).toHaveTextContent(`Visit the market stalls${words.stepNow.skipped}`);
     await expect(canvas.queryByRole("switch", { hidden: true })).toBeNull();
     await expect(
       within(
