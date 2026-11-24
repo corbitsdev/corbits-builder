@@ -21,6 +21,7 @@ import {
 import {
   ArrowUpRight,
   Building2,
+  Check,
   CircleUser,
   Ellipsis,
   Folder,
@@ -270,7 +271,8 @@ export function SidebarFrame({
 
 /**
  * The plan in sight while the sidebar is closed: a small card under the project's name with how
- * many steps are done and each step as its row in the sidebar marks it, so the work can be followed
+ * many steps are done and each step as its row in the sidebar marks it, a done one ticked off, so
+ * the work can be followed
  * without opening the sidebar. It shows only while the plan is under way; once every step has
  * finished, only the name stays. A step that has made something opens it, as its row does.
  */
@@ -315,7 +317,10 @@ function PlanGlance({
               data-opens={row.opens === null ? undefined : ""}
             >
               <span className={styles.name}>{row.name}</span>
-              {/* Its colour says where it stands; a screen reader hears it said. */}
+              {row.state === "done" ? (
+                <Check className={styles.glanceDone} aria-hidden="true" />
+              ) : null}
+              {/* Its mark and colour say where it stands; a screen reader hears it said. */}
               <span className={styles.said}>, {state}</span>
             </span>
           );
