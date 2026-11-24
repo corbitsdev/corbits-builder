@@ -32,14 +32,11 @@
 }
 
 /* Done, not waiting on anyone: quieter than the open card, at its width and corners. */
+/* Settled, the answers flow with the conversation: no box around them, the type alone sets them
+   apart, each question muted over its answer. */
 .settled {
   max-width: var(--wb-question-width);
   min-width: 0;
-  padding: 0.625rem 0.875rem;
-  border: 1px solid var(--border);
-  /* GateBlock's rounded-lg, so the corners hold as the open card settles. */
-  border-radius: calc(var(--radius) + 2px);
-  font-size: 0.875rem;
 }
 
 /* The mark sits on the title's first line, so a title that wraps keeps it there. */
@@ -79,18 +76,21 @@
 .answers {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: var(--space-3);
   margin: 0;
 }
 
 .answers dt {
   color: var(--muted-foreground);
+  font-size: 0.8125rem;
 }
 
 .answers dd {
   margin: 0;
+  font-weight: 500;
 }
 
 .answers dd[data-absent] {
   color: var(--muted-foreground);
+  font-weight: 400;
 }
