@@ -1,7 +1,7 @@
 .contents {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 0;
   /* Its own width where there is room, else what is left beside the page. */
   width: 240px;
   max-width: 100%;
@@ -13,7 +13,9 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
-  padding-block-end: var(--space-2);
+  /* Its last action ends where the rows' own padding does. */
+  margin-inline-end: -6px;
+  padding-block-end: var(--space-1);
 }
 
 .label {
@@ -42,8 +44,9 @@
     background-color 120ms ease;
 }
 
+/* A list to read down, not a menu: rows close together, each the height of its line and a little. */
 .document {
-  padding: 6px 10px;
+  padding: 4px 10px;
   color: var(--wb-foreground);
   font-weight: 500;
 }
@@ -52,8 +55,8 @@
 .sections {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  margin: 0 0 0 12px;
+  gap: 0;
+  margin: 2px 0 0 12px;
   padding: 0 0 0 12px;
   border-left: 1px solid var(--wb-border);
   list-style: none;
@@ -61,7 +64,7 @@
 
 .section {
   gap: var(--space-2);
-  padding: 6px var(--space-2) 6px 10px;
+  padding: 4px var(--space-2) 4px 10px;
   color: var(--wb-muted-foreground);
 }
 
