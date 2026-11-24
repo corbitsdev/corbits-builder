@@ -116,22 +116,32 @@ test("a run's read of the plan lists no screen and nothing prepared for one, sin
 
 test("a publish whose early step the person cancelled is paused while a required step is still to do", async () => {
   const { path } = await savedApp();
-  const step = (action: string) => ({
-    plugin: "hoster",
-    action,
-    title: action,
-    input: {
-      instruction: "Put the project's saved app on a machine rented at Hoster.",
-    },
-    askFirst: false,
-  });
-  const cancelled = { by: "person", at: new Date().toISOString() };
+  const at = new Date().toISOString();
   await hub.call("PUT", `${path}/plan`, {
     steps: [
       {
-        title: "Publish to Hoster",
-        plan: "publish-to-hoster",
-        steps: [{ ...step("create"), cancelled }, step("publish")],
+        title: "Publish to Cloudflare",
+        plan: "publish-to-cloudflare",
+        steps: [
+          {
+            plugin: "cloudflare",
+            action: "ready",
+            title: "Check your app is ready for Cloudflare",
+            input: {},
+            askFirst: false,
+            cancelled: { by: "person", at },
+          },
+          {
+            plugin: "cloudflare",
+            action: "publish",
+            title: "Publish the app to Cloudflare",
+            input: {
+              instruction:
+                "Publish the project's saved app to Cloudflare and report the address people open it at.",
+            },
+            askFirst: false,
+          },
+        ],
       },
     ],
   });
