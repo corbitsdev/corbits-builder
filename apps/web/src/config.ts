@@ -796,7 +796,7 @@ export const wording = {
         "The coordinator wrote this step in a form Builder cannot run, so it was asked to write it again.",
     },
     elapsed: (minutes: number, seconds: number) =>
-      minutes === 0 ? `${seconds}s` : `${minutes}m`,
+      `${String(minutes)}:${String(seconds).padStart(2, "0")}`,
   },
   design: {
     mockupTab: "Design mockup",
@@ -889,8 +889,11 @@ export const wording = {
   },
   /** A coordinator hand-off and what came of it, as one message in the conversation. */
   dispatch: {
-    /** A specialist's row: who, and what it does. */
-    row: (role: string, doing: string) => `${role} · ${doing}`,
+    /** Heads the work still running, gathered in one list under the coordinator's words. */
+    inProgress: (count: number) =>
+      count === 1
+        ? "1 thing in progress"
+        : `${String(count)} things in progress`,
     /** What a specialist of no known role does when no action of its own names it. */
     working: "Working",
     done: "Done",
@@ -989,8 +992,10 @@ export const wording = {
   /** A specialist's reports, named by what they were about: "Constraints", "Build · 4 updates". */
   updates: (subject: string, count: number) =>
     count === 1 ? subject : `${subject} · ${String(count)} updates`,
-  /** More than a few report rows in a row, folded under one line. */
-  updatesFolded: (count: number) => `${String(count)} specialist updates`,
+  /** Report rows in a row, gathered under one line. */
+  updatesFolded: (count: number) => `${String(count)} updates`,
+  /** Folds a list of the agents' items in the conversation, and opens it again. */
+  threadList: { hide: "Hide", show: "Show" },
   /** What the coder's reports are about. */
   buildSubject: "Build",
   approval: {

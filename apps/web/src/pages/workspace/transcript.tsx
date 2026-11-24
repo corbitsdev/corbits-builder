@@ -69,6 +69,8 @@ import {
 import { partsDispatches, type Dispatch } from "./dispatch-card.tsx";
 import { workUnits, type WorkUnit } from "./work-unit.ts";
 import {
+  inProgress,
+  WorkInProgress,
   WorkUnitStepView,
   type WorkUnitStanding,
 } from "./work-unit-step.view.tsx";
@@ -370,17 +372,23 @@ const FOLD_AFTER = 3;
 
 type ShownCard =
   | Exclude<Card, { kind: "unit" }>
-  | { kind: "folded"; groups: UpdateGroup[] }
+  | { kind: "folded"; groups: UpdateGroup[]; hidden: boolean }
   | { kind: "units"; units: WorkUnit[] };
 
 /**
- * More than three report rows in a row fold under one line, so decisions and hand-offs stay in view.
+ * Report rows in a row gather in one list, and more than three open folded, so decisions and
+ * hand-offs stay in view.
  */
 function foldUpdates(cards: readonly Card[]): ShownCard[] {
   const shown: ShownCard[] = [];
   let run: UpdateGroup[] = [];
   const flush = () => {
-    if (run.length > FOLD_AFTER) shown.push({ kind: "folded", groups: run });
+    if (run.length > 1)
+      shown.push({
+        kind: "folded",
+        groups: run,
+        hidden: run.length > FOLD_AFTER,
+      });
     else for (const group of run) shown.push({ kind: "updates", group });
     run = [];
   };
@@ -659,15 +667,19 @@ export function RoomThread({
     results,
   );
   const { specialists } = thread;
-  const items = shows.specialists
-    ? thread.items
-    : thread.items.filter((item) => item.kind !== "unit");
+  // Work still running always shows, in the list under the reply; done, it shows only when asked for.
+  const showsUnit = (unit: WorkUnit) =>
+    shows.specialists || inProgress(standing(unit).status);
+  const items = thread.items.filter(
+    (item) => item.kind !== "unit" || showsUnit(item.unit),
+  );
   // A call that started specialists stands for them; any other is one of the coordinator's own steps.
   const shownParts = (turn: TranscriptTurn) =>
     readableParts(visibleTurnParts(turn), results).filter((part) => {
       if (part.kind !== "tool-trace") return true;
-      return specialists.has(part.toolCallId)
-        ? shows.specialists
+      const started = specialists.get(part.toolCallId);
+      return started !== undefined
+        ? started.some(showsUnit)
         : shows.coordinatorSteps;
     });
   const thinkingShown = thinking && shows.thinking;
@@ -687,8 +699,7 @@ export function RoomThread({
     </Activity>
   );
   // Each specialist is its own row and its own item.
-  const specialistRow = (unit: WorkUnit) => {
-    const row = standing(unit);
+  const specialistRow = (unit: WorkUnit, row = standing(unit)) => {
     return (
       <ConversationItem key={unit.key} itemId={workItemId(unit)}>
         <WorkUnitStepView
@@ -704,12 +715,31 @@ export function RoomThread({
       </ConversationItem>
     );
   };
+  // Work done or ended keeps its own rows; what still runs gathers in one list after them.
+  const specialistRows = (units: readonly WorkUnit[]) => {
+    const rows = units
+      .filter(showsUnit)
+      .map((unit) => ({ unit, row: standing(unit) }));
+    const running = rows.filter(({ row }) => inProgress(row.status));
+    return (
+      <>
+        {rows
+          .filter(({ row }) => !inProgress(row.status))
+          .map(({ unit, row }) => specialistRow(unit, row))}
+        {running.length === 0 ? null : (
+          <WorkInProgress count={running.length}>
+            {running.map(({ unit, row }) => specialistRow(unit, row))}
+          </WorkInProgress>
+        )}
+      </>
+    );
+  };
   const started = (step: ActivityStep) =>
     step.kind === "tool-trace" ? specialists.get(step.toolCallId) : undefined;
   const renderActivity = (steps: readonly ActivityStep[]) => (
     <>
       <Run steps={steps.filter((step) => started(step) === undefined)} />
-      {steps.flatMap((step) => started(step) ?? []).map(specialistRow)}
+      {specialistRows(steps.flatMap((step) => started(step) ?? []))}
     </>
   );
   // The coordinator and the person are told apart by where their words sit, so neither is named on
@@ -722,7 +752,7 @@ export function RoomThread({
           itemId={`units:${card.units[0]?.key ?? position}`}
         >
           <Message from="agent" aria-label={wording.speaker.coordinator}>
-            {card.units.map(specialistRow)}
+            {specialistRows(card.units)}
           </Message>
         </ConversationItem>
       );
@@ -730,6 +760,7 @@ export function RoomThread({
       return (
         <FoldedUpdatesView
           key={`folded:${card.groups[0]?.key ?? position}`}
+          startHidden={card.hidden}
           rows={card.groups.map((group) =>
             updatesRow(group, updateSubject(group.sender)),
           )}

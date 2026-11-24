@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import "./plugin-roles.testing.ts";
-import { roleLabel } from "./roles.ts";
 import { isValidElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
@@ -122,9 +121,10 @@ describe("conversation transcript", () => {
               seen: new Map(),
               steps: new Map([["run-writer", [lookUp]]]),
             });
+            // Done, so the switch alone decides whether the row shows; running work always does.
             return {
               unitKey: row.unitKey,
-              status: row.status,
+              status: { state: "finished" },
               label: row.label,
               steps: row.steps,
               preview: undefined,
@@ -198,6 +198,39 @@ describe("conversation transcript", () => {
       const gone = off === "specialists" ? [off, ...IN_ROW] : [off];
       expect(drawn(without([off]))).toEqual(without(gone));
     }
+  });
+
+  test("work still running shows in one list with the specialists switch off", () => {
+    const html = renderToStaticMarkup(
+      <RoomThread
+        standing={standing}
+        turns={[
+          { role: "person", text: "Start", at: 1 },
+          {
+            role: "assistant",
+            text: "",
+            at: 2,
+            parts: [
+              {
+                kind: "tool-trace",
+                toolCallId: "call-writer",
+                name: "execute",
+                status: "output-available",
+                input: {
+                  plugin: "writer",
+                  action: "write",
+                  input: { kind: "constraints", instruction: "Write." },
+                },
+              },
+            ],
+          },
+        ]}
+      />,
+    );
+    const list = html.slice(html.indexOf('data-slot="thread-list"'));
+    expect(html).toContain('data-slot="thread-list"');
+    expect(list).toContain('data-item-id="work:call-writer"');
+    expect(list).toContain(wording.dispatch.inProgress(1));
   });
 
   test("turns render through MessageParts and keep the conversation log name", () => {
@@ -589,10 +622,7 @@ describe("conversation transcript", () => {
     expect(html).not.toContain('data-item-id="units:');
     expect(html).toContain('data-item-id="work:call-1"');
     expect(html).not.toContain('data-slot="activity-content"');
-    const row = wording.dispatch.row(
-      roleLabel("writer"),
-      "Writing the constraints",
-    );
+    const row = "Writing the constraints";
     expect(html.split(row)).toHaveLength(2);
     expect(html).not.toContain('data-slot="update-names">Constraints<');
     expect(html).toContain(wording.updatesFolded(4));

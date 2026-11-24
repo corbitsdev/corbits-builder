@@ -1,7 +1,7 @@
 /**
  * A specialist's reports as they sit in the thread: one collapsed tool call named by what the
- * reports were about over the latest one's first line, opening to all of them, and a long run of
- * such rows folded under one line.
+ * reports were about over the latest one's first line, opening to all of them, and several such
+ * rows in a row gathered in one list.
  */
 import {
   ConversationItem,
@@ -11,6 +11,7 @@ import {
 } from "@corbits/react-ui";
 import { wording } from "../../config.ts";
 import { Markdown } from "@corbits-builder/plugin-ui/markdown";
+import { ThreadList } from "./thread-list.tsx";
 import styles from "./specialist-updates.module.css";
 
 /** One specialist's consecutive reports, in the words their row shows. */
@@ -76,17 +77,25 @@ export function SpecialistUpdatesView({ row }: { row: UpdatesRow }) {
   );
 }
 
-/** A long run of report rows folded under one line, each row still there to open. */
-export function FoldedUpdatesView({ rows }: { rows: readonly UpdatesRow[] }) {
+/** Report rows in a row, in one list under a line that counts the reports; a long run opens folded. */
+export function FoldedUpdatesView({
+  rows,
+  startHidden,
+}: {
+  rows: readonly UpdatesRow[];
+  startHidden: boolean;
+}) {
   const count = rows.reduce((sum, row) => sum + row.reports.length, 0);
   return (
     <ConversationItem itemId={`folded:${rows[0]?.key ?? ""}`}>
-      <details className={styles.fold}>
-        <summary>{wording.updatesFolded(count)}</summary>
+      <ThreadList
+        label={wording.updatesFolded(count)}
+        startHidden={startHidden}
+      >
         {rows.map((row) => (
           <UpdateRow key={row.key} row={row} />
         ))}
-      </details>
+      </ThreadList>
     </ConversationItem>
   );
 }

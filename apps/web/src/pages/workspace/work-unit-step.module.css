@@ -204,3 +204,81 @@
   overflow: hidden;
   overflow-wrap: anywhere;
 }
+
+/* Finished work reads from its words, so it carries no tick; a run that ended early keeps its mark. */
+[data-slot="tool"][data-status="output-available"]
+  > .header
+  [data-slot="tool-header"]
+  > svg:first-child {
+  display: none;
+}
+
+[data-slot="thread-list-items"] .action {
+  color: var(--wb-foreground);
+  font-size: 0.8125rem;
+  font-weight: 400;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+[data-slot="thread-list-items"] .work {
+  margin-top: calc(-1 * var(--space-1));
+  padding-inline-start: var(--space-1);
+}
+
+/* Where it stands in a line or two, not a box of what it writes. */
+[data-slot="thread-list-items"] .slot,
+[data-slot="thread-list-items"] .outcome {
+  height: auto;
+  min-height: 0;
+}
+
+/* Reasoning keeps its newest two lines at most, so a narrow column still reads whole words. */
+[data-slot="thread-list-items"] .reasoning {
+  height: auto;
+  max-height: 2.5rem;
+}
+
+[data-slot="thread-list-items"] .preview {
+  height: 1.25rem;
+}
+
+[data-slot="thread-list-items"] .preview,
+[data-slot="thread-list-items"] .reasoning {
+  padding: 0;
+  overflow: hidden;
+  border: none;
+  background: none;
+  color: var(--wb-muted-foreground);
+  font-size: 0.8125rem;
+  line-height: 1.25rem;
+}
+
+[data-slot="thread-list-items"] .preview :where(p, ul, ol) {
+  margin: 0;
+}
+
+/* A run held on the person says so on its second line, where the others say where they stand. */
+[data-slot="thread-list-items"] .waiting {
+  flex-wrap: wrap;
+  row-gap: 0;
+}
+
+/* Beside the title's line, not the middle of a row two lines tall. */
+[data-slot="thread-list-items"] .header {
+  align-items: flex-start;
+}
+
+[data-slot="thread-list-items"] .header > :not([data-slot="tool-header"]) {
+  margin-top: var(--space-1);
+  line-height: 1.25rem;
+}
+
+[data-slot="thread-list-items"] .waiting > span:last-of-type {
+  order: 1;
+  flex-basis: 100%;
+  padding-inline-start: 0;
+  color: var(--wb-muted-foreground);
+  font-size: 0.8125rem;
+  text-align: start;
+}

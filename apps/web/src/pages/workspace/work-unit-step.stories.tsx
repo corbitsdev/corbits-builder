@@ -24,7 +24,7 @@ const done = STEPS.map((item) => step(item.toolCallId, item.name));
 const args: WorkUnitStepViewProps = {
   unitKey: "call-writer",
   status: { state: "starting" },
-  label: "Writer · Writing the constraints",
+  label: "Writing the constraints",
   steps: [],
   preview: undefined,
   instruction: undefined,
@@ -71,7 +71,7 @@ export const WatchingADesigner: Story = {
       state: "working",
       since: new Date(Date.now() - 95_000).toISOString(),
     },
-    label: "Designer · Making a mockup",
+    label: "Making a mockup",
     steps: STEPS,
     watch: { label: "Watch the draft", open: fn() },
   },
@@ -94,7 +94,7 @@ export const Ready: Story = {
       version: 1,
       kind: "constraints",
     },
-    label: "Writer · Wrote the constraints",
+    label: "Wrote the constraints",
     steps: done,
     document: {
       kind: "constraints",
@@ -148,7 +148,7 @@ export const PausedOnALongRequest: Story = {
       state: "approval",
       asked: "installing zod, exceljs, date-fns and @tanstack/react-table",
     },
-    label: "Coder · Building the order screen",
+    label: "Building the order screen",
     steps: STEPS,
   },
 };

@@ -4,6 +4,7 @@ import { fn } from "storybook/test";
 import { RoomThread, type TranscriptTurn } from "./transcript.tsx";
 import { ACTIVITY_SHOWN } from "../../config.ts";
 import workUnit from "./work-unit-step.stories.tsx";
+import type { WorkUnit } from "./work-unit.ts";
 
 const BRIEF = { id: "problem_brief", title: "Problem brief" };
 
@@ -137,7 +138,7 @@ export const AgentActivity: Story = {
         state: "working",
         since: new Date(Date.now() - 95_000).toISOString(),
       },
-      label: "Writer · Writing the constraints",
+      label: "Writing the constraints",
       steps: [
         {
           kind: "tool-trace",
@@ -161,6 +162,67 @@ export const AgentActivity: Story = {
       stop: undefined,
       run: workUnit.args.run,
     }),
+  },
+};
+
+const looksReply =
+  "I've started the order screen and three looks for it (Friendly, Sleek modern, Editorial). I'll bring the looks to you to compare as soon as they're ready.";
+
+const handOffTo = (toolCallId: string, plugin: string, action: string) => ({
+  ...handOff,
+  toolCallId,
+  input: { plugin, action, input: { instruction: "Today's orders page." } },
+});
+
+/** Two pieces of work at once: one list under the reply, each a title over one line of where it stands. */
+export const WorkInProgress: Story = {
+  args: {
+    turns: [
+      ...opening,
+      {
+        role: "person",
+        text: "Add a page where staff can see today's orders and mark them done. And show me a few looks for it.",
+        at: 4,
+      },
+      {
+        role: "assistant",
+        text: looksReply,
+        at: 5,
+        parts: [
+          { kind: "text", text: looksReply },
+          handOffTo("call-coder", "coder", "build"),
+          handOffTo("call-designer", "designer", "mockup"),
+        ],
+      },
+    ],
+    shows: ACTIVITY_SHOWN,
+    // Optional, as the meta's default takes no unit.
+    standing: (unit?: WorkUnit) =>
+      unit?.key === "call-coder"
+        ? {
+            ...workUnit.args,
+            unitKey: unit.key,
+            status: { state: "approval", asked: "two packages" },
+            label: "Building the order screen",
+            steps: [],
+            preview: undefined,
+            watch: { label: "Watch it run", open: fn() },
+          }
+        : {
+            ...workUnit.args,
+            unitKey: "call-designer",
+            status: {
+              state: "working",
+              since: new Date(Date.now() - 190_000).toISOString(),
+            },
+            label: "Making 3 looks",
+            steps: [],
+            preview: {
+              kind: "thinking",
+              text: "Friendly: checking every screen at phone and computer sizes",
+            },
+            watch: { label: "Watch the draft", open: fn() },
+          },
   },
 };
 
@@ -189,7 +251,7 @@ export const FinishedSpecialist: Story = {
         version: 1,
         kind: "constraints",
       },
-      label: "Writer · Wrote the constraints",
+      label: "Wrote the constraints",
       steps: [
         {
           kind: "tool-trace",

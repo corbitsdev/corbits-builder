@@ -76,7 +76,7 @@ export function workUnitStanding(
   return {
     unitKey: unit.key,
     status,
-    label: text.row(role, workPhrase(dispatch, status)),
+    label: workPhrase(dispatch, status),
     steps: ended ? steps.map((step) => settled(step, done)) : steps,
     preview: status.state === "working" ? livePreview(runId, room) : undefined,
     instruction: dispatch.instruction,

@@ -23,6 +23,7 @@ import { Markdown } from "@corbits-builder/plugin-ui/markdown";
 import type { DispatchStatus } from "./dispatch-card.tsx";
 import { useElapsedMs } from "./elapsed.tsx";
 import type { RunPreview } from "./run-preview.ts";
+import { ThreadList } from "./thread-list.tsx";
 import styles from "./work-unit-step.module.css";
 
 const text = wording.dispatch;
@@ -59,7 +60,7 @@ export type WorkUnitStanding = {
   unitKey: string;
   /** Where the hand-off stands. */
   status: DispatchStatus;
-  /** Who does the work and what it does: "Coder · Building the code". */
+  /** What the work does: "Building the code". */
   label: string;
   /** Each call the specialist made while the room watched it, in order. */
   steps: readonly PartTool[];
@@ -73,7 +74,7 @@ export type WorkUnitStanding = {
   document: DocumentBlockProps | undefined;
   /** Opens the document the work filed; absent where nothing can open it. */
   onOpenDocument: ((kind: string) => void) | undefined;
-  /** Opens what the work makes as it makes it, offered while it works; absent where nothing shows it. */
+  /** Opens what the work makes as it makes it, offered while it runs; absent where nothing shows it. */
   watch: { label: string; open: () => void } | undefined;
   /** Stops the work once the person confirms it, offered only while it works. */
   stop: { ask: string; confirm: () => Promise<void> } | undefined;
@@ -84,7 +85,7 @@ export type WorkUnitStepViewProps = WorkUnitStanding & {
   run: (steps: readonly PartTool[]) => ReactNode;
 };
 
-/** The row while the work runs, its time counting up beside it. */
+/** The row while the work runs, its time counting up beside it; the list it sits in says it runs. */
 function WorkingHeader({ label, since }: { label: ReactNode; since: string }) {
   const seconds = Math.floor(useElapsedMs(since) / 1_000);
   const elapsed = wording.activity.elapsed(
@@ -94,9 +95,33 @@ function WorkingHeader({ label, since }: { label: ReactNode; since: string }) {
   return (
     <ToolHeader
       label={label}
-      statusLabels={{ running: `${text.status.running} ${elapsed}` }}
+      statusLabels={{ running: elapsed }}
       className={styles.row}
     />
+  );
+}
+
+/** Whether the work still runs, so its row belongs in the list of work in progress. */
+export function inProgress(status: DispatchStatus): boolean {
+  return (
+    status.state === "starting" ||
+    status.state === "working" ||
+    status.state === "approval"
+  );
+}
+
+/** The work still running, gathered in one list that counts it. */
+export function WorkInProgress({
+  count,
+  children,
+}: {
+  count: number;
+  children: ReactNode;
+}) {
+  return (
+    <ThreadList label={text.inProgress(count)} busy>
+      {children}
+    </ThreadList>
   );
 }
 
@@ -162,7 +187,7 @@ function RowAction({
   watch: WorkUnitStanding["watch"];
   onOpen: WorkUnitStanding["onOpenDocument"];
 }) {
-  if (status.state === "working" && watch !== undefined)
+  if (inProgress(status) && watch !== undefined)
     return (
       <Button
         type="button"

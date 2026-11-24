@@ -1,0 +1,65 @@
+.list {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1);
+  color: var(--wb-muted-foreground);
+  font-size: 0.8125rem;
+}
+
+.label {
+  flex: 1;
+  min-width: 0;
+}
+
+.spinner {
+  width: 1rem;
+  height: 1rem;
+  flex: none;
+  animation: spin 1s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: none;
+  }
+}
+
+@keyframes spin {
+  to {
+    rotate: 360deg;
+  }
+}
+
+.toggle {
+  height: auto;
+  padding: 0;
+  color: var(--wb-muted-foreground);
+  font-size: 0.8125rem;
+  font-weight: 400;
+}
+
+/* Each item a line apart, its title over one muted line. */
+.items > * {
+  padding-block: var(--space-2);
+  border-top: 1px solid var(--wb-border);
+}
+
+/* The list says what its rows are, so a row needs no mark of its own; its title still opens it. */
+.items [data-slot="tool-header"] > svg {
+  display: none;
+}
+
+.items [data-slot="tool-header"] {
+  padding-inline: var(--space-1);
+}
+
+.items [data-slot="tool-header"]:hover {
+  background: none;
+}
