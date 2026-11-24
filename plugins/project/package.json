@@ -2,7 +2,7 @@
   "name": "@corbits-builder/project",
   "version": "0.1.0",
   "private": true,
-  "description": "Settles with the person how Builder works on the whole project, such as whether it stops to ask for their approval, and shows them what they must set up outside Builder to use what was built.",
+  "description": "Settles with the person how Builder works on the whole project, such as whether it stops to ask for their approval or drops the work under way for a new direction, and shows them what they must set up outside Builder to use what was built.",
   "license": "SEE LICENSE IN ../../LICENSE.md",
   "type": "module",
   "dependencies": {
@@ -22,16 +22,18 @@
       "approval",
       "setup"
     ],
-    "when": "The person wants Builder to go ahead without stopping to ask them, or to start asking them again; or something built needs set-up outside Builder before it can be used.",
+    "when": "The person wants Builder to go ahead without stopping to ask them, or to start asking them again; or they want to drop work the plan still holds and go a different way; or something built needs set-up outside Builder before it can be used.",
     "unless": "They want a piece of work done or changed; that is the plugin for that work.",
     "actions": {
       "hand-over": {},
+      "change-direction": {},
       "setup": {}
     },
     "examples": [
       "just build it",
       "stop asking me and get on with it",
       "ask me before each step again",
+      "forget this, I want to do something else",
       "what do I need to set up to use it"
     ]
   }

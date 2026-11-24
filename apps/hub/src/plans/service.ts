@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import type { DB, DBExecutor } from "@intx/db";
-import { principal } from "@intx/db/schema";
+import { isLiveWorkflowRunStatus, principal } from "@intx/db/schema";
+import { droppable } from "@corbits-builder/plugin";
 import {
   type PlanChildWrite,
   type PlanStepWrite,
@@ -9,6 +10,18 @@ import {
   type StoredPlanGroup,
   type StoredPlanStep,
 } from "@corbits-builder/schemas/project";
+import type { ScreenQuestion } from "@corbits-builder/schemas/conversation";
+import type { Catalog } from "@corbits-builder/plugin-host/catalog";
+import {
+  planState,
+  protectedSteps,
+  type PlanRecords,
+  type ProtectedStep,
+} from "@corbits-builder/plugin-host/plan";
+import type { createArtifactService } from "../artifacts/service.ts";
+import type { Checks } from "../plugins/checks.ts";
+import { personFacts, projectFacts } from "../plugins/facts.ts";
+import { agentDecidesApprovals } from "../config/preferences.ts";
 import { project } from "../db/schema.ts";
 import { activeCoordinator } from "../auth/coordinator-registry.ts";
 import type { Actor } from "../lib/actor.ts";
@@ -21,6 +34,7 @@ import {
   stepDeclinedNote,
   stepGoAheadNote,
   stepKeptText,
+  stepProtectedText,
 } from "../config/answers.ts";
 
 // A plan step as stored, under the id it came with or a short new one, with the go-ahead, cancel,
@@ -71,7 +85,14 @@ async function lockedPlan(tx: DBExecutor, projectId: string) {
 const writePlan = (tx: DBExecutor, projectId: string, plan: StoredPlan) =>
   tx.update(project).set({ plan }).where(eq(project.id, projectId));
 
-export function createPlanService(rawDB: DB["db"]) {
+export function createPlanService(
+  rawDB: DB["db"],
+  artifacts: Pick<
+    ReturnType<typeof createArtifactService>,
+    "list" | "stepRuns" | "runs" | "stopRun"
+  >,
+  checks?: Checks,
+) {
   return {
     // The plan's steps as stored; where each stands is worked out when it is read.
     async projectPlan(
@@ -86,19 +107,66 @@ export function createPlanService(rawDB: DB["db"]) {
       return row?.plan ?? { steps: [], updatedAt: null };
     },
 
+    // Where each step of the project's plan stands, worked out from what the hub has recorded and
+    // the screens open in front of the person, with the records it was worked out from.
+    async readPlan(
+      actor: Actor,
+      projectId: string,
+      catalog: Catalog,
+      asking: ScreenQuestion["asked"][],
+    ) {
+      const plan = await this.projectPlan(actor, projectId);
+      if (!checks) throw new ProjectError(503, "plan_state_unavailable");
+      const { records, appVersion } = await checks.latest(actor, projectId);
+      const listed = await artifacts.list(actor, projectId);
+      const facts = projectFacts({
+        artifacts: listed.artifacts,
+        preferences: listed.preferences,
+        checks: records,
+      });
+      const recorded: PlanRecords = {
+        facts,
+        personFacts: personFacts(listed.artifacts),
+        asksApprovals: !agentDecidesApprovals(listed.preferences),
+        checks: records,
+        runs: await artifacts.stepRuns(
+          actor,
+          projectId,
+          plan.steps.flatMap((step) =>
+            "steps" in step ? step.steps.map(({ id }) => id) : [step.id],
+          ),
+        ),
+        questions: asking,
+      };
+      const steps = planState(catalog, plan.steps, recorded);
+      return { plan, recorded, read: { facts, steps, appVersion, asking } };
+    },
+
     // Replaces the plan with steps already checked against the catalog. Only a person gives a step
     // its go-ahead, cancels it or sets whether it asks first, so a run's save keeps the marks stored
-    // under each step's id.
+    // under each step's id, and may not take out or change a step that only the person may.
     async savePlan(
       actor: Actor,
       projectId: string,
       steps: readonly PlanStepWrite[],
+      catalog: Catalog,
     ): Promise<StoredPlan> {
       await authorizeProject(rawDB, actor, projectId, "manage");
       const [caller] = await rawDB
         .select({ kind: principal.kind })
         .from(principal)
         .where(eq(principal.id, actor.principalId));
+      let kept: readonly ProtectedStep[] = [];
+      if (caller?.kind !== "user") {
+        // Only a person reads the conversation, so a run's read has no questions in it.
+        const { recorded, read } = await this.readPlan(
+          actor,
+          projectId,
+          catalog,
+          [],
+        );
+        kept = protectedSteps(read.steps, recorded);
+      }
       return rawDB.transaction(async (tx) => {
         const before = new Map(
           planActionSteps(await lockedPlan(tx, projectId)).map((step) => [
@@ -128,12 +196,21 @@ export function createPlanService(rawDB: DB["db"]) {
         // The person's no and their ask to be consulted are remembered on the plan, so only they can
         // take such a step out of it.
         const dropped = [...before.values()].find(
-          (step) => (step.declined || step.askFirst) && !ids.includes(step.id),
+          (step) =>
+            (step.declined || step.askFirst) &&
+            !step.cancelled &&
+            !ids.includes(step.id),
         );
         if (caller?.kind !== "user" && dropped)
           throw new ProjectError(409, "kept_plan_step_removed", {
             id: dropped.id,
             text: stepKeptText(dropped.title, dropped.declined !== undefined),
+          });
+        const removed = kept.find(({ step }) => !ids.includes(step.id));
+        if (removed)
+          throw new ProjectError(409, "protected_plan_step_removed", {
+            id: removed.step.id,
+            hint: stepProtectedText(removed.step.title, removed.reason),
           });
         const plan = { steps: saved, updatedAt: new Date().toISOString() };
         await writePlan(tx, projectId, plan);
@@ -189,6 +266,58 @@ export function createPlanService(rawDB: DB["db"]) {
           stepDeclinedNote(title, change.declined),
         );
       return plan;
+    },
+
+    // The person's answer to a screen cancels the plan steps it names that may still be dropped and
+    // stops the jobs started for them, leaving any it does not hold and keeping the mark of one
+    // already cancelled. Only a person may.
+    async cancelPlanSteps(
+      actor: Actor,
+      projectId: string,
+      stepIds: readonly string[],
+      catalog: Catalog,
+    ) {
+      await authorizeProject(rawDB, actor, projectId, "manage");
+      const [caller] = await rawDB
+        .select({ kind: principal.kind })
+        .from(principal)
+        .where(eq(principal.id, actor.principalId));
+      if (caller?.kind !== "user")
+        throw new ProjectError(403, "only_a_person_cancels");
+      // The screens open in front of the person are left out: an open one only shows a step that has
+      // not run as needing them, and that step may be dropped either way.
+      const { read } = await this.readPlan(actor, projectId, catalog, []);
+      const cancelled = read.steps
+        .flatMap((each) => ("steps" in each ? each.steps : [each]))
+        .filter(({ id, state }) => stepIds.includes(id) && droppable(state));
+      // The jobs stop before the steps are marked, so an answer retried after a failed stop still
+      // finds them.
+      const live = (await artifacts.runs(actor, projectId)).filter(
+        (run) =>
+          isLiveWorkflowRunStatus(run.status) &&
+          cancelled.some((each) => each.id === run.step),
+      );
+      for (const run of live)
+        try {
+          await artifacts.stopRun(actor, projectId, run.runId, "person");
+        } catch (error) {
+          // A job that ended since it was read has stopped already.
+          if (!(error instanceof ProjectError && error.code === "run_ended"))
+            throw error;
+        }
+      await rawDB.transaction(async (tx) => {
+        const plan = await lockedPlan(tx, projectId);
+        const named = planActionSteps(plan).filter(
+          (step) =>
+            cancelled.some(({ id }) => id === step.id) && !step.cancelled,
+        );
+        if (!plan || named.length === 0) return;
+        const at = new Date().toISOString();
+        for (const step of named)
+          step.cancelled = { by: actor.principalId, at };
+        plan.updatedAt = at;
+        await writePlan(tx, projectId, plan);
+      });
     },
 
     // The person answered a screen, which does the plan's first open step for that screen. The

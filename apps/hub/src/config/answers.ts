@@ -1,5 +1,6 @@
 import { wrongCount, wrongText, type Refusal } from "@corbits-builder/plugin";
 import { HUB_NOTE_LEAD } from "@corbits-builder/schemas/conversation";
+import type { ProtectedStep } from "@corbits-builder/plugin-host/plan";
 
 // The hub's note to the coordinator once the person approved a document they were reading, when no
 // open question asked for all of what they have now approved.
@@ -26,6 +27,23 @@ export const stepDeclinedNote = (title: string, declined: boolean) =>
 // Why the coordinator cannot take out of the plan a step the person declined or asked to be consulted on.
 export const stepKeptText = (title: string, declined: boolean) =>
   `The person ${declined ? "declined" : "asked to be consulted before"} "${title}", so it stays in the plan; leave it there and carry on with the rest.`;
+
+const DROP_WITH_THE_PERSON =
+  "Add steps instead of replacing the plan; to drop this work, put the change of direction to the person on the screen for that (discover lists it) and remove the step only after they agree.";
+
+// Why the coordinator cannot take a step out of the plan, and what it may do instead.
+const PROTECTED_STEP_TEXT: Record<ProtectedStep["reason"], string> = {
+  approval:
+    "is waiting for the person's approval, so only they can take it out of the plan. Have the person approve it, or, if they said to stop asking, open the screen that hands approvals over to Builder (discover lists it).",
+  done: "is done and stays in the plan as the record of the work. Add steps instead of replacing the plan.",
+  started: `is running, so only the person can take it out of the plan. ${DROP_WITH_THE_PERSON}`,
+  underway: `is part of a plan that is under way, so only the person can take it out of the plan. ${DROP_WITH_THE_PERSON}`,
+};
+
+export const stepProtectedText = (
+  title: string,
+  reason: ProtectedStep["reason"],
+) => `"${title}" ${PROTECTED_STEP_TEXT[reason]}`;
 
 // Why a plan step cannot be declined, for the person.
 export const STEP_REQUIRED_TEXT =

@@ -462,13 +462,15 @@ function readiness(
   };
 }
 
-// The plan's action steps for this action whose gate still holds: a done step's gate is spent.
+const SETTLED = new Set(["done", "skipped", "cancelled"]);
+
+// The plan's action steps for this action whose gate still holds: a settled step's gate is spent.
 const gatingSteps = (action: Action, steps: readonly SavedPlanStep[]) =>
   actionSteps(steps).filter(
     (step) =>
       step.plugin === action.plugin &&
       step.action === action.action &&
-      step.state !== "done",
+      !SETTLED.has(step.state),
   );
 
 // The installed action that a plugin's handle and an action's name pick out.
@@ -828,22 +830,13 @@ async function executing(
   );
   if (asking) return { refused: stepAwaitsGoAhead(action.name, asking.title) };
   // A step id is a hint for tying the run to the plan, never a reason to hold work back: one that
-  // names none of the steps this start would do falls back to the one of them still open. The step
-  // the start does is the one whose gate holds it.
-  const open = doing.filter(
-    ({ state }) =>
-      state !== "done" && state !== "skipped" && state !== "cancelled",
-  );
+  // names none of the steps this start would do falls back to the one of them still open. Every open
+  // step it would do holds it with its gate, so another step for the same work cannot slip past one.
+  const open = doing.filter(({ state }) => !SETTLED.has(state));
   const stepId =
     doing.find(({ id }) => id === asked.step)?.id ??
     (open.length === 1 ? open[0]?.id : undefined);
-  const ready = readiness(
-    catalog,
-    action,
-    state,
-    gatingSteps(action, plan.steps).filter(({ id }) => id === stepId),
-    checked.input,
-  );
+  const ready = readiness(catalog, action, state, open, checked.input);
   return { plugin, action, checked: checked.input, stepId, ready };
 }
 
@@ -1192,10 +1185,10 @@ const PLAN_FIELDS = {
     about: "What to do; each answers with the plan as it now stands.",
     choices: {
       show: "The plan.",
-      set: "Replace the plan with steps, a plan of your own; [] empties it. The project then follows no ready-made plan.",
+      set: "Replace the plan with steps, a plan of your own; [] empties it. The project then follows no ready-made plan. Refused while the plan holds a step only the person may take out: one waiting for their approval, one running or done, or a required unfinished step of a plan under way. Use add and remove then.",
       add: "Add steps, or one ready-made plan, at the end, after the step after names or before the step before names.",
       remove:
-        "Take out each step stepIds names, with the steps it holds; taking out a ready-made plan's group stops the project following that plan.",
+        "Take out each step stepIds names, with the steps it holds; taking out a ready-made plan's group stops the project following that plan. A step only the person may take out is refused, and the refusal says what to do instead.",
     },
   },
   steps: {
@@ -1444,8 +1437,6 @@ function removed(plan: PlanStepWrite[], ids: readonly string[]) {
     if ("steps" in step) step.steps = step.steps.filter(kept);
   return plan.filter(kept);
 }
-
-const SETTLED = new Set(["done", "skipped", "cancelled"]);
 
 // The plan as it stands, and once only optional steps are left unstarted, what is owed on them.
 async function planAnswer(

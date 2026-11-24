@@ -10,4 +10,4 @@ Then revise the build plan with writer write-build-plan once the requirements ar
 
 When the feature changes how the app looks, run designer mockup and then designer review before the build plan, and write the build plan from the design the person chose.
 
-The plan ends when the change is built. After that, a further small change is coder change, with nothing from this plan in the way. Leave the plan by taking its group out with plan({ operation: "remove", stepIds }) when the person directs the work elsewhere, or when the change turns out to be small and exact.
+The plan ends when the change is built. After that, a further small change is coder change, with nothing from this plan in the way. Leave the plan when the person directs the work elsewhere, or when the change turns out to be small and exact: take out its steps that are not done with plan({ operation: "remove", stepIds }). When the plan refuses, put the change to them with execute({ plugin: "project", action: "change-direction", input: { stepIds, instead } }) and take the steps out once they agree.
