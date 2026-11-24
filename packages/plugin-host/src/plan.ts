@@ -201,8 +201,7 @@ export function planState(
     };
     view.state = state();
     view.finished = stepFinished(view.state);
-    if (view.state === "skipped" && step.declined)
-      view.summary = DECLINED_SUMMARY;
+    if (step.declined && !step.cancelled) view.summary = DECLINED_SUMMARY;
     if (view.state === "failed" && run?.status === "completed")
       view.summary = unfinishedText(missing, catalog.factText);
     if (view.state === "waiting")

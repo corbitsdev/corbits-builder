@@ -7,6 +7,7 @@
   "jsPlugins": ["./oxlint-plugin.ts"],
   "rules": {
     "corbits-builder/no-tool-replay": "error",
+    "corbits-builder/no-plan-state-check": "error",
     "eslint/eqeqeq": "error",
     "eslint/prefer-const": "error",
     "eslint/no-var": "error",
@@ -81,6 +82,13 @@
       "files": ["test/**"],
       "rules": {
         "corbits-builder/no-tool-replay": "off"
+      }
+    },
+    // Where the plan's rules for when its work is finished are defined.
+    {
+      "files": ["packages/schemas/src/plan.ts"],
+      "rules": {
+        "corbits-builder/no-plan-state-check": "off"
       }
     },
     // Not Builder's processes. The starter is the template a generated app grows from. The app
