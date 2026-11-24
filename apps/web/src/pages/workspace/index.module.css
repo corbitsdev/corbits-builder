@@ -27,6 +27,18 @@
   display: none;
 }
 
+/* Open, the sidebar takes the margin left of the page, so a document's contents leave it at once
+   rather than squeeze as it slides in. Once it has closed they fade back in its place. */
+.room:has([data-slot="project-sidebar"][data-open])
+  [data-slot="document-contents"] {
+  display: none;
+}
+
+.room [data-slot="document-contents"] {
+  animation: global(fade-in) var(--duration-micro) var(--ease-out)
+    var(--duration-standard) both;
+}
+
 /* Closed, the sidebar leaves the project's name over the page's top left corner, where a document's
    contents start, so the page keeps that corner clear for it. */
 .room:has([data-slot="project-sidebar"]:not([data-open]))
