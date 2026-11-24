@@ -1,15 +1,30 @@
 name: Setup
-description: Bun at the pinned version and the workspace's packages, restored from Bun's install cache.
+description: Bun at the pinned version and the workspace's packages, restored from a cache of the installed folders.
 runs:
   using: composite
   steps:
     - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
       with:
         bun-version: 1.4.4
-    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+    - id: key
+      run: echo "modules=installed-${{ runner.os }}-1.4.4-${{ hashFiles('bun.lock', 'patches/**', '**/package.json') }}" >> "$GITHUB_OUTPUT"
+      shell: bash
+    - id: modules
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
-        path: ~/.bun/install/cache
-        key: bun-${{ runner.os }}-1.4.4-${{ hashFiles('bun.lock') }}
-        restore-keys: bun-${{ runner.os }}-1.4.4-
+        path: |
+          node_modules
+          */*/node_modules
+          vendor/interchange/*/*/node_modules
+        key: ${{ steps.key.outputs.modules }}
     - run: bun install --frozen-lockfile
       shell: bash
+    # Saved straight after the install, before a test can leave anything in these folders.
+    - if: steps.modules.outputs.cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          node_modules
+          */*/node_modules
+          vendor/interchange/*/*/node_modules
+        key: ${{ steps.key.outputs.modules }}

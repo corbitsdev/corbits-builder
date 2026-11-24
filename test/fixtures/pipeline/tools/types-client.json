@@ -1,0 +1,4 @@
+{
+  "shell": "bun run tsc -p 'client' --noEmit --pretty false --incremental --tsBuildInfoFile \"$HOME\"/'.type-probe/client.tsbuildinfo'",
+  "result": { "callId": "recorded", "content": "" }
+}

@@ -5,6 +5,11 @@ import { join } from "node:path";
 import { CheckRan } from "@corbits-builder/schemas/artifact";
 import { importRepository } from "../../../scripts/import-repo.ts";
 import { openProject, say, turn, user } from "../support/scripted-project.ts";
+import { toolReplay } from "../support/tool-replay.ts";
+
+const TOOL_REPLAY = toolReplay(
+  join(import.meta.dir, "../../fixtures/tools/existing-project"),
+);
 
 const STACK = ["stack.starter", "stack.checks"];
 const WEB_CHECKS =
@@ -13,6 +18,7 @@ const WEB_CHECKS =
 test("a project in the main line's stored shape gets a coordinator on this code, and its builds check runs the web starter's commands", async () => {
   const project = await openProject({
     start: { seed: "habit-tracker" },
+    toolReplay: TOOL_REPLAY,
     runs: {
       coordinator: {
         role: "coordinator",
@@ -59,6 +65,7 @@ test("an imported repository that is not a web app is not given the web starter'
     const { file } = await importRepository(directory, { title: "Greet" });
     const project = await openProject({
       start: { file },
+      toolReplay: TOOL_REPLAY,
       runs: {
         coordinator: {
           role: "coordinator",

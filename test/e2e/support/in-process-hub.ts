@@ -28,7 +28,10 @@ const origin = "http://127.0.0.1:1";
  * a signed-up person who calls it. None of the runs has a workspace on the local sidecar's disk
  * unless a test puts one there. `settings` adds to or overrides the hub's environment.
  */
-export async function startInProcessHub(settings: Record<string, string> = {}) {
+export async function startInProcessHub(
+  settings: Record<string, string> = {},
+  testing?: { toolReplay?: string | undefined },
+) {
   const database = await createTestDatabase();
   const directory = await mkdtemp(join(tmpdir(), "sb-in-process-"));
   const dataDir = join(directory, "hub");
@@ -56,7 +59,7 @@ export async function startInProcessHub(settings: Record<string, string> = {}) {
   let cookie: string;
   try {
     await migrateDatabase(readMigrationEnvironment(environment));
-    runtime = await createHubRuntime(readHubEnvironment(environment));
+    runtime = await createHubRuntime(readHubEnvironment(environment), testing);
     const app = runtime.app;
     cookie = await signUpSessionCookie(
       (request) => app.fetch(request),

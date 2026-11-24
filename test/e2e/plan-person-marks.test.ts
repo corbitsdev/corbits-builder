@@ -12,7 +12,7 @@ let hub: Awaited<ReturnType<typeof startInProcessHub>>;
 
 beforeAll(async () => {
   hub = await startInProcessHub();
-});
+}, 120_000);
 
 afterAll(() => hub?.close());
 

@@ -1,0 +1,4 @@
+{
+  "shell": "bun install --frozen-lockfile",
+  "result": { "callId": "recorded", "content": "" }
+}

@@ -9,12 +9,20 @@ import { createRunTokenStore } from "@intx/db";
 import { grant } from "@intx/db/schema";
 import { APP_VERSION_HEADER } from "@corbits-builder/schemas/app-files";
 import { startInProcessHub } from "../support/in-process-hub.ts";
+import { toolReplay } from "../support/tool-replay.ts";
 
 let hub: Awaited<ReturnType<typeof startInProcessHub>>;
 
 beforeAll(async () => {
-  hub = await startInProcessHub();
-});
+  hub = await startInProcessHub(
+    {},
+    {
+      toolReplay: toolReplay(
+        join(import.meta.dir, "../../fixtures/tools/app-build"),
+      ),
+    },
+  );
+}, 120_000);
 
 afterAll(() => hub?.close());
 
