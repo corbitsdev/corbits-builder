@@ -65,8 +65,11 @@
 }
 
 .settledBody {
-  margin-top: var(--space-3);
   overflow-wrap: anywhere;
+}
+
+.settledTitle + .settledBody {
+  margin-top: var(--space-3);
 }
 
 .settledBody > p {

@@ -1211,7 +1211,7 @@ export const wording = {
     /** Closes an open question without choosing; the reply is what the settled card then shows. */
     cancel: "Cancel",
     cancelReply: "Cancelled without choosing.",
-    /** The settled card's heading, over each question and its answer; it sits under the coordinator's name, so it says whose. */
+    /** The settled card's name to assistive technology; on the page its questions and answers say it. */
     answered: "Your answers",
     answeredInChat: "Answered in your own words",
     /** A question whose coordinator stopped before it was answered, so it takes no answer now. */

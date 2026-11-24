@@ -281,7 +281,7 @@ function Settled({
   if ("reply" in answer)
     return <SettledReply reply={answer.reply} sent={sent} />;
   return (
-    <SettledFrame title={text.answered} ended="answered" focus={sent}>
+    <SettledFrame title={text.answered} untitled ended="answered" focus={sent}>
       <SettledAnswers
         answers={ask.questions.map((question) => {
           const given = answer.answers[question.id];
