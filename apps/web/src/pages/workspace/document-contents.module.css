@@ -7,14 +7,6 @@
   max-width: 100%;
 }
 
-/* Download and Share above the sections, their icons in line with the rows' words. */
-.top {
-  display: flex;
-  align-items: center;
-  margin-inline-start: 4px;
-  padding-block-end: var(--space-1);
-}
-
 .document,
 .section {
   display: flex;

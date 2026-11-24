@@ -77,6 +77,11 @@
   gap: var(--space-1);
 }
 
+/* Notes that come to nothing take no room, so the page stays level with the margin's head. */
+.notes:empty {
+  display: none;
+}
+
 /* A sheet of paper, A4 and a page tall at the least, raised on the backdrop as the workspace's main
    pane is. The page's height is a minimum, not an aspect ratio: a sheet narrowed by its max-width
    would hold an aspect ratio's height and let a long text run off its foot. */
@@ -149,7 +154,7 @@
   gap: 0;
 }
 
-/* As quiet as the heading they sit beside: its size and grey, no heavier. */
+/* Quiet beside the page: small grey words, no heavier than the contents across from them. */
 .file {
   gap: 5px;
   height: 1.5rem;
@@ -168,7 +173,15 @@
   height: 13px;
 }
 
-/* Beside the contents where they show; above the page where they do not. */
+/* At the head of the margin, level with the page's top edge, their words in line with the cards'
+   below them. */
+.marginFiles {
+  position: absolute;
+  top: 0;
+  left: calc(var(--space-8) - 6px);
+}
+
+/* Above the page, at its right edge, where the margin has no room for them. */
 .narrowFiles {
   display: none;
   align-self: stretch;
@@ -350,6 +363,12 @@
   .side {
     display: none;
   }
+}
+
+@container (width < 1180px) {
+  .marginFiles {
+    display: none;
+  }
 
   .narrowFiles {
     display: flex;
@@ -370,6 +389,7 @@
   }
 
   .narrowFiles,
+  .marginFiles,
   .side,
   .margin {
     display: none;

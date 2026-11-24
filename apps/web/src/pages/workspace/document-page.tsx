@@ -1,8 +1,8 @@
 /**
  * A written document read as a printed page: a sheet on the window's backdrop with the document's
- * title and its body, and nothing else on it. The document's sections sit to the left, with
- * Download and Share beside their heading; the right margin holds whatever is placed beside a
- * passage, level with it.
+ * title and its body, and nothing else on it. The document's sections sit to the left; the right
+ * margin starts with Download and Share, level with the page's top edge, and holds whatever is
+ * placed beside a passage below them, level with it.
  */
 import { Button, useDismissablePopover } from "@corbits/react-ui";
 import { MessageSquare } from "lucide-react";
@@ -222,6 +222,7 @@ export function DocumentPage({
   const scroller = useRef<HTMLDivElement>(null);
   const sheet = useRef<HTMLElement>(null);
   const marginColumn = useRef<HTMLDivElement>(null);
+  const marginFiles = useRef<HTMLDivElement>(null);
   const pageColumn = useRef<HTMLDivElement>(null);
   const [ends, setEnds] = useState<PassageEnds | null>(null);
   const marginItems = useRef<(HTMLDivElement | null)[]>([]);
@@ -541,9 +542,11 @@ export function DocumentPage({
   useLayoutEffect(() => {
     if (!inMargin) return;
     const items = places.map((_, index) => marginItems.current[index] ?? null);
+    // Download and Share head the margin, so nothing starts above their foot.
     const stack = () => {
       const heights = items.map((item) => item?.offsetHeight ?? 0);
-      let floor = -Infinity;
+      const head = marginFiles.current?.offsetHeight ?? 0;
+      let floor = head === 0 ? -Infinity : head + MARGIN_GAP;
       places.forEach((place, index) => {
         const top = Math.max(place.found ? place.top - MARGIN_LEAD : 0, floor);
         const item = items[index];
@@ -555,6 +558,7 @@ export function DocumentPage({
     stack();
     const resized = new ResizeObserver(stack);
     for (const item of items) if (item !== null) resized.observe(item);
+    if (marginFiles.current !== null) resized.observe(marginFiles.current);
     return () => resized.disconnect();
   }, [places, inMargin]);
 
@@ -651,11 +655,10 @@ export function DocumentPage({
             sections={contents}
             current={current}
             onOpen={open}
-            actions={files.length === 0 ? null : <FileActions files={files} />}
           />
         </div>
         <div ref={pageColumn} className={styles.column}>
-          {/* Without room for the contents, Download and Share head the page instead. */}
+          {/* Without room beside the page, Download and Share head it instead. */}
           <div className={styles.narrowFiles}>
             <FileActions files={files} />
           </div>
@@ -715,6 +718,11 @@ export function DocumentPage({
             : null}
         </div>
         <div ref={marginColumn} className={styles.margin}>
+          {files.length === 0 ? null : (
+            <div ref={marginFiles} className={styles.marginFiles}>
+              <FileActions files={files} />
+            </div>
+          )}
           {margin === undefined || narrow
             ? null
             : places.map((place, index) => (
