@@ -232,7 +232,7 @@ export const wording = {
     accountUnreadable: "Your account could not be read.",
   },
   hub: {
-    notAnswering: "Connection failed. Trying again…",
+    notAnswering: "Connection lost. Reconnecting…",
   },
   boot: {
     starting: "Starting…",

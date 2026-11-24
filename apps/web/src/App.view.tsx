@@ -61,6 +61,8 @@ export function AppView({
       )}
 
       <main className={styles.canvas}>
+        {/* Floats over the page, so it stands outside the page's own column. */}
+        <HubNotice hub={hub} />
         {home ? (
           <nav className={styles.corner} aria-label={wording.shell.corner}>
             <UiButton
@@ -89,8 +91,6 @@ export function AppView({
           className={styles.canvasBody}
           data-fill={current === "project" ? "" : undefined}
         >
-          <HubNotice hub={hub} />
-
           {hub.state === "answering" && setupFault ? (
             <Banner tone="error" title={wording.workspace.setupIncomplete}>
               {setupFault}
@@ -104,10 +104,19 @@ export function AppView({
   );
 }
 
+/**
+ * While the hub cannot be reached: a small pill floating at the top of the window, a ring turning
+ * beside its words, over the page rather than in it, so nothing on the page moves when it comes
+ * and goes.
+ */
 function HubNotice({ hub }: { hub: HubHealth }) {
-  if (hub.state === "notAnswering")
-    return <Banner tone="error" title={wording.hub.notAnswering} />;
-  return null;
+  if (hub.state !== "notAnswering") return null;
+  return (
+    <p className={styles.hubNotice} data-slot="hub-notice" role="status">
+      <span className={styles.hubRing} aria-hidden="true" />
+      {wording.hub.notAnswering}
+    </p>
+  );
 }
 
 export type BootViewProps = {

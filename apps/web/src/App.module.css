@@ -205,3 +205,52 @@
   font-family: var(--wb-font-mono);
   font-size: 0.8125rem;
 }
+
+/* The hub is out of reach: a compact pill over the top of the window, in the foreground's own
+   colour so it reads in both themes, and out of the page's flow so nothing moves for it. */
+.hubNotice {
+  position: fixed;
+  inset-block-start: var(--space-3);
+  inset-inline-start: 50%;
+  z-index: 60;
+  display: inline-flex;
+  gap: var(--space-2);
+  align-items: center;
+  margin: 0;
+  padding: 6px 12px 6px 10px;
+  border-radius: 9999px;
+  background: var(--wb-foreground);
+  color: var(--wb-background);
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.14);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  line-height: var(--text-xs--line-height);
+  white-space: nowrap;
+  pointer-events: none;
+  translate: -50% 0;
+  animation: hubNoticeIn 200ms var(--ease-out);
+}
+
+.hubRing {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid color-mix(in oklab, currentColor 30%, transparent);
+  border-block-start-color: currentColor;
+  border-radius: 9999px;
+  animation: global(spin) 900ms linear infinite;
+}
+
+@keyframes hubNoticeIn {
+  from {
+    opacity: 0;
+    translate: -50% -6px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hubNotice,
+  .hubRing {
+    animation: none;
+  }
+}
