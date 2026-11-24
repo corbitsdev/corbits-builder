@@ -459,9 +459,10 @@ function renderStep(step: ActivityStep): ReactNode {
 }
 
 /**
- * A run of the coordinator's work, the specialists it started among its steps. It opens once and
- * stays as the person leaves it: the end of the work never folds it, so the page does not move. Its
- * header counts its steps, so it never repeats a lone row.
+ * A run of the coordinator's work, the specialists it started among its steps. It starts folded to
+ * its count, so the conversation reads as what was said, and stays as the person leaves it: the end
+ * of the work never folds or opens it, so the page does not move. Its header counts its steps, so
+ * it never repeats a lone row.
  */
 function Run({
   steps,
@@ -471,7 +472,7 @@ function Run({
   renderStep: (step: ActivityStep) => ReactNode;
 }) {
   return (
-    <Activity steps={steps} defaultOpen>
+    <Activity steps={steps}>
       <ActivityTrigger
         label={wording.activity.run(steps.length)}
         labels={wording.activity.trigger}

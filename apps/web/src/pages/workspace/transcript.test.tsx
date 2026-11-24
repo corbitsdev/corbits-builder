@@ -383,7 +383,7 @@ describe("conversation transcript", () => {
     const html = renderToStaticMarkup(
       <RoomThread
         standing={standing}
-        // The writer is still at work, so the coordinator's list stays open on it.
+        // The writer is still at work, and the coordinator's list stays folded all the same.
         live={() => true}
         turns={[
           { role: "person", text: "Start", at: 1 },
@@ -438,20 +438,13 @@ describe("conversation transcript", () => {
         ]}
       />,
     );
-    // Not a card of its own: the row is its own item inside the coordinator's list.
+    // Not a card of its own: the specialist is a step the coordinator's list counts, and the list
+    // starts folded to that count, its rows shown once the person opens it.
     expect(html).not.toContain('data-item-id="units:');
-    expect(html.indexOf('data-item-id="work:call-1"')).toBeGreaterThan(
-      html.indexOf('data-slot="activity-content"'),
-    );
-    const row = wording.dispatch.row(
-      roleLabel("writer"),
-      "Writing the constraints",
-    );
-    // The list's header counts its one row rather than saying it again.
-    expect(html.split(row)).toHaveLength(2);
     expect(html).toContain(wording.activity.run(1));
-    expect(html.indexOf('data-slot="activity-content"')).toBeLessThan(
-      html.indexOf(row),
+    expect(html).not.toContain('data-item-id="work:call-1"');
+    expect(html).not.toContain(
+      wording.dispatch.row(roleLabel("writer"), "Writing the constraints"),
     );
     expect(html).not.toContain('data-slot="update-names">Constraints<');
     expect(html).toContain(wording.updatesFolded(4));
