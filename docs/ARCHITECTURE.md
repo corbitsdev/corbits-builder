@@ -916,7 +916,8 @@ and never from what an agent reported.
   Settings, has every filed planning document count as approved. A plan step
   whose approval is required still waits for their own.
 - Interchange's own approvals remain for tool calls inside a run, such as the
-  coder adding a package that no approved build plan names.
+  coder adding a package that no approved build plan names while New packages
+  is set to Ask me first.
 
 ## Questions
 

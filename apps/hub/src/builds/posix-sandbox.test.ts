@@ -243,17 +243,16 @@ sandboxTest(
       const workspace = join(data, "jobs", "project-a", "workspace");
       const otherProject = join(data, "jobs", "project-b", "workspace");
       const hubData = join(data, "hub-secrets.json");
-      await mkdir(join(workspace, "server"), { recursive: true });
-      await mkdir(join(workspace, "hostile"));
+      await mkdir(join(workspace, "hostile"), { recursive: true });
       await mkdir(otherProject, { recursive: true });
       await writeFile(join(otherProject, "app.ts"), "other-project-sentinel");
       await writeFile(hubData, "hub-data-sentinel");
-      await writeFile(join(workspace, "server", ".env"), "SECRET=env-sentinel");
+      await writeFile(join(workspace, ".env"), "SECRET=env-sentinel");
       const attempts = {
         home: `require("node:fs").readdirSync(${JSON.stringify(homedir())})`,
         otherProject: `require("node:fs").readFileSync(${JSON.stringify(join(otherProject, "app.ts"))}, "utf8")`,
         hubData: `require("node:fs").readFileSync(${JSON.stringify(hubData)}, "utf8")`,
-        env: `require("node:fs").readFileSync(${JSON.stringify(join(workspace, "server", ".env"))}, "utf8")`,
+        env: `require("node:fs").readFileSync(${JSON.stringify(join(workspace, ".env"))}, "utf8")`,
         writeOtherProject: `require("node:fs").writeFileSync(${JSON.stringify(join(otherProject, "pwned"))}, "x")`,
         writeHost: `require("node:fs").writeFileSync(${JSON.stringify(join(root, "pwned"))}, "x")`,
         outsideHost: `await fetch("https://example.com", { signal: AbortSignal.timeout(5000) })`,

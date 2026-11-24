@@ -449,8 +449,7 @@ export function createAppRepositoryRoutes(
             setRunToolGrantEffect(db, run.tenantId, run.runId, tool, effect),
           ),
         );
-        // The sidecar otherwise holds the old ask until its next trigger, and the coder installs in
-        // this one.
+        // A sidecar receives grants only before each trigger, and the coder installs in this one.
         if (run.address !== null && changed.some((id) => id !== null))
           await pushRunGrants(sidecarRouter, [run.address]);
         if (

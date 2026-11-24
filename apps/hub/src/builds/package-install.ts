@@ -88,8 +88,8 @@ export function createPackageGate(
     isError: true,
   });
 
-  const declared = async () => {
-    const names = new Set<string>();
+  const readDependencies = async () => {
+    const registry = new Set<string>();
     const unregistered = new Set<string>();
     // Bun.Glob matches nothing for a brace pattern whose branches hold a "/", so one per layout.
     const manifests = (
@@ -121,11 +121,11 @@ export function createPackageGate(
           if (spec.startsWith("workspace:")) continue;
           // An installed name could otherwise point at any alias, git repository, URL or file.
           else if (/[:/]/.test(spec)) unregistered.add(`${name}@${spec}`);
-          else names.add(name);
+          else registry.add(name);
     }
-    return { names, unregistered };
+    return { registry, unregistered };
   };
-  const refuseSources = (call: ToolCall, unregistered: Set<string>) =>
+  const refuseUnregistered = (call: ToolCall, unregistered: Set<string>) =>
     refuse(call, {
       code: "package_source_refused",
       packages: [...unregistered],
@@ -139,8 +139,8 @@ export function createPackageGate(
     signal: AbortSignal,
   ): Promise<ToolResult> => {
     // bun add resolves every package.json, not only the packages it is given.
-    const { unregistered } = await declared();
-    if (unregistered.size) return refuseSources(call, unregistered);
+    const { unregistered } = await readDependencies();
+    if (unregistered.size) return refuseUnregistered(call, unregistered);
     const result = await executor.run(
       {
         id: call.id,
@@ -171,10 +171,10 @@ export function createPackageGate(
             "Install packages with install_packages, not the shell, then run what they install with bun run, or with app_status when it keeps running.",
         });
       if (!BARE_INSTALL.test(command)) return undefined;
-      const { names, unregistered } = await declared();
-      if (unregistered.size) return refuseSources(call, unregistered);
+      const { registry, unregistered } = await readDependencies();
+      if (unregistered.size) return refuseUnregistered(call, unregistered);
       const installed = await installedPackages(workspace);
-      const added = [...names].filter((name) => !installed.has(name));
+      const added = [...registry].filter((name) => !installed.has(name));
       return added.length && !(await approved(signal)).anyPackage
         ? refuse(call, {
             code: "package_install_refused",
