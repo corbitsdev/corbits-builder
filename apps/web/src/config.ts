@@ -251,6 +251,8 @@ export const wording = {
   },
   /** While the hub cannot be reached: the app waits on its loading screen and retries. */
   loading: `${productName} is loading…`,
+  /** Between keys a tooltip offers, any one of which does it: "Enter or →". */
+  keyHint: { or: "or" },
   action: {
     archive: "Archive",
     cancel: "Cancel",
@@ -1198,9 +1200,10 @@ export const wording = {
     typed: "Type your answer…",
     back: "Back",
     next: "Continue",
-    backKeys: "Previous question (←)",
-    nextKeys: "Next question (Enter or →)",
-    sendKeys: "Send your answers (Enter)",
+    /** The step buttons' tooltips, each with the keys that do the same. */
+    backKeys: { label: "Previous question", keys: ["←"] },
+    nextKeys: { label: "Next question", keys: ["Enter", "→"] },
+    sendKeys: { label: "Send your answers", keys: ["Enter"] },
     /** The prompt box under a question nothing is picked for yet: the person's own words answer it. */
     composerPlaceholder: "Or type your own answer…",
     /** The prompt box once an option is picked: words sent now go with it. */
@@ -1431,7 +1434,8 @@ export const wording = {
     title: "Settings",
     /** The arrow beside the title, named for where it returns. */
     backTo: (place: string) => `Back to ${place}`,
-    backKeys: (place: string) => `Back to ${place} (Esc)`,
+    /** The key that goes back too, shown in the arrow's tooltip. */
+    backKey: "Esc",
     sections: "Settings sections",
     tab: {
       providers: "Providers",

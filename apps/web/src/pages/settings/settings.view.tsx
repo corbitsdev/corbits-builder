@@ -28,7 +28,13 @@ import {
 } from "./settings-section.tsx";
 import { ChoiceSegments } from "@corbits-builder/plugin-ui/choice-segments";
 import { PictureChoice, ThemePicture } from "./preference-choice.tsx";
-import { Banner, BannerAction, Button, QuietState } from "../../components.jsx";
+import {
+  Banner,
+  BannerAction,
+  Button,
+  KeyHint,
+  QuietState,
+} from "../../components.jsx";
 import { openSourceNotices } from "../../open-source.ts";
 import styles from "./settings.module.css";
 
@@ -160,7 +166,14 @@ export function SettingsView({
     <div className={styles.page} data-slot="settings-page">
       <header className={styles.header}>
         {back ? (
-          <Tooltip label={wording.settings.backKeys(back.to)}>
+          <Tooltip
+            label={
+              <KeyHint
+                label={wording.settings.backTo(back.to)}
+                keys={[wording.settings.backKey]}
+              />
+            }
+          >
             <UiButton
               type="button"
               variant="ghost"

@@ -1,4 +1,4 @@
-import { type ComponentProps, type ReactNode } from "react";
+import { Fragment, type ComponentProps, type ReactNode } from "react";
 import { Loader2 } from "lucide-react";
 import {
   Badge,
@@ -263,6 +263,29 @@ export function MenuItemLabel({ children }: { children: ReactNode }) {
   return (
     <span className={styles.menuItemLabel} data-slot="menu-item-label">
       {children}
+    </span>
+  );
+}
+
+/** What something does, then the keys that do it too, each drawn as a key; any one of them will do. */
+export function KeyHint({
+  label,
+  keys,
+}: {
+  label: string;
+  keys: readonly string[];
+}) {
+  return (
+    <span className={styles.keyHint} data-slot="key-hint">
+      {label}
+      <span className={styles.keys}>
+        {keys.map((key, index) => (
+          <Fragment key={key}>
+            {index === 0 ? null : wording.keyHint.or}
+            <kbd className={styles.key}>{key}</kbd>
+          </Fragment>
+        ))}
+      </span>
     </span>
   );
 }

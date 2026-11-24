@@ -32,7 +32,7 @@ import type {
 import { type } from "arktype";
 import { useUnsent } from "../../unsent.ts";
 import { wording } from "../../config.ts";
-import { Fault } from "../../components.jsx";
+import { Fault, KeyHint } from "../../components.jsx";
 import styles from "./questions-card.module.css";
 
 const text = wording.questions;
@@ -616,7 +616,7 @@ function OpenCard({
         {questions.length > 1 ? (
           <div className={styles.step}>
             {step === 0 ? null : (
-              <Tooltip label={text.backKeys}>
+              <Tooltip label={<KeyHint {...text.backKeys} />}>
                 <button
                   type="button"
                   className={styles.stepBack}
@@ -673,7 +673,9 @@ function OpenCard({
       {slot?.(
         ready ? (
           <div className={styles.hosted} inert={disabled}>
-            <Tooltip label={last ? text.sendKeys : text.nextKeys}>
+            <Tooltip
+              label={<KeyHint {...(last ? text.sendKeys : text.nextKeys)} />}
+            >
               <Button
                 type="button"
                 size="sm"
