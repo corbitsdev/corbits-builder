@@ -645,7 +645,6 @@ export const wording = {
     },
     /** The space beside the main area where plugin screens open. */
     space: {
-      label: "Waiting for you",
       close: "Close",
     },
     /** The token in the typing row while comments on a document wait to be sent. */

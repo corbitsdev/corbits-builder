@@ -1,7 +1,9 @@
 /**
- * The space where a plugin's screen opens: a column beside the room's main area on a wide window,
- * or a sheet over it on a narrow one. The room supplies only the space; what shows inside is the
- * screen the plugin sends. Its heading takes focus when the person opens it from the prompt box.
+ * The space where a plugin's screen opens: room beside the room's main area on a wide window, or a
+ * sheet over it on a narrow one. It is not a panel of its own, so it draws no bar, rule or label:
+ * the screen the plugin sends stands on the room's ground, with only Close above it. Its heading,
+ * read out rather than shown since the screen names itself, takes focus when the person opens it
+ * from the prompt box.
  */
 import { useId, type ReactNode, type Ref } from "react";
 import { X } from "lucide-react";
@@ -43,7 +45,6 @@ export function PluginSpace({
       hidden={hidden}
     >
       <header className={styles.head}>
-        <p className={styles.label}>{text.label}</p>
         <h2 ref={headingRef} id={id} className={styles.title} tabIndex={-1}>
           {title}
         </h2>

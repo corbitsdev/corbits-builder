@@ -10,10 +10,10 @@
   display: none;
 }
 
-/* Beside the main area: a column of its own, set off by one hairline, as wide as the room gives it. */
+/* Beside the main area, on the same ground and with no rule between: room the screen takes, as
+   wide as the room gives it. */
 .space[data-as="column"] {
   flex: 0 0 var(--plugin-column, min(28rem, 42%));
-  border-inline-start: 1px solid var(--wb-border);
 }
 
 /* Over the main area: it takes what the prompt box leaves. */
@@ -22,42 +22,27 @@
 }
 
 .head {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  display: flex;
+  flex: none;
   align-items: center;
-  column-gap: var(--space-2);
+  justify-content: flex-end;
+  /* Level with the conversation's own top row, where its controls stand. */
   min-height: 2.75rem;
-  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
-  border-bottom: 1px solid var(--wb-border);
+  padding-inline: var(--space-2);
 }
 
-.label {
-  grid-column: 1;
-  margin: 0;
-  color: var(--wb-muted-foreground);
-  font-size: var(--text-xs);
-  line-height: 16px;
-}
-
+/* The screen names itself, so its name here is read out only. */
 .title {
-  grid-column: 1;
+  position: absolute;
+  width: 1px;
+  height: 1px;
   margin: 0;
-  font-size: var(--text-sm);
-  font-weight: 600;
-  line-height: 20px;
-  overflow-wrap: anywhere;
-}
-
-/* Focus lands here from Open; the heading shows it as any focused control does. */
-.title:focus-visible {
-  outline: 2px solid var(--wb-ring);
-  outline-offset: 2px;
-  border-radius: 4px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .close {
-  grid-column: 2;
-  grid-row: 1 / span 2;
   color: var(--wb-muted-foreground);
 }
 
@@ -65,5 +50,5 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
-  padding: var(--space-4);
+  padding: 0 var(--space-4) var(--space-4);
 }
