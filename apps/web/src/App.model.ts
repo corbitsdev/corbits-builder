@@ -196,7 +196,12 @@ export function useApp(): AppScreen {
     writeProjectUrl(next === "project" ? selected : null);
     setShownView(next);
   };
+  // Settings stands alone, so its Back returns to the page it was opened from.
+  const [settingsFrom, setSettingsFrom] = useState<
+    "projects" | "library" | "project"
+  >(() => (projectInUrl() ? "project" : "projects"));
   const openSettings = (tab?: SettingsTab, focusId?: string) => {
+    if (view !== "settings" && view !== "invite") setSettingsFrom(view);
     setView("settings");
     if (typeof window !== "undefined" && tab !== undefined) {
       const url = new URL(window.location.href);
@@ -214,6 +219,14 @@ export function useApp(): AppScreen {
     if (tab !== undefined || focusId !== undefined) {
       setFocusSeq((seq) => seq + 1);
     }
+  };
+  const leaveSettings = () => {
+    const url = new URL(window.location.href);
+    for (const key of ["view", "tab", "focus"]) url.searchParams.delete(key);
+    window.history.replaceState(window.history.state, "", url);
+    setSettingsTab(undefined);
+    setFocusPreference(undefined);
+    setView(settingsFrom);
   };
   const navigate = (next: View) => {
     if (next === "settings") openSettings();
@@ -574,6 +587,7 @@ export function useApp(): AppScreen {
       },
       hub: { state: offline ? "notAnswering" : "answering" },
       setupFault: error,
+      onLeaveSettings: leaveSettings,
     },
     page: shown,
   };

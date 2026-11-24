@@ -6,13 +6,15 @@ import {
   NoProjectOpen,
   ProjectLoadFailure,
 } from "./App.view.tsx";
+import settings from "./pages/settings/settings.stories.tsx";
+import { SettingsView } from "./pages/settings/settings.view.tsx";
 
 const meta = {
   title: "Screens/Shell/App",
   component: AppView,
   parameters: { layout: "fullscreen" },
   args: {
-    current: "settings",
+    current: "library",
     roomOpen: false,
     sidebar: {
       name: "Acme product team",
@@ -34,6 +36,7 @@ const meta = {
     hub: { state: "answering" },
     setupFault: null,
     page: <p>The page on screen.</p>,
+    onLeaveSettings: fn(),
   },
 } satisfies Meta<typeof AppView>;
 
@@ -82,9 +85,29 @@ export const RoomOpen: Story = {
   args: { current: "project", roomOpen: true },
 };
 
-export const Library: Story = { args: { current: "library" } };
+/**
+ * Settings stands alone, as the new project page does: no sidebar, only Back to the page it was
+ * opened from.
+ */
+export const Settings: Story = {
+  args: {
+    current: "settings",
+    page: <SettingsView {...settings.args} />,
+  },
+  play: async ({ args, canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(
+      canvas.queryByRole("complementary", { name: "Workspace" }),
+    ).toBeNull();
+    await userEvent.click(canvas.getByRole("button", { name: "Back" }));
+    await expect(args.onLeaveSettings).toHaveBeenCalled();
+  },
+};
 
-export const Settings: Story = { args: { current: "settings" } };
+export const SettingsDark: Story = {
+  ...Settings,
+  globals: { mode: "dark" },
+};
 
 /** Put away, the sidebar leaves only its name, and the page starts below it. */
 export const SidebarClosed: Story = {

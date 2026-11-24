@@ -1,6 +1,6 @@
 /**
- * The sidebar outside a project, on the projects and Settings, not on the new project page, which
- * stands alone: the project sidebar's frame and foot, holding only what starts or resumes work. A
+ * The sidebar outside a project, on the projects, not on the new project page or Settings, which
+ * stand alone: the project sidebar's frame and foot, holding only what starts or resumes work. A
  * new project, connecting a model while none is, and the projects last worked on, to go straight
  * back to one.
  */
@@ -27,7 +27,7 @@ export type WorkspaceSidebarViewProps = {
   /** The window is narrow, so the open sidebar lies over the page. */
   drawer: boolean;
   /** The page on screen, whose row is marked. */
-  current: "newProject" | "library" | "settings" | null;
+  current: "newProject" | "library" | null;
   /** No model is connected yet, so the sidebar offers to connect one. */
   needsProvider: boolean;
   /** The projects last worked on, latest first; empty, the list is not shown. */
@@ -97,11 +97,7 @@ export function WorkspaceSidebarView({
       )}
       <SidebarFoot>
         <SidebarLinks label={words.groups.workspace}>
-          <SidebarLink
-            icon={Building2}
-            current={current === "settings"}
-            onClick={onWorkspaceSettings}
-          >
+          <SidebarLink icon={Building2} onClick={onWorkspaceSettings}>
             {words.workspaceSettings}
           </SidebarLink>
           <SidebarLink icon={CircleUser} onClick={onAccount}>
