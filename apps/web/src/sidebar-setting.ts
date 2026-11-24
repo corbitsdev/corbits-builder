@@ -14,6 +14,9 @@ import {
 /** The open or closed sidebar, in this browser; a project's room keeps it here too. */
 export const SIDEBAR_KEY = "builder-project-sidebar";
 
+/** Shut until the person opens it, so a project opens on its work. */
+export const SIDEBAR_DEFAULT = "closed";
+
 // The width below which a project's room makes its sidebar a drawer.
 const NARROW_QUERY = "(max-width: 899px)";
 
@@ -30,7 +33,11 @@ const readNarrow = () => window.matchMedia(NARROW_QUERY).matches;
 
 export function useSidebar() {
   const narrow = useSyncExternalStore(subscribeNarrow, readNarrow, () => false);
-  const stored = useStoredPreference(SIDEBAR_KEY, parseSidebarOpen, "open");
+  const stored = useStoredPreference(
+    SIDEBAR_KEY,
+    parseSidebarOpen,
+    SIDEBAR_DEFAULT,
+  );
   const [drawerOpen, setDrawerOpen] = useState(false);
   useEffect(() => setDrawerOpen(false), [narrow]);
   return {

@@ -16,7 +16,11 @@ import type {
   ProjectInfoDialogProps,
 } from "../project-menu.model.ts";
 import type { PaneDocument } from "./artifact-pane.tsx";
-import { SIDEBAR_KEY, parseSidebarOpen } from "../../sidebar-setting.ts";
+import {
+  SIDEBAR_DEFAULT,
+  SIDEBAR_KEY,
+  parseSidebarOpen,
+} from "../../sidebar-setting.ts";
 import { liveAppQuery } from "./live-app.model.ts";
 import { projectOutline } from "./project-outline.ts";
 import type { ProjectSidebarViewProps } from "./project-sidebar.view.tsx";
@@ -58,7 +62,8 @@ export function useProjectSidebar(input: ProjectSidebarInput): {
 } {
   const { projectId, shown } = input;
   const open =
-    useStoredPreference(SIDEBAR_KEY, parseSidebarOpen, "open") === "open";
+    useStoredPreference(SIDEBAR_KEY, parseSidebarOpen, SIDEBAR_DEFAULT) ===
+    "open";
   const [settingsOpen, setSettingsOpen] = useState(false);
   const app = useQuery({ ...liveAppQuery(projectId), enabled: input.appShown });
   const outline = projectOutline({
