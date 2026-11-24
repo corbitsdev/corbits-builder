@@ -144,6 +144,8 @@ summary.checklistRow:hover {
   padding: var(--space-6) var(--space-6)
     calc(var(--space-6) + var(--box-height, 0px));
   overflow: auto;
+  /* Centred at the window's middle with the prompt box, not the canvas's. */
+  translate: calc(-1 * var(--chat-shift, 0px)) 0;
 }
 
 .app > [data-slot="sketching"] {
