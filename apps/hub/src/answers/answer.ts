@@ -1,7 +1,7 @@
 import { isDeepStrictEqual } from "node:util";
 import type { Context } from "hono";
 import type { TenantEnv } from "@intx/hub-api";
-import type { QuestionAnswer } from "@intx/types/signals";
+import type { GivenQuestionAnswer } from "@intx/types/signals";
 import { getLogger } from "@intx/log";
 import type { createArtifactService } from "../artifacts/service.ts";
 import type { createPlanService } from "../plans/service.ts";
@@ -80,7 +80,7 @@ export function createAnswer({
     c: Context<TenantEnv>,
     projectId: string,
     signalName: string,
-    given: typeof QuestionAnswer.infer,
+    given: GivenQuestionAnswer,
   ) => {
     const current = actorOf(c);
     const { runId, asked } = await openQuestion(

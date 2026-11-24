@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { type } from "arktype";
 import { sql } from "drizzle-orm";
 import type { ProjectArtifact } from "@corbits-builder/client";
-import type { QuestionAnswer } from "@corbits-builder/schemas/conversation";
+import type { GivenQuestionAnswer } from "@corbits-builder/schemas/conversation";
 import type { ProjectExport } from "@corbits-builder/schemas/project";
 import { runDevelopmentSeed } from "../../../scripts/seed-projects.ts";
 import type { SeedFixtureId } from "../../seed/index.ts";
@@ -375,7 +375,7 @@ async function driven(
     /** Answers a question through the hub's answers route, as the person unless headers say otherwise. */
     answer: (
       signalName: string,
-      answer: QuestionAnswer,
+      answer: GivenQuestionAnswer,
       headers?: Record<string, string>,
     ) => callHub("POST", `${path}/answers`, { signalName, answer }, headers),
     /** The project values by name, as the hub reads them. */
