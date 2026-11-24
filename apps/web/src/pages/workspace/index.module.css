@@ -14,6 +14,33 @@
   min-width: 0;
   overflow: hidden;
   background: var(--wb-background);
+  /* Runs with the sidebar's width, at its speeds, so the chat can keep its place as it moves. */
+  transition: --sidebar-open var(--duration-standard) var(--ease-out);
+}
+
+/* How far open the sidebar beside the page is, from 0 to 1. Registered, so it eases frame by frame. */
+@property --sidebar-open {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0;
+}
+
+/* How far the chat moves back towards the sidebar to stay where it was. Registered, so it is worked
+   out against the canvas where it is set and passed down as a length. */
+@property --chat-shift {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 0px;
+}
+
+.room:has(> [data-slot="project-sidebar"][data-open]:not([data-drawer])) {
+  --sidebar-open: 1;
+
+  transition-duration: var(--duration-large);
+}
+
+.room:has(> [data-slot="project-sidebar"][data-instant]) {
+  transition: none;
 }
 
 /* The canvas beside the sidebar, edge to edge to the window's: the conversation, the project view
@@ -126,11 +153,31 @@
 }
 
 .conversation {
+  /* The chat stays in the middle of the window as the sidebar opens and closes, not of the canvas
+     beside it, so it never slides. Where the canvas has too little room either side of the chat's
+     column for that, the chat moves only as far as it must to stay clear of the sidebar. */
+  --chat-shift: min(
+    var(--rail-width) * var(--sidebar-open) / 2,
+    max(0px, (100cqw - 48rem) / 2 - var(--space-5))
+  );
+
   display: flex;
   flex-direction: column;
   flex: 1;
   min-height: 0;
   position: relative;
+}
+
+.conversation [data-slot="conversation-column"],
+.conversation > :is([data-slot="composer"], .archived, .notice) {
+  position: relative;
+  inset-inline-start: calc(-1 * var(--chat-shift));
+}
+
+/* The way back to the latest message stands at the chat's middle; placed by its own inset, it
+   moves by a margin. */
+.conversation [data-slot="conversation-scroll-button"] {
+  margin-inline-start: calc(-1 * var(--chat-shift));
 }
 
 .conversation > :last-child {
