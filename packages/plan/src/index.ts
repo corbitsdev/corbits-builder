@@ -1,8 +1,15 @@
 import type {
+  PlanChildWrite,
+  PlanGroupWrite,
   PlanStepStateName,
+  PlanStepWrite,
   PlanViewChild,
+  PlanViewStep,
   StoredPlanChild,
+  StoredPlanStep,
 } from "@corbits-builder/schemas/plan";
+
+type PlanMark = NonNullable<StoredPlanChild["goAhead"]>;
 
 // ---- Reading a plan ----
 
@@ -89,3 +96,150 @@ export function groupEndState(
 /** Whether the person can still drop a step: a done step stays as the record of the work. */
 export const canDrop = (state: PlanStepStateName) =>
   state !== "done" && state !== "cancelled";
+
+// ---- The person's marks: each changes the stored plan in place ----
+
+/** Gives the go-ahead to the action steps with these ids, and returns them. */
+export function giveGoAhead(
+  steps: readonly StoredPlanStep[],
+  ids: readonly string[],
+  mark: PlanMark,
+) {
+  const given = actionSteps(steps).filter((step) => ids.includes(step.id));
+  for (const step of given) step.goAhead = mark;
+  return given;
+}
+
+/** Cancels the action steps with these ids not cancelled already, and returns them. */
+export function cancelSteps(
+  steps: readonly StoredPlanStep[],
+  ids: readonly string[],
+  mark: PlanMark,
+) {
+  const cancelled = actionSteps(steps).filter(
+    (step) => ids.includes(step.id) && !step.cancelled,
+  );
+  for (const step of cancelled) step.cancelled = mark;
+  return cancelled;
+}
+
+/** Declines a step with the person's mark, or restores it without one. */
+export function setDeclined(step: StoredPlanChild, mark: PlanMark | undefined) {
+  if (mark) step.declined = mark;
+  else delete step.declined;
+}
+
+/** Sets whether a step asks first; turning it on takes back any go-ahead already given. */
+export function setAskFirst(step: StoredPlanChild, askFirst: boolean) {
+  step.askFirst = askFirst;
+  if (askFirst) delete step.goAhead;
+}
+
+/** Marks answered the first open step for this screen, and returns it. */
+export function markAnswered(
+  steps: readonly StoredPlanStep[],
+  screen: { plugin: string; action: string },
+  mark: PlanMark,
+) {
+  const step = stepsForAction(steps, screen).find(
+    (each) => !each.answered && !each.declined && !each.cancelled,
+  );
+  if (step) step.answered = mark;
+  return step;
+}
+
+// ---- Changing a plan's steps ----
+
+/** The steps with these added at the end, or after or before the step named, at its level; a group takes only action steps. */
+export function insertSteps(
+  steps: PlanStepWrite[],
+  adding: readonly PlanStepWrite[],
+  { after, before }: { after?: string; before?: string },
+) {
+  const next = after ?? before;
+  if (next === undefined) return [...steps, ...adding];
+  const offset = after === undefined ? 0 : 1;
+  const at = steps.findIndex(({ id }) => id === next);
+  if (at >= 0) return steps.toSpliced(at + offset, 0, ...adding);
+  const held = adding.flatMap((each) => ("steps" in each ? [] : [each]));
+  for (const step of steps) {
+    if (!("steps" in step)) continue;
+    const under = step.steps.findIndex(({ id }) => id === next);
+    if (under >= 0)
+      step.steps = step.steps.toSpliced(under + offset, 0, ...held);
+  }
+  return steps;
+}
+
+/** The steps without those with these ids, nor what they hold. */
+export function removeSteps(steps: PlanStepWrite[], ids: readonly string[]) {
+  const kept = ({ id }: PlanStepWrite) => id === undefined || !ids.includes(id);
+  for (const step of steps)
+    if ("steps" in step) step.steps = step.steps.filter(kept);
+  return steps.filter(kept);
+}
+
+// ---- Converting a step between its forms ----
+
+function toWriteChild({
+  id,
+  title,
+  plugin,
+  action,
+  input,
+  askFirst,
+  optional,
+  approval,
+  requires,
+}: PlanViewChild): PlanChildWrite {
+  const written: PlanChildWrite = {
+    id,
+    title,
+    plugin,
+    action,
+    input,
+    askFirst,
+  };
+  if (optional) written.optional = optional;
+  if (approval) written.approval = approval;
+  if (requires) written.requires = requires;
+  return written;
+}
+
+/** A step as read, to save again under its id so the person's marks on it stay. */
+export function toWriteStep(step: PlanViewStep): PlanStepWrite {
+  if (!("steps" in step)) return toWriteChild(step);
+  const group: PlanGroupWrite = {
+    id: step.id,
+    title: step.title,
+    steps: step.steps.map(toWriteChild),
+  };
+  if (step.plan) group.plan = step.plan;
+  return group;
+}
+
+/** A step as written, stored under this id with the person's marks and settings from marks when given. */
+export function toStoredStep(
+  step: PlanChildWrite,
+  id: string,
+  marks?: PlanChildWrite,
+): StoredPlanChild {
+  // A run's save of a stored step keeps whether it asks first, may be declined and its gate as stored.
+  const said = marks ?? step;
+  const stored: StoredPlanChild = {
+    id,
+    title: step.title,
+    plugin: step.plugin,
+    action: step.action,
+    input: step.input,
+    askFirst: said.askFirst,
+  };
+  if (said.optional) stored.optional = said.optional;
+  if (said.approval) stored.approval = said.approval;
+  if (said.requires) stored.requires = said.requires;
+  if (marks?.goAhead) stored.goAhead = marks.goAhead;
+  if (marks?.cancelled) stored.cancelled = marks.cancelled;
+  if (marks?.declined && stored.optional) stored.declined = marks.declined;
+  if (marks?.answered) stored.answered = marks.answered;
+  return stored;
+}

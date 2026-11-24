@@ -37,18 +37,20 @@ import {
 import {
   actionSteps,
   awaitsGoAhead,
+  insertSteps,
   isLeftToDo,
   isUnstartedOptional,
   readyPlanGroups,
+  removeSteps,
   stepIds,
   stepsForAction,
+  toWriteStep,
 } from "@corbits-builder/plan";
 import {
   Approval,
   type PlanChildWrite,
   type PlanGroupWrite,
   type PlanStepWrite,
-  type PlanViewChild,
   type PlanViewStep,
 } from "@corbits-builder/schemas/plan";
 import { fields } from "./search/fields.ts";
@@ -1287,43 +1289,6 @@ function planIdProblems(
   return wrong;
 }
 
-// A saved step as it is saved again, under its id so the person's marks on it stay, and with what
-// its ready-made plan or the coordinator said of it.
-function childWrite({
-  id,
-  title,
-  plugin,
-  action,
-  input,
-  askFirst,
-  optional,
-  approval,
-  requires,
-}: PlanViewChild): PlanChildWrite {
-  const written: PlanChildWrite = {
-    id,
-    title,
-    plugin,
-    action,
-    input,
-    askFirst,
-  };
-  if (optional) written.optional = optional;
-  if (approval) written.approval = approval;
-  if (requires) written.requires = requires;
-  return written;
-}
-function stepWrite(step: PlanViewStep): PlanStepWrite {
-  if (!("steps" in step)) return childWrite(step);
-  const group: PlanGroupWrite = {
-    id: step.id,
-    title: step.title,
-    steps: step.steps.map(childWrite),
-  };
-  if (step.plan) group.plan = step.plan;
-  return group;
-}
-
 // A step the call names, new to the plan.
 function childOf({
   title,
@@ -1365,36 +1330,6 @@ function readyPlanStep({
     return child;
   });
   return { title: description, plan: builder.handle, steps: children };
-}
-
-// The plan with steps added at its end, or after the step after names or before the step before
-// names, at whichever level it is; a group holds no groups, which planIdProblems refuses before this.
-function added(
-  plan: PlanStepWrite[],
-  adding: readonly PlanStepWrite[],
-  { after, before }: Pick<PlanCall, "after" | "before">,
-) {
-  const next = after ?? before;
-  if (next === undefined) return [...plan, ...adding];
-  const offset = after === undefined ? 0 : 1;
-  const at = plan.findIndex(({ id }) => id === next);
-  if (at >= 0) return plan.toSpliced(at + offset, 0, ...adding);
-  const held = adding.flatMap((each) => ("steps" in each ? [] : [each]));
-  for (const step of plan) {
-    if (!("steps" in step)) continue;
-    const under = step.steps.findIndex(({ id }) => id === next);
-    if (under >= 0)
-      step.steps = step.steps.toSpliced(under + offset, 0, ...held);
-  }
-  return plan;
-}
-
-// The plan without the steps ids names, nor what they hold.
-function removed(plan: PlanStepWrite[], ids: readonly string[]) {
-  const kept = ({ id }: PlanStepWrite) => id === undefined || !ids.includes(id);
-  for (const step of plan)
-    if ("steps" in step) step.steps = step.steps.filter(kept);
-  return plan.filter(kept);
 }
 
 // The plan as the model reads it, without the finished marks: each step's state already says it.
@@ -1467,11 +1402,11 @@ export async function managePlan(
     const adding = readyPlan ? [readyPlanStep(readyPlan)] : steps;
     const wrongIds = planIdProblems(asked, saved, adding);
     if (wrongIds.length > 0) return wrongPlanCall(catalog, wrongIds);
-    const current = saved.map(stepWrite);
+    const current = saved.map(toWriteStep);
     steps =
       asked.operation === "add"
-        ? added(current, adding, asked)
-        : removed(current, asked.stepIds ?? []);
+        ? insertSteps(current, adding, asked)
+        : removeSteps(current, asked.stepIds ?? []);
   }
   const refused = planRefusal(catalog, steps);
   if (refused) return { content: refused.text, isError: true };
