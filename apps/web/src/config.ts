@@ -471,6 +471,8 @@ export const wording = {
       failed: "failed",
       declined: "declined",
     },
+    /** The heading over the plan's steps in the open sidebar. */
+    plan: "Plan",
     /** Under a step's name, where it stands; a running one's line starts with how long it has run. */
     stepNow: {
       working: "Working",

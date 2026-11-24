@@ -184,6 +184,32 @@
   line-height: var(--text-xs--line-height);
 }
 
+/* The plan in the open sidebar: its name over its steps, how far it has gone beside it. */
+.plan {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.planHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-2) var(--space-2) 0;
+  color: var(--wb-foreground);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  line-height: var(--text-xs--line-height);
+}
+
+.planCount {
+  color: var(--wb-muted-foreground);
+  font-variant-numeric: tabular-nums;
+  font-weight: 400;
+}
+
 .glanceRows {
   display: flex;
   flex-direction: column;

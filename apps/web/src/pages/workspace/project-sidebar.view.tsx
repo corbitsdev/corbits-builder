@@ -146,7 +146,6 @@ export function ProjectSidebarView({
       glance={<PlanGlance plan={plan} shown={shown} onOpenStep={onOpenStep} />}
     >
       <PlanTree
-        label={project}
         plan={plan}
         app={app}
         shown={shown}
@@ -464,7 +463,6 @@ type TreeItemProps = Required<
  * context-menu key opens a row's menu.
  */
 function PlanTree({
-  label,
   plan,
   app,
   shown,
@@ -472,7 +470,6 @@ function PlanTree({
   onDecline,
   onOpenStep,
 }: {
-  label: string;
   plan: readonly SidebarRow[];
   app: SidebarAppState;
   shown: string | null;
@@ -482,6 +479,7 @@ function PlanTree({
 }) {
   // The row whose menu is open.
   const [menu, setMenu] = useState<string | null>(null);
+  const headingId = `plan-${useId()}`;
   const opener = ({ opens }: SidebarRow) =>
     opens === null ? null : () => onOpenStep(opens);
   const rows = plan.map((row): TreeRow => {
@@ -578,36 +576,47 @@ function PlanTree({
     onOpenChange: (open) => setMenu(open ? key : null),
     onClosed: () => focus(key),
   });
+  const counted = plan.filter((row) => row.state !== "declined");
+  const done = counted.filter((row) => row.state === "done").length;
   return (
-    <ul
-      role="tree"
-      aria-label={label}
-      className={styles.tree}
-      onKeyDown={onKeyDown}
-    >
-      {plan.map((row) => (
-        <PlanRow
-          key={row.id}
-          row={row}
-          app={row.app ? app : null}
-          current={row.opens !== null && row.opens === shown}
-          onOpen={opener(row)}
-          onAskFirst={onAskFirst}
-          onDecline={onDecline}
-          menu={
-            row.steps.some(stepHasMenu) ? (
-              <RowStepsMenu
-                steps={row.steps.filter(stepHasMenu)}
-                menu={menuOf(rowKey(row.id), row.name)}
-                onAskFirst={onAskFirst}
-                onDecline={onDecline}
-              />
-            ) : null
-          }
-          {...itemProps(rowKey(row.id))}
-        />
-      ))}
-    </ul>
+    <section className={styles.plan}>
+      {/* The steps are named as the plan, with how far it has gone beside the name. */}
+      <h2 className={styles.planHead}>
+        <span id={headingId}>{words.plan}</span>
+        <span className={styles.planCount}>
+          {words.glance.progress(done, counted.length)}
+        </span>
+      </h2>
+      <ul
+        role="tree"
+        aria-labelledby={headingId}
+        className={styles.tree}
+        onKeyDown={onKeyDown}
+      >
+        {plan.map((row) => (
+          <PlanRow
+            key={row.id}
+            row={row}
+            app={row.app ? app : null}
+            current={row.opens !== null && row.opens === shown}
+            onOpen={opener(row)}
+            onAskFirst={onAskFirst}
+            onDecline={onDecline}
+            menu={
+              row.steps.some(stepHasMenu) ? (
+                <RowStepsMenu
+                  steps={row.steps.filter(stepHasMenu)}
+                  menu={menuOf(rowKey(row.id), row.name)}
+                  onAskFirst={onAskFirst}
+                  onDecline={onDecline}
+                />
+              ) : null
+            }
+            {...itemProps(rowKey(row.id))}
+          />
+        ))}
+      </ul>
+    </section>
   );
 }
 
