@@ -13,7 +13,7 @@ import documentPane, {
   Loading as loadingDocument,
   ReadError as failedDocument,
 } from "./artifact-pane.stories.tsx";
-import { planning } from "./project-outline.fixtures.ts";
+import { coordinatorPlan, planning } from "./project-outline.fixtures.ts";
 import { projectOutline, type OutlineAppState } from "./project-outline.ts";
 import designer from "@plugins/designer/package.json";
 import pickColours from "@plugins/designer/src/pick-colours/definition.ts";
@@ -224,6 +224,33 @@ export const NewProject: Story = {
 
 /** Talking with the coordinator before anything is filed. */
 export const Conversation: Story = {};
+
+/**
+ * A plan the coordinator wrote from plugin actions, with no ready-made plan: research, a question
+ * for the person, then a command-line tool built and tried. Its steps make nothing the project view
+ * opens, so the sidebar lists each one as it stands, and nothing more.
+ */
+export const CoordinatorPlan: Story = {
+  args: { sidebar: sidebarOf({}, coordinatorPlan.plan) },
+  play: async ({ canvasElement }) => {
+    const plan = within(canvasElement).getByRole("tree");
+    const steps = within(plan).getAllByRole("treeitem");
+    await expect(steps.map((step) => step.getAttribute("title"))).toEqual(
+      coordinatorPlan.plan.map((step) => step.title),
+    );
+  },
+};
+
+/**
+ * A request too small to plan, such as a change of font: the coordinator saved no plan, so the
+ * sidebar lists nothing and makes up no row.
+ */
+export const NoPlan: Story = {
+  args: { sidebar: sidebarOf({}, []) },
+  play: async ({ canvasElement }) => {
+    await expect(within(canvasElement).queryByRole("tree")).toBeNull();
+  },
+};
 
 export const CoordinatorThinking: Story = {
   args: {
