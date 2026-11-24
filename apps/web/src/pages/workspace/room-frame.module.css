@@ -1,0 +1,128 @@
+/* The window is the frame, and it scrolls the page itself, so the one scrollbar is at the window's
+   edge. Its gutter is kept on both sides, so a scrollbar that takes width never moves the column
+   off the window's middle. */
+.frame {
+  --frame-edge: var(--space-2);
+  --frame-gap: var(--space-4);
+  --frame-title: 2rem;
+  /* The margin the left zone takes from the column, when the right gives the column its own. */
+  --frame-left: calc(var(--frame-edge) + var(--rail-width) + var(--frame-gap));
+
+  display: grid;
+  grid-template-columns:
+    minmax(var(--frame-edge), 1fr)
+    minmax(0, 48rem)
+    minmax(var(--frame-edge), 1fr);
+  height: 100dvh;
+  overflow-y: auto;
+  scrollbar-gutter: stable both-edges;
+  background: var(--wb-background);
+}
+
+.frame[data-side="hidden"] {
+  grid-template-columns: var(--frame-left) minmax(0, 1fr) var(--frame-left);
+}
+
+.column {
+  grid-area: 1 / 2;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: 100dvh;
+  padding-block-start: var(--frame-edge);
+}
+
+.page {
+  flex: 1 0 auto;
+}
+
+.prompt {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  padding-block-end: var(--frame-edge);
+}
+
+/* The sides stay in the window as the page scrolls, each in the margin beside the column. */
+.left,
+.right {
+  position: sticky;
+  top: var(--frame-edge);
+  z-index: 2;
+  align-self: start;
+  box-sizing: border-box;
+  margin: var(--frame-edge);
+  border-radius: var(--radius-xl);
+}
+
+.left {
+  grid-area: 1 / 1;
+  display: flex;
+  flex-direction: column;
+  width: var(--rail-width);
+}
+
+.frame[data-sidebar="open"] .left {
+  height: calc(100dvh - 2 * var(--frame-edge));
+  background: var(--card);
+}
+
+/* As tall as the home page's row with the product's mark, so going into a project does not move
+   it. */
+.title {
+  display: flex;
+  flex: none;
+  align-items: center;
+  height: var(--frame-title);
+}
+
+.sidebar {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.right {
+  grid-area: 1 / 3;
+  justify-self: end;
+  width: min(22rem, 100% - var(--frame-gap) - var(--frame-edge));
+  height: calc(100dvh - 2 * var(--frame-edge));
+  margin-inline-start: 0;
+  overflow-y: auto;
+  background: var(--card);
+}
+
+/* Narrower than the column with the sidebar's width and a gap either side, the sidebar opens as a
+   drawer over the page and the title floats over the column's top corner, which keeps it clear. */
+@media (width < 79rem) {
+  .frame {
+    --frame-left: var(--frame-edge);
+  }
+
+  .column {
+    padding-block-start: calc(var(--frame-title) + 2 * var(--frame-edge));
+  }
+
+  .left {
+    position: fixed;
+    left: var(--frame-edge);
+    margin: 0;
+  }
+
+  .frame[data-sidebar="open"] .left {
+    box-shadow: var(--wb-shadow);
+  }
+}
+
+/* Narrower than the column with an 18rem plugin screen and a gap either side, the screen opens as
+   a sheet over the page. */
+@media (width < 87rem) {
+  .right {
+    position: fixed;
+    right: var(--frame-edge);
+    width: min(22rem, 100vw - 2 * var(--frame-edge));
+    margin: 0;
+    box-shadow: var(--wb-shadow);
+  }
+}
