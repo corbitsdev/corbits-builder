@@ -23,7 +23,7 @@
 /* The pane's whole page, framed as a page inside Builder, or edge to edge with the pane as its
    frame, where only a phone keeps edges, at its sides. */
 .preview[data-fill] {
-  /* 1 frames the preview; 0 fills the pane. Two looks to compare: one is to go after feedback. */
+  /* 1 frames the preview; 0 fills the pane. */
   --framed: 1;
 
   flex: 1;

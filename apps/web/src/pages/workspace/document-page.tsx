@@ -1,7 +1,7 @@
 /**
- * A written document read as a printed page: a sheet on the window's backdrop with the document's
- * title, Download and Share across from the title, and its body. The document's sections sit to
- * the left; the right margin holds whatever is placed beside a passage, level with it.
+ * A written document read as a printed page on the room's ground: its title and body, with
+ * Download and Share and its sections in a column to the left. The right margin holds whatever is
+ * placed beside a passage, level with it.
  */
 import { Button, useDismissablePopover } from "@corbits/react-ui";
 import { MessageSquare } from "lucide-react";

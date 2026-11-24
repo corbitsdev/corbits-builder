@@ -2,7 +2,6 @@
   --width: var(--rail-width);
   /* Closing is the system answering, so it is quicker than opening. */
   --speed: var(--duration-standard);
-  /* The card stands this far in from the window's edges. */
   --inset: var(--frame-edge, var(--space-2));
   /* flex keeps the plan in the closed card under the name; none leaves the closed card the name alone. */
   --plan-when-closed: flex;
@@ -189,7 +188,6 @@
   display: none;
 }
 
-/* The plan's name over its steps, how far it has gone beside it. */
 .steps {
   display: flex;
   flex-direction: column;
@@ -374,7 +372,6 @@
   white-space: nowrap;
 }
 
-/* The one quiet line under a step that is at work, waits or failed. */
 .doing {
   display: flex;
   gap: 5px;

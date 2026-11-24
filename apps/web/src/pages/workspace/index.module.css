@@ -117,7 +117,7 @@
   bottom: calc(var(--space-2) + 32px + var(--space-3));
 }
 
-/* The prompt box, and what stands in its place, keep the box's measure in the middle of the window
+/* The prompt box, and what stands in its place, keep the box's measure in the middle of the pane
    however wide it is. */
 :is(.conversation, .page) > :is([data-slot="composer"], .archived, .notice) {
   box-sizing: border-box;
@@ -303,8 +303,8 @@
 }
 
 /* Over a written page it stands just beyond the page's top right corner, so it reads as closing
-   the page. The page is 768px at the window's middle, as the document lays it; where the window
-   leaves no room beside it, the button keeps to the corner. */
+   the page. The page is 768px at the pane's middle, as the document lays it; where the pane leaves
+   no room beside it, the button keeps to the corner. */
 .page:has(
     > [data-slot="artifact-pane"]
       [data-slot="panel-pane"][data-state="active"]

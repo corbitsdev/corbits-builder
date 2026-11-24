@@ -73,8 +73,8 @@
   /* White on the destructive fill in both themes; the library's own turns black in dark, which
      made the Stop square read as a hole. */
   --wb-destructive-foreground: #ffffff;
-  /* Sending what the person typed, such as Send once there are words. Blue, so it never reads as
-     the brand orange or as a yes; dark below. */
+  /* Sending, links, focus, selection and chosen options. Blue, so it never reads as the brand
+     orange or as a yes; dark below. */
   --wb-action: #2370d6;
   --wb-action-foreground: #ffffff;
   /* Every yes or move-forward button: Yes, go ahead; Approve; Continue; Use Concept B. */

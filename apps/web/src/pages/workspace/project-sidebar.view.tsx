@@ -3,7 +3,7 @@
  * and closes it, then the project's plan as the coordinator saved it, each step opening what it
  * made once it is made. The mark's menu leaves the project and the name's menu acts on it. Closed,
  * the card holds the name and the plan; open, it grows to the window's height around them, with a
- * line saying how the app stands where no step makes it. Where the room is narrow it is a drawer
+ * line saying how the app stands where no step makes it. Where the window is narrow it is a drawer
  * over the page. Its frame is the workspace sidebar's too, outside a project.
  */
 import {
@@ -94,9 +94,9 @@ export type ProjectSidebarViewProps = MarkWays & {
   project: string;
   /** The project's own menu, opened from its name; absent, the name is only shown. */
   menu?: ((trigger: ReactElement) => ReactNode) | undefined;
-  /** Closed, only the project's name shows, to open it again. */
+  /** Closed, the card holds the name and the plan alone. */
   open: boolean;
-  /** The room is narrow, so the open sidebar lies over the page. */
+  /** The window is too narrow for the sidebar beside the page, so the open sidebar lies over it. */
   drawer: boolean;
   plan: readonly SidebarRow[];
   app: SidebarAppState;
@@ -161,8 +161,9 @@ export function ProjectSidebarView({
 /**
  * The sidebar's frame, in a project and outside one: a card with the name and the mark, whose menu
  * leads back to the projects or to Settings, and a toggle that opens and closes it, from anywhere
- * with the shortcut too. Under the name, open or closed and in one place, is the plan; open, the card grows around it with the rest of what the
- * sidebar holds. Narrow, it is a drawer over the page, the plan shown only while open.
+ * with the shortcut too. Under the name, open or closed and in one place, is the plan; open, the
+ * card grows around it with the rest of what the sidebar holds. Narrow, it is a drawer over the
+ * page, the plan shown only while open.
  */
 export function SidebarFrame({
   label = words.sidebar,
@@ -475,9 +476,9 @@ function PlanTree({
 
 /**
  * One step of the plan, as a stop on a timeline: a circle on the line that joins the steps, and the
- * step's name beside it. Only the step at work, one that waits on the person, one that failed and
- * the app's own step have a line under the name: how long it has run, that it waits, that it did
- * not finish, or how the app runs. The one at work turns in its circle. The one whose document is
+ * step's name beside it. Only the step at work, one that waits on the person, one that failed, one
+ * that was skipped and the app's own step have a line under the name: how long it has run, that it
+ * waits, that it did not finish, that it was skipped, or how the app runs. The one whose document is
  * on the page is shaded. What a run last did is often a tool's own words, so it is kept to the
  * row's tooltip. Once a step has made something it opens it.
  */

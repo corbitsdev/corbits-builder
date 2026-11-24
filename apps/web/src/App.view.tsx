@@ -3,9 +3,9 @@
  * left, and beside it the canvas with its notices and the page on screen. A
  * project's room draws its own sidebar. The new project page has none: it is
  * the prompt alone, with the product's mark and name in its top left corner
- * and Settings in its top right. Settings has none
- * either: its way back stands beside its title. The page, which reads the hub,
- * arrives as a slot, so any state of the shell can be drawn without one.
+ * and Settings in its top right. Settings has none either: its way back stands
+ * beside its title. The page, which reads the hub, arrives as a slot, so any
+ * state of the shell can be drawn without one.
  */
 import { useState, type ReactNode } from "react";
 import { Settings } from "lucide-react";

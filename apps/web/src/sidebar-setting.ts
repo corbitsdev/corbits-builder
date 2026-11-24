@@ -1,9 +1,9 @@
 /**
  * Whether the sidebar is open, in a project and outside one alike. On a wide
- * window the person's choice is kept in this browser. Below the width a
- * project's room makes its sidebar a drawer, the sidebar outside a project is
- * one too: it starts shut whatever the wide choice is, opens only when the
- * person opens it, and shuts again as they go somewhere.
+ * window the person's choice is kept in this browser. Below a width, the
+ * room's wider than the other pages', it is a drawer: it starts shut whatever
+ * the wide choice is, opens only when the person opens it, and shuts again as
+ * they go somewhere.
  */
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import {

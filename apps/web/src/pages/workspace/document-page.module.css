@@ -48,7 +48,6 @@
   padding: 14px 0 96px;
 }
 
-/* Download and Share, then the contents, against the page's left edge. */
 .side {
   grid-column: 1;
   display: flex;
@@ -95,7 +94,6 @@
   display: none;
 }
 
-/* The document's text on the room's ground, at the page's measure. */
 .sheet {
   box-sizing: border-box;
   width: var(--page-width);
@@ -152,8 +150,7 @@
   pointer-events: none;
 }
 
-/* Download and Share: small and quiet, each said in words beside its icon, starting where the
-   contents' first line does. They never take the selection's highlight with the text around them. */
+/* Download and Share never take the selection's highlight with the text around them. */
 .files {
   display: flex;
   align-items: center;
