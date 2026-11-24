@@ -1,7 +1,7 @@
 /**
- * The space where a plugin's screen for the page opens: the ground right of the chat, or the whole
- * page over the conversation where that ground is too narrow. It is not a panel of its own, so it
- * draws no bar, rule, label or Close: the screen the plugin sends stands on the room's ground, and
+ * The space where a plugin's screen for the page opens: the whole page over the conversation. It
+ * is not a panel of its own, so it draws no bar, rule, label, padding or Close: the screen the
+ * plugin sends fills the room's page, edge to edge as a pane's mockup does, and
  * answering it, or Not now in the prompt box, puts it away. Its heading, read out rather than shown
  * since the screen names itself, takes focus when the person opens it from the prompt box.
  */

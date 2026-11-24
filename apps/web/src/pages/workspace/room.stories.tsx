@@ -894,8 +894,9 @@ const chooseScreen = storyScreen(
 const screenNotNow = fn();
 
 /**
- * A screen its plugin draws for the page waits: it stands at once in the ground right of the chat,
- * with no Close, and the box names it with Not now, the screen's forward action where Send is.
+ * A screen its plugin draws for the page waits: it takes the whole page over the conversation at
+ * once, with no Close, and the box floating over its foot names it with Not now, the screen's
+ * forward action where Send is.
  */
 export const ScreenWaiting: Story = {
   args: {
@@ -934,12 +935,21 @@ export const ScreenWaiting: Story = {
     await expect(
       within(space).queryByRole("button", { name: "Close" }),
     ).not.toBeInTheDocument();
-    // The screen keeps to the ground beside the chat; the box and the turns stay where they were.
-    const box = canvasElement.querySelector('[data-slot="composer-box"]');
-    if (box === null) throw new Error("No prompt box");
-    await expect(space.getBoundingClientRect().left).toBeGreaterThanOrEqual(
-      box.getBoundingClientRect().right,
+    // The screen has the whole page, not a strip beside the chat, and the box floats over its foot.
+    const page = space.closest('[data-slot="room-space-sheet"]');
+    if (!(page instanceof HTMLElement))
+      throw new Error("No page for the screen");
+    const main = canvasElement.querySelector('[data-slot="room-main"]');
+    if (main === null) throw new Error("No room main");
+    const shape = space.getBoundingClientRect();
+    await expect(shape.width).toBe(main.getBoundingClientRect().width);
+    await expect(shape.bottom).toBe(page.getBoundingClientRect().bottom);
+    const box = page.querySelector('[data-slot="composer-box"]');
+    if (box === null) throw new Error("No prompt box over the screen");
+    await expect(box.getBoundingClientRect().bottom).toBeLessThanOrEqual(
+      shape.bottom,
     );
+    await expect(box.getBoundingClientRect().top).toBeGreaterThan(shape.top);
   },
 };
 
@@ -1219,10 +1229,7 @@ const narrow = {
   ],
 };
 
-/**
- * Where the ground beside the chat is too narrow for a screen, it takes the whole page over the
- * conversation, the prompt box beneath it, with no Close and no Open.
- */
+/** On a narrow room the screen takes the page the same way, with no Close and no Open. */
 export const ScreenSheetNarrow: Story = {
   ...ScreenWaiting,
   ...narrow,

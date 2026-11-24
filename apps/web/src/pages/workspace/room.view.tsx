@@ -270,9 +270,6 @@ export type TabStatus = ScreenStatus & { tab: string; onOpen: () => void };
  */
 const NARROW_ROOM_PX = 900;
 
-/** The narrowest ground right of the chat a plugin's screen can be used in. */
-const SIDE_MIN_PX = 320;
-
 export type RoomViewProps = RoomContent & RoomSlots;
 
 export function RoomView({
@@ -314,12 +311,13 @@ export function RoomView({
   useEffect(() => {
     if (!narrow) setDrawerOpen(false);
   }, [narrow]);
-  // The box floats over the project view's foot, so the view keeps what it must reach clear of it
-  // by the box's height, which grows as the person writes.
+  // The box floats over the foot of the project view and of a screen over the conversation, so
+  // each keeps what it must reach clear of it by the box's height, which grows as the person writes.
   const projectRef = useRef<HTMLDivElement>(null);
-  // Set before paint, so the view's first frame already keeps clear of the box.
+  const sheetRef = useRef<HTMLDivElement>(null);
+  // Set before paint, so the page's first frame already keeps clear of the box.
   useLayoutEffect(() => {
-    const page = projectRef.current;
+    const page = sheetRef.current ?? projectRef.current;
     const box = page?.querySelector<HTMLElement>(
       ':scope > [data-slot="composer"]',
     );
@@ -350,27 +348,12 @@ export function RoomView({
       go(...args);
     };
   // Only a screen its plugin draws for the page has a space; any other is in the box. Over the
-  // conversation it stands in the empty ground right of the chat, which stays where it is; where
-  // that ground is too narrow for a screen, it takes the whole page over the conversation, the box
-  // beneath it. Over the project view it waits for Open in the box. Answering it, or Not now in the
-  // box, puts it away.
+  // conversation it takes the whole page, the box beneath it, since a mockup or a set of designs
+  // needs the width. Over the project view it waits for Open in the box. Answering it, or Not now
+  // in the box, puts it away.
   const side = space?.place === "page" ? space : null;
-  const [fits, setFits] = useState(true);
-  const groundRef = useRef<HTMLDivElement>(null);
-  useLayoutEffect(() => {
-    const ground = groundRef.current;
-    if (ground === null) return;
-    const measure = () => setFits(ground.offsetWidth >= SIDE_MIN_PX);
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(ground);
-    return () => observer.disconnect();
-  }, []);
   const [sheetOpen, setSheetOpen] = useState(false);
-  const besideChat = side !== null && !projectOpen && fits;
-  const sheetShown =
-    side !== null && !besideChat && (sheetOpen || !projectOpen);
-  const spaceShown = besideChat || sheetShown;
+  const sheetShown = side !== null && (sheetOpen || !projectOpen);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const inputRef = dock.kind === "composer" ? dock.inputRef : null;
   const openSpace = () => {
@@ -451,7 +434,7 @@ export function RoomView({
   const ports = useBoxPorts();
   const card = waitingCard(
     waiting,
-    spaceShown ? undefined : openSpace,
+    sheetShown ? undefined : openSpace,
     space?.place === "box" ? pluginSpace : null,
   );
   const conversationDock = (
@@ -560,13 +543,6 @@ export function RoomView({
               {dockInConversation ? conversationDock : null}
             </div>
           </section>
-          {/* The ground right of the chat, measured so the space knows whether a screen fits it. */}
-          <div ref={groundRef} className={styles.ground} aria-hidden="true" />
-          {besideChat ? (
-            <PluginSpace title={side.title} headingRef={headingRef}>
-              {spaceScreen}
-            </PluginSpace>
-          ) : null}
           {projectReady ? (
             // Kept while closed, so its panes, previews and drafts keep their place.
             <div
@@ -591,7 +567,11 @@ export function RoomView({
             </div>
           ) : null}
           {sheetShown && side !== null ? (
-            <div className={styles.page} data-slot="room-space-sheet">
+            <div
+              ref={sheetRef}
+              className={styles.page}
+              data-slot="room-space-sheet"
+            >
               <PluginSpace title={side.title} headingRef={headingRef}>
                 {spaceScreen}
               </PluginSpace>
