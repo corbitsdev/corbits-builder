@@ -1,5 +1,5 @@
 /* The open question heads the card with Back and where it stands beside it, and each answer is a
-   row on a rail, marked once picked by the rail turning the action blue. */
+   row led by its checkbox, or its radio where only one may be picked. */
 .inBox {
   display: flex;
   flex-direction: column;
@@ -103,38 +103,34 @@
 .choices {
   display: flex;
   flex-direction: column;
+  gap: 2px;
+  /* The marks line up under the question's first letter. */
+  margin-inline: calc(-1 * var(--space-2));
 }
 
 .choice {
-  position: relative;
   display: flex;
   align-items: flex-start;
-  gap: var(--space-2);
-  padding: var(--space-2) 40px var(--space-2) 15px;
-  border-left: 1px solid var(--wb-border);
+  gap: 10px;
+  padding: var(--space-2);
+  border-radius: var(--radius-md);
   font-size: 0.75rem;
   line-height: 1rem;
   color: var(--wb-foreground);
   cursor: pointer;
 }
 
-.choice:hover,
-.choice[data-checked] {
-  background: color-mix(in oklab, var(--wb-foreground) 2.5%, transparent);
-}
-
-.choice[data-checked] {
-  padding-left: 14px;
-  border-left: 2px solid var(--wb-action);
+.choice:hover {
+  background: color-mix(in oklab, var(--wb-foreground) 4%, transparent);
 }
 
 .choice[data-checked] .choiceLabel {
   font-weight: 500;
 }
 
-/* The hidden radio or checkbox and the borderless own-words field show focus on their row. */
+/* The radio or checkbox shows focus on its whole row, as the own-words field does. */
 .choice:has(input:focus-visible) {
-  outline: 2px solid var(--wb-action);
+  outline: 2px solid var(--wb-ring);
   outline-offset: -2px;
 }
 
@@ -143,13 +139,72 @@
   cursor: default;
 }
 
-/* The native radio or checkbox stays for keyboards and screen readers; the rail shows its state. */
-.choice input:is([type="radio"], [type="checkbox"]) {
+/* The control itself, drawn to the label's first line: a box that fills with the action blue and
+   takes a white tick, or a ring whose centre the blue closes in on. */
+.mark {
+  position: relative;
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+}
+
+.mark input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  border: 1px solid var(--wb-border-strong);
+  background: var(--wb-background);
+  appearance: none;
+  transition:
+    border-color 120ms ease,
+    background-color 120ms ease,
+    border-width 120ms ease;
+}
+
+.mark input[type="checkbox"] {
+  border-radius: 4px;
+}
+
+.mark input[type="radio"] {
+  border-radius: 50%;
+}
+
+.mark input:focus-visible {
+  outline: none;
+}
+
+.mark input[type="checkbox"]:checked {
+  border-color: var(--wb-action);
+  background: var(--wb-action);
+}
+
+.mark input[type="radio"]:checked {
+  border: 5px solid var(--wb-action);
+}
+
+.mark svg {
   position: absolute;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
+  width: 12px;
+  height: 12px;
+  color: var(--wb-action-foreground);
+  stroke-width: 3;
   pointer-events: none;
+  scale: 0;
+  transition: scale 120ms ease;
+}
+
+.mark input:checked + svg {
+  scale: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mark input,
+  .mark svg {
+    transition: none;
+  }
 }
 
 .choiceText {

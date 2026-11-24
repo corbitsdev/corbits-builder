@@ -13,7 +13,7 @@ import {
   useState,
   type KeyboardEvent,
 } from "react";
-import { ChevronLeft } from "lucide-react";
+import { Check, ChevronLeft } from "lucide-react";
 import { Button } from "@corbits/react-ui";
 import { Tooltip } from "@corbits/react-ui/ui/tooltip";
 import {
@@ -390,23 +390,26 @@ function Choices({
       <div className={styles.choices}>
         {question.options.map((option, index) => {
           const checked = chosen.includes(option.label);
-          // A row shows its pick by its rail alone, its native radio or checkbox kept for keys and
-          // screen readers.
+          // A pick-any row leads with a box that takes a tick, a pick-one row with a round radio,
+          // so how many may be chosen is plain before anything is.
           return (
             <label
               key={option.label}
               className={styles.choice}
               data-checked={checked ? "" : undefined}
             >
-              <input
-                type={multi ? "checkbox" : "radio"}
-                name={multi ? undefined : name}
-                checked={checked}
-                aria-keyshortcuts={String(index + 1)}
-                onChange={() => onPick(index)}
-                // Safari leaves focus where it was on a click; the card's keys need it here.
-                onClick={(event) => event.currentTarget.focus()}
-              />
+              <span className={styles.mark}>
+                <input
+                  type={multi ? "checkbox" : "radio"}
+                  name={multi ? undefined : name}
+                  checked={checked}
+                  aria-keyshortcuts={String(index + 1)}
+                  onChange={() => onPick(index)}
+                  // Safari leaves focus where it was on a click; the card's keys need it here.
+                  onClick={(event) => event.currentTarget.focus()}
+                />
+                {multi ? <Check aria-hidden="true" /> : null}
+              </span>
               <OptionText {...option} />
             </label>
           );
