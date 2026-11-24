@@ -651,7 +651,7 @@ export function DocumentPage({
             sections={contents}
             current={current}
             onOpen={open}
-            actions={<FileActions files={files} />}
+            actions={files.length === 0 ? null : <FileActions files={files} />}
           />
         </div>
         <div ref={pageColumn} className={styles.column}>

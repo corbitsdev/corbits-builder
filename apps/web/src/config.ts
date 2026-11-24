@@ -1057,7 +1057,6 @@ export const wording = {
   documentBar: "Document controls",
   /** The print-like page a written document is read on, with its contents beside it. */
   documentViewer: {
-    contents: "Contents",
     contentsLabel: "Sections of this document",
     /** Download and Share, as a screen reader names them together. */
     file: "Document file",

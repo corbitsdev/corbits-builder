@@ -1,6 +1,6 @@
 /**
- * A written document's sections beside its page: their heading, with what can be done with the
- * document beside it, the document's name, then each section under a thin rail. The section being read is lifted onto the page colour, and a section someone has
+ * A written document's sections beside its page: what can be done with the document above them,
+ * then the document's name and each section under a thin rail. The section being read is lifted onto the page colour, and a section someone has
  * commented on carries a comment mark.
  */
 import type { ReactNode } from "react";
@@ -29,7 +29,7 @@ export function DocumentContents({
   current: string | null;
   /** Scrolls the page to a section, or to its top for null. */
   onOpen: (id: string | null) => void;
-  /** What can be done with the document, beside the heading. */
+  /** What can be done with the document, above its sections. */
   actions?: ReactNode;
 }) {
   const words = wording.documentViewer;
@@ -39,10 +39,7 @@ export function DocumentContents({
       data-slot="document-contents"
       aria-label={words.contentsLabel}
     >
-      <div className={styles.top}>
-        <p className={styles.label}>{words.contents}</p>
-        {actions}
-      </div>
+      {actions === null ? null : <div className={styles.top}>{actions}</div>}
       <button
         type="button"
         className={styles.document}

@@ -7,23 +7,12 @@
   max-width: 100%;
 }
 
-/* The heading, with Download and Share at its far end. */
+/* Download and Share above the sections, their icons in line with the rows' words. */
 .top {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-  /* Its last action ends where the rows' own padding does. */
-  margin-inline-end: -6px;
+  margin-inline-start: 4px;
   padding-block-end: var(--space-1);
-}
-
-.label {
-  margin: 0;
-  padding: 0 10px;
-  color: var(--wb-muted-foreground);
-  font-size: 0.75rem;
-  line-height: 1rem;
 }
 
 .document,
