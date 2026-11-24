@@ -59,3 +59,15 @@ export const WithScreens: Story = {
     ],
   },
 };
+
+/** Standing up the edge, the screens are one button naming the one shown, the others in its menu. */
+export const FloatingWithScreens: Story = {
+  args: { ...WithScreens.args, floating: true },
+  decorators: [
+    (Story) => (
+      <div data-slot="panel-pane" style={{ position: "relative", height: 440 }}>
+        <Story />
+      </div>
+    ),
+  ],
+};

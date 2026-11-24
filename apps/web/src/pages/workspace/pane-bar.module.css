@@ -26,6 +26,9 @@
 }
 
 .bar[data-floating] {
+  /* Centred on its top alone: the docked bar's sticky bottom would pin a tall bar to the foot,
+     and the centring shift would then lift it off the top. */
+  bottom: auto;
   flex-direction: column;
   max-width: none;
   max-height: calc(100% - var(--box-height, 0px) - 2 * var(--space-3));

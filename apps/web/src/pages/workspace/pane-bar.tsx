@@ -12,8 +12,15 @@ import {
   MenuLabel,
   MenuTrigger,
 } from "@corbits/react-ui/ui/menu";
-import { ChevronLeft, ChevronRight, Lightbulb } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Lightbulb,
+} from "lucide-react";
 import { Fragment, useEffect, useRef, type ReactNode, type Ref } from "react";
+import { MenuItemLabel } from "../../components.tsx";
 import { wording } from "../../config.ts";
 import {
   useDocumentTips,
@@ -106,6 +113,34 @@ function ActionButton({
   /** In a bar standing up the window's edge, whose menus open beside it rather than above. */
   upright: boolean;
 }) {
+  // Standing up the edge, a strip of words would stack into a column of uneven chips, so it is
+  // drawn as one button naming the pressed one, with the others in its menu.
+  if (action.row && upright && action.row.some((item) => item.text)) {
+    const pressed = action.row.find((item) => item.active);
+    return (
+      <ActionButton
+        upright
+        action={{
+          id: action.id,
+          label: action.label,
+          text: pressed?.text ?? action.label,
+          icon: <ChevronDown size={12} aria-hidden="true" />,
+          menu: action.row.map((item) => (
+            <MenuItem
+              key={item.id}
+              disabled={item.disabled}
+              onSelect={item.onSelect}
+            >
+              <MenuItemLabel>
+                {item.text ?? item.label}
+                {item.active ? <Check size={14} aria-label="Shown" /> : null}
+              </MenuItemLabel>
+            </MenuItem>
+          )),
+        }}
+      />
+    );
+  }
   if (action.row)
     return (
       <ActionRow label={action.label} actions={action.row} upright={upright} />
