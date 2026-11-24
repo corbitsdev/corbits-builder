@@ -154,7 +154,7 @@
   gap: 0;
 }
 
-/* Quiet beside the page: small grey words, no heavier than the contents across from them. */
+/* Quiet beside the title: small grey words, well under its weight. */
 .file {
   gap: 5px;
   height: 1.5rem;
@@ -173,20 +173,18 @@
   height: 13px;
 }
 
-/* At the head of the margin, level with the page's top edge, their words in line with the cards'
-   below them. */
-.marginFiles {
-  position: absolute;
-  top: 0;
-  left: calc(var(--space-8) - 6px);
+/* The title, with Download and Share across from its first line, their words ending at the
+   text's right edge. They never take the selection's highlight with the text around them. */
+.head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-4);
 }
 
-/* Above the page, at its right edge, where the margin has no room for them. */
-.narrowFiles {
-  display: none;
-  align-self: stretch;
-  justify-content: flex-end;
-  padding-inline: var(--space-4);
+.head > .files {
+  flex-shrink: 0;
+  margin: 3px -6px 0 auto;
+  user-select: none;
 }
 
 /* The document set on the page: the sheet sets the measure, and every block keeps the same small
@@ -365,16 +363,6 @@
   }
 }
 
-@container (width < 1180px) {
-  .marginFiles {
-    display: none;
-  }
-
-  .narrowFiles {
-    display: flex;
-  }
-}
-
 @container (width < 720px) {
   .sheet {
     padding: var(--space-6) var(--space-6) 96px;
@@ -388,8 +376,7 @@
     background: none;
   }
 
-  .narrowFiles,
-  .marginFiles,
+  .files,
   .side,
   .margin {
     display: none;
