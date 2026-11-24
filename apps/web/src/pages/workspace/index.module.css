@@ -295,6 +295,12 @@
 }
 
 /* In the prompt box, one quiet line just above the words it is about: no band, no rule under it. */
+/* What waits in the box, as its panel lays it; kept mounted while hidden so its buttons stay in the
+   row. */
+.card:not([hidden]) {
+  display: contents;
+}
+
 .restarts {
   display: flex;
   align-items: center;

@@ -10,6 +10,7 @@ import styles from "./composer.module.css";
 export function Composer({
   variant = "pane",
   folded = false,
+  bare = false,
   notes,
   panel,
   around,
@@ -22,6 +23,11 @@ export function Composer({
    * buttons in the row, but only the row shows.
    */
   folded?: boolean;
+  /**
+   * Open, but with only its typing row: the panel stays mounted, as when folded, so what waits
+   * keeps its buttons in the row while the page beside it shows what it is about.
+   */
+  bare?: boolean;
   /** Faults and notices about the message, above the box; they give way before the box does. */
   notes?: ReactNode;
   /** What waits on the person, such as a question card or a plugin's screen, above the typing row. */
@@ -36,7 +42,7 @@ export function Composer({
         <div
           className={styles.panel}
           data-slot="composer-panel"
-          hidden={folded}
+          hidden={folded || bare}
         >
           {panel}
         </div>

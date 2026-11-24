@@ -201,6 +201,8 @@ export type BoxWaiting =
       /** Turns the screen down, or sets it aside for now where it answers nothing. */
       onNotNow?: (() => void) | undefined;
       disabled: boolean;
+      /** It asks the person to accept what it is about, such as a document to approve. */
+      decides: boolean;
     };
 
 /** What sits under the conversation: the composer, or why the person cannot write yet. */
@@ -237,6 +239,8 @@ export type RoomContent = {
     projectReady: boolean;
     /** The project view covers the room, with the prompt box beneath it; closed, it waits hidden. */
     projectOpen: boolean;
+    /** The project view shows a written document, open on its page. */
+    documentShown: boolean;
     onProjectOpenChange: (open: boolean) => void;
   };
   conversation: {
@@ -290,7 +294,8 @@ export function RoomView({
   pluginSpace,
   chat,
 }: RoomViewProps) {
-  const { projectReady, projectOpen, onProjectOpenChange } = layout;
+  const { projectReady, projectOpen, documentShown, onProjectOpenChange } =
+    layout;
   const conversationRef = useRef<HTMLElement>(null);
   const shell = useShellReply(conversationRef);
   const closeProject = () => onProjectOpenChange(false);
@@ -470,6 +475,9 @@ export function RoomView({
   );
   const projectDock =
     dockInProject && sketches > 0 ? sketchingDock(dock) : dock;
+  // Over the page it asks the person to accept, what waits would only repeat the page: the box
+  // stands open at once, its typing row and action alone.
+  const decidesPage = dockInProject && documentShown && decides(waiting);
   // Full screen is the room's own conversation: what the chat was pulled up over is put away.
   const roomDock = (
     <RoomDockView
@@ -477,12 +485,13 @@ export function RoomView({
       ports={ports}
       waiting={card}
       fold={
-        dockInProject
+        dockInProject && !decidesPage
           ? waiting === null
             ? null
             : waitingLine(waiting)
           : undefined
       }
+      cardHidden={decidesPage}
       chat={chat}
       chatStart={{
         // The conversation is out of sight behind the project, so the pill says what is running.
@@ -735,6 +744,9 @@ function sketchingDock(dock: RoomDock): RoomDock {
     : dock;
 }
 
+const decides = (waiting: BoxWaiting | null) =>
+  waiting?.kind === "screen" && waiting.decides;
+
 /** Takes a shell request typed into the composer, so it is answered rather than sent. */
 type AnswersShell = (text: string) => boolean;
 
@@ -752,6 +764,7 @@ export function RoomDockView({
   dock,
   waiting,
   fold,
+  cardHidden = false,
   chat,
   chatStart,
   ports,
@@ -771,6 +784,8 @@ export function RoomDockView({
    * Absent, the box never folds.
    */
   fold?: string | null | undefined;
+  /** What waits stays out of sight, its buttons still in the row, where the page shows it. */
+  cardHidden?: boolean;
   chat?: ReactNode;
   chatStart?: ChatStart | undefined;
   answersShell?: AnswersShell;
@@ -848,6 +863,7 @@ export function RoomDockView({
       {...dock}
       waiting={waiting}
       fold={fold}
+      cardHidden={cardHidden}
       chat={chat}
       chatStart={chatStart}
       ports={ports}
@@ -883,6 +899,7 @@ function RoomComposerView({
   onStop,
   waiting,
   fold,
+  cardHidden,
   chat,
   chatStart,
   ports: shared,
@@ -890,6 +907,7 @@ function RoomComposerView({
 }: RoomComposer & {
   waiting: ReactNode;
   fold?: string | null | undefined;
+  cardHidden: boolean;
   chat: ReactNode;
   chatStart?: ChatStart | undefined;
   ports?: BoxPorts | undefined;
@@ -1143,14 +1161,22 @@ function RoomComposerView({
   return (
     <Composer
       folded={folded}
+      // With nothing but the card to show, the box is its typing row alone.
+      bare={
+        cardHidden &&
+        restarts === null &&
+        (comments === 0 || commentsBlocked === null)
+      }
       panel={
         restarts !== null ||
         waiting !== undefined ||
         (comments > 0 && commentsBlocked !== null) ? (
           <>
-            <InBox ports={ports} as={waiting === undefined ? null : "card"}>
-              {waiting}
-            </InBox>
+            <div className={styles.card} hidden={cardHidden}>
+              <InBox ports={ports} as={waiting === undefined ? null : "card"}>
+                {waiting}
+              </InBox>
+            </div>
             {/* Nearest the words it is about, after anything else that waits. */}
             {restarts === null ? null : (
               <p className={styles.restarts} role="status">

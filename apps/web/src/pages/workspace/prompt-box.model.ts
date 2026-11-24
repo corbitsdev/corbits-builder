@@ -269,6 +269,7 @@ export function usePromptBox(room: PromptBoxRoom): PromptBox {
                   })
               : () => setSetAside((was) => new Set([...was, screenKey(card)])),
           disabled: room.sending || room.archived,
+          decides,
         };
       case "warning":
         return null;

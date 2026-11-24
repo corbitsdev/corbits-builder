@@ -176,6 +176,7 @@ function paneOf(story: Partial<ArtifactPaneProps> = {}) {
 const layout: RoomViewProps["layout"] = {
   projectReady: false,
   projectOpen: false,
+  documentShown: false,
   onProjectOpenChange: fn(),
 };
 
@@ -915,6 +916,7 @@ export const ScreenWaiting: Story = {
       title: "Choose a design",
       onNotNow: screenNotNow,
       disabled: false,
+      decides: false,
     },
     space: { key: "screen:story", title: "Choose a design", place: "page" },
     pluginSpace: (
@@ -976,6 +978,7 @@ export const ScreenInBox: Story = {
       title: "How many looks to compare",
       onNotNow: undefined,
       disabled: false,
+      decides: false,
     },
     space: {
       key: "screen:looks",
@@ -1029,6 +1032,7 @@ export const ApproveInBox: Story = {
       title: "Approve the documents",
       onNotNow: undefined,
       disabled: false,
+      decides: true,
     },
     space: {
       key: "screen:approve",
@@ -1067,6 +1071,37 @@ export const ApproveInBox: Story = {
 export const ApproveInBoxDark: Story = {
   ...ApproveInBox,
   globals: { mode: "dark" },
+};
+
+/**
+ * Over the document it asks to approve, the box stands open at once with Approve where Send is, and
+ * nothing above the words repeats the page.
+ */
+export const ApproveOverDocument: Story = {
+  args: {
+    ...withDocuments,
+    ...ApproveInBox.args,
+    layout: { ...withDocuments.layout, projectOpen: true, documentShown: true },
+  },
+  play: async ({ canvasElement }) => {
+    const box = canvasElement.querySelector<HTMLElement>(
+      '[data-slot="room-project"] [data-slot="composer"]',
+    );
+    if (box === null) throw new Error("No prompt box over the page");
+    await expect(box.querySelector('[data-slot="fold-line"]')).toBeNull();
+    // The view fades in as it opens.
+    await waitFor(() =>
+      expect(
+        within(box).getByRole("textbox", { name: "Message" }),
+      ).toBeVisible(),
+    );
+    await expect(
+      box.querySelector('[data-slot="composer-panel"]'),
+    ).toHaveAttribute("hidden");
+    await expect(
+      within(box).getByRole("button", { name: "Approve" }),
+    ).toBeVisible();
+  },
 };
 
 /** A comment on the documents is no approval: Approve gives way to Make changes, which sends it. */
@@ -1145,6 +1180,7 @@ export const ScreenOfItsOwn: Story = {
       title: "Choose a design",
       onNotNow: fn(),
       disabled: false,
+      decides: false,
     },
   },
   play: async ({ canvasElement, args }) => {
