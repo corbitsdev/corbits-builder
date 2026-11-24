@@ -42,7 +42,7 @@
 
 /* With nothing beside it, the page is centred in the window. */
 .app[data-bare] .canvasBody {
-  margin-inline: auto;
+  justify-content: center;
 }
 
 /* The new project page's corner: Workspace settings and Account, quiet as the room's own top row. */
@@ -91,17 +91,21 @@
   padding-block-start: 3.5rem;
 }
 
-/* Everything beside the sidebar. Scrolls, except where a surface fills instead. */
+/* Everything beside the sidebar. Scrolls, except where a surface fills instead. The scroller
+   spans the canvas so its scrollbar sits at the window's edge, and the page's width is held by
+   its one column instead. */
 .canvasBody {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   padding: var(--space-4) var(--space-5) var(--space-6);
   display: grid;
+  grid-template-columns: minmax(
+    0,
+    calc(var(--section-max) - 2 * var(--space-5))
+  );
   gap: var(--space-2);
   align-content: start;
-  max-width: var(--section-max);
-  width: 100%;
 }
 
 .canvasBody[data-fill] {
@@ -111,7 +115,6 @@
   flex-direction: column;
   gap: 0;
   padding: 0;
-  max-width: none;
 }
 
 /* The conversation log is the room's scrollport. A content-sized room lets
@@ -155,7 +158,6 @@
   display: flex;
   flex-direction: column;
   padding: 0;
-  max-width: none;
   overflow: hidden;
 }
 
@@ -170,7 +172,7 @@
 /* The home page runs edge to edge; its banner keeps the page's inset. */
 .canvasBody:has(> [data-slot="home-page"]) {
   padding: 0;
-  max-width: none;
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .canvasBody:has(> [data-slot="home-page"]) > [data-slot="banner"] {
