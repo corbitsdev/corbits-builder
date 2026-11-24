@@ -15,7 +15,7 @@
   > [data-slot="conversation-column"] {
   box-sizing: border-box;
   width: 100%;
-  max-width: var(--frame-column, 48rem);
+  max-width: 48rem;
   margin-inline: auto;
 }
 

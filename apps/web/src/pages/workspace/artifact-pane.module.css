@@ -10,16 +10,15 @@
 /* Each pane is its own scroller, so the padding belongs inside it: padding on the panel sat below
    the scroller as a band the page never reached. The foot leaves room for the last lines to scroll
    clear of the prompt box floating over it, whose height the room sets. The scroller spans the
-   pane, so its scrollbar is at the window's edge, and its sides hold what it shows to the room's
-   column. */
+   pane, so its scrollbar is at the window's edge, and its sides hold what it shows to a 48rem
+   column in its middle. */
 .content[data-slot="panel-content"] {
   position: relative;
   padding: 0;
 }
 
 .content > [data-slot="panel-pane"]:not(.fill) {
-  padding: var(--space-3)
-    max(var(--space-6), (100% - var(--frame-column, 48rem)) / 2)
+  padding: var(--space-3) max(var(--space-6), (100% - 48rem) / 2)
     calc(var(--space-6) + var(--box-height, 0px));
 }
 

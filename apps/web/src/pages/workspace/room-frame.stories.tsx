@@ -2,7 +2,7 @@ import type { CSSProperties } from "react";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import type { Viewport } from "storybook/viewport";
 import { SidebarFrame } from "./project-sidebar.view.tsx";
-import { RoomFrame, type RoomFrameSide } from "./room-frame.tsx";
+import { RoomFrame } from "./room-frame.tsx";
 
 const viewports = {
   w1920: {
@@ -44,7 +44,7 @@ const box: CSSProperties = {
   fontSize: "var(--text-sm)",
 };
 
-function SidebarList() {
+function SidebarList({ rows }: { rows: number }) {
   return (
     <ul
       style={{
@@ -55,7 +55,7 @@ function SidebarList() {
         listStyle: "none",
       }}
     >
-      {Array.from({ length: 8 }, (_, index) => (
+      {Array.from({ length: rows }, (_, index) => (
         <li key={index} style={{ ...box, height: "2rem" }}>
           Sidebar row {index + 1}
         </li>
@@ -65,7 +65,7 @@ function SidebarList() {
 }
 
 /** The page as a view in the main pane lays itself: its own scroller, edge to edge, its content
- * held to the frame's column, with the prompt box at the column's foot. */
+ * held to a 48rem column in the pane's middle, with the prompt box at the column's foot. */
 function Page({ sections }: { sections: number }) {
   return (
     <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
@@ -74,7 +74,7 @@ function Page({ sections }: { sections: number }) {
           display: "grid",
           gap: "var(--space-4)",
           boxSizing: "border-box",
-          maxWidth: "var(--frame-column)",
+          maxWidth: "48rem",
           minHeight: "100%",
           margin: "0 auto",
           padding: "var(--space-2) var(--space-4) 0",
@@ -104,13 +104,6 @@ function Page({ sections }: { sections: number }) {
   );
 }
 
-const showing: RoomFrameSide = {
-  state: "showing",
-  content: (
-    <div style={{ ...box, height: "100%", border: 0 }}>Plugin screen</div>
-  ),
-};
-
 const meta = {
   title: "Components/Workspace/Room frame",
   component: RoomFrame,
@@ -126,7 +119,6 @@ const meta = {
   ],
   args: {
     sidebar: null,
-    side: { state: "empty" },
     children: <Page sections={3} />,
   },
 } satisfies Meta<typeof RoomFrame>;
@@ -140,22 +132,20 @@ function at(
   viewport: keyof typeof viewports,
   {
     sidebarOpen = false,
-    side = { state: "empty" },
     sections = 3,
-  }: { sidebarOpen?: boolean; side?: RoomFrameSide; sections?: number },
+  }: { sidebarOpen?: boolean; sections?: number },
 ): Story {
   const drawer = viewport === "w1024" || viewport === "w768";
   return {
     args: {
       sidebar: <Sidebar open={sidebarOpen} drawer={drawer} />,
-      side,
       children: <Page sections={sections} />,
     },
     globals: { viewport: { value: viewport } },
   };
 }
 
-/** The sidebar as the room draws it, with stand-in rows. */
+/** The sidebar as the room draws it, with stand-in rows for its plan and the rest. */
 function Sidebar({ open, drawer }: { open: boolean; drawer: boolean }) {
   return (
     <SidebarFrame
@@ -163,49 +153,27 @@ function Sidebar({ open, drawer }: { open: boolean; drawer: boolean }) {
       open={open}
       drawer={drawer}
       onToggleSidebar={() => {}}
+      plan={<SidebarList rows={4} />}
     >
-      <SidebarList />
+      <SidebarList rows={3} />
     </SidebarFrame>
   );
 }
 
-export const W1920TitleOnly = at("w1920", { side: showing });
-export const W1920SidebarOpen = at("w1920", {
-  sidebarOpen: true,
-  side: showing,
-});
-export const W1920SideEmpty = at("w1920", { sidebarOpen: true });
-export const W1920SideHidden = at("w1920", { side: { state: "hidden" } });
+/** Closed or open, the page stands in the same place beside the sidebar's column. */
+export const W1920Closed = at("w1920", {});
+export const W1920Open = at("w1920", { sidebarOpen: true });
 
-export const W1440TitleOnly = at("w1440", { side: showing });
-export const W1440SidebarOpen = at("w1440", {
-  sidebarOpen: true,
-  side: showing,
-});
-export const W1440SideEmpty = at("w1440", { sidebarOpen: true });
-export const W1440SideHidden = at("w1440", {
-  sidebarOpen: true,
-  side: { state: "hidden" },
-});
+export const W1440Closed = at("w1440", {});
+export const W1440Open = at("w1440", { sidebarOpen: true });
 
-/** The sidebar still fits beside the column; the plugin screen opens over the page. */
-export const W1280SidebarOpen = at("w1280", {
-  sidebarOpen: true,
-  side: showing,
-});
-export const W1280SideHidden = at("w1280", { side: { state: "hidden" } });
+export const W1280Open = at("w1280", { sidebarOpen: true });
 
-export const W1024TitleOnly = at("w1024", {});
+export const W1024Closed = at("w1024", {});
 export const W1024Drawer = at("w1024", { sidebarOpen: true });
-export const W1024Sheet = at("w1024", { side: showing });
 
-export const W768TitleOnly = at("w768", {});
+export const W768Closed = at("w768", {});
 export const W768Drawer = at("w768", { sidebarOpen: true });
-export const W768Sheet = at("w768", { side: showing });
 
 /** The page scrolls itself, its scrollbar at the window's edge, under the prompt box. */
-export const LongPage = at("w1440", {
-  sidebarOpen: true,
-  side: showing,
-  sections: 20,
-});
+export const LongPage = at("w1440", { sidebarOpen: true, sections: 20 });

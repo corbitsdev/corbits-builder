@@ -1,36 +1,32 @@
-/* The frame scrolls nothing itself: the main pane takes all of it, and the view there is the one
-   scroller, so its scrollbar is at the window's edge. */
+/* The left zone's width, kept open or closed, and the main pane in the rest. The frame scrolls
+   nothing itself: the view in the main pane is the one scroller, so its scrollbar is at the
+   window's edge. */
 .frame {
   --frame-edge: var(--space-2);
-  --frame-gap: var(--space-4);
   /* The sidebar's title row, at the top of the left zone. */
   --frame-title: 2.5rem;
-  /* The margin the left zone takes from the column, when the right gives the column its own. */
-  --frame-left: calc(var(--frame-edge) + var(--rail-width) + var(--frame-gap));
-  --frame-column: 48rem;
+  /* The sidebar's card, in from the window's edge, and a gap before the page. */
+  --frame-left: calc(var(--frame-edge) + var(--rail-width) + var(--space-4));
 
   position: relative;
-  display: flex;
+  display: grid;
   flex: 1;
-  flex-direction: column;
+  grid-template-columns: var(--frame-left) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   min-height: 0;
   overflow: hidden;
   background: var(--wb-background);
 }
 
-/* The wider column stops at 80rem, so a preview does not stretch across a very wide window. */
-.frame[data-side="hidden"] {
-  --frame-column: min(80rem, 100% - 2 * var(--frame-left));
-}
-
 .main {
   display: flex;
-  flex: 1;
+  grid-column: 2;
   flex-direction: column;
+  min-width: 0;
   min-height: 0;
 }
 
-/* The sides stand over the main pane's margins, the left in its own corner at its full height. */
+/* Over its own column, and over the page where it is a drawer. */
 .left {
   position: absolute;
   inset-block: 0;
@@ -39,40 +35,15 @@
   display: flex;
 }
 
-.right {
-  position: absolute;
-  top: var(--frame-edge);
-  right: var(--frame-edge);
-  z-index: 2;
-  box-sizing: border-box;
-  width: min(
-    22rem,
-    (100% - var(--frame-column)) / 2 - var(--frame-gap) - var(--frame-edge)
-  );
-  height: calc(100% - 2 * var(--frame-edge));
-  overflow-y: auto;
-  border-radius: var(--radius-xl);
-  background: var(--card);
-}
-
-/* Narrower than the column with the sidebar's width and a gap either side, the sidebar opens as a
-   drawer over the page and its title stands over the column's top corner, so the pane starts below
-   it. */
+/* Narrower than the sidebar beside the column and its margins, the sidebar is a drawer over the
+   page, the pane takes the whole window, and the sidebar's title stands over the pane's top
+   corner, so the pane starts below it. */
 @media (width < 79rem) {
   .frame {
-    --frame-left: var(--frame-edge);
+    --frame-left: 0px;
   }
 
   .main {
     padding-block-start: calc(var(--frame-title) + 2 * var(--frame-edge));
-  }
-}
-
-/* Narrower than the column with an 18rem plugin screen and a gap either side, the screen opens as
-   a sheet over the page. */
-@media (width < 87rem) {
-  .right {
-    width: min(22rem, 100% - 2 * var(--frame-edge));
-    box-shadow: var(--wb-shadow);
   }
 }

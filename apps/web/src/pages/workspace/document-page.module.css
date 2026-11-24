@@ -62,8 +62,7 @@
   /* Level with the page's top edge, and held there as the page scrolls past. */
   top: 8px;
   align-self: start;
-  /* Below the project's name, which stands over this corner in the room. */
-  padding: calc(8px + 3rem) var(--space-8) 0 var(--space-4);
+  padding: 8px var(--space-8) 0 var(--space-4);
 }
 
 .column {

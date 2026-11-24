@@ -1,28 +1,6 @@
-/* A document's contents and the closed sidebar's plan would both stand in the margin left of the
-   page, one over the other. While the page is open its contents keep the margin, and the closed
-   sidebar folds to its name; the plan is a press away on its toggle. */
-[data-slot="room-frame"]:has(
-    [data-slot="room-project"]:not([hidden]) [data-slot="document-contents"]
-  )
-  [data-slot="project-sidebar"] {
-  --plan-when-closed: none;
-}
-
-/* Open, the sidebar takes the margin left of the page, so a document's contents leave it at once
-   rather than show under it as it slides in. Once it has closed they fade back in its place. */
-[data-slot="room-frame"]:has([data-slot="project-sidebar"][data-open])
-  [data-slot="document-contents"] {
-  display: none;
-}
-
-.page [data-slot="document-contents"] {
-  animation: global(fade-in) var(--duration-micro) var(--ease-out)
-    var(--duration-standard) both;
-}
-
-/* The frame's main pane, the whole window under the sidebar: the conversation, the project view
-   over it and the plugin sheet over both. What each holds keeps to the frame's column. Its own
-   stacking context, so what covers it stays under the sidebar. */
+/* The frame's main pane, beside the sidebar: the conversation, the project view over it and the
+   plugin sheet over both. What each holds is centred in it. Its own stacking context, so what
+   covers it stays under the sidebar's drawer. */
 .main {
   /* The prompt box's width: the turns' text measure inside their 48rem column, so the box's edges
      line up with the words above it, and a document's page runs a little wider either side. */

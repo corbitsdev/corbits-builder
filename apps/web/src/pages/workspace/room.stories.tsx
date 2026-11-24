@@ -631,24 +631,13 @@ export const SidebarClosedPlanUnderWay: Story = {
 };
 
 /**
- * Put away beside the open project view, whose header leaves the corner to the toggle. The page's
- * contents keep the margin left of it, so the closed sidebar folds to its name.
+ * Put away beside the open project view. The sidebar keeps its own column, so its plan and the
+ * page's contents, in the page's margin, are both in sight.
  */
 export const SidebarClosedProjectOpen: Story = {
   args: {
     ...ProjectOpen.args,
     sidebar: { ...withDocuments.sidebar, open: false },
-  },
-  play: async ({ canvasElement }) => {
-    await waitFor(() =>
-      expect(
-        canvasElement.querySelector('[data-slot="document-contents"]'),
-      ).not.toBeNull(),
-    );
-    const plan = canvasElement.querySelector(
-      '[data-slot="project-sidebar"] [role="tree"]',
-    );
-    if (plan !== null) await expect(plan).not.toBeVisible();
   },
 };
 

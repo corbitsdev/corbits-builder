@@ -487,7 +487,6 @@ export function RoomView({
             onOpenStep={leaveDrawer(sidebar.onOpenStep)}
           />
         }
-        side={{ state: "empty" }}
       >
         <div ref={mainRef} className={styles.main} data-slot="room-main">
           <section

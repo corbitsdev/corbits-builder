@@ -1,6 +1,6 @@
-/* The room while it loads stands in the loaded room's frame: the sidebar over the window's left
-   margin, the conversation in the frame's column, and the prompt box on the turns' measure at the
-   window's foot, so nothing moves or changes width when the room arrives, at any window width. */
+/* The room while it loads stands in the loaded room's frame: the sidebar in its column, the
+   conversation in the middle of the page beside it, and the prompt box on the turns' measure at
+   the window's foot, so nothing moves or changes width when the room arrives, at any window width. */
 .room {
   display: flex;
   flex: 1 1 auto;
@@ -31,7 +31,7 @@
   flex: 1;
   flex-direction: column;
   gap: var(--space-8);
-  max-width: var(--frame-column);
+  max-width: 48rem;
   min-height: 0;
   padding: calc(2.75rem + var(--space-5)) var(--space-4) 0;
   overflow: hidden;

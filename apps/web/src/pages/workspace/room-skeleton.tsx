@@ -110,7 +110,6 @@ export function RoomSkeleton({
               />
             )
           }
-          side={{ state: "empty" }}
         >
           <div className={styles.main}>
             {opening === undefined ? (
