@@ -35,15 +35,12 @@
   display: flex;
 }
 
-/* Narrower than the sidebar beside the column and its margins, the sidebar is a drawer over the
-   page, the pane takes the whole window, and the sidebar's title stands over the pane's top
-   corner, so the pane starts below it. */
-@media (width < 79rem) {
-  .frame {
-    --frame-left: 0px;
-  }
+/* Where the sidebar is a drawer over the page, the pane takes the whole window, and the sidebar's
+   title stands over the pane's top corner, so the pane starts below it. */
+.frame:has([data-drawer]) {
+  --frame-left: 0px;
+}
 
-  .main {
-    padding-block-start: calc(var(--frame-title) + 2 * var(--frame-edge));
-  }
+.frame:has([data-drawer]) > .main {
+  padding-block-start: calc(var(--frame-title) + 2 * var(--frame-edge));
 }

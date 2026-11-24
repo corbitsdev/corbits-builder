@@ -16,7 +16,7 @@ import {
   type ReadyRoomProps,
   type StageWorkspaceProps,
 } from "./room.model.ts";
-import { useSidebar } from "../../sidebar-setting.ts";
+import { ROOM_NARROW_QUERY, useSidebar } from "../../sidebar-setting.ts";
 import { composerKey, useUnsent } from "../../unsent.ts";
 import { RoomFault, RoomSkeleton } from "./room-skeleton.tsx";
 import { RoomView } from "./room.view.tsx";
@@ -26,7 +26,7 @@ import { WrittenDocument } from "./written-document.tsx";
 /** The room shows its loading or fault state until its first read is in hand. */
 export function StageWorkspace(props: StageWorkspaceProps) {
   const gate = useRoomGate(props);
-  const sidebar = useSidebar();
+  const sidebar = useSidebar(ROOM_NARROW_QUERY);
   const [draft, setDraft] = useUnsent(composerKey(props.projectId));
   if (gate.state === "loading")
     return (

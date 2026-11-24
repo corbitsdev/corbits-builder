@@ -49,7 +49,6 @@ import { Banner, BannerAction, Fault } from "../../components.jsx";
 import { Composer } from "../../composer.tsx";
 import { Dictated } from "../../dictation.jsx";
 import { useShellReply } from "../../flourish.tsx";
-import { useNarrowWindow } from "../../sidebar-setting.ts";
 import {
   ArtifactPane,
   type ArtifactPaneContent,
@@ -231,7 +230,7 @@ export type RoomContent = {
   };
   dock: RoomDock;
   /** The project's sidebar: its plan, its app and the ways out of the room. */
-  sidebar: Omit<ProjectSidebarViewProps, "drawer">;
+  sidebar: ProjectSidebarViewProps;
   /** What the prompt box holds for the person to deal with; null while nothing waits. */
   waiting: BoxWaiting | null;
   /**
@@ -272,14 +271,7 @@ export function RoomView({
   const conversationRef = useRef<HTMLElement>(null);
   const shell = useShellReply(conversationRef);
   const closeProject = () => onProjectOpenChange(false);
-  // On a window too narrow for the sidebar beside the column it is a drawer, shut until the person
-  // opens it, and shut again once they pick something in it.
   const mainRef = useRef<HTMLDivElement>(null);
-  const narrow = useNarrowWindow();
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  useEffect(() => {
-    if (!narrow) setDrawerOpen(false);
-  }, [narrow]);
   // The box floats over the foot of the project view and of a screen over the conversation, so
   // each keeps what it must reach clear of it by the box's height, which grows as the person writes.
   const projectRef = useRef<HTMLDivElement>(null);
@@ -323,12 +315,6 @@ export function RoomView({
     if (grip !== null) observer.observe(grip);
     return () => observer.disconnect();
   });
-  const leaveDrawer =
-    <Args extends unknown[]>(go: (...args: Args) => void) =>
-    (...args: Args) => {
-      setDrawerOpen(false);
-      go(...args);
-    };
   // Only a screen its plugin draws for the page has a space; any other is in the box. Over the
   // conversation it takes the whole page, the box beneath it, since a mockup or a set of designs
   // needs the width. Over the project view it waits for Open in the box. Answering it, or Not now
@@ -466,21 +452,7 @@ export function RoomView({
   return (
     <StageView aria-label={`Conversation for ${title}`}>
       <RoomFrame
-        sidebar={
-          <ProjectSidebarView
-            {...sidebar}
-            menu={projectMenu}
-            open={narrow ? drawerOpen : sidebar.open}
-            drawer={narrow}
-            onToggleSidebar={
-              narrow
-                ? () => setDrawerOpen(!drawerOpen)
-                : sidebar.onToggleSidebar
-            }
-            onOpenApp={leaveDrawer(sidebar.onOpenApp)}
-            onOpenStep={leaveDrawer(sidebar.onOpenStep)}
-          />
-        }
+        sidebar={<ProjectSidebarView {...sidebar} menu={projectMenu} />}
       >
         <div ref={mainRef} className={styles.main} data-slot="room-main">
           <section

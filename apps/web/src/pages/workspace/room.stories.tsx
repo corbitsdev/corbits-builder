@@ -122,6 +122,7 @@ function sidebarOf(
   return {
     project: "Bakery orders",
     open: true,
+    drawer: false,
     plan: outline.plan,
     app: outline.app,
     appOpen: false,
@@ -824,6 +825,10 @@ export const ChatSheetKeepsMessage: Story = {
 /** At phone width the sheet keeps its inset around the box over the page. */
 export const ChatSheetNarrow: Story = {
   ...ChatSheetOpen,
+  args: {
+    ...chatBehindBox,
+    sidebar: { ...withDocuments.sidebar, open: false, drawer: true },
+  },
   globals: { viewport: { value: "mobile1" } },
 };
 
@@ -839,50 +844,25 @@ export const ChatSheetOpenDark: Story = {
 
 /** Too narrow for the sidebar beside the page, it waits as a drawer behind its toggle. */
 export const Narrow: Story = {
-  args: withDocuments,
+  args: {
+    ...withDocuments,
+    sidebar: { ...withDocuments.sidebar, open: false, drawer: true },
+  },
   globals: { viewport: { value: "mobile1" } },
 };
 
-/** The drawer out over the room. */
+/** The drawer out over the room, the pane starting below its title row. */
 export const NarrowDrawer: Story = {
   ...Narrow,
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    await userEvent.click(
-      canvas.getByRole("button", { name: /Bakery orders/, expanded: false }),
-    );
-    await expect(
-      canvasElement.querySelector('[data-slot="project-sidebar"]'),
-    ).toHaveAttribute("data-open");
+  args: {
+    ...withDocuments,
+    sidebar: { ...withDocuments.sidebar, drawer: true },
   },
 };
 
 export const NarrowDrawerDark: Story = {
   ...NarrowDrawer,
   globals: { ...Narrow.globals, mode: "dark" },
-};
-
-/** Opening the app from the drawer puts the drawer away and shows the app. */
-export const NarrowDrawerOpensApp: Story = {
-  args: { ...withDocuments, ...appArgs, sidebar: appSidebar("running") },
-  globals: { viewport: { value: "mobile1" } },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    await userEvent.click(
-      canvas.getByRole("button", { name: /Bakery orders/, expanded: false }),
-    );
-    await userEvent.click(
-      canvas.getByRole("button", {
-        name: wording.projectShell.appState.running,
-      }),
-    );
-    await expect(
-      canvas.getByRole("button", { name: /Bakery orders/, expanded: false }),
-    ).toBeInTheDocument();
-    await expect(
-      canvasElement.querySelector('[data-slot="room-project"]'),
-    ).not.toHaveAttribute("hidden");
-  },
 };
 
 const chooseScreen = storyScreen(
@@ -1445,7 +1425,10 @@ export const DocumentPageFailed: Story = {
 
 /** At phone width the contents give way and the page takes the view's width. */
 export const DocumentPageNarrow: Story = {
-  args: { ...ProjectOpen.args },
+  args: {
+    ...ProjectOpen.args,
+    sidebar: { ...withDocuments.sidebar, open: false, drawer: true },
+  },
   globals: { viewport: { value: "mobile1" } },
   decorators: [
     (Story) => (

@@ -28,7 +28,7 @@ import {
   readDirectory,
   type PickedDirectory,
 } from "../api/repository.ts";
-import { useSidebar } from "../sidebar-setting.ts";
+import { ROOM_NARROW_QUERY, useSidebar } from "../sidebar-setting.ts";
 import { composerKey, moveUnsent, useUnsent } from "../unsent.ts";
 import { canStartProject } from "./home-view.ts";
 import { useNewProjectProfiles } from "./new-project-profiles.model.ts";
@@ -125,7 +125,7 @@ export function useProjects({
   const [followUp, setFollowUp] = useUnsent(STARTING_KEY);
   const [activity, setActivity] =
     useState<ProjectsViewProps["activity"]>("idle");
-  const sidebar = useSidebar();
+  const sidebar = useSidebar(ROOM_NARROW_QUERY);
   const [connecting, setConnecting] = useState(false);
   // A new project starts on the preferred profile until the person picks another.
   const profiles = useNewProjectProfiles();

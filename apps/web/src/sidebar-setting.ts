@@ -5,7 +5,7 @@
  * one too: it starts shut whatever the wide choice is, opens only when the
  * person opens it, and shuts again as they go somewhere.
  */
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import {
   useStoredPreference,
   writeStoredPreference,
@@ -17,27 +17,32 @@ export const SIDEBAR_KEY = "builder-project-sidebar";
 /** Shut until the person opens it, so a project opens on its work. */
 export const SIDEBAR_DEFAULT = "closed";
 
-// The width below which a project's room makes its sidebar a drawer: too narrow for the sidebar
-// beside the room's column, as room-frame.module.css lays it.
-const NARROW_QUERY = "(width < 79rem)";
+// The width below which the sidebar outside a project is a drawer.
+const NARROW_QUERY = "(max-width: 899px)";
+
+/**
+ * The width below which a project's room makes its sidebar a drawer: the sidebar beside a 48rem
+ * column and its margins no longer fits.
+ */
+export const ROOM_NARROW_QUERY = "(width < 79rem)";
 
 export const parseSidebarOpen = (raw: string): "open" | "closed" | null =>
   raw === "open" || raw === "closed" ? raw : null;
 
-function subscribeNarrow(changed: () => void): () => void {
-  const query = window.matchMedia(NARROW_QUERY);
-  query.addEventListener("change", changed);
-  return () => query.removeEventListener("change", changed);
-}
-
-const readNarrow = () => window.matchMedia(NARROW_QUERY).matches;
-
-/** The window is too narrow for the sidebar beside the page, so it is a drawer over it. */
-export const useNarrowWindow = () =>
-  useSyncExternalStore(subscribeNarrow, readNarrow, () => false);
-
-export function useSidebar() {
-  const narrow = useNarrowWindow();
+export function useSidebar(narrowQuery = NARROW_QUERY) {
+  const subscribe = useCallback(
+    (changed: () => void) => {
+      const query = window.matchMedia(narrowQuery);
+      query.addEventListener("change", changed);
+      return () => query.removeEventListener("change", changed);
+    },
+    [narrowQuery],
+  );
+  const narrow = useSyncExternalStore(
+    subscribe,
+    () => window.matchMedia(narrowQuery).matches,
+    () => false,
+  );
   const stored = useStoredPreference(
     SIDEBAR_KEY,
     parseSidebarOpen,

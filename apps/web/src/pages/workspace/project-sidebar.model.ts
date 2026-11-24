@@ -5,17 +5,9 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import type { PlanView } from "@corbits-builder/schemas/project";
-import {
-  useStoredPreference,
-  writeStoredPreference,
-} from "../../stored-preference.ts";
 import type { MenuProject, ProjectMenuHost } from "../project-menu.model.ts";
 import type { PaneDocument } from "./artifact-pane.tsx";
-import {
-  SIDEBAR_DEFAULT,
-  SIDEBAR_KEY,
-  parseSidebarOpen,
-} from "../../sidebar-setting.ts";
+import { ROOM_NARROW_QUERY, useSidebar } from "../../sidebar-setting.ts";
 import { liveAppQuery } from "./live-app.model.ts";
 import { projectOutline } from "./project-outline.ts";
 import type { ProjectSidebarViewProps } from "./project-sidebar.view.tsx";
@@ -47,18 +39,20 @@ export type ProjectSidebarInput = SidebarWays & {
   onOpen: (tab: string) => void;
 };
 
-/** The sidebar's props, all but whether it is a drawer, which only the room's width decides. */
-export type ProjectSidebarProps = Omit<ProjectSidebarViewProps, "drawer">;
-
 export function useProjectSidebar(input: ProjectSidebarInput): {
-  sidebar: ProjectSidebarProps;
+  sidebar: ProjectSidebarViewProps;
   /** The project's own menu, opened from its name; null until the project list has it. */
   projectMenu: ProjectMenuHost | null;
 } {
   const { projectId, shown } = input;
-  const open =
-    useStoredPreference(SIDEBAR_KEY, parseSidebarOpen, SIDEBAR_DEFAULT) ===
-    "open";
+  const frame = useSidebar(ROOM_NARROW_QUERY);
+  // Opening something from a drawer puts the drawer away, so the page is seen.
+  const leaving =
+    <T extends unknown[]>(go: (...args: T) => void) =>
+    (...args: T) => {
+      frame.leave();
+      go(...args);
+    };
   const app = useQuery({ ...liveAppQuery(projectId), enabled: input.appShown });
   const outline = projectOutline({
     plan: input.plan,
@@ -68,18 +62,18 @@ export function useProjectSidebar(input: ProjectSidebarInput): {
   return {
     sidebar: {
       project: input.title,
-      open,
+      open: frame.open,
+      drawer: frame.drawer,
       plan: outline.plan,
       app: outline.app,
       appOpen: shown === LIVE_TAB,
       shown,
       waitsOn: input.waitsOn,
-      onToggleSidebar: () =>
-        writeStoredPreference(SIDEBAR_KEY, open ? "closed" : "open"),
+      onToggleSidebar: frame.toggle,
       onHome: input.onNewProject,
       onSettings: () => input.onOpenSettings(),
-      onOpenApp: () => input.onOpen(LIVE_TAB),
-      onOpenStep: input.onOpen,
+      onOpenApp: leaving(() => input.onOpen(LIVE_TAB)),
+      onOpenStep: leaving(input.onOpen),
     },
     projectMenu:
       input.project === undefined
