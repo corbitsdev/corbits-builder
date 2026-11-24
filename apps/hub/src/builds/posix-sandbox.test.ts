@@ -432,9 +432,10 @@ sandboxTest(
             new AbortController().signal,
           );
         const install = await shell("bun install");
+        expect(install.isError).not.toBe(true);
         expect(install.content).not.toContain("exit code");
+        // macOS refuses the read; Linux shows an empty file in its place.
         const read = await shell("cat .env");
-        expect(read.content).toContain("Operation not permitted");
         expect(read.content).not.toContain("ENV_FILE_SENTINEL");
       },
     );
