@@ -11,6 +11,7 @@ import type { AgentDefinition, BaseEnv, DirectorRegistry } from "@intx/agent";
 import type {
   CredentialCapability,
   HostCredentialCapability,
+  MailSigner,
 } from "@intx/types";
 import type {
   ApprovalSnapshot,
@@ -147,10 +148,13 @@ export interface SignalChannel {
    * delivery resolves. Resolves with the payload and the assigned
    * `signalId`. Rejects on `signal.abort()` if `signal` is supplied.
    * Must see every signal delivered after the call, since the runtime
-   * only checks the log for ones delivered before it.
+   * only checks the log for ones delivered before it. A channel whose
+   * process answers a quiet check calls `onWake` before it settles the
+   * wait, while whatever woke it still counts as delivery.
    */
   awaitNext(
     name: string,
+    onWake: () => void,
     signal?: AbortSignal,
     correlationId?: string,
   ): Promise<{ payload: unknown; signalId: string; correlationId?: string }>;
@@ -162,7 +166,11 @@ export interface SignalChannel {
  * runtime body works against a real agent (production) or a stub
  * (tests). The callback's contract: invoke the agent's send-and-respond
  * loop with the materialized input, and return the captured
- * `AgentResult`. Any thrown error propagates as `StepFailed`.
+ * `AgentResult`. Any thrown error propagates as `StepFailed`. An invoker
+ * whose agent ran but whose host could not commit the turn or close the agent
+ * throws `StepOutcomeCommitError`, which lands with retries exhausted and is
+ * never retried or routed within its run, since the step's work already
+ * happened. A parent run handles the failed child run like any other.
  *
  * The callback receives the per-step `AuthorizeContext` so it can
  * build an `env.authorize` closure that delegates to the runtime's
@@ -327,6 +335,13 @@ export interface EffectContext {
  */
 export interface PerformScope {
   readonly credentials: CredentialCapability;
+  /**
+   * Composes conversation messages signed with the deployment's mail key,
+   * for the handler to post to the hub itself. It sends nothing. It closes
+   * with the scope: each compose stamps a fresh Message-ID, so it belongs in
+   * the same recorded unit as the post that uses it.
+   */
+  readonly mailSigner: MailSigner;
 }
 
 /**
@@ -444,9 +459,15 @@ export type SuspendableChildPark = {
  * signal at a time reads `readParkRelease` before it accepts a signal that
  * is already waiting, and uses `waitForParkRelease` to learn that the open
  * park ended without consuming a sibling.
+ *
+ * Each wait takes an `onWake`, called before the wait settles while
+ * whatever settles it still counts as work, so a caller that waits idle
+ * counts again first.
  */
 export type SuspendableChildHandle = {
-  next(): Promise<
+  next(
+    onWake: () => void,
+  ): Promise<
     | { kind: "park"; park: SuspendableChildPark }
     | { kind: "signal-park"; name: string; timeout?: number }
     | { kind: "input-park"; correlationId: string }
@@ -471,10 +492,8 @@ export type SuspendableChildHandle = {
    * name. A signal already waiting on the caller must not be relayed once
    * the read is `released` or `terminal`: `next` can still return the park
    * event after the gate has moved on.
-   *
-   * Present on the same handles as {@link waitForParkRelease}.
    */
-  readParkRelease?(name: string): Promise<
+  readParkRelease(name: string): Promise<
     | { kind: "open" }
     | { kind: "released" }
     | {
@@ -487,13 +506,16 @@ export type SuspendableChildHandle = {
    * or the child run has reached a terminal. A sibling park does not
    * resolve it and is left queued for a later `next`. Abort rejects.
    *
-   * Present on a handle whose caller can have several parks live at once.
-   * A loop iteration and an onTrigger body are driven one step at a time,
-   * so their callers keep racing `next` and do not need this.
+   * A caller that can have several parks live at once watches this instead
+   * of `next`: a childWorkflow, and a loop iteration or onTrigger body on
+   * resume, where the parks already in the body's log are relayed one at a
+   * time. A loop iteration or onTrigger body relaying an approval watches it
+   * too, to retire the approval when the body leaves it.
    */
-  waitForParkRelease?(
+  waitForParkRelease(
     name: string,
     abort: AbortSignal,
+    onWake: () => void,
   ): Promise<
     | { kind: "released" }
     | {
@@ -510,7 +532,7 @@ export type SuspendableChildHandle = {
    * Present on the live suspendable handle. A terminal handle has no
    * channel and omits it.
    */
-  whenSignalAwaiter?(name: string): Promise<void>;
+  whenSignalAwaiter?(name: string, onWake: () => void): Promise<void>;
 };
 
 /**
@@ -631,8 +653,9 @@ export type WorkflowSignalPark = {
  * `SignalAwaited`. Deliberately narrow: the runtime reconstructs the missing
  * `SignalAwaited` from the correlationId (and optional timeout) alone and must
  * not learn the reactor's pending-operation internals (`gateId`,
- * `suspendedCall`, the snapshot), which stay the host's concern. A question
- * parks through the same store, and its record also carries the question.
+ * `suspendedCall`), which stay the host's concern. A relay that needs the
+ * snapshot reads it through `LoadParkedApproval`. A question parks through
+ * the same store, and its record also carries the question.
  */
 export type ParkedApprovalOp = {
   correlationId: string;
@@ -656,6 +679,31 @@ export type ReadParkedApprovalOps = (args: {
   stepId: string;
   attempt: number;
 }) => Promise<ParkedApprovalOp[]>;
+
+/**
+ * Read the approval snapshot a parked step stored with its pending operation.
+ * See `WorkflowRuntimeEnv.loadParkedApproval`.
+ */
+export type LoadParkedApproval = (args: {
+  runId: string;
+  stepId: string;
+  attempt: number;
+  correlationId: string;
+}) => Promise<ApprovalSnapshot | undefined>;
+
+/**
+ * Recovery hook the resume classifier awaits before it commits the
+ * `SignalAwaited` of a park it recovered through `ReadParkedApprovalOps`: make
+ * the step state behind the park durable wherever the run log is, so a host
+ * that later resumes the run from the log finds the pending operation the
+ * park names. See `WorkflowRuntimeEnv.persistRecoveredPark`.
+ */
+export type PersistRecoveredPark = (args: {
+  runId: string;
+  stepId: string;
+  attempt: number;
+  correlationId: string;
+}) => Promise<void>;
 
 /**
  * The runtime body's full env surface. The two implementations
@@ -812,6 +860,23 @@ export interface WorkflowRuntimeEnv {
    * the pre-recovery behavior.
    */
   readParkedApprovalOps?: ReadParkedApprovalOps;
+  /**
+   * Optional companion to `readParkedApprovalOps`, awaited once per recovered
+   * park before its `SignalAwaited` is committed. The read can answer from
+   * state only this host holds (a store the crash left ahead of the durable
+   * copy); a park recorded over such state would name a pending operation no
+   * other host can find. A rejection leaves the `SignalAwaited` uncommitted.
+   * A host whose read answers only from durable state leaves it unset.
+   */
+  persistRecoveredPark?: PersistRecoveredPark;
+  /**
+   * Optional read of the approval snapshot a parked step stored with its
+   * pending operation. A restart can find a container's body parked on an
+   * approval the container never relayed; resume relays it from this
+   * snapshot. Production wires it to the sidecar's step store. Without it,
+   * such a resume fails the container step.
+   */
+  loadParkedApproval?: LoadParkedApproval;
 }
 
 /**
@@ -832,6 +897,13 @@ export interface WorkflowRun {
  * the runtime act on it.
  */
 export interface RuntimeWorkflowRun extends WorkflowRun {
+  /**
+   * Resolves `true` once the run's `RunStarted` is durable, at once for a live
+   * run whose log already holds one, and `false` when the run settles without
+   * one or resumes from a log that has already ended. A host uses it to tell
+   * when the trigger it delivered can no longer be lost.
+   */
+  started: Promise<boolean>;
   /**
    * Stop the run for a `CancelRequested` its log already holds. The request
    * is durable, so the run aborts even if the child cancellation cascade

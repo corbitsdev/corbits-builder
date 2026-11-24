@@ -13,19 +13,10 @@
 // the workflow-definition loader stay outside this package, and the probe
 // handler keeps the callback type the executor injects.
 //
-// Phases 1-2 only, no `applyAtomic`: a probe is ephemeral and inert, so
-// the durable-deploy lifecycle bookkeeping (`active-deploy-id`, the
-// per-deploy-id retention ladder) is the wrong semantics. The closure is
-// laid out under a per-probe scratch dir that `cleanup` removes once the
-// child has been reaped. `createToolLoader(...).loadManifest(...)` is
-// invoked with an EMPTIED `topLevel`: the loader's phase-3 import loop
-// only imports packages named in `topLevel`, so an empty `topLevel`
-// fetches + extracts + lays out every closure entry (the full `entries`
-// set) while importing NONE of them. That runs exactly the eval-free
-// `materializeClosure` phases the probe needs. The production registry
-// fetcher is reached through `createToolLoader`, so the layout is driven
-// through the loader rather than by calling `materializeClosure` with a
-// fetcher of its own.
+// A probe is ephemeral and inert, so the closure is laid out under a per-probe
+// scratch dir that `cleanup` removes once the child has been reaped.
+// `materializeClosure` imports no author code: the airlocked child owns the
+// single import of the workflow entry.
 
 import { promises as fs } from "node:fs";
 import path from "node:path";
@@ -40,13 +31,13 @@ import type {
 import type { ToolPackageManifest } from "@intx/types/tool-packages";
 
 import type { TarballCache } from "./cache";
-import {
-  createToolLoader,
-  type HostPlatform,
-  type TarballFetcher,
-} from "./loader";
 import type { RegistryConfig } from "./resolver";
-import { storeEntryDir } from "./store-layout";
+import {
+  type HostPlatform,
+  materializeClosure,
+  storeEntryDir,
+} from "./store-layout";
+import { createTarballFetcher, type TarballFetcher } from "./tarball-fetcher";
 
 const logger = getLogger(["sidecar", "workflow-closure-materialization"]);
 
@@ -75,14 +66,14 @@ export interface WorkflowClosureMaterializerConfig {
    * before any pack is decoded.
    */
   readonly maxAssetPayloadBytes: number;
-  /** Registry identifier -> URL + credentials the loader resolves entries against. */
+  /** Registry identifier -> URL + credentials materialization resolves entries against. */
   readonly registries: ReadonlyMap<string, RegistryConfig>;
   /**
    * Root directory under which each probe's ephemeral closure scratch dir
    * is created (one per probe, removed by the returned `cleanup`).
    */
   readonly scratchRoot: string;
-  /** npm `os`/`cpu` pair the loader selects optional dependencies with. */
+  /** npm `os`/`cpu` pair materialization selects optional dependencies with. */
   readonly host: HostPlatform;
   /**
    * Materialize the frame's inline-delivered assets into `assetRoot` and
@@ -100,8 +91,8 @@ export interface WorkflowClosureMaterializerConfig {
     readonly gitDirs: ReadonlyMap<string, string>;
   }>;
   /**
-   * Test seam for tarball fetching, forwarded to `createToolLoader`.
-   * Production omits it and the loader fetches from the configured registry.
+   * Test seam for tarball fetching. Production omits it and gets
+   * `createTarballFetcher`.
    */
   readonly fetchTarball?: TarballFetcher;
 }
@@ -144,7 +135,7 @@ export function createWorkflowClosureMaterializer(
 
     // Boundary check on the definition's source. The `registry` arm surfaces a
     // missing source registry loudly before any I/O (the per-entry registry
-    // gates fire again inside the loader). An `asset` closure is materialized
+    // gates fire again inside materialization). An `asset` closure is materialized
     // from the `assets` the frame delivers -- tarball entries from a plain-file
     // mount, source entries from an indexed gitDir -- checked below. The
     // `never` default makes a future source kind a compile error rather than a
@@ -174,20 +165,10 @@ export function createWorkflowClosureMaterializer(
     };
 
     try {
-      const loader = createToolLoader({
-        cache: config.cache,
-        registries: config.registries,
-        host: config.host,
-        maxRegistryTarballBytes: config.registryMaxTarballBytes,
-        ...(config.fetchTarball !== undefined
-          ? { fetchTarball: config.fetchTarball }
-          : {}),
-      });
-
       // Materialize any inline-delivered assets under the probe scratch:
       // tarball entries as plain files under the workspace root, source entries
-      // as an indexed gitDir the loader checks subtrees out of. Registry-sourced
-      // closures deliver none; both maps stay empty and the loader fetches over
+      // as an indexed gitDir materialization checks subtrees out of. Registry-sourced
+      // closures deliver none; both maps stay empty and materialization fetches over
       // HTTP.
       const assetRoot = path.join(scratchDir, "workspace");
       const gitDirRoot = path.join(scratchDir, "gitdirs");
@@ -217,25 +198,22 @@ export function createWorkflowClosureMaterializer(
         }
       }
 
-      // Lay out phases 1-2 only. `topLevel` is emptied so the loader's
-      // phase-3 loop imports nothing -- no author code is evaluated on the
-      // host; the airlocked child owns the single import of the workflow
-      // entry. The full `entries` set is still fetched, SRI-verified,
-      // extracted, and laid out with its `node_modules` graph.
-      const layoutManifest: ToolPackageManifest = {
-        schemaVersion: frame.closure.schemaVersion,
-        topLevel: [],
-        entries: frame.closure.entries,
-      };
-      await loader.loadManifest({
-        manifest: layoutManifest,
+      const { storeDir } = await materializeClosure({
+        manifest: frame.closure,
         instanceScratchDir: scratchDir,
         assetRoot,
         assetMounts,
         gitDirs,
+        host: config.host,
+        cache: config.cache,
+        registries: config.registries,
+        fetchTarball:
+          config.fetchTarball ??
+          createTarballFetcher({
+            maxRegistryTarballBytes: config.registryMaxTarballBytes,
+          }),
       });
 
-      const storeDir = path.join(scratchDir, "store");
       const packageDir = storeEntryDir(
         storeDir,
         workflowPin.name,

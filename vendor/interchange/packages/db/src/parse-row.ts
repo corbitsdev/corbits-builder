@@ -16,12 +16,12 @@ import {
   TenantConfig,
   WorkflowLifecyclePolicy,
   workflowDefinitionStatuses,
+  workflowStandbyStates,
   workflowDefinitionVersionStatuses,
 } from "@intx/types";
 import { WireGrantRule } from "@intx/types/grant-wire";
 import { FrozenApprovalBundle } from "@intx/types/sidecar";
 import { RepoAction } from "@intx/types/repo";
-import { ToolPackagePinArray } from "@intx/types/tool-packages";
 import { workflowRunDispatchStatuses } from "./schema/workflow-run-dispatch";
 
 import type {
@@ -77,6 +77,7 @@ const workflowRunStatuses = [
   "cancelled",
 ] as const;
 const WorkflowRunStatusValidator = type.enumerated(...workflowRunStatuses);
+const WorkflowStandbyStateValidator = type.enumerated(...workflowStandbyStates);
 const WorkflowRunDispatchStatusValidator = type.enumerated(
   ...workflowRunDispatchStatuses,
 );
@@ -224,6 +225,10 @@ export function parseWorkflowRunRow(row: typeof workflowRun.$inferSelect) {
   return {
     ...row,
     status: WorkflowRunStatusValidator.assert(row.status),
+    standbyState:
+      row.standbyState === null
+        ? null
+        : WorkflowStandbyStateValidator.assert(row.standbyState),
     lifecyclePolicy:
       row.lifecyclePolicy == null
         ? null
@@ -248,11 +253,6 @@ export function parseWorkflowRunLaunchSpecRow(
         ? null
         : GrantWalkSnapshot.assert(row.grantSnapshot),
     sourceOfferingIds,
-    deployContent: JSONObject.assert(row.deployContent),
-    toolPackagePins:
-      row.toolPackagePins !== null
-        ? ToolPackagePinArray.assert(row.toolPackagePins)
-        : null,
   };
 }
 

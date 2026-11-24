@@ -10,7 +10,7 @@
 //   - approval gate: consumes the walk's output plus an operator-
 //     supplied `ApprovalSet` and yields a per-step pending delta.
 //   - deploy derivation + source pinning: pure address derivation
-//     (`deriveRunAddress`, `deriveStepAddress`, `resolveStepAddress`, ...)
+//     (`deriveRunAddress`, ...)
 //     and per-step inference-source resolution against the operator-
 //     approved grant set (`pickStepInferenceSource`, `pinInertStepSources`,
 //     `buildInertProjectionStepSources`, `buildInertBodyStepSources`), plus
@@ -47,7 +47,6 @@ export {
   describeCredentialBindingViolation,
   type CredentialBindingViolation,
 } from "./credential-binding-check";
-export { extractFoldedBody, type FoldedBody } from "./fold-synthesis";
 export {
   enumerateInertBodies,
   inertFlatNamespaceStepIds,
@@ -62,15 +61,6 @@ export {
   collectAgentBearingStepIds,
   buildInertProjectionStepSources,
   buildInertBodyStepSources,
-  buildSingleStepAgentDefinition,
   WorkflowDefinitionInvalidError,
-  type DeployContent,
 } from "./orchestrator";
-export {
-  deriveRunAddress,
-  deriveRunAgentId,
-  deriveStepAddress,
-  resolveStepAddress,
-  deriveStepAgentId,
-  deriveWorkflowRunRepoId,
-} from "./addresses";
+export { deriveRunAddress, deriveWorkflowRunRepoId } from "./addresses";

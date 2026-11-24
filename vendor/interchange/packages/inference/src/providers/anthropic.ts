@@ -65,13 +65,6 @@ export const ADAPTIVE_THINKING_MODELS: ReadonlySet<string> = new Set([
 // package checks both effort values.
 export const ADAPTIVE_THINKING_EFFORT = "high";
 
-// Adaptive models whose API default effort is "medium", not "high". Thinking
-// on with no effort sends no effort for them, so the API default applies.
-const MEDIUM_DEFAULT_EFFORT_MODELS: ReadonlySet<string> = new Set([
-  "claude-opus-5-5",
-  "claude-haiku-5-5",
-]);
-
 // ---------------------------------------------------------------------------
 // Request building
 // ---------------------------------------------------------------------------
@@ -175,7 +168,7 @@ function applyReasoning(
     }
     if (effort !== undefined) {
       body["output_config"] = { effort };
-    } else if (thinkingOn && !MEDIUM_DEFAULT_EFFORT_MODELS.has(model)) {
+    } else if (thinkingOn) {
       body["output_config"] = { effort: ADAPTIVE_THINKING_EFFORT };
     }
     if (thinking?.budgetTokens !== undefined) {

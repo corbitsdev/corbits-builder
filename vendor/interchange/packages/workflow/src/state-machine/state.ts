@@ -6,6 +6,7 @@
 // in-memory state across process restart.
 
 import type { ControlParkKind } from "@intx/types/runtime";
+import { correlationIdFromSignalName } from "@intx/types/signals";
 
 import type {
   RunId,
@@ -74,6 +75,22 @@ export function controlParkKindOf(awaitingSignal: {
   return "approval";
 }
 
+/**
+ * Whether an awaited signal is an approval park. An approval is parked on a
+ * reserved `signalName(correlationId)` channel. A plain `awaitSignal` gate on
+ * an author's name records no kind either, so the kind alone would read it
+ * as an approval.
+ */
+export function isApprovalPark(awaitingSignal: {
+  name: string;
+  parkKind?: ControlParkKind;
+}): boolean {
+  return (
+    controlParkKindOf(awaitingSignal) === "approval" &&
+    correlationIdFromSignalName(awaitingSignal.name) !== undefined
+  );
+}
+
 export interface ChildState {
   childRunId: RunId;
   spawnedBy: StepId;
@@ -125,13 +142,14 @@ export interface RunState {
    */
   unconsumedByCorrelation: Map<string, CorrelatedQueuedSignal[]>;
   /**
-   * Message-ids consumed by this run's `RunStarted` events. The kind
-   * handler rejects a re-issued `RunStarted` whose message-id appears
-   * here. v1 only ever issues `RunStarted` once per run, so the set has
-   * at most one entry, but the invariant is enforced regardless so
-   * resume-after-crash with partial commits stays well-defined.
+   * Claim-check identities consumed by this run's `RunStarted` events: a
+   * `consumedDeliveryKey` or a `consumedMessageId`. The kind handler
+   * rejects a re-issued `RunStarted` whose identity appears here. v1 only
+   * ever issues `RunStarted` once per run, so the set has at most one
+   * entry, but the invariant is enforced regardless so resume-after-crash
+   * with partial commits stays well-defined.
    */
-  consumedMessageIds: Set<string>;
+  consumedIdentities: Set<string>;
   cancelReason?: string;
 }
 
@@ -146,7 +164,7 @@ export function emptyState(runId: RunId): RunState {
     observedSignalIds: new Set(),
     unconsumedSignals: new Map(),
     unconsumedByCorrelation: new Map(),
-    consumedMessageIds: new Set(),
+    consumedIdentities: new Set(),
   };
 }
 

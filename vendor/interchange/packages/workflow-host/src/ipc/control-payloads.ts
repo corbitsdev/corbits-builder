@@ -8,6 +8,7 @@ import {
   SignatureStatus,
 } from "@intx/types/runtime-core";
 import { CredentialDelivery } from "@intx/types/credential-delivery";
+import { AttachmentError } from "@intx/types/sessions";
 
 /**
  * Wire-shape of one per-step credentials entry the supervisor pushes
@@ -21,7 +22,6 @@ import { CredentialDelivery } from "@intx/types/credential-delivery";
  */
 export const CredentialsSnapshotStepPayload = type({
   stepId: "string",
-  address: "string",
   grants: "unknown[]",
   contentHash: "string",
 });
@@ -69,6 +69,18 @@ export const SourcesUpdatedData = type({
 });
 
 /**
+ * One correlation a child's run is parked on, as the child reports it. The
+ * snapshot is required for an approval park and absent for an input park.
+ */
+export const ParkedCorrelation = type({
+  runId: "string > 0",
+  correlationId: "string > 0",
+  parkKind: ControlParkKind,
+  "snapshot?": BoundedApprovalSnapshot,
+});
+export type ParkedCorrelation = typeof ParkedCorrelation.infer;
+
+/**
  * Wire projection of an attachment on an outbound mail message. The
  * runtime `MessageAttachment.data` is raw bytes; the NDJSON control
  * channel is text, so the bytes ride base64-encoded under `dataBase64`.
@@ -80,6 +92,17 @@ export const OutboundAttachmentPayload = type({
   contentType: "string",
   dataBase64: "string",
 });
+
+/**
+ * An attachment on a `mail.compose.request`. The name is optional, as on
+ * the hub's REST mail route: the supervisor validates it with the same
+ * rules, which name an unnamed attachment by its position.
+ */
+export const ComposeAttachmentPayload = OutboundAttachmentPayload.omit(
+  "name",
+).merge({ "name?": "string" });
+
+export type ComposeAttachmentPayload = typeof ComposeAttachmentPayload.infer;
 
 /**
  * Wire projection of `@intx/types/runtime`'s `OutboundMessage`. Mirrors
@@ -526,8 +549,19 @@ const controlPayloadFactories = defineControlPayloadFactories({
       type: "'trigger.fire'",
       data: {
         runId: "string",
-        messageId: "string",
+        // The claim-check identity of the mail: the delivery key of a
+        // sender-scoped entry, or the bare Message-ID of a legacy entry.
+        // Each branch rejects other keys, so exactly one is present. The
+        // Message-ID of a sender-scoped entry rides in the payload's
+        // headers, not here.
+        mailIdentity: type({ deliveryKey: "string > 0", "+": "reject" }).or({
+          messageId: "string > 0",
+          "+": "reject",
+        }),
         receivedAt: "number",
+        // Asks for an `input.taken` reply once the run's `RunStarted` is
+        // committed.
+        "requestId?": "string",
         // The run's inbound-mail input, resolved by the supervisor (the sole
         // mail owner) before the frame: a decoded `Mail` (headers plus part
         // descriptors that reference the part bytes committed to the workflow-run
@@ -548,6 +582,8 @@ const controlPayloadFactories = defineControlPayloadFactories({
         // Addresses one onTrigger relay park. Omitted, the child commits
         // a name-FIFO delivery.
         "correlationId?": "string > 0",
+        // Asks for an `input.taken` reply once the child's commit settles.
+        "requestId?": "string",
         // The resume decision in FINAL form -- the child commits it as the
         // SignalReceived payload verbatim. Each sender owns any
         // provenance-specific preparation BEFORE this frame: the dispatch loop
@@ -557,6 +593,16 @@ const controlPayloadFactories = defineControlPayloadFactories({
         // polymorphic. Do NOT ship raw inbound mail bytes through here.
         payload: "unknown",
       },
+    }),
+  "input.taken": () =>
+    type({
+      // Answers a `trigger.fire` or `signal.deliver` that carried a
+      // `requestId`, once the child has committed the input or declined it. A
+      // standby attempt waits for this, so an input the child took is not
+      // dropped with the stopped child's writes. Declined mail refuses the
+      // attempt, and a declined signal is dropped.
+      type: "'input.taken'",
+      data: { requestId: "string", committed: "boolean" },
     }),
   drain: () =>
     type({
@@ -657,9 +703,14 @@ const controlPayloadFactories = defineControlPayloadFactories({
         delivery: CredentialDelivery.or("null"),
       },
     }),
-  ready: () =>
+  definition: () =>
     type({
-      type: "'ready'",
+      // The child's first upstream frame, sent once it has evaluated its
+      // closure: the inert projection of the definition it verified against
+      // `DEFINITION_HASH`, or why it could not load or verify it. The
+      // supervisor checks the projection against the same approved hash
+      // before it uses it, since the child runs author code and could lie.
+      type: "'definition'",
       data: {
         childPid: "number",
         /**
@@ -669,7 +720,22 @@ const controlPayloadFactories = defineControlPayloadFactories({
          * child's private key never leaves the child's address space.
          */
         childPublicKey: "string",
+        // The supervisor validates the projection when it checks the hash,
+        // so the IPC module stays free of the workflow wire schema.
+        result: type({
+          ok: "true",
+          projection: "unknown",
+        }).or({
+          ok: "false",
+          error: "string",
+        }),
       },
+    }),
+  ready: () =>
+    type({
+      // The child has applied its authority and resumed its in-flight runs,
+      // so the supervisor may start dispatching to it.
+      type: "'ready'",
     }),
   "recycle.request": () =>
     type({
@@ -756,6 +822,63 @@ const controlPayloadFactories = defineControlPayloadFactories({
         ),
       },
     }),
+  "substrate.write-delta.request": () =>
+    type({
+      // Child-initiated `writeTreeDelta` request, the delta-shaped
+      // sibling of `substrate.write.request`. The supervisor runs its own
+      // `writeTreeDelta` and asks the child for the delta with
+      // `substrate.delta.request`. `changedPathPrefixes` is the write's
+      // validation scope; null validates the whole tree. The supervisor
+      // resolves the child's awaiter with `substrate.write.response`.
+      type: "'substrate.write-delta.request'",
+      data: {
+        requestId: "string > 0",
+        repoId: {
+          kind: "string",
+          id: "string > 0",
+        },
+        ref: "string > 0",
+        changedPathPrefixes: type("string > 0").array().or("null"),
+        message: "string > 0",
+      },
+    }),
+  "substrate.delta.request": () =>
+    type({
+      // Supervisor-initiated request for the child's delta, fired from
+      // inside the supervisor's `writeTreeDelta` while the per-repo lock
+      // holds the ref at `parentCommitSha` (null when the ref does not
+      // exist yet). The child reads that commit from its own read-only
+      // store, so the frame carries no tree content.
+      type: "'substrate.delta.request'",
+      data: {
+        requestId: "string > 0",
+        parentCommitSha: "string > 0 | null",
+      },
+    }),
+  "substrate.delta.response": () =>
+    type({
+      // Child's delta: the files to write and the paths to delete. The
+      // substrate carries every other entry forward by its object id.
+      type: "'substrate.delta.response'",
+      data: {
+        requestId: "string > 0",
+        result: type(
+          {
+            ok: "true",
+            puts: type({
+              path: "string > 0",
+              contentBase64: "string",
+            }).array(),
+            deletes: type("string > 0").array(),
+          },
+          "|",
+          {
+            ok: "false",
+            reason: "string > 0",
+          },
+        ),
+      },
+    }),
   "substrate.write.response": () =>
     type({
       // Supervisor's terminal reply to a child's `substrate.write.request`.
@@ -802,18 +925,11 @@ const controlPayloadFactories = defineControlPayloadFactories({
       // failure). The message is carried as a JSON-projected
       // `OutboundMessage`; attachment bytes ride base64-encoded so the
       // NDJSON wire stays text-safe.
-      //
-      // `completeReferences` is set only by a connector reply. The
-      // supervisor then fills References from the committed mailbox when
-      // `inReplyTo` is set and `references` is absent. A send without the
-      // flag is left alone: `mail_send` is the same shape, and completing
-      // it would replace its one-parent chain with the full ancestry.
       type: "'outbound.message'",
       data: {
         requestId: "string > 0",
         senderAddress: "string > 0",
         "mailbox?": "string",
-        "completeReferences?": "boolean",
         message: OutboundMessagePayload,
       },
     }),
@@ -839,6 +955,50 @@ const controlPayloadFactories = defineControlPayloadFactories({
           {
             ok: "false",
             reason: "string > 0",
+          },
+        ),
+      },
+    }),
+  "mail.compose.request": () =>
+    type({
+      // Child-initiated request for a conversation message signed with the
+      // deployment key but not sent. Run code posts the bytes to the hub
+      // REST API itself, and the hub verifies them against the run
+      // principal's key. The request names no sender: the supervisor signs
+      // only as its deployment's mail address. It carries only what the
+      // hub's run mail route accepts, so the type is fixed to
+      // `conversation.message` and there is one recipient.
+      type: "'mail.compose.request'",
+      data: {
+        requestId: "string > 0",
+        message: {
+          to: "string > 0",
+          content: "string",
+          "attachments?": ComposeAttachmentPayload.array(),
+        },
+      },
+    }),
+  "mail.compose.response": () =>
+    type({
+      // Supervisor's reply to `mail.compose.request`. A success carries the
+      // signed RFC 2822 message base64-encoded and the Message-ID stamped
+      // into it. A refused attachment carries the structured
+      // `attachmentError` the hub's REST mail route reports for the same
+      // input, so the caller can act on its `code`.
+      type: "'mail.compose.response'",
+      data: {
+        requestId: "string > 0",
+        result: type(
+          {
+            ok: "true",
+            messageId: "string > 0",
+            rawMessageBase64: "string > 0",
+          },
+          "|",
+          {
+            ok: "false",
+            reason: "string > 0",
+            "attachmentError?": AttachmentError,
           },
         ),
       },
@@ -897,6 +1057,22 @@ const controlPayloadFactories = defineControlPayloadFactories({
         "snapshot?": BoundedApprovalSnapshot,
       },
     }),
+  "park.release": () =>
+    type({
+      // Child-initiated notice that a run is about to stop waiting on its
+      // approvals: it retires the wait on `correlationId`, or, with no
+      // `correlationId`, the run ends. The child sends it before the write
+      // that records the change, on the channel that write's request takes,
+      // so the supervisor stops resending the register before that history
+      // can be committed and pushed. A resend after the push could reach the
+      // hub after the pack that retired the wait and leave its approval
+      // pending.
+      type: "'park.release'",
+      data: {
+        runId: "string > 0",
+        "correlationId?": "string > 0",
+      },
+    }),
   "parked-correlations.request": () =>
     type({
       // Supervisor-initiated request: enumerate the child's currently-parked
@@ -929,14 +1105,40 @@ const controlPayloadFactories = defineControlPayloadFactories({
       type: "'parked-correlations.response'",
       data: {
         requestId: "string > 0",
-        parked: type({
-          runId: "string > 0",
-          correlationId: "string > 0",
-          parkKind: ControlParkKind,
-          // Snapshot is required for approval parks and absent for input parks.
-          "snapshot?": BoundedApprovalSnapshot,
-        }).array(),
+        parked: ParkedCorrelation.array(),
       },
+    }),
+  "quiet.request": () =>
+    type({
+      // Supervisor asks whether every run only waits on input from outside,
+      // so it can stop the child. With `wait` the child answers once it is
+      // quiet; without, it answers at once. While the run lives it first
+      // makes every buffered event durable. `runId` is the deployment's run.
+      // One check is out at a time: a new request supersedes one still
+      // waiting, which gets no answer.
+      type: "'quiet.request'",
+      data: {
+        requestId: "string > 0",
+        runId: "string > 0",
+        wait: "boolean",
+      },
+    }),
+  "quiet.response": () =>
+    type({
+      // `ended` alone when the deployment's run has ended, so there is
+      // nothing to stop it for. Otherwise `wakeAt` is the earliest timer the
+      // child has queued, and `error` says the child could not check, which
+      // refuses the standby attempt.
+      type: "'quiet.response'",
+      data: type({
+        requestId: "string > 0",
+        ended: "true",
+      }).or({
+        requestId: "string > 0",
+        quiet: "boolean",
+        "wakeAt?": "string.date.iso",
+        "error?": "string",
+      }),
     }),
   "resumed.runs": () =>
     type({

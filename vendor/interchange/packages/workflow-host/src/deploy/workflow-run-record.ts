@@ -10,16 +10,16 @@
 // the sidecar reports to the Hub and stamps on what the deployment sends),
 // `sources` (each step's ordered inference-source failover chain, threaded to
 // the child via the spawn env and durable nowhere else), `sessionId` (inference-event
-// correlation), `hubPublicKey` (the head's deploy-pack / inbound verification
-// key), `approvedWireHash` (the hub-approved wire hash the deploy frame
+// correlation), `approvedWireHash` (the hub-approved wire hash the deploy frame
 // carried, so a restore re-spawn feeds the child the same re-verify anchor
 // without recomputing it), `lineage`, and -- for a source-ref deployment --
 // the `sourceRef` pin (source + frozen closure) a restore needs to
 // re-materialize and re-evaluate the pinned code. It also carries the run's
 // credential cell: the latest delivery the deployment received, sealed. The
 // definition itself is re-materialized from that `sourceRef` closure on
-// restore, and each step's grants live in its agent-state repo, so neither is
-// duplicated here.
+// restore, so it is not duplicated here. A standby mark is the exception: it
+// holds the definition the child verified, since restoring a standby starts
+// no child to report it.
 
 import { mkdir, readdir, readFile } from "node:fs/promises";
 import { dirname, join as pathJoin, resolve } from "node:path";
@@ -40,6 +40,7 @@ import {
   SourceRefPin,
 } from "@intx/types/sidecar";
 
+import { RecordedStandby } from "../supervisor/recorded-standby";
 import {
   removeFileAtomicDurable,
   writeFileAtomicDurable,
@@ -100,7 +101,6 @@ const workflowRunRecordBase = {
   // no update, carries none. A restore seeds the supervisor with it.
   "credentials?": CredentialDelivery,
   "sessionId?": "string > 0",
-  "hubPublicKey?": "string > 0",
   // A deployment that no longer runs keeps its record until the Hub undeploys
   // it, marked so a restart reports it instead of spawning it: `stopped`, with
   // the error that ended it unless the Hub stopped it, or `tearing-down` when
@@ -108,6 +108,9 @@ const workflowRunRecordBase = {
   "state?": "'stopped' | 'tearing-down'",
   "retention?": DeploymentRetention,
   "error?": "string > 0",
+  // Set while the child is in standby: what a restart needs to restore the
+  // standby without the child while the run's history is still at `tip`.
+  "standby?": RecordedStandby,
 } as const;
 
 /**
@@ -218,9 +221,8 @@ async function transformDeliveryMaterials(
 }
 
 /**
- * Persist the initial run record after its slug is claimed and before the
- * child is spawned, so a crash mid-spawn leaves a record the boot scan
- * re-drives. Idempotent: it overwrites any existing record for the same run.
+ * Persist the initial run record before the child starts or resumes any run.
+ * Idempotent: it overwrites any existing record for the same run.
  *
  * Every credential secret in the run's `credentials` cell -- inference and
  * binding alike -- is sealed under the sidecar `cipher` before it touches disk,
@@ -393,6 +395,32 @@ export async function markWorkflowRunRecord(
             : {}),
           ...(mark.error !== undefined ? { error: mark.error } : {}),
         },
+        null,
+        2,
+      ),
+      { mode: 0o600, requireDirectorySync: true },
+    );
+    return true;
+  });
+}
+
+/**
+ * Record a live deployment's child as in standby, or clear it with `null`.
+ * Returns false when the boot scan would not accept the run's record.
+ */
+export async function markWorkflowRunRecordInStandby(
+  dataDir: string,
+  runId: string,
+  standby: RecordedStandby | null,
+): Promise<boolean> {
+  return withWorkflowRunRecord(dataDir, runId, async (path) => {
+    const checked = await readWorkflowRunRecord(path, runId);
+    if (checked === null) return false;
+    const { standby: _replaced, ...record } = checked;
+    await writeFileAtomicDurable(
+      path,
+      JSON.stringify(
+        standby === null ? record : { ...record, standby },
         null,
         2,
       ),

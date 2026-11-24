@@ -20,7 +20,7 @@
 //     match the seq computed from the substrate's prior tree. The
 //     runtime body is the single writer to the run's event log; a
 //     mismatch here means a parallel writer landed in between the
-//     caller's read and the merge under the substrate's per-repo lock.
+//     caller's read and the append under the substrate's per-repo lock.
 //     Translated into a thrown Error naming the run and the diverging
 //     seqs. No retries: the runtime decides higher up.
 //   - `validate_failed`: the substrate's kind handler rejected the
@@ -35,12 +35,22 @@ import type {
   RepoStore as SubstrateRepoStore,
 } from "@intx/hub-sessions/substrate";
 import {
+  classifyTerminalEvent,
   parseEventSeq,
   subscribeKind,
   WORKFLOW_RUN_EVENTS_FILE,
   splitCombinedEventLog,
 } from "@intx/hub-sessions/substrate";
 import type { RepoStore, WorkflowEvent } from "@intx/workflow";
+import { beginDelivery } from "@intx/workflow/runtime";
+
+import {
+  appendRunEvents,
+  runEventPath,
+  workflowEventToOnDisk,
+  type PriorRunEvent,
+  type SubstrateDeltaReads,
+} from "./on-disk-event";
 
 /**
  * Local handle for the runtime-env subscribe options. The workflow
@@ -195,7 +205,7 @@ async function readAllEventsForRun(
   const runDir = `${RUNS_PREFIX}/${runId}`;
   const runChildren = await reads.listDir(runDir);
   const decoder = new TextDecoder();
-  const entries: { seq: number; event: WorkflowEvent }[] = [];
+  const entries: ParsedRunEvent[] = [];
 
   // A terminated run is sealed into a single combined `events.jsonl`; an
   // in-flight run keeps per-event `events/<seq>.json` files. The two forms
@@ -208,6 +218,7 @@ async function readAllEventsForRun(
     (e) => e.type === "tree" && e.name === EVENTS_DIR,
   );
   if (combined !== undefined) {
+    forgetRunLog(opts.substrate, opts.repoId, runId);
     if (perEventDir !== undefined) {
       throw new Error(
         `workflow-runtime: run ${runId} carries both a combined ${WORKFLOW_RUN_EVENTS_FILE} and a per-event ${EVENTS_DIR}/ directory`,
@@ -227,34 +238,103 @@ async function readAllEventsForRun(
   }
 
   // Per-event form. `listDir` on an absent or non-tree path returns the
-  // empty array, so a run with no events reads as the empty log.
+  // empty array, so a run with no events reads as the empty log. The
+  // listing decides which events the log holds; the cache only saves
+  // reading and parsing a blob this store has parsed before.
   const eventBlobs = await reads.listDir(`${runDir}/${EVENTS_DIR}`);
+  const cached = takeRunLog(opts.substrate, opts.repoId, runId);
+  const parsed = new Map<string, ParsedRunEvent>();
   for (const child of eventBlobs) {
     if (child.type !== "blob") continue;
     const seqFromName = parseEventSeq(child.name);
     if (seqFromName === null) continue;
-    const raw = decoder.decode(await reads.readBlobByOid(child.oid));
     const source = `${opts.repoId.id}/${runId}/${EVENTS_DIR}/${child.name}`;
-    const entry = parseEventEnvelope(raw, source);
+    let entry = cached?.get(child.oid);
+    if (entry === undefined) {
+      const raw = decoder.decode(await reads.readBlobByOid(child.oid));
+      entry = parseEventEnvelope(raw, source);
+    }
     if (entry.seq !== seqFromName) {
       throw new Error(
         `workflow-runtime: read ${source} body.seq ${String(entry.seq)} does not match filename seq ${String(seqFromName)}`,
       );
     }
+    parsed.set(child.oid, entry);
     entries.push(entry);
   }
   entries.sort((a, b) => a.seq - b.seq);
-  return entries.map((e) => e.event);
+  const last = entries.at(-1);
+  if (last === undefined || !classifyTerminalEvent(last.event.kind).terminal) {
+    keepRunLog(opts.substrate, opts.repoId, runId, parsed);
+  }
+  // Each read owns its events, as it does without the cache, so a caller
+  // that changes one cannot change what a later read returns.
+  return entries.map((e) => structuredClone(e.event));
+}
+
+type ParsedRunEvent = { seq: number; event: WorkflowEvent };
+
+// A run's parsed events by blob oid, kept between reads so a long-lived
+// child that reloads its state several times per turn reads and parses
+// only the events added since its last read. A run's entry is dropped
+// when a read or an append on this store sees the run end, and the
+// least recently read runs beyond MAX_CACHED_RUN_LOGS are dropped.
+const MAX_CACHED_RUN_LOGS = 32;
+const runLogsByStore = new WeakMap<
+  object,
+  Map<string, ReadonlyMap<string, ParsedRunEvent>>
+>();
+
+function runLogsOf(
+  substrate: SubstrateRepoStore,
+): Map<string, ReadonlyMap<string, ParsedRunEvent>> {
+  let logs = runLogsByStore.get(substrate);
+  if (logs === undefined) {
+    logs = new Map();
+    runLogsByStore.set(substrate, logs);
+  }
+  return logs;
+}
+
+function takeRunLog(
+  substrate: SubstrateRepoStore,
+  repoId: RepoId,
+  runId: string,
+): ReadonlyMap<string, ParsedRunEvent> | undefined {
+  const logs = runLogsOf(substrate);
+  const key = runSummaryKey(repoId, runId);
+  const log = logs.get(key);
+  logs.delete(key);
+  return log;
+}
+
+function keepRunLog(
+  substrate: SubstrateRepoStore,
+  repoId: RepoId,
+  runId: string,
+  log: ReadonlyMap<string, ParsedRunEvent>,
+): void {
+  const logs = runLogsOf(substrate);
+  logs.set(runSummaryKey(repoId, runId), log);
+  for (const key of logs.keys()) {
+    if (logs.size <= MAX_CACHED_RUN_LOGS) break;
+    logs.delete(key);
+  }
+}
+
+function forgetRunLog(
+  substrate: SubstrateRepoStore,
+  repoId: RepoId,
+  runId: string,
+): void {
+  runLogsByStore.get(substrate)?.delete(runSummaryKey(repoId, runId));
 }
 
 // Parse one on-disk event envelope -- a per-event file's bytes or one line
 // of a combined `events.jsonl` (which holds the same bytes verbatim). The
 // per-event caller additionally cross-checks the seq against the filename;
 // the combined form carries the seq only in the body.
-function parseEventEnvelope(
-  raw: string,
-  source: string,
-): { seq: number; event: WorkflowEvent } {
+function parseEventEnvelope(raw: string, source: string): ParsedRunEvent {
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
@@ -301,32 +381,195 @@ function onDiskToWorkflowEvent(
 }
 
 /**
- * Translate a state-machine `WorkflowEvent` (using `kind` as the
- * discriminator) into the on-disk envelope shape (`{seq, type,
- * ...rest}`) the workflow-run kind handler validates and the
- * substrate's `subscribeKind` helper filters on. Exported so the
- * supervisor's terminal-commit path encodes a supervisor-authored
- * `RunFailed` through the same single source of the on-disk shape.
+ * What a duplicate or terminal check reads from one event: whether it is
+ * terminal, the `signalId` of a `SignalReceived`, and the `timerId` of a
+ * `TimerFired`. An event whose bytes are not a JSON object yields no
+ * facts.
  */
-export function workflowEventToOnDisk(
-  event: WorkflowEvent,
-  seq: number,
-): Record<string, unknown> {
-  const { kind, seq: _eventSeq, ...rest } = event;
-  return { seq, type: kind, ...rest };
+type RunEventFacts = {
+  terminal: boolean;
+  signalId: string | undefined;
+  timerFiredId: string | undefined;
+};
+
+/**
+ * What a run's log holds that a signal or timer append must not repeat:
+ * whether the run has ended, and the signal ids and fired timer ids it
+ * already holds.
+ */
+export type RunEventSummary = {
+  terminal: boolean;
+  signalIds: ReadonlySet<string>;
+  timerFiredIds: ReadonlySet<string>;
+};
+
+// A live run's summary and the last event it has read. Validation keeps
+// every committed event unchanged, so a summary stays true for as long as
+// the parent still holds the same blob at the cursor's seq; any other
+// listing (a reset, a restore, a sealed log) drops it.
+type CachedRunSummary = {
+  cursor: PriorRunEvent;
+  signalIds: Set<string>;
+  timerFiredIds: Set<string>;
+};
+
+// One map per substrate store, dropped with it. A run's entry is dropped
+// when this store writes or reads the run's terminal event. A run that
+// ends through another process, or is drained without ending, keeps its
+// small entry until its next signal or timer append or until the store
+// goes.
+const runSummariesByStore = new WeakMap<
+  object,
+  Map<string, CachedRunSummary>
+>();
+
+function runSummaryKey(repoId: RepoId, runId: string): string {
+  return `${repoId.kind}/${repoId.id}/${runId}`;
+}
+
+/**
+ * Summarize `events`, the run's per-event log in the parent tree in seq
+ * order. A run's appends on one `substrate` read each event once: a call
+ * reads only the events past the previous call's cursor. An ended run,
+ * which keeps no summary, costs one read, of its last event.
+ */
+export async function readRunEventSummary(
+  substrate: SubstrateRepoStore,
+  repoId: RepoId,
+  runId: string,
+  events: readonly PriorRunEvent[],
+  prior: SubstrateDeltaReads,
+): Promise<RunEventSummary> {
+  let runs = runSummariesByStore.get(substrate);
+  if (runs === undefined) {
+    runs = new Map();
+    runSummariesByStore.set(substrate, runs);
+  }
+  const key = runSummaryKey(repoId, runId);
+  const read = new Map<string, RunEventFacts>();
+  const factsOf = async (event: PriorRunEvent): Promise<RunEventFacts> => {
+    let facts = read.get(event.oid);
+    if (facts === undefined) {
+      facts = eventFactsOf(await prior.readBlobByOid(event.oid));
+      read.set(event.oid, facts);
+    }
+    return facts;
+  };
+
+  let cached = runs.get(key);
+  if (cached !== undefined && !listingHolds(events, cached.cursor)) {
+    runs.delete(key);
+    cached = undefined;
+  }
+  let unread = events;
+  if (cached === undefined) {
+    const last = events.at(-1);
+    if (last === undefined) {
+      return {
+        terminal: false,
+        signalIds: new Set(),
+        timerFiredIds: new Set(),
+      };
+    }
+    // A terminal event can only be the last, so an ended run is known
+    // from that one read and keeps no summary.
+    if ((await factsOf(last)).terminal) {
+      return { terminal: true, signalIds: new Set(), timerFiredIds: new Set() };
+    }
+    cached = { cursor: last, signalIds: new Set(), timerFiredIds: new Set() };
+  } else {
+    const cursorSeq = cached.cursor.seq;
+    unread = events.filter((event) => event.seq > cursorSeq);
+  }
+  for (const event of unread) {
+    const facts = await factsOf(event);
+    if (facts.terminal) {
+      runs.delete(key);
+      return {
+        terminal: true,
+        signalIds: cached.signalIds,
+        timerFiredIds: cached.timerFiredIds,
+      };
+    }
+    if (facts.signalId !== undefined) cached.signalIds.add(facts.signalId);
+    if (facts.timerFiredId !== undefined) {
+      cached.timerFiredIds.add(facts.timerFiredId);
+    }
+    cached.cursor = event;
+  }
+  runs.set(key, cached);
+  return {
+    terminal: false,
+    signalIds: cached.signalIds,
+    timerFiredIds: cached.timerFiredIds,
+  };
+}
+
+/** Drop the summary of a run that has ended. */
+function forgetRunEventSummary(
+  substrate: SubstrateRepoStore,
+  repoId: RepoId,
+  runId: string,
+): void {
+  runSummariesByStore.get(substrate)?.delete(runSummaryKey(repoId, runId));
+}
+
+function listingHolds(
+  events: readonly PriorRunEvent[],
+  cursor: PriorRunEvent,
+): boolean {
+  for (let i = events.length - 1; i >= 0; i--) {
+    const event = events[i];
+    if (event === undefined || event.seq < cursor.seq) return false;
+    if (event.seq === cursor.seq) return event.oid === cursor.oid;
+  }
+  return false;
+}
+
+const EventFactsBody = type({
+  type: "string",
+  "signalId?": "unknown",
+  "timerId?": "unknown",
+  "+": "ignore",
+});
+
+function eventFactsOf(bytes: Uint8Array): RunEventFacts {
+  const none = {
+    terminal: false,
+    signalId: undefined,
+    timerFiredId: undefined,
+  };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(new TextDecoder().decode(bytes));
+  } catch {
+    // A corrupt blob is rejected by validatePush at write time.
+    return none;
+  }
+  const body = EventFactsBody(parsed);
+  if (body instanceof type.errors) return none;
+  return {
+    terminal: classifyTerminalEvent(body.type).terminal,
+    signalId:
+      body.type === "SignalReceived" && typeof body.signalId === "string"
+        ? body.signalId
+        : undefined,
+    timerFiredId:
+      body.type === "TimerFired" && typeof body.timerId === "string"
+        ? body.timerId
+        : undefined,
+  };
 }
 
 /**
  * Append one or more contiguous events to a run's event log in a
  * SINGLE durable commit. The events must carry strictly-monotonic,
  * gap-free seqs continuing the prior tree's tip (the first event's seq
- * is `priorLastSeq + 1`); the merge writes every `events/<seq>.json`
- * blob into one `writeTreePreservingPrefix` tree-rewrite, so N events
- * cost one tree-rewrite + one ref-advance instead of N. An empty
- * `events` array is a no-op. The seq-contiguity check is performed
- * against the supplied events themselves so a caller that buffered a
- * gap surfaces a single-writer conflict rather than a silent gap in
- * the tree.
+ * is `priorLastSeq + 1`); N events cost one commit instead of N. An
+ * empty `events` array is a no-op. The seq-contiguity check is
+ * performed against the supplied events themselves so a caller that
+ * buffered a gap surfaces a single-writer conflict rather than a silent
+ * gap in the tree.
  */
 async function appendBatchEvents(
   opts: WorkflowRunRepoStoreOpts,
@@ -334,7 +577,6 @@ async function appendBatchEvents(
   events: readonly WorkflowEvent[],
 ): Promise<void> {
   if (events.length === 0) return;
-  const prefix = `${RUNS_PREFIX}/${runId}/${EVENTS_DIR}/`;
   const firstEvent = events[0];
   if (firstEvent === undefined) throw new Error("unreachable");
   const lastEvent = events[events.length - 1];
@@ -351,58 +593,44 @@ async function appendBatchEvents(
       : opts.principal;
   let seqConflict: { expected: number; supplied: number } | null = null;
   try {
-    await opts.substrate.writeTreePreservingPrefix(
+    await appendRunEvents({
+      substrate: opts.substrate,
       principal,
-      opts.repoId,
-      opts.ref,
-      {
-        preservePrefix: prefix,
-        merge: async (existing) => {
-          // The runtime body emits events at `state.lastSeq + 1` and
-          // `emptyState.lastSeq = 0`, so the first append on an empty
-          // events tree carries seq=1. The adapter mirrors that
-          // convention: the prior tree's lastSeq is the maximum seq
-          // observed under the prefix, or 0 when no events exist yet;
-          // the expected next seq is `priorLastSeq + 1`. Every event
-          // in the batch must continue contiguously from there.
-          let priorLastSeq = 0;
-          for (const filepath of existing.keys()) {
-            const name = filepath.slice(prefix.length);
-            const seq = parseEventSeq(name);
-            if (seq === null) continue;
-            if (seq > priorLastSeq) priorLastSeq = seq;
+      repoId: opts.repoId,
+      ref: opts.ref,
+      runId,
+      message:
+        events.length === 1
+          ? `append workflow event ${firstEvent.kind} for run ${runId}`
+          : `append ${String(events.length)} workflow events ${firstEvent.kind}..${lastEvent.kind} for run ${runId}`,
+      compute: async (existing) => {
+        // The runtime body emits events at `state.lastSeq + 1` and
+        // `emptyState.lastSeq = 0`, so the first append on an empty
+        // events tree carries seq=1. The adapter mirrors that
+        // convention: the prior tree's lastSeq is the highest seq under
+        // the run's events, or 0 when no events exist yet; the expected
+        // next seq is `priorLastSeq + 1`. Every event in the batch must
+        // continue contiguously from there.
+        const priorLastSeq = existing.at(-1)?.seq ?? 0;
+        const files: Record<string, string | Uint8Array> = {};
+        let expectedSeq = priorLastSeq + 1;
+        for (const event of events) {
+          if (event.seq !== expectedSeq) {
+            // Capture the divergence and write nothing, so the commit
+            // leaves the log unchanged; the throw happens outside the
+            // delta callback so the adapter's error carries the full
+            // context.
+            seqConflict = { expected: expectedSeq, supplied: event.seq };
+            return {};
           }
-          const files: Record<string, string | Uint8Array> = {};
-          for (const [k, v] of existing) files[k] = v;
-          let expectedSeq = priorLastSeq + 1;
-          for (const event of events) {
-            if (event.seq !== expectedSeq) {
-              // Capture the divergence and return an unchanged tree so
-              // the substrate's commit short-circuits (the kind handler
-              // accepts an empty diff against the same prior tree); the
-              // throw happens outside the merge callback so the
-              // adapter's error carries the full context. The empty
-              // tree returned here preserves the existing prefix
-              // bit-for-bit so the rollback path inside the substrate
-              // does not need to fire.
-              seqConflict = { expected: expectedSeq, supplied: event.seq };
-              const passthrough: Record<string, string | Uint8Array> = {};
-              for (const [k, v] of existing) passthrough[k] = v;
-              return passthrough;
-            }
-            const onDisk = workflowEventToOnDisk(event, expectedSeq);
-            files[`${prefix}${String(expectedSeq)}.json`] =
-              JSON.stringify(onDisk);
-            expectedSeq += 1;
-          }
-          return files;
-        },
-        message:
-          events.length === 1
-            ? `append workflow event ${firstEvent.kind} for run ${runId}`
-            : `append ${String(events.length)} workflow events ${firstEvent.kind}..${lastEvent.kind} for run ${runId}`,
+          files[runEventPath(runId, expectedSeq)] = JSON.stringify(
+            workflowEventToOnDisk(event, expectedSeq),
+          );
+          expectedSeq += 1;
+        }
+        return files;
       },
-    );
+    });
   } catch (cause) {
     const message = cause instanceof Error ? cause.message : String(cause);
     if (message.startsWith("path_violation: ")) {
@@ -410,6 +638,13 @@ async function appendBatchEvents(
       throw new Error(reason, { cause });
     }
     throw cause;
+  }
+  if (
+    seqConflict === null &&
+    events.some((event) => classifyTerminalEvent(event.kind).terminal)
+  ) {
+    forgetRunEventSummary(opts.substrate, opts.repoId, runId);
+    forgetRunLog(opts.substrate, opts.repoId, runId);
   }
   if (seqConflict !== null) {
     const conflict: { expected: number; supplied: number } = seqConflict;
@@ -428,19 +663,21 @@ async function* subscribeRun(
   // workflow-event `type` keeps the runtime body's contract intact (it
   // wants every event for the run, not a subset). The substrate helper
   // also surfaces per-run attribution via the entry's `runId`, which
-  // we use to filter just this run's events. Replay-then-live mode
-  // mirrors `SubscribeOpts.from`: `"head"` emits only events committed
-  // strictly after subscription, `{ seq }` enumerates prior events at
-  // or after the supplied seq before transitioning to live.
+  // we use to filter just this run's events.
+  //
+  // `{ seq }` is a seq in this run's log, which the substrate's replay does
+  // not count in, and the child's proxy store does not replay at all. So the
+  // tail always starts at head and the replay comes from the run's log.
+  const stopTail = new AbortController();
   const kindOpts: Parameters<typeof subscribeKind>[5] = {
-    signal: subOpts.signal,
-    from: subOpts.from,
+    signal: AbortSignal.any([subOpts.signal, stopTail.signal]),
+    from: "head",
     kinds: ALL_WORKFLOW_EVENT_TYPES,
   };
   if (subOpts.bufferLimit !== undefined) {
     kindOpts.bufferLimit = subOpts.bufferLimit;
   }
-  const iter = subscribeKind(
+  const tail = subscribeKind(
     opts.substrate,
     opts.principal,
     opts.repoId,
@@ -448,9 +685,42 @@ async function* subscribeRun(
     OnDiskEnvelope,
     kindOpts,
   );
-  for await (const entry of iter) {
-    if (entry.runId !== runId) continue;
-    const event = onDiskToWorkflowEvent(entry.event);
-    yield { seq: entry.event.seq, event };
+  // This pull attaches the tail. A commit during the read below is then in the
+  // tail even when the read missed it, and the seq drops it when it did not.
+  let pending = tail.next();
+  void pending.catch(() => undefined);
+  let replayedThrough = 0;
+  try {
+    if (subOpts.from !== "head") {
+      // Committed input can sit in this read with no subscriber to count it,
+      // so it counts until the consumer has taken what the read found.
+      const endRead = beginDelivery();
+      try {
+        for (const event of await readAllEventsForRun(opts, runId)) {
+          if (event.seq < subOpts.from.seq) continue;
+          if (subOpts.signal.aborted) return;
+          replayedThrough = event.seq;
+          yield { seq: event.seq, event };
+        }
+      } finally {
+        endRead();
+      }
+    }
+    for (;;) {
+      const next = await pending;
+      if (next.done === true) return;
+      const entry = next.value;
+      if (entry.runId === runId && entry.event.seq > replayedThrough) {
+        const event = onDiskToWorkflowEvent(entry.event);
+        yield { seq: entry.event.seq, event };
+      }
+      pending = tail.next();
+    }
+  } finally {
+    // A return closes a generator only between its pulls, so end the pull
+    // still pending before closing the tail.
+    stopTail.abort();
+    await pending.catch(() => undefined);
+    await tail.return();
   }
 }

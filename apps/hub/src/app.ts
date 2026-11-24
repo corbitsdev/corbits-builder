@@ -14,13 +14,15 @@ import {
   withExecutableWorkflowRun,
 } from "@intx/db";
 import { createEnvKeyCredentialCipher } from "@intx/crypto";
+import { HUB_CONDITION_REGISTRY } from "@intx/authz";
 import {
-  HUB_CONDITION_REGISTRY,
   createHubContextMiddleware,
   createCorrespondentGrantMinter,
+  createMailSendAuthorizer,
   createMailTriggeredRunGrantsMaterializer,
   createRequireGrant,
   createResolveTenant,
+  createRunGrantsLoader,
   mountHubRoutes,
   type AppEnv,
   type GetSession,
@@ -36,6 +38,7 @@ import {
   createRunCredentialsLoader,
   pushCredentialReconcile,
   pushCredentialRevoke,
+  pushCredentialRotation,
   type SidecarLookups,
   createSessionService,
   createSidecarCredentialResolver,
@@ -61,10 +64,7 @@ import {
   mountModelLogins,
   oauthModelProviders,
 } from "./inference/oauth-login.ts";
-import {
-  createRenewedPush,
-  startTokenRefresher,
-} from "./credentials/refresher.ts";
+import { startTokenRefresher } from "./credentials/refresher.ts";
 import { mountPluginSignIns } from "./credentials/sign-in-routes.ts";
 import {
   createPluginSignIns,
@@ -101,7 +101,6 @@ import {
 import { createAvailabilityRoutes } from "./availability.ts";
 import { createGitTokenBoundary } from "./git-token-boundary.ts";
 import { createSidecarWebSocket } from "./sidecar-websocket.ts";
-import { createCoordinatorCredentialRefresh } from "./auth/coordinator-credential-refresh.ts";
 import { createAgentTokenBridge } from "./auth/agent-token-bridge.ts";
 import { prepareMailTriggeredSpecialistGrants } from "./auth/specialist-project-grant.ts";
 import {
@@ -215,7 +214,6 @@ export async function createHubRuntime(
     const assetService = createAssetService({
       db: handle.db,
       repoStore: agentRepoStore.repoStore,
-      reservedPackageRegistryNames: new Set(httpRegistries.keys()),
     });
     const nativeGrants = createGrantStore(handle.db);
     const runTokenStore = createRunTokenStore({
@@ -235,15 +233,15 @@ export async function createHubRuntime(
     });
     const mailTriggeredRunGrants = createMailTriggeredRunGrantsMaterializer({
       db: handle.db,
-      principalKeyStore,
       runTokenStore,
-      grantStore: nativeGrants,
+      grantStoreFor: createGrantStore,
       registry: HUB_CONDITION_REGISTRY,
     });
     const lookups: SidecarLookups = {
       ...nativeLookups,
       persistMail: createWorkflowMailPersistence({
         db: handle.db,
+        principalKeyStore,
         directory: reportMailDirectory,
       }),
       materializeMailTriggeredRunGrants: async (args) => {
@@ -254,6 +252,7 @@ export async function createHubRuntime(
         return mailTriggeredRunGrants(args);
       },
       loadRunCredentials,
+      loadRunGrants: createRunGrantsLoader({ db: handle.db }),
       resolveSenderKey: (address) =>
         resolveFrameSenderKey(handle.db, principalKeyStore, address),
       resolveSenderKeyStrict: async (address) =>
@@ -261,16 +260,16 @@ export async function createHubRuntime(
           ?.publicKey ?? null,
       resolveSenderPrincipal: (address) =>
         resolveSenderPrincipal(handle.db, principalKeyStore, address),
-      mintCorrespondentGrant: createCorrespondentGrantMinter({
+      mintCorrespondentGrant: createCorrespondentGrantMinter({ db: handle.db }),
+      authorizeMailSend: createMailSendAuthorizer({
         db: handle.db,
-        principalKeyStore,
+        grantStoreFor: createGrantStore,
       }),
     };
     const sidecarCredentials = createSidecarCredentialResolver({
       db: handle.db,
     });
     const sidecarRouter = createSidecarRouter({
-      hubPublicKey: hexEncode(key.publicKey),
       authenticateSidecar: async ({ token }) =>
         sidecarCredentials.resolve(token),
       validateSidecarIdentity: sidecarCredentials.isCurrent,
@@ -299,7 +298,6 @@ export async function createHubRuntime(
       sidecarRouter,
       sidecarAllocationRouter: sidecarRouter,
       agentRepoStore,
-      assetService,
       db: handle.db,
       toolPackageRegistries: { httpRegistries, defaultRegistry: "npmjs" },
       loadRunCredentials,
@@ -325,7 +323,6 @@ export async function createHubRuntime(
     const sessions = createHubSessionOrchestrator({
       events: sidecarRouter.events,
       router: sidecarRouter,
-      db: handle.db,
       eventCollectors,
     });
     const workflows = await createWorkflowServices({
@@ -363,7 +360,6 @@ export async function createHubRuntime(
             sourceAuthorityPrincipalId: args.principalId,
             sourceOfferingIds: args.deployment.sourceOfferingIds,
             defaultSourceOfferingId: args.deployment.defaultSourceOfferingId,
-            deployContent: { systemPrompt: "" },
           });
           return { runId: prepared.anchorRunId };
         } catch (error) {
@@ -478,15 +474,6 @@ export async function createHubRuntime(
     );
     app.use("/api/tenants/:tenantId/*", coordinatorTokens.middleware);
     app.use("/api/workflow-project-scope", coordinatorTokens.middleware);
-    app.use(
-      "/api/tenants/:tenantId/credentials/:credentialId",
-      createCoordinatorCredentialRefresh({
-        db: handle.db,
-        router: sidecarRouter,
-        cipher: credentialCipher,
-        loadRunCredentials,
-      }),
-    );
     app.route(
       "/api/integrations",
       createAuthMethodsRoutes(
@@ -697,12 +684,14 @@ export async function createHubRuntime(
       providers: modelProviders,
       requireGrant,
     });
-    const pushRenewed = createRenewedPush({
-      db: handle.db,
-      cipher: credentialCipher,
-      sidecarRouter,
-      loadRunCredentials,
-    });
+    const pushRenewed = (tenantId: string, credentialId: string) =>
+      pushCredentialRotation(
+        handle.db,
+        sidecarRouter,
+        tenantId,
+        credentialId,
+        credentialCipher,
+      );
     const pluginSignIns = createPluginSignIns({
       db: handle.db,
       cipher: credentialCipher,

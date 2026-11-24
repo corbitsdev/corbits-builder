@@ -1,7 +1,7 @@
 import { defineTool, type AnnotatedToolFactory } from "@intx/agent/authoring";
 import { CredentialResponse } from "@intx/types";
 import { HUB_CREDENTIAL_HANDLE } from "@intx/types/credential-delivery";
-import { questionTool } from "@intx/inference";
+import { questionInputSchema } from "@intx/inference";
 import { QUESTION_TOOL_NAME, type ToolCall } from "@intx/types/runtime-core";
 import {
   CheckList,
@@ -100,7 +100,7 @@ const questionDefinition = {
   description:
     "Ask the person one or more questions and wait for their answers. Use it only when the work would be done differently depending on the answer, and never for a choice an action has a screen for: open that screen with execute instead. The result is { answers: [{ question, answer: [the chosen labels or what they typed] }] } in the order asked, or { reply } when the person wrote back instead of answering; a reply is their answer in their own words.",
   inputSchema: describedSchema(
-    { toJsonSchema: () => questionTool.inputSchema },
+    { toJsonSchema: () => questionInputSchema },
     {
       questions: {
         about: "The questions to ask, in the order the person reads them.",

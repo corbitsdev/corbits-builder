@@ -18,9 +18,11 @@
   },
   "dependencies": {
     "@intx/agent": "workspace:*",
+    "@intx/authz": "workspace:*",
     "@intx/crypto": "workspace:*",
     "@intx/db": "workspace:*",
     "@intx/hub-common": "workspace:*",
+    "@intx/inference": "workspace:*",
     "@intx/log": "workspace:*",
     "@intx/mime": "workspace:*",
     "@intx/pack-transport": "workspace:*",

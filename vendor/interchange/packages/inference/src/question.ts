@@ -13,25 +13,21 @@ import {
   type PendingOperation,
   QuestionScreen,
   type ToolCall,
-  type ToolDefinition,
 } from "@intx/types/runtime-core";
 
-/** The `question` tool as the model sees it. An agent offers it by listing it. */
-export const questionTool: ToolDefinition = {
-  name: QUESTION_TOOL_NAME,
-  description:
-    "Ask the person one or more questions and wait for their answers. Call it on its own, with no other tool call in the same reply. Each question has the full question, a short header, and options with a label and a description. Put the option you recommend first and end its label with (Recommended). Leave options empty for a free-text answer. multiple lets the person pick several. custom, on by default, lets them type their own answer, so do not add an Other option. The result is { answers: [{ question, answer: [chosen labels or typed text] }] } in the order asked, or { reply } when the person wrote back instead of answering.",
-  inputSchema: {
-    ...QuestionArguments.toJsonSchema({
-      // The defaults and the option rules have no JSON Schema form; the call
-      // is checked against the full type when it arrives.
-      fallback: {
-        morph: (ctx) => ctx.base,
-        predicate: (ctx) => ctx.base,
-      },
-    }),
+/**
+ * The `question` tool's input as the model sees it. A host offers the tool in
+ * its own words; any call named `question` is parked whatever definition
+ * offered it.
+ */
+export const questionInputSchema = QuestionArguments.toJsonSchema({
+  // The defaults and the option rules have no JSON Schema form; the call is
+  // checked against the full type when it arrives.
+  fallback: {
+    morph: (ctx) => ctx.base,
+    predicate: (ctx) => ctx.base,
   },
-};
+});
 
 export function createQuestionExtension(): BeforeToolExtension {
   return {
