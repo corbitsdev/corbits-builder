@@ -325,7 +325,7 @@ export function RoomView({
         return;
       page.style.setProperty("--box-height", `${String(box.offsetHeight)}px`);
       // The box with the pill or handle standing above it, which a view that fills the pane ends
-      // above, as it cannot run on beneath them the way a written page does.
+      // above, so nothing of it shows beneath them.
       const grip = box.querySelector<HTMLElement>('[data-slot="chat-grip"]');
       const top = box.getBoundingClientRect().top;
       const reach =

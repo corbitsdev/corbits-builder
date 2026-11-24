@@ -45,9 +45,7 @@
   grid-template-columns:
     minmax(0, calc((100% - var(--page-width)) / 2))
     auto minmax(0, 1fr);
-  /* The page scrolls on under the prompt box, and ends the box's height above the reader's foot
-     so its last lines come clear of it. */
-  padding: 14px 0 var(--box-height, 0px);
+  padding: 14px 0 96px;
 }
 
 /* Download and Share, then the contents, against the page's left edge. */
