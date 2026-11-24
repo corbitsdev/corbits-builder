@@ -69,7 +69,8 @@
      lightens it below. */
   --brand-primary: var(--primary);
   --brand-primary-active: var(--primary-active);
-  --wb-ring: var(--ring);
+  /* Focus is drawn in the action blue, the library's own included; orange is the brand's alone. */
+  --wb-ring: var(--wb-action);
   --wb-okay: var(--ok);
   --wb-destructive: var(--destructive);
   /* White on the destructive fill in both themes; the library's own turns black in dark, which
@@ -128,13 +129,10 @@ body {
     var(--brand-primary-active) 76%,
     var(--background)
   );
+  --ring: var(--wb-ring);
   /* What the person has picked, in every question and screen alike; stronger on dark, where a
-     faint tint of the lightened orange disappears into the ground. */
-  --wb-selected: color-mix(
-    in oklab,
-    var(--primary-emphasis) 16%,
-    var(--background)
-  );
+     faint tint of the blue disappears into the ground. */
+  --wb-selected: color-mix(in oklab, var(--wb-action) 16%, var(--background));
   /* Every question and screen in the conversation fills the message column, open or settled. */
   --wb-question-width: 100%;
 }
@@ -146,11 +144,7 @@ body {
     var(--brand-primary-active) 76%,
     var(--foreground)
   );
-  --wb-selected: color-mix(
-    in oklab,
-    var(--primary-emphasis) 30%,
-    var(--background)
-  );
+  --wb-selected: color-mix(in oklab, var(--wb-action) 30%, var(--background));
 }
 
 /* Night: a Pure Black ground under the theme's own page colour, edged in

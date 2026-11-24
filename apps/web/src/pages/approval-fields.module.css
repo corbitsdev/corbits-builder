@@ -73,7 +73,7 @@
 }
 
 .leanControl[data-variant="form"]:focus {
-  border-color: var(--wb-primary, var(--primary));
+  border-color: var(--wb-action);
 }
 
 .saveButton {
