@@ -1016,6 +1016,26 @@ export const ApproveInBoxDark: Story = {
   globals: { mode: "dark" },
 };
 
+/**
+ * The chat pulled up over a page while a tall approval waits in the box: the history gives way, so
+ * the card and the typing row under it stay on screen.
+ */
+export const ChatSheetOverApproval: Story = {
+  args: { ...chatBehindBox, ...ApproveInBox.args },
+  play: async ({ canvasElement }) => {
+    await openChat(canvasElement);
+    const field = canvasElement.querySelector(
+      '[data-slot="room-project"] [data-slot="prompt-input"]',
+    );
+    if (field === null) throw new Error("No typing row in the box");
+    await waitFor(() =>
+      expect(field.getBoundingClientRect().bottom).toBeLessThanOrEqual(
+        window.innerHeight,
+      ),
+    );
+  },
+};
+
 /** Not now turns the screen down from the box, without opening it. */
 export const ScreenNotNow: Story = {
   ...ScreenWaiting,

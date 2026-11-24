@@ -207,8 +207,10 @@
   overscroll-behavior: contain;
 }
 
+/* Held at its full height, so when the composer runs out of room the history gives way and what
+   waits in the box and the typing row under it stay on screen. */
 .box {
   display: flex;
+  flex: none;
   flex-direction: column;
-  min-height: 0;
 }

@@ -1,6 +1,9 @@
 .composer {
   padding: var(--space-2) var(--space-4) var(--space-4);
-  display: grid;
+  /* A flex column, so at the cap the notes and the chat history shrink. A grid's rows grow to fit
+     what is in them and push the box out of the bottom. */
+  display: flex;
+  flex-direction: column;
   gap: var(--space-2);
   flex: none;
   position: relative;
