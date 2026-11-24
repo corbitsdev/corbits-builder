@@ -5,6 +5,8 @@ import { Toaster } from "sonner";
 // The same order main.tsx imports them in: the library's sheet, then ours.
 import "@corbits/react-ui/styles.css";
 import "../src/styles.css";
+// The plugins' roles and screens, as main.tsx installs them, so a hand-off reads as its specialist.
+import "../src/pages/workspace/screen-files.ts";
 
 type Mode = "light" | "dark";
 

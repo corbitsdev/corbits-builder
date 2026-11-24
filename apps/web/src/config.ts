@@ -20,6 +20,18 @@ export const IMPORTED_PROJECT_LEAD =
 const megabytes = (bytes: number) =>
   `${String(Math.floor(bytes / 1_048_576))} MB`;
 
+/** Which pieces of the agents' activity the conversation draws, each switched on its own. */
+export const ACTIVITY_SHOWN = {
+  coordinatorSteps: false,
+  specialists: false,
+  specialistSteps: false,
+  specialistDocument: false,
+  specialistInstruction: false,
+  specialistReport: false,
+  thinking: true,
+};
+export type ActivityShown = typeof ACTIVITY_SHOWN;
+
 /** A step's row while it works and once done, given what it touches when the call names it. */
 type StepPhrase = {
   readonly working: (subject?: string) => string;

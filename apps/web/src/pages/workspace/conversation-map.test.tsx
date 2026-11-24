@@ -19,6 +19,15 @@ test("each piece of work from one coordinator message has its own entry, on its 
   const html = renderToStaticMarkup(
     <RoomThread
       standing={(unit) => workUnitStanding(unit, ended)}
+      shows={{
+        coordinatorSteps: false,
+        specialists: true,
+        specialistSteps: false,
+        specialistDocument: false,
+        specialistInstruction: false,
+        specialistReport: false,
+        thinking: false,
+      }}
       results={
         new Map([
           [
