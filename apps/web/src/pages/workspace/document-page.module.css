@@ -39,20 +39,31 @@
   flex-shrink: 0;
 }
 
-/* The page sits on the midline; contents and margin share what is left either side, the contents
-   against the page's left edge as the margin's cards are against its right, not out at the
-   canvas's. */
+/* The page stands at the window's middle, as the chat does, so it stays still as the sidebar opens
+   and closes: the sidebar takes the room left of it, and the margin keeps the rest. The contents
+   stand against the page's left edge as the margin's cards do against its right, not out at the
+   canvas's. In the room the page is the chat's width, which the sidebar's opening does not change. */
 .layout {
+  --page-width: min(
+    var(--sheet-width),
+    var(--chat-width, var(--sheet-width)),
+    100cqi - 2 * var(--space-4)
+  );
+
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  grid-template-columns:
+    minmax(0, calc((100% - var(--page-width)) / 2 - var(--chat-shift, 0px)))
+    auto minmax(0, 1fr);
   padding: 14px 0 96px;
 }
 
 .side {
   grid-column: 1;
-  justify-self: end;
+  display: flex;
+  justify-content: flex-end;
   box-sizing: border-box;
-  max-width: 100%;
+  min-width: 0;
+  container: side / inline-size;
   position: sticky;
   /* Level with the page's top edge, and held there as the page scrolls past. */
   top: 8px;
@@ -88,11 +99,8 @@
    would hold an aspect ratio's height and let a long text run off its foot. */
 .sheet {
   box-sizing: border-box;
-  width: var(--sheet-width);
-  max-width: calc(100cqi - 2 * var(--space-4));
-  min-height: calc(
-    min(var(--sheet-width), 100cqi - 2 * var(--space-4)) * 1.4142
-  );
+  width: var(--page-width);
+  min-height: calc(var(--page-width) * 1.4142);
   padding: 40px 64px 120px;
   border-radius: 2px;
   background: var(--wb-pane);
@@ -354,8 +362,8 @@
 }
 
 /* Without room for the contents beside the page, they give way to it. */
-@container (width < 1120px) {
-  .side {
+@container side (width < 8rem) {
+  .side > * {
     display: none;
   }
 }
