@@ -596,6 +596,9 @@ export const wording = {
     enableAiFirst: "Enable AI to start the conversation",
     dropFiles: "Drop files to attach them",
     noCoordinator: "This project has no running coordinator.",
+    /** Puts the project view away, back to the conversation under it. */
+    backToChat: "Back to chat",
+    backToChatHint: "Back to chat (Esc)",
     /** Opens everything the project has, its documents, design and preview, over the conversation. */
     openProject: "Project",
     openProjectHint: "Open the project's documents, design and preview",

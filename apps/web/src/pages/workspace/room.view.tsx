@@ -350,13 +350,17 @@ export function RoomView({
   // Only a screen its plugin draws for the page has a space; any other is in the box. Over the
   // conversation it takes the whole page, the box beneath it, since a mockup or a set of designs
   // needs the width. Over the project view it waits for Open in the box. Answering it, or Not now
-  // in the box, puts it away.
+  // in the box, puts it away; so does closing it, which leaves it waiting in the box to open again.
   const side = space?.place === "page" ? space : null;
   const [sheetOpen, setSheetOpen] = useState(false);
-  const sheetShown = side !== null && (sheetOpen || !projectOpen);
+  const [closedKey, setClosedKey] = useState<string | null>(null);
+  const sheetShown =
+    side !== null &&
+    (sheetOpen || (!projectOpen && closedKey !== (space?.key ?? null)));
   const headingRef = useRef<HTMLHeadingElement>(null);
   const inputRef = dock.kind === "composer" ? dock.inputRef : null;
   const openSpace = () => {
+    setClosedKey(null);
     if (!sheetOpen) setSheetOpen(true);
     else headingRef.current?.focus();
   };
@@ -364,6 +368,7 @@ export function RoomView({
   const refocusBox = useRef(false);
   const closeSheet = () => {
     setSheetOpen(false);
+    setClosedKey(space?.key ?? null);
     refocusBox.current = true;
   };
   // A space the person opened from the box takes focus to its heading; one that comes of its own
@@ -405,10 +410,10 @@ export function RoomView({
   // Escape puts the space away first; a menu inside the view closes on Escape before that, and
   // marks the key as used.
   useEffect(() => {
-    if (!projectOpen && !sheetOpen) return;
+    if (!projectOpen && !sheetShown) return;
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.defaultPrevented) return;
-      if (sheetOpen) return closeSheet();
+      if (sheetShown) return closeSheet();
       // An open chat sheet takes the key to put itself back, whichever listener hears it first;
       // the view closes on the next one.
       const sheet =
@@ -419,7 +424,7 @@ export function RoomView({
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [projectOpen, sheetOpen]);
+  }, [projectOpen, sheetShown]);
   // How many sketches at work are on the project's page.
   const [sketches, setSketches] = useState(0);
   const showSketch = useCallback(() => {
@@ -447,9 +452,12 @@ export function RoomView({
   );
   const projectDock =
     dockInProject && sketches > 0 ? sketchingDock(dock) : dock;
-  // Over the page it asks the person to accept, what waits would only repeat the page: the box
-  // shows its typing row and action alone.
-  const decidesPage = dockInProject && documentShown && decides(waiting);
+  // Over the page it asks the person to accept, a document or a screen such as a mockup's review,
+  // what waits would only repeat the page: the box shows its typing row and action alone.
+  // A screen open over the page is itself what waits, so the box shows its typing row alone.
+  const decidesPage =
+    (dockInProject && documentShown && decides(waiting)) ||
+    (dockInSheet && waiting?.kind === "screen");
   // Full screen is the room's own conversation: what the chat was pulled up over is put away.
   const roomDock = (
     <RoomDockView
@@ -551,6 +559,7 @@ export function RoomView({
               data-slot="room-project"
               hidden={!projectOpen}
             >
+              <BackToChat onClose={() => swapCover("chat", closeProject)} />
               <SketchingShown value={showSketch}>
                 <ArtifactPane
                   {...documentPane}
@@ -572,6 +581,7 @@ export function RoomView({
               className={styles.page}
               data-slot="room-space-sheet"
             >
+              <BackToChat onClose={closeSheet} />
               <PluginSpace title={side.title} headingRef={headingRef}>
                 {spaceScreen}
               </PluginSpace>
@@ -685,6 +695,23 @@ function sketchingDock(dock: RoomDock): RoomDock {
   return dock.kind === "composer" && dock.status?.onAction === undefined
     ? { ...dock, status: null }
     : dock;
+}
+
+/** Shuts the view over the conversation like a full-screen modal, in the corner people look for. */
+function BackToChat({ onClose }: { onClose: () => void }) {
+  return (
+    <UiButton
+      type="button"
+      size="icon"
+      variant="ghost"
+      className={styles.close}
+      aria-label={wording.conversation.backToChat}
+      title={wording.conversation.backToChatHint}
+      onClick={onClose}
+    >
+      <X size={18} aria-hidden="true" />
+    </UiButton>
+  );
 }
 
 const decides = (waiting: BoxWaiting | null) =>

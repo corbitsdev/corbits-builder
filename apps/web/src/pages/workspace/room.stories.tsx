@@ -523,6 +523,23 @@ export const ProjectOpen: Story = {
   },
 };
 
+/** The view's corner button puts it away like a full-screen modal, back to the conversation. */
+export const BackToChat: Story = {
+  ...ProjectOpen,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(
+      canvas.getByRole("button", { name: wording.conversation.backToChat }),
+    );
+    // The view closes in a view transition, which updates the page a frame later.
+    await waitFor(() =>
+      expect(
+        canvasElement.querySelector('[data-slot="room-project"]'),
+      ).toHaveAttribute("hidden"),
+    );
+  },
+};
+
 export const DocumentLoading: Story = {
   args: {
     ...withDocuments,
@@ -953,6 +970,42 @@ export const ScreenWaiting: Story = {
   },
 };
 
+// Shuts the screen over the conversation, which leaves its card waiting in the box.
+async function closeScreen(canvasElement: HTMLElement) {
+  await userEvent.click(
+    await within(canvasElement).findByRole("button", {
+      name: wording.conversation.backToChat,
+    }),
+  );
+  await waitFor(() =>
+    expect(
+      canvasElement.querySelector('[data-slot="room-space-sheet"]'),
+    ).toBeNull(),
+  );
+}
+
+/**
+ * Closed like a full-screen modal, the screen goes back to the conversation and waits in the box,
+ * where Open brings it back, and Not now sets it aside.
+ */
+export const ScreenClosesToBox: Story = {
+  ...ScreenWaiting,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await closeScreen(canvasElement);
+    await userEvent.click(
+      canvas.getByRole("button", {
+        name: wording.promptBox.waiting.openScreen,
+      }),
+    );
+    await waitFor(() =>
+      expect(
+        canvasElement.querySelector('[data-slot="room-space-sheet"]'),
+      ).not.toBeNull(),
+    );
+  },
+};
+
 const looksScreen = storyScreen(
   "@corbits-builder/designer looks",
   designer.builder.actions["looks"],
@@ -1159,6 +1212,7 @@ export const ScreenNotNow: Story = {
   ...ScreenWaiting,
   play: async ({ canvasElement }) => {
     screenNotNow.mockClear();
+    await closeScreen(canvasElement);
     await userEvent.click(
       within(canvasElement).getByRole("button", {
         name: wording.promptBox.waiting.notNow,
@@ -1181,6 +1235,7 @@ export const ScreenOfItsOwn: Story = {
     },
   },
   play: async ({ canvasElement, args }) => {
+    await closeScreen(canvasElement);
     await userEvent.click(
       within(canvasElement).getByRole("button", {
         name: wording.promptBox.waiting.notNow,
