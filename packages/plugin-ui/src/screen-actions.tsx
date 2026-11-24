@@ -2,7 +2,7 @@
  * A question's one row of actions: the view's main action first, then its others, then Cancel, with
  * a quiet note beneath. Cancel, and why the last answer was not sent, come from the host through
  * `ScreenRow`, so every screen withdraws its question and says it failed the same way, inside its
- * own card, without each view wiring it. For a screen that declares a decision, the host's
+ * own card, without each view wiring it. A view whose own button already says no leaves Cancel out. For a screen that declares a decision, the host's
  * `ScreenDecision` puts its accept control here too, so every such screen is accepted the same way.
  * While an answer is on its way the host makes the whole screen inert, so no control here disables
  * itself.
@@ -80,7 +80,7 @@ export function ScreenActions({
   note?: ReactNode;
   /** One of the view's own buttons already says no, so Cancel is left out. */
   declines?: boolean;
-  /** The view's own small buttons, its main action first; Cancel follows them. */
+  /** The view's own small buttons, its main action first. */
   children?: ReactNode;
 }) {
   const row = useContext(ScreenRow);
