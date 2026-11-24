@@ -67,7 +67,6 @@ function Room(args: RoomViewProps) {
         layout={{
           ...args.layout,
           projectOpen,
-          appShown: onScreen === LIVE_TAB,
           onProjectOpenChange: setProjectOpen,
         }}
         dock={
@@ -175,7 +174,6 @@ function paneOf(story: Partial<ArtifactPaneProps> = {}) {
 const layout: RoomViewProps["layout"] = {
   projectReady: false,
   projectOpen: false,
-  appShown: false,
   onProjectOpenChange: fn(),
 };
 
@@ -666,8 +664,17 @@ const chatHistory = (canvasElement: HTMLElement) =>
     '[data-slot="room-project"] [data-slot="chat-history"]',
   );
 
+/** Over the project view the box starts as a pill; pressing it opens the box. */
+async function unfold(canvasElement: HTMLElement) {
+  const pill = canvasElement.querySelector<HTMLElement>(
+    '[data-slot="room-project"] [data-slot="fold-line"]',
+  );
+  if (pill !== null) await userEvent.click(pill);
+}
+
 /** Pulls the chat up from the handle, as the keyboard does it, so it opens at once. */
 async function openChat(canvasElement: HTMLElement) {
+  await unfold(canvasElement);
   const handle = canvasElement.querySelector<HTMLElement>(
     '[data-slot="room-project"] [data-slot="pull-handle"]',
   );
@@ -755,6 +762,7 @@ export const ChatSheetFullScreen: Story = {
 export const ChatSheetKeepsMessage: Story = {
   args: chatBehindBox,
   play: async ({ canvasElement }) => {
+    await unfold(canvasElement);
     const box = within(canvasElement).getByRole("textbox");
     await userEvent.type(box, "Also take orders by");
     await openChat(canvasElement);
@@ -1047,8 +1055,8 @@ export const ScreenOfItsOwn: Story = {
 };
 
 /**
- * Over the project view the screen waits for Open in the box, which lays it over the page with the
- * box beneath; Escape puts it away again.
+ * Over the project view the box is a pill naming the screen; opened, it shows Open, which lays the
+ * screen over the page with the box beneath; Escape puts it away again.
  */
 export const ScreenWaitingProjectOpen: Story = {
   args: {
@@ -1060,6 +1068,7 @@ export const ScreenWaitingProjectOpen: Story = {
     const space = () =>
       canvasElement.querySelector('[data-slot="plugin-space"]');
     await expect(space()).toBeNull();
+    await unfold(canvasElement);
     await userEvent.click(
       within(canvasElement).getByRole("button", {
         name: wording.promptBox.waiting.openScreen,

@@ -235,11 +235,6 @@ export type RoomContent = {
     projectReady: boolean;
     /** The project view covers the room, with the prompt box beneath it; closed, it waits hidden. */
     projectOpen: boolean;
-    /**
-     * The open project view shows the app, which the prompt box keeps clear of by shrinking to a
-     * pill over it until the person opens it.
-     */
-    appShown: boolean;
     onProjectOpenChange: (open: boolean) => void;
   };
   conversation: {
@@ -293,7 +288,7 @@ export function RoomView({
   pluginSpace,
   chat,
 }: RoomViewProps) {
-  const { projectReady, projectOpen, appShown, onProjectOpenChange } = layout;
+  const { projectReady, projectOpen, onProjectOpenChange } = layout;
   const conversationRef = useRef<HTMLElement>(null);
   const shell = useShellReply(conversationRef);
   const closeProject = () => onProjectOpenChange(false);
@@ -472,7 +467,7 @@ export function RoomView({
       ports={ports}
       waiting={card}
       fold={
-        dockInProject && appShown
+        dockInProject
           ? waiting === null
             ? null
             : waitingLine(waiting)
@@ -749,9 +744,9 @@ export function RoomDockView({
    */
   waiting?: ReactNode;
   /**
-   * Over the app the box shrinks to a pill until the person opens it: what waits in one line with
-   * its action, or null while nothing does, when the pill says what is happening. Absent, the box
-   * never folds.
+   * Over the project view the box shrinks to a pill until the person opens it: what waits in one
+   * line with its action, or null while nothing does, when the pill says what is happening.
+   * Absent, the box never folds.
    */
   fold?: string | null | undefined;
   chat?: ReactNode;
@@ -887,12 +882,14 @@ function RoomComposerView({
   // mid-send; the drop zone, the attach button and a paste all follow this.
   const attaching = accept !== null && !busy;
   const typed = text.trim() !== "" || files.length > 0;
-  // Over the app the box shrinks to a pill: what waits with its action, else what is happening,
-  // else what the box is for. The pill opens the box; leaving it with nothing written, by a press
-  // elsewhere or into the app's frame, shrinks it again.
+  // Over the project view the box shrinks to a pill, so the document or app under it reads whole:
+  // what waits with its action, else what is happening, else what the box is for. The pill opens
+  // the box; leaving it with nothing written, by a press elsewhere or into the app's frame, shrinks
+  // it again.
   const [unfolded, setUnfolded] = useState(false);
   const foldable = fold !== undefined;
-  const folded = foldable && !unfolded && !typed;
+  // Comments on the page wait in the box to be sent, so they hold it open as words do.
+  const folded = foldable && !unfolded && !typed && comments === 0;
   const unfold = () => {
     flushSync(() => setUnfolded(true));
     inputRef.current?.focus();
@@ -906,7 +903,7 @@ function RoomComposerView({
     const leave = (event: Event) => {
       if (event.target instanceof Node && composer?.contains(event.target))
         return;
-      // The chat pulled up over the app stays over it until it is put back.
+      // The chat pulled up over the project view stays over it until it is put back.
       if (
         composer?.querySelector(
           '[data-slot="chat-sheet"]:not([data-state="closed"])',
