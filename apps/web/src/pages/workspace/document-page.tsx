@@ -4,7 +4,7 @@
  * placed beside a passage, level with it.
  */
 import { Button, useDismissablePopover } from "@corbits/react-ui";
-import { MessageSquare } from "lucide-react";
+import { MessageSquare, TableOfContents } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -232,6 +232,8 @@ export function DocumentPage({
   const marginColumn = useRef<HTMLDivElement>(null);
   const pageColumn = useRef<HTMLDivElement>(null);
   const [ends, setEnds] = useState<PassageEnds | null>(null);
+  const contentsId = `contents-${useId()}`;
+  const [contentsOpen, setContentsOpen] = useState(true);
   const marginItems = useRef<(HTMLDivElement | null)[]>([]);
   // The page's headings as the last measure found them, so scrolling need not look again.
   const headingsRef = useRef<HTMLElement[]>([]);
@@ -675,12 +677,33 @@ export function DocumentPage({
     >
       <div className={styles.layout}>
         <div className={styles.side}>
-          <FileActions files={files} />
-          <DocumentContents
-            sections={contents}
-            current={current}
-            onOpen={open}
-          />
+          <div className={styles.bar}>
+            <FileActions files={files} />
+            {contents.length === 0 ? null : (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className={`${styles.file} ${styles.contentsToggle}`}
+                aria-label={words.contentsToggle}
+                title={words.contentsToggle}
+                aria-expanded={contentsOpen}
+                aria-controls={contentsId}
+                onClick={() => setContentsOpen(!contentsOpen)}
+              >
+                <TableOfContents aria-hidden="true" />
+              </Button>
+            )}
+          </div>
+          {contents.length === 0 ? null : (
+            <DocumentContents
+              id={contentsId}
+              open={contentsOpen}
+              sections={contents}
+              current={current}
+              onOpen={open}
+            />
+          )}
         </div>
         <div ref={pageColumn} className={styles.column}>
           {notes === undefined || notes === null ? null : (

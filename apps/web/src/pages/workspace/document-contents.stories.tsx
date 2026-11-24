@@ -1,12 +1,13 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, fn, userEvent, within } from "storybook/test";
-import { wording } from "../../config.ts";
+import { fn } from "storybook/test";
 import { DocumentContents } from "./document-contents.tsx";
 
 const meta = {
   title: "Components/Workspace/DocumentContents",
   component: DocumentContents,
   args: {
+    id: "contents",
+    open: true,
     sections: [
       { id: "section-in-short", title: "In short", commented: false },
       { id: "section-who-has-it", title: "Who has it", commented: true },
@@ -48,17 +49,5 @@ export const WithComments: Story = {};
 /** At the top of the page no section is open yet. */
 export const AtTheTop: Story = { args: { current: null } };
 
-/** The label at the head folds the sections away, leaving only itself, and brings them back. */
-export const Collapsed: Story = {
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    const toggle = canvas.getByRole("button", {
-      name: wording.documentViewer.contentsToggle,
-    });
-    await userEvent.click(toggle);
-    await expect(toggle).toHaveAttribute("aria-expanded", "false");
-    await expect(canvas.queryByRole("list")).toBeNull();
-    await userEvent.click(toggle);
-    await expect(canvas.getByRole("list")).toBeVisible();
-  },
-};
+/** Folded, the list has closed up into the row above it. */
+export const Folded: Story = { args: { open: false } };
