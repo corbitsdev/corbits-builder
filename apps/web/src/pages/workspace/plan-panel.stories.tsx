@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { fn } from "storybook/test";
-import type { PlanView } from "@corbits-builder/schemas/plan";
+import { type PlanView, stepFinished } from "@corbits-builder/schemas/plan";
 import { PlanPanel } from "./plan-panel.tsx";
 
 type Child = Extract<PlanView["steps"][number], { plugin: string }>;
@@ -24,7 +24,7 @@ const step = (
     input: {},
     askFirst: more.askFirst === true,
     state,
-    finished: state === "done" || state === "skipped" || state === "cancelled",
+    finished: stepFinished(state),
     kind: "workflow",
   };
   if (more.optional !== undefined) made.optional = more.optional;

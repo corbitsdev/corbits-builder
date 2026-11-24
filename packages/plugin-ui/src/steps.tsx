@@ -4,18 +4,10 @@
  * clock come in as props; a row opens by the browser's own disclosure.
  */
 import type { ReactNode } from "react";
+import type { PlanStepStateName } from "@corbits-builder/schemas/plan";
 import styles from "./steps.module.css";
 
-export type StepState =
-  | "done"
-  | "failed"
-  | "running"
-  | "needs_you"
-  | "waiting"
-  | "not_started"
-  | "skipped"
-  | "cancelled"
-  | "declined";
+export type StepState = PlanStepStateName | "declined";
 
 export type StepFields = {
   id: string;

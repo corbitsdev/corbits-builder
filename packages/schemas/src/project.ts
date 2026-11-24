@@ -3,7 +3,7 @@ import { ArtifactKindWrite, DocumentContent } from "./artifact.ts";
 import { ProfileId } from "./models.ts";
 
 export const ProjectId = type(/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/);
-const text = type("string > 0").atMostLength(2000);
+export const text = type("string > 0").atMostLength(2000);
 const opening = type("string > 0").atMostLength(64 * 1024);
 export const ProjectMutation = type.or(
   {

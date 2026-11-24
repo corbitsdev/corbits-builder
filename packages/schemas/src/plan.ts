@@ -1,7 +1,5 @@
 import { type } from "arktype";
-import { AskedScreen, ShownScreen } from "./project.ts";
-
-const text = type("string > 0").atMostLength(2000);
+import { AskedScreen, ShownScreen, text } from "./project.ts";
 
 // When a ready-made plan's step waits for the person's go-ahead: required always waits for the
 // person's own answer, even when they left approvals to Builder; optional waits only while they

@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { isValidElement, type ReactNode } from "react";
-import type { PlanView } from "@corbits-builder/schemas/plan";
+import { type PlanView, stepFinished } from "@corbits-builder/schemas/plan";
 import { StepControls, planProgress } from "./plan-panel.tsx";
 
 type Child = Extract<PlanView["steps"][number], { plugin: string }>;
@@ -15,7 +15,7 @@ const step = (id: string, state: State, optional = false): Child => ({
   askFirst: false,
   optional,
   state,
-  finished: state === "done" || state === "skipped" || state === "cancelled",
+  finished: stepFinished(state),
   kind: "workflow",
 });
 
