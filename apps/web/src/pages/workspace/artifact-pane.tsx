@@ -156,15 +156,10 @@ const liveIds = panelTabIds(TAB_PREFIX, LIVE_TAB);
 const FILL_PANE = styles.fill;
 
 /** The app's manual as a written page: no versions to pick, its pictures where it places them. */
-function manualPage(
-  project: string,
-  manual: UserManual,
-): WrittenDocumentViewProps {
+function manualPage(manual: UserManual): WrittenDocumentViewProps {
   return {
-    project,
     title: wording.documentTab["user_manual"] ?? "",
-    meta: wording.documentViewer.asBuilt,
-    groups: [],
+    files: [],
     body: {
       kind: "text",
       source: splitLeadingHeading(manual.markdown).body,
@@ -548,7 +543,7 @@ export function ArtifactPane({
               className={FILL_PANE}
               id={manualIds.pane}
             >
-              <WrittenDocumentView {...manualPage(projectTitle, manual)} />
+              <WrittenDocumentView {...manualPage(manual)} />
             </PanelPane>
           ) : null}
           {draftShown ? (

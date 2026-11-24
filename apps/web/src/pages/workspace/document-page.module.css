@@ -12,9 +12,9 @@
   container-type: inline-size;
   /* As wide as the conversation's turns, so the page and the chat read at one measure. */
   --sheet-width: 768px;
-  /* A section opened from the contents stops clear of the bar: the 18px above it and its 32px.
-     The heading's own scroll margin adds the gap below. */
-  scroll-padding-top: 50px;
+  /* A section opened from the contents stops a little below the top; the heading's own scroll
+     margin adds the gap below. */
+  scroll-padding-top: 16px;
   scroll-behavior: smooth;
 }
 
@@ -39,13 +39,6 @@
   flex-shrink: 0;
 }
 
-/* The bar heads the page it controls, held in sight as the page scrolls under it. */
-.reader > [data-slot="pane-bar"] {
-  top: 18px;
-  bottom: auto;
-  margin-top: 18px;
-}
-
 /* The page sits on the midline; contents and margin share what is left either side, the contents
    against the page's left edge as the margin's cards are against its right, not out at the
    canvas's. */
@@ -61,7 +54,7 @@
   box-sizing: border-box;
   max-width: 100%;
   position: sticky;
-  top: 64px;
+  top: 0;
   align-self: start;
   padding: var(--space-4) var(--space-8) 0 var(--space-4);
 }
@@ -98,21 +91,39 @@
   background: var(--wb-pane);
   box-shadow: var(--wb-pane-shadow);
   color: var(--wb-foreground);
-  zoom: var(--page-zoom);
 }
 
-.head {
+/* Download and Share: small and quiet, each said in words beside its icon. */
+.files {
   display: flex;
-  justify-content: space-between;
-  gap: var(--space-4);
-  padding-bottom: 32px;
+  align-items: center;
+  gap: 2px;
+}
+
+.file {
+  gap: 6px;
+  height: 1.75rem;
+  padding-inline: var(--space-2);
   color: var(--wb-muted-foreground);
   font-size: 0.75rem;
-  line-height: 1rem;
+  font-weight: 500;
 }
 
-.sheet[data-writing="live"] .head > :last-child {
-  color: var(--wb-primary);
+.file:hover {
+  color: var(--wb-foreground);
+}
+
+.file > svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Beside the contents where they show; above the page where they do not. */
+.narrowFiles {
+  display: none;
+  align-self: stretch;
+  justify-content: flex-end;
+  padding-inline: var(--space-4);
 }
 
 /* The document set on the page: the sheet sets the measure, and every block keeps the same small
@@ -289,6 +300,10 @@
   .side {
     display: none;
   }
+
+  .narrowFiles {
+    display: flex;
+  }
 }
 
 @container (width < 720px) {
@@ -304,7 +319,7 @@
     background: none;
   }
 
-  .reader > [data-slot="pane-bar"],
+  .narrowFiles,
   .side,
   .margin {
     display: none;
@@ -316,6 +331,5 @@
     min-height: 0;
     padding: 0;
     box-shadow: none;
-    zoom: 1;
   }
 }

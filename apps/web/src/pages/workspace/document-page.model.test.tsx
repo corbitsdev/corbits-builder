@@ -58,38 +58,18 @@ describe("a written document's page", () => {
     expect(html).toContain(">Problem brief</h1>");
   });
 
-  test("names the project and when the version shown was filed", () => {
+  test("shows neither the project nor when the version was filed on the page", () => {
     const html = page();
-    expect(html).toContain("Bakery orders");
-    expect(html).toContain(wording.documentViewer.filedOn(brief.filedAt));
+    expect(html).not.toContain("Bakery orders<");
+    expect(html).not.toContain(wording.documentViewer.filedOn(brief.filedAt));
   });
 
-  test("carries the versions and the download in its bar", () => {
+  test("gives Download beside its contents, in words, with no bar of controls", () => {
     const html = page();
-    expect(html).toContain(wording.versions.menu(2));
     expect(html).toContain(wording.paneFile.downloadDocument);
-  });
-
-  test("offers Approve on the newest version, and says once it is approved", () => {
-    const approve = async () => {};
-    expect(
-      page({
-        approval: {
-          approvedVersion: undefined,
-          approvedAt: undefined,
-          approve,
-        },
-      }),
-    ).toContain(wording.documentApproval.approve(2));
-    expect(
-      page({
-        approval: {
-          approvedVersion: 2,
-          approvedAt: undefined,
-          approve,
-        },
-      }),
-    ).toContain(wording.documentApproval.approved(2));
+    expect(html).toContain(`>${wording.paneFile.download}</span>`);
+    expect(html).not.toContain('data-slot="pane-bar"');
+    expect(html).not.toContain(wording.versions.menu(2));
   });
 
   test("says when the room could not list the document's history", () => {

@@ -27,12 +27,7 @@ export const UnderThePromptBox: Story = {
         height: "100vh",
       }}
     >
-      <DocumentPage
-        project="Bakery orders"
-        title="Problem brief"
-        meta=""
-        groups={[]}
-      >
+      <DocumentPage title="Problem brief" files={[]}>
         <DocumentView source={splitLeadingHeading(PROBLEM_BRIEF).body} />
       </DocumentPage>
       <FootFade />

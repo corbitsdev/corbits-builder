@@ -204,7 +204,6 @@ export function DeliverableBody({
           onReadVersion,
           onViewVersion,
           requestedVersion,
-          approval,
           approachChoice,
           comments,
         })}

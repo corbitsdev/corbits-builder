@@ -1,11 +1,11 @@
 /**
- * A written document read as a printed page: a sheet on the window's backdrop with a small running
- * header, the document's title and its body. The pane's one bar heads it with the version, the page
- * being read, the zoom and the download; the document's sections sit to the left; the right margin
- * holds whatever is placed beside a passage, level with it.
+ * A written document read as a printed page: a sheet on the window's backdrop with the document's
+ * title and its body, and nothing else on it. The document's sections sit to the left, with
+ * Download and Share beside their heading; the right margin holds whatever is placed beside a
+ * passage, level with it.
  */
 import { Button, useDismissablePopover } from "@corbits/react-ui";
-import { MessageSquare, Minus, Plus } from "lucide-react";
+import { MessageSquare } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -24,7 +24,7 @@ import {
   DocumentContents,
   type DocumentSection,
 } from "./document-contents.tsx";
-import { PaneBar, type PaneBarGroup } from "./pane-bar.tsx";
+import type { PaneBarGroup } from "./pane-bar.tsx";
 import styles from "./document-page.module.css";
 
 /** Where a passage's comment stands, beyond being saved: selected while it is written. */
@@ -47,11 +47,6 @@ export type PassagePlace = MarginPassage & {
 /** How the document's writing stands, while it is not yet filed whole. */
 export type PageWriting = "live" | "stopped";
 
-const ZOOMS = [0.5, 0.75, 1, 1.25, 1.5, 2] as const;
-export type PageZoom = (typeof ZOOMS)[number];
-// Where the reader's eye rests, as a share of the view's height: the page it is in is the one
-// being read.
-const READING_LINE = 0.4;
 // A heading a jump landed on reads as reached though it rests a pixel or two short of the line.
 const LANDING_SLACK = 4;
 // A jump has settled once the view has not moved for this long.
@@ -175,35 +170,27 @@ function readSections(body: HTMLElement): HTMLElement[] {
 }
 
 export function DocumentPage({
-  project,
   title,
-  meta,
   writing,
   onResume,
-  groups,
+  files,
   notes,
   passages = [],
   margin,
-  initialZoom = 1,
   children,
 }: {
-  /** The project the document belongs to, which the running header names. */
-  project: string;
   title: string;
-  /** The running header's right side: when it was filed, or how its writing stands. */
-  meta: string;
   writing?: PageWriting | undefined;
   /** Starts the writing again where it stopped. */
   onResume?: (() => void) | undefined;
-  /** The bar's own groups; the page puts its page count and zoom between the first and the last. */
-  groups: readonly PaneBarGroup[];
+  /** Download and Share, for the file the document is given away as. */
+  files: PaneBarGroup;
   /** Short notes about the view, such as an older version being read, above the page. */
   notes?: ReactNode;
   /** Passages something is said about; each is underlined and given a place in the margin. */
   passages?: readonly MarginPassage[] | undefined;
   /** What sits in the right margin beside a passage, such as its comment. */
   margin?: ((passage: PassagePlace) => ReactNode) | undefined;
-  initialZoom?: PageZoom;
   /** The document's body, drawn at the page's type scale. */
   children: ReactNode;
 }) {
@@ -212,7 +199,6 @@ export function DocumentPage({
   const sheet = useRef<HTMLElement>(null);
   const marginColumn = useRef<HTMLDivElement>(null);
   const marginItems = useRef<(HTMLDivElement | null)[]>([]);
-  const [zoom, setZoom] = useState<PageZoom>(initialZoom);
   // The page's headings as the last measure found them, so scrolling need not look again.
   const headingsRef = useRef<HTMLElement[]>([]);
   const [sections, setSections] = useState<
@@ -224,7 +210,6 @@ export function DocumentPage({
   // the next, are not what they asked for. Undefined while the view follows the scroll.
   const chosen = useRef<string | null | undefined>(undefined);
   const jumping = useRef<number | null>(null);
-  const [page, setPage] = useState({ current: 1, total: 1 });
   const [places, setPlaces] = useState<readonly PassagePlace[]>([]);
   const [roomy, setRoomy] = useState(true);
   const ranges = useRef(new Map<string, Range>());
@@ -245,20 +230,8 @@ export function DocumentPage({
 
   const follow = useCallback(() => {
     const view = scroller.current;
-    const paper = sheet.current;
-    if (view === null || paper === null) return;
+    if (view === null) return;
     const frame = view.getBoundingClientRect();
-    const box = paper.getBoundingClientRect();
-    const line = frame.top + frame.height * READING_LINE;
-    // A page is A4 at the sheet's width, so a page count reads as it would on paper.
-    const height = box.width * Math.SQRT2;
-    const total = Math.max(1, Math.ceil(box.height / height - 0.01));
-    const reading = Math.floor((line - box.top) / height) + 1;
-    const current = Math.min(total, Math.max(1, reading));
-    // Scrolling within a page changes nothing on screen, so it leaves the page as it was.
-    setPage((was) =>
-      was.current === current && was.total === total ? was : { current, total },
-    );
     if (chosen.current !== undefined) {
       setCurrent(chosen.current);
       return;
@@ -517,8 +490,7 @@ export function DocumentPage({
     setCard({ place, line });
   };
 
-  // The reader's scroll padding keeps a section clear of the bar; its scroll behaviour is smooth
-  // unless the person asks for less motion.
+  // The reader's scroll behaviour is smooth unless the person asks for less motion.
   const open = (id: string | null) => {
     chosen.current = id;
     setCurrent(id);
@@ -530,46 +502,6 @@ export function DocumentPage({
         ?.scrollIntoView({ block: "start" });
   };
 
-  const zoomAt = ZOOMS.indexOf(zoom);
-  const percent = Math.round(zoom * 100);
-  const step = (by: number) => {
-    const next = ZOOMS[zoomAt + by];
-    if (next !== undefined) setZoom(next);
-  };
-  const pageGroups: readonly PaneBarGroup[] = [
-    [
-      {
-        id: "page",
-        label: words.page(page.current, page.total),
-        text: words.page(page.current, page.total),
-        note: true,
-      },
-    ],
-    [
-      {
-        id: "zoom-out",
-        label: words.zoomOut,
-        icon: <Minus aria-hidden="true" />,
-        disabled: zoomAt <= 0,
-        onSelect: () => step(-1),
-      },
-      {
-        id: "zoom",
-        label: words.zoomReset(percent),
-        text: words.zoom(percent),
-        onSelect: () => setZoom(1),
-      },
-      {
-        id: "zoom-in",
-        label: words.zoomIn,
-        icon: <Plus aria-hidden="true" />,
-        disabled: zoomAt >= ZOOMS.length - 1,
-        onSelect: () => step(1),
-      },
-    ],
-  ];
-  const leading = groups.slice(0, -1);
-  const trailing = groups.slice(-1);
   const commented = new Set(places.map((place) => place.section));
   const contents: readonly DocumentSection[] = sections.map((section) => ({
     ...section,
@@ -580,12 +512,7 @@ export function DocumentPage({
     <div
       ref={scroller}
       className={styles.reader}
-      style={
-        {
-          "--page-zoom": zoom,
-          "--card-width": `${String(CARD_WIDTH)}px`,
-        } as CSSProperties
-      }
+      style={{ "--card-width": `${String(CARD_WIDTH)}px` } as CSSProperties}
       data-slot="document-page"
       onScroll={() => {
         // Moving after a jump has settled is the person scrolling on.
@@ -605,10 +532,6 @@ export function DocumentPage({
         if (SCROLL_KEYS.has(event.key)) scrollOn();
       }}
     >
-      <PaneBar
-        label={wording.documentBar}
-        groups={[...leading, ...pageGroups, ...trailing]}
-      />
       <div className={styles.layout}>
         <div className={styles.side}>
           <DocumentContents
@@ -616,9 +539,14 @@ export function DocumentPage({
             sections={contents}
             current={current}
             onOpen={open}
+            actions={<FileActions files={files} />}
           />
         </div>
         <div className={styles.column}>
+          {/* Without room for the contents, Download and Share head the page instead. */}
+          <div className={styles.narrowFiles}>
+            <FileActions files={files} />
+          </div>
           {notes === undefined || notes === null ? null : (
             <div className={styles.notes}>{notes}</div>
           )}
@@ -629,10 +557,6 @@ export function DocumentPage({
             onClickCapture={openFromMark}
             onPointerMove={pointAtMark}
           >
-            <header className={styles.head}>
-              <span>{project}</span>
-              <span>{meta}</span>
-            </header>
             <h1 className={styles.title}>{title}</h1>
             {children}
             {writing === "stopped" ? (
@@ -703,6 +627,38 @@ export function DocumentPage({
             </div>,
             document.body,
           )}
+    </div>
+  );
+}
+
+/** Download and Share, each named in words beside its icon. */
+function FileActions({ files }: { files: PaneBarGroup }) {
+  if (files.length === 0) return null;
+  return (
+    <div
+      className={styles.files}
+      role="group"
+      aria-label={wording.documentViewer.file}
+    >
+      {files.map((action) => (
+        <Button
+          key={action.id}
+          type="button"
+          variant="ghost"
+          size="sm"
+          className={styles.file}
+          title={action.label}
+          aria-label={action.label}
+          disabled={action.disabled}
+          onClick={action.onSelect}
+          {...(action.onPrepare === undefined
+            ? {}
+            : { onPointerEnter: action.onPrepare, onFocus: action.onPrepare })}
+        >
+          {action.icon}
+          <span>{action.text}</span>
+        </Button>
+      ))}
     </div>
   );
 }

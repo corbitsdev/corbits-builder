@@ -1,12 +1,11 @@
 import type { UserManual } from "@corbits-builder/schemas/artifact";
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { Download } from "lucide-react";
+import { Download, Share2 } from "lucide-react";
 import { fn } from "storybook/test";
 import { wording } from "../../config.ts";
 import { PROBLEM_BRIEF } from "./document-page.stories.tsx";
 import type { PaneBarGroup } from "./pane-bar.tsx";
 import { splitLeadingHeading } from "./reading-selection.ts";
-import { versionGroup } from "./version-menu.tsx";
 import {
   WrittenDocumentView,
   type WrittenDocumentViewProps,
@@ -41,34 +40,23 @@ export const SAMPLE_MANUAL: UserManual = {
   pictures: { "docs/pictures/orders.png": ORDERS_PICTURE },
 };
 
-const download: PaneBarGroup = [
+/** Download and Share beside the contents' heading. */
+const files: PaneBarGroup = [
   {
     id: "download",
     label: wording.paneFile.downloadDocument,
+    text: wording.paneFile.download,
     icon: <Download aria-hidden="true" />,
     onSelect: fn(),
   },
-];
-
-const approve: PaneBarGroup = [
   {
-    id: "approve",
-    label: wording.documentApproval.approveLabel(2),
-    text: wording.documentApproval.approve(2),
+    id: "share",
+    label: wording.paneFile.shareDocument,
+    text: wording.paneFile.share,
+    icon: <Share2 aria-hidden="true" />,
     onSelect: fn(),
   },
 ];
-
-/** The version menu with versions 1 and 2 kept, reading `viewing`. */
-const versions = (viewing: number, pending = false): PaneBarGroup =>
-  versionGroup({
-    versions: [{ version: 2 }, { version: 1 }],
-    viewing,
-    pending,
-    canCompare: viewing === 2,
-    onView: fn(),
-    onComparePrevious: fn(),
-  });
 
 /** Comments can be written, none yet. */
 const noComments = {
@@ -92,10 +80,8 @@ const meta = {
   excludeStories: ["SAMPLE_MANUAL"],
   parameters: { layout: "fullscreen" },
   args: {
-    project: "Bakery orders",
     title: "Problem brief",
-    meta: wording.documentViewer.filedOn("2026-11-18T10:00:00.000Z"),
-    groups: [approve, versions(2), download],
+    files,
     notes,
     body: { kind: "text", source: BRIEF },
     comments: noComments,
@@ -114,45 +100,21 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** The newest version, waiting to be approved: Approve, the versions and the download head the page. */
+/** A filed document: the page alone, its contents beside it with Download and Share. */
 export const Filed: Story = {};
 
-/** Once approved, the bar says so in place of Approve. */
-export const Approved: Story = {
-  args: {
-    groups: [
-      [
-        {
-          id: "approved",
-          label: wording.documentApproval.approvedLabel(
-            2,
-            "2026-11-19T09:00:00.000Z",
-          ),
-          text: wording.documentApproval.approved(2),
-          note: true,
-        },
-      ],
-      versions(2),
-      download,
-    ],
-  },
-};
-
-/** An older version read from the menu: a note over the page says the plan names the newest. */
+/** An older version read: a note over the page says the plan names the newest. */
 export const OlderVersion: Story = {
   args: {
-    meta: wording.documentViewer.filedOn("2026-11-17T10:00:00.000Z"),
-    groups: [versions(1), download],
     notes: { ...notes, viewing: 1 },
     body: { kind: "text", source: BRIEF_V1 },
     comments: noComments,
   },
 };
 
-/** A version picked from the menu is being read; the menu waits for it. */
+/** Another version is being read. */
 export const ReadingVersion: Story = {
   args: {
-    groups: [approve, versions(2, true), download],
     notes: { ...notes, reading: 1 },
   },
 };
@@ -167,7 +129,6 @@ export const VersionReadFailed: Story = {
 /** The room could not list the document's versions, so only the newest is offered. */
 export const HistoryUnavailable: Story = {
   args: {
-    groups: [approve, download],
     notes: { ...notes, historyError: "The hub did not answer." },
   },
 };
@@ -228,12 +189,11 @@ export const Approaches: Story = {
   },
 };
 
-/** The app's manual: no versions to pick and nothing to approve, its pictures where it places them. */
+/** The app's manual: nothing to download, its pictures where it places them. */
 export const UserManualPage: Story = {
   args: {
     title: wording.documentTab["user_manual"] ?? "",
-    meta: wording.documentViewer.asBuilt,
-    groups: [],
+    files: [],
     notes: undefined,
     body: {
       kind: "text",

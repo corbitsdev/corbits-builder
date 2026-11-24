@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { DocumentView } from "@corbits-builder/plugin-ui/markdown";
-import { Download } from "lucide-react";
+import { Download, Share2 } from "lucide-react";
 import { fn } from "storybook/test";
 import { wording } from "../../config.ts";
 import {
@@ -10,7 +10,6 @@ import {
 } from "./document-page.tsx";
 import type { PaneBarGroup } from "./pane-bar.tsx";
 import { splitLeadingHeading } from "./reading-selection.ts";
-import { versionGroup } from "./version-menu.tsx";
 
 /** The Problem brief as the hi-fi page shows it. */
 export const PROBLEM_BRIEF = `# Problem brief
@@ -119,27 +118,23 @@ function MarginStandIn({ place }: { place: PassagePlace }) {
   );
 }
 
-const download: PaneBarGroup = [
+/** Download and Share beside the contents' heading, as a written document gives them. */
+const files: PaneBarGroup = [
   {
     id: "download",
     label: wording.paneFile.downloadDocument,
+    text: wording.paneFile.download,
     icon: <Download aria-hidden="true" />,
     onSelect: fn(),
   },
+  {
+    id: "share",
+    label: wording.paneFile.shareDocument,
+    text: wording.paneFile.share,
+    icon: <Share2 aria-hidden="true" />,
+    onSelect: fn(),
+  },
 ];
-
-/** The version menu with versions 1 to `latest` kept, reading `viewing`. */
-const versions = (viewing: number, latest = 2): PaneBarGroup =>
-  versionGroup({
-    versions: Array.from({ length: latest }, (_, at) => ({
-      version: latest - at,
-    })),
-    viewing,
-    pending: false,
-    canCompare: viewing === latest && latest > 1,
-    onView: fn(),
-    onComparePrevious: fn(),
-  });
 
 function body(source: string) {
   return <DocumentView source={splitLeadingHeading(source).body} />;
@@ -152,10 +147,8 @@ const meta = {
   excludeStories: ["PROBLEM_BRIEF"],
   parameters: { layout: "fullscreen" },
   args: {
-    project: "Bakery orders",
     title: "Problem brief",
-    meta: wording.documentViewer.filedOn("2026-11-18T10:00:00.000Z"),
-    groups: [versions(2), download],
+    files,
     passages: COMMENTED,
     margin: (place) => <MarginStandIn place={place} />,
     children: body(PROBLEM_BRIEF),
@@ -199,16 +192,10 @@ export const PassageStatesDark: Story = {
   globals: { mode: "dark" },
 };
 
-export const ZoomedOut: Story = {
-  args: { children: body(LONG_BRIEF), initialZoom: 0.75 },
-};
-
 /** Still being written: an orange caret ends the last line so far. */
 export const Writing: Story = {
   args: {
-    meta: wording.documentViewer.writing(1),
     writing: "live",
-    groups: [versions(1, 1), download],
     passages: [],
     children: body(PROBLEM_BRIEF_SO_FAR),
   },
@@ -217,16 +204,14 @@ export const Writing: Story = {
 /** The writing stopped before the end: a note where it stopped, with the way to start it again. */
 export const WritingStopped: Story = {
   args: {
-    meta: wording.documentViewer.filedOn("2026-11-18T10:00:00.000Z"),
     writing: "stopped",
     onResume: fn(),
-    groups: [versions(1, 1), download],
     passages: [],
     children: body(PROBLEM_BRIEF_SO_FAR),
   },
 };
 
-/** A document that runs over several pages, scrolled part way: the bar counts the page being read. */
+/** A document that runs over several pages, scrolled part way: the contents follow the section read. */
 export const LongScrolled: Story = {
   args: { children: body(LONG_BRIEF) },
   play: async ({ canvasElement }) => {
@@ -249,3 +234,14 @@ export const NoSections: Story = {
 };
 
 export const Dark: Story = { globals: { mode: "dark" } };
+
+/** Where the pane is too narrow for the contents, Download and Share head the page instead. */
+export const Narrow: Story = {
+  decorators: [
+    (Story) => (
+      <div style={{ width: 760, height: "100vh", display: "flex" }}>
+        <Story />
+      </div>
+    ),
+  ],
+};

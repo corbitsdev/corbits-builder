@@ -342,6 +342,9 @@ export const wording = {
     show: "Show the controls",
   },
   paneFile: {
+    /** The short words beside the icons, where there is room for them. */
+    download: "Download",
+    share: "Share",
     downloadDocument: "Download as Markdown",
     shareDocument: "Share as Markdown",
     downloadDesign: "Download the design",
@@ -1056,6 +1059,8 @@ export const wording = {
   documentViewer: {
     contents: "Contents",
     contentsLabel: "Sections of this document",
+    /** Download and Share, as a screen reader names them together. */
+    file: "Document file",
     /** A section someone has commented on. */
     commented: "Has comments",
     /** The running header's right side, opposite the project: when the document was filed. */

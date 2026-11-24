@@ -1,8 +1,8 @@
 /**
  * A written document in the reading pane: a brief, constraints, approaches, requirements, a build
- * plan or the app's manual, read as a printed page with its sections beside it. The page's bar
- * carries the version, the page count, the zoom and the download; a passage selected on the page
- * can carry a comment in the margin, kept as a draft until the person sends their comments.
+ * plan or the app's manual, read as a printed page with its sections beside it, and Download and
+ * Share beside their heading; a passage selected on the page can carry a comment in the margin,
+ * kept as a draft until the person sends their comments.
  */
 import type { ApproachesMeta } from "@corbits-builder/schemas/approaches";
 import { DocumentView } from "@corbits-builder/plugin-ui/markdown";
@@ -43,13 +43,9 @@ export type WrittenBody =
     };
 
 export type WrittenDocumentViewProps = {
-  /** The project, which the page's running header names. */
-  project: string;
   title: string;
-  /** The running header's right side: when the version shown was filed. */
-  meta: string;
-  /** The bar's own groups: approval, versions and the file. */
-  groups: readonly PaneBarGroup[];
+  /** Download and Share, for the version read. */
+  files: PaneBarGroup;
   /** Lines about the version being read; absent for a document without versions. */
   notes?: VersionNotesProps | undefined;
   body: WrittenBody;
@@ -58,10 +54,8 @@ export type WrittenDocumentViewProps = {
 };
 
 export function WrittenDocumentView({
-  project,
   title,
-  meta,
-  groups,
+  files,
   notes,
   body,
   comments,
@@ -101,10 +95,8 @@ export function WrittenDocumentView({
     );
   return (
     <DocumentPage
-      project={project}
       title={title}
-      meta={meta}
-      groups={groups}
+      files={files}
       notes={notes === undefined ? undefined : <VersionNotes {...notes} />}
       passages={page.passages}
       margin={page.margin}

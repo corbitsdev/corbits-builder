@@ -6,7 +6,7 @@
  */
 import JSZip from "jszip";
 import { useEffect, useRef } from "react";
-import { Download, Share } from "lucide-react";
+import { Download, Share2 } from "lucide-react";
 import { toast } from "sonner";
 import { wording } from "../../config.ts";
 import type { PaneBarGroup } from "./pane-bar.tsx";
@@ -137,7 +137,11 @@ type Prepared = {
   ready?: Built;
 };
 
-export function useFileGroup(source: PaneFile | null): PaneBarGroup {
+/** `named` gives each action its short word too, for a place that shows it beside the icon. */
+export function useFileGroup(
+  source: PaneFile | null,
+  named = false,
+): PaneBarGroup {
   const prepared = useRef<Prepared | null>(null);
   const prepare = (file: PaneFile): Prepared => {
     const held = prepared.current;
@@ -189,6 +193,7 @@ export function useFileGroup(source: PaneFile | null): PaneBarGroup {
     {
       id: "download",
       label: source.download,
+      ...(named ? { text: wording.paneFile.download } : {}),
       icon: <Download size={16} aria-hidden="true" />,
       onSelect: () => void download(source),
     },
@@ -197,7 +202,8 @@ export function useFileGroup(source: PaneFile | null): PaneBarGroup {
           {
             id: "share",
             label: source.share,
-            icon: <Share size={16} aria-hidden="true" />,
+            ...(named ? { text: wording.paneFile.share } : {}),
+            icon: <Share2 size={16} aria-hidden="true" />,
             onPrepare: () => {
               prepare(source);
             },
