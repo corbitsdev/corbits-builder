@@ -648,8 +648,6 @@ export const wording = {
       goAhead: "Yes, go ahead",
       /** A plugin's screen waiting in the plugin space. */
       screen: (title: string) => `${title} is waiting for you`,
-      /** The box shrunk to a pill on a question that names none of its own. */
-      question: "A question for you",
       openScreen: "Open",
       /** Turns down a screen that answers the coordinator, sent as the person's answer to it. */
       notNow: "Not now",

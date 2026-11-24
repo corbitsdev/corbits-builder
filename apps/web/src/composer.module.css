@@ -76,30 +76,6 @@
   display: none;
 }
 
-/* Folded, the box is a pill as wide as what it says, centred over what it floats on; the pill
-   above it and the handle wait until it opens. */
-.composer[data-folded] [data-slot="chat-sheet"] {
-  align-items: center;
-}
-
-.composer[data-folded] [data-slot="chat-sheet-box"] {
-  max-width: 100%;
-}
-
-.composer[data-folded] .box {
-  border-radius: 9999px;
-}
-
-.composer[data-folded] [data-slot="chat-grip"] {
-  display: none;
-}
-
-/* With nothing of its own to do, the pill has no Send; Stop stays while work runs. */
-.composer[data-folded]
-  [data-slot="prompt-input-submit"]:is(:disabled, [aria-disabled="true"]) {
-  display: none;
-}
-
 /* The box is the frame, so a question card, a plugin's screen or an approval drops its own and
    takes the box's width; it keeps its own padding. */
 .panel :is([data-gate-kind], [data-slot="tool-approval-card"]) {

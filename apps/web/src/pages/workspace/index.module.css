@@ -332,48 +332,6 @@
   border-bottom: 0;
 }
 
-/* The box shrunk to a pill over the app: what it says opens the box. */
-.foldLine {
-  display: inline-flex;
-  flex: 1;
-  align-items: center;
-  gap: var(--space-2);
-  min-width: 0;
-  align-self: center;
-  overflow: hidden;
-  padding: var(--space-1) var(--space-3);
-  border: 0;
-  border-radius: 9999px;
-  background: none;
-  color: var(--wb-foreground);
-  font: inherit;
-  font-size: var(--text-sm);
-  line-height: 24px;
-  text-align: start;
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-.foldWords {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.foldLine[data-muted] {
-  color: var(--wb-muted-foreground);
-}
-
-.foldLine:focus-visible {
-  outline: 2px solid var(--wb-ring);
-  outline-offset: -2px;
-}
-
-/* The words stay in the box while it is folded, so they are there as it opens. */
-.foldLine ~ [data-slot="prompt-input-field"] {
-  display: none;
-}
-
 /* Comments waiting to be sent: the count opens the page they are on, the cross removes them. */
 .commentsToken {
   display: inline-flex;

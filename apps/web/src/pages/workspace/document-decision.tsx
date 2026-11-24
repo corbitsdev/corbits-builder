@@ -40,7 +40,7 @@ function settledTitle(approval: DocumentApproval): string | undefined {
  * What a pending approval asks in the prompt box, in one line. Only a shell run's subject is a
  * command line, so only it reads as one; any other tool's subject is said under its ask.
  */
-export function approvalAsk(approval: DocumentApproval): string {
+function approvalAsk(approval: DocumentApproval): string {
   if (approval.packages) return text.packages(approval.packages.join(", "));
   return runsShell(approval.toolName) && approval.subject !== undefined
     ? text.run

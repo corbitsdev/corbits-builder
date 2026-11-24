@@ -677,17 +677,8 @@ const chatHistory = (canvasElement: HTMLElement) =>
     '[data-slot="room-project"] [data-slot="chat-history"]',
   );
 
-/** Over the project view the box starts as a pill; pressing it opens the box. */
-async function unfold(canvasElement: HTMLElement) {
-  const pill = canvasElement.querySelector<HTMLElement>(
-    '[data-slot="room-project"] [data-slot="fold-line"]',
-  );
-  if (pill !== null) await userEvent.click(pill);
-}
-
 /** Pulls the chat up from the handle, as the keyboard does it, so it opens at once. */
 async function openChat(canvasElement: HTMLElement) {
-  await unfold(canvasElement);
   const handle = canvasElement.querySelector<HTMLElement>(
     '[data-slot="room-project"] [data-slot="pull-handle"]',
   );
@@ -814,7 +805,6 @@ export const ChatSheetFullScreen: Story = {
 export const ChatSheetKeepsMessage: Story = {
   args: chatBehindBox,
   play: async ({ canvasElement }) => {
-    await unfold(canvasElement);
     const box = within(canvasElement).getByRole("textbox");
     await userEvent.type(box, "Also take orders by");
     await openChat(canvasElement);
@@ -1086,7 +1076,6 @@ export const ApproveOverDocument: Story = {
       '[data-slot="room-project"] [data-slot="composer"]',
     );
     if (box === null) throw new Error("No prompt box over the page");
-    await expect(box.querySelector('[data-slot="fold-line"]')).toBeNull();
     // The view fades in as it opens.
     await waitFor(() =>
       expect(
@@ -1195,8 +1184,8 @@ export const ScreenOfItsOwn: Story = {
 };
 
 /**
- * Over the project view the box is a pill naming the screen; opened, it shows Open, which lays the
- * screen over the page with the box beneath; Escape puts it away again.
+ * Over the project view the box shows Open, which lays the screen over the page with the box
+ * beneath; Escape puts it away again.
  */
 export const ScreenWaitingProjectOpen: Story = {
   args: {
@@ -1208,7 +1197,6 @@ export const ScreenWaitingProjectOpen: Story = {
     const space = () =>
       canvasElement.querySelector('[data-slot="plugin-space"]');
     await expect(space()).toBeNull();
-    await unfold(canvasElement);
     await userEvent.click(
       within(canvasElement).getByRole("button", {
         name: wording.promptBox.waiting.openScreen,
@@ -1285,36 +1273,38 @@ export const DarkScreenSheetNarrow: Story = {
   globals: { mode: "dark" },
 };
 
-/** The pill's line, while the box is shrunk over the app. */
-const foldLine = (canvasElement: HTMLElement) =>
+/** The prompt box over the project view. */
+const projectBox = (canvasElement: HTMLElement) =>
   canvasElement.querySelector<HTMLElement>(
-    '[data-slot="room-project"] [data-slot="fold-line"]',
+    '[data-slot="room-project"] [data-slot="composer"]',
   );
 
+/** Waits until the words can be typed in. */
+async function boxOpen(canvasElement: HTMLElement) {
+  await waitFor(() => expect(projectBox(canvasElement)).not.toBeNull());
+  const box = projectBox(canvasElement);
+  if (box === null) throw new Error("No prompt box over the project view");
+  await waitFor(() => expect(within(box).getByRole("textbox")).toBeVisible());
+  return box;
+}
+
 /**
- * Over the running app, the box shrinks to a pill saying what waits, its action where Send stands,
- * and the app runs to the foot of the view beneath it.
+ * Over the running app, what waits shows in the box with its action where Send stands.
  */
 export const AppScreenWaiting: Story = {
   args: { ...ScreenWaiting.args, ...AppBuilt.args },
   play: async ({ canvasElement }) => {
-    await waitFor(() => expect(foldLine(canvasElement)).not.toBeNull());
-    await expect(foldLine(canvasElement)).toHaveTextContent("Choose a design");
+    const box = await boxOpen(canvasElement);
     await expect(
-      canvasElement.querySelector(
-        '[data-slot="room-project"] [data-slot="composer-panel"]',
-      ),
-    ).toHaveAttribute("hidden");
+      box.querySelector('[data-slot="composer-panel"]'),
+    ).not.toHaveAttribute("hidden");
   },
 };
 
 export const AppApprovalWaiting: Story = {
   args: { ...ApprovalWaiting.args, ...AppBuilt.args },
   play: async ({ canvasElement }) => {
-    await waitFor(() => expect(foldLine(canvasElement)).not.toBeNull());
-    await expect(foldLine(canvasElement)).toHaveTextContent(
-      wording.approval.run,
-    );
+    await boxOpen(canvasElement);
   },
 };
 
@@ -1322,7 +1312,7 @@ export const AppStepGoAhead: Story = {
   args: { ...StepGoAhead.args, ...AppBuilt.args },
 };
 
-/** Work running over the app: the pill says what is happening, with Stop at its end. */
+/** Work running over the app: the status above the box says what is happening, with Stop in it. */
 export const AppWorking: Story = {
   args: {
     ...AppBuilt.args,
@@ -1335,7 +1325,7 @@ export const AppWorking: Story = {
   },
 };
 
-/** The app is up with nothing waiting: the pill says so behind a breathing green ring. */
+/** The app is up with nothing waiting: the status above the box says so behind a breathing ring. */
 export const AppLive: Story = {
   args: {
     ...AppBuilt.args,
@@ -1348,10 +1338,10 @@ export const AppLive: Story = {
     },
   },
   play: async ({ canvasElement }) => {
-    await waitFor(() => expect(foldLine(canvasElement)).not.toBeNull());
-    await expect(
-      foldLine(canvasElement)?.querySelector('[data-slot="bloom-ring"]'),
-    ).not.toBeNull();
+    const box = await boxOpen(canvasElement);
+    await waitFor(() =>
+      expect(box.querySelector('[data-slot="bloom-ring"]')).not.toBeNull(),
+    );
   },
 };
 
@@ -1360,31 +1350,20 @@ export const AppLiveDark: Story = {
   globals: { mode: "dark" },
 };
 
-/**
- * The pill opens the box with the cursor in it; a press outside, with nothing written, shrinks it
- * again.
- */
-export const AppBoxOpens: Story = {
+/** Clicking the app leaves the box open. */
+export const AppBoxStaysOpen: Story = {
   args: { ...ApprovalWaiting.args, ...AppBuilt.args },
   play: async ({ canvasElement }) => {
-    await waitFor(() => expect(foldLine(canvasElement)).not.toBeNull());
-    const line = foldLine(canvasElement);
-    if (line === null) throw new Error("No folded line under the app");
-    await userEvent.click(line);
-    const project = canvasElement.querySelector<HTMLElement>(
-      '[data-slot="room-project"]',
+    const box = await boxOpen(canvasElement);
+    const app = canvasElement.querySelector<HTMLElement>(
+      '[data-slot="room-project"] [data-slot="live-app"]',
     );
-    if (project === null) throw new Error("No project view");
-    const box = within(project).getByRole("textbox");
-    await waitFor(() => expect(box).toHaveFocus());
-    await expect(foldLine(canvasElement)).toBeNull();
-    await expect(
-      project.querySelector('[data-slot="composer-panel"]'),
-    ).not.toHaveAttribute("hidden");
-    const app = project.querySelector<HTMLElement>('[data-slot="live-app"]');
     if (app === null) throw new Error("No app in the project view");
     await userEvent.click(app);
-    await waitFor(() => expect(foldLine(canvasElement)).not.toBeNull());
+    await expect(within(box).getByRole("textbox")).toBeVisible();
+    await expect(
+      box.querySelector('[data-slot="composer-panel"]'),
+    ).not.toHaveAttribute("hidden");
   },
 };
 

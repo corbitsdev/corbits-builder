@@ -56,11 +56,7 @@ import {
 } from "./artifact-pane.tsx";
 import { InBox, useBoxPorts, type BoxPorts } from "./box-ports.tsx";
 import { ScreenCard, StepCard } from "./box-cards.tsx";
-import {
-  approvalAsk,
-  DocumentDecision,
-  PackageDecision,
-} from "./document-decision.tsx";
+import { DocumentDecision, PackageDecision } from "./document-decision.tsx";
 import { FootFade } from "./foot-fade.tsx";
 import { PluginSpace } from "./plugin-space.tsx";
 import { QuestionsCard } from "./questions-card.tsx";
@@ -73,7 +69,7 @@ import {
   type ProjectSidebarViewProps,
 } from "./project-sidebar.view.tsx";
 import { SketchingShown } from "./sketching.tsx";
-import { StatusMark, type StatusPillContent } from "./status-pill.tsx";
+import type { StatusPillContent } from "./status-pill.tsx";
 import { StageView } from "./stage-view.tsx";
 import { RoomThread, type RoomThreadContent } from "./transcript.tsx";
 import styles from "./index.module.css";
@@ -412,14 +408,7 @@ export function RoomView({
   useEffect(() => {
     if (!refocusBox.current) return;
     refocusBox.current = false;
-    const input = inputRef?.current;
-    input?.focus();
-    // Shrunk to a pill, the box has no words to take the cursor; its line takes it instead.
-    if (input && document.activeElement !== input)
-      input
-        .closest('[data-slot="composer"]')
-        ?.querySelector<HTMLElement>('[data-slot="fold-line"]')
-        ?.focus();
+    inputRef?.current?.focus();
   });
   // Focus goes into the project view as it opens and back to what opened it as it closes.
   useEffect(() => {
@@ -476,7 +465,7 @@ export function RoomView({
   const projectDock =
     dockInProject && sketches > 0 ? sketchingDock(dock) : dock;
   // Over the page it asks the person to accept, what waits would only repeat the page: the box
-  // stands open at once, its typing row and action alone.
+  // shows its typing row and action alone.
   const decidesPage = dockInProject && documentShown && decides(waiting);
   // Full screen is the room's own conversation: what the chat was pulled up over is put away.
   const roomDock = (
@@ -484,13 +473,6 @@ export function RoomView({
       dock={projectDock}
       ports={ports}
       waiting={card}
-      fold={
-        dockInProject && !decidesPage
-          ? waiting === null
-            ? null
-            : waitingLine(waiting)
-          : undefined
-      }
       cardHidden={decidesPage}
       chat={chat}
       chatStart={{
@@ -697,25 +679,6 @@ function waitingCard(
   }
 }
 
-/** What waits on the person in one line, as its card heads itself, for the box shrunk to a pill. */
-export function waitingLine(waiting: BoxWaiting): string {
-  switch (waiting.kind) {
-    case "question":
-      return (
-        waiting.question.asked.questions[0]?.question ??
-        wording.promptBox.waiting.question
-      );
-    case "approval":
-      return approvalAsk(waiting.approval);
-    case "step":
-      return wording.promptBox.waiting.step(waiting.title);
-    case "screen":
-      return waiting.title;
-    default:
-      return waiting satisfies never;
-  }
-}
-
 function EmptyConversation({ empty }: { empty: "archived" | "new" | null }) {
   if (empty === "archived")
     return (
@@ -757,13 +720,12 @@ type ChatStart = Pick<
 >;
 
 /**
- * What sits under the conversation: the prompt box with its pill, handle and chat sheet, or the
+ * What sits under the conversation: the prompt box with its handle and chat sheet, or the
  * banner saying why there is none. Stories draw the dock's states with it.
  */
 export function RoomDockView({
   dock,
   waiting,
-  fold,
   cardHidden = false,
   chat,
   chatStart,
@@ -778,12 +740,6 @@ export function RoomDockView({
    * question card, a plugin's screen or an approval. Absent while nothing does.
    */
   waiting?: ReactNode;
-  /**
-   * Over the project view the box shrinks to a pill until the person opens it: what waits in one
-   * line with its action, or null while nothing does, when the pill says what is happening.
-   * Absent, the box never folds.
-   */
-  fold?: string | null | undefined;
   /** What waits stays out of sight, its buttons still in the row, where the page shows it. */
   cardHidden?: boolean;
   chat?: ReactNode;
@@ -862,7 +818,6 @@ export function RoomDockView({
     <RoomComposerView
       {...dock}
       waiting={waiting}
-      fold={fold}
       cardHidden={cardHidden}
       chat={chat}
       chatStart={chatStart}
@@ -898,7 +853,6 @@ function RoomComposerView({
   commentsSending = false,
   onStop,
   waiting,
-  fold,
   cardHidden,
   chat,
   chatStart,
@@ -906,7 +860,6 @@ function RoomComposerView({
   answersShell,
 }: RoomComposer & {
   waiting: ReactNode;
-  fold?: string | null | undefined;
   cardHidden: boolean;
   chat: ReactNode;
   chatStart?: ChatStart | undefined;
@@ -922,43 +875,6 @@ function RoomComposerView({
   // mid-send; the drop zone, the attach button and a paste all follow this.
   const attaching = accept !== null && !busy;
   const typed = text.trim() !== "" || files.length > 0;
-  // Over the project view the box shrinks to a pill, so the document or app under it reads whole:
-  // what waits with its action, else what is happening, else what the box is for. The pill opens
-  // the box; leaving it with nothing written, by a press elsewhere or into the app's frame, shrinks
-  // it again.
-  const [unfolded, setUnfolded] = useState(false);
-  const foldable = fold !== undefined;
-  // Comments on the page wait in the box to be sent, so they hold it open as words do.
-  const folded = foldable && !unfolded && !typed && comments === 0;
-  const unfold = () => {
-    flushSync(() => setUnfolded(true));
-    inputRef.current?.focus();
-  };
-  useEffect(() => {
-    if (!foldable) setUnfolded(false);
-  }, [foldable]);
-  useEffect(() => {
-    if (!unfolded) return;
-    const composer = inputRef.current?.closest('[data-slot="composer"]');
-    const leave = (event: Event) => {
-      if (event.target instanceof Node && composer?.contains(event.target))
-        return;
-      // The chat pulled up over the project view stays over it until it is put back.
-      if (
-        composer?.querySelector(
-          '[data-slot="chat-sheet"]:not([data-state="closed"])',
-        )
-      )
-        return;
-      setUnfolded(false);
-    };
-    document.addEventListener("pointerdown", leave, true);
-    window.addEventListener("blur", leave);
-    return () => {
-      document.removeEventListener("pointerdown", leave, true);
-      window.removeEventListener("blur", leave);
-    };
-  }, [unfolded]);
   const commentsReady =
     comments > 0 &&
     onSendComments !== undefined &&
@@ -1014,26 +930,8 @@ function RoomComposerView({
                 </Attachments>
               </PromptInputFloat>
             )}
-            {/* Folded, what waits is the row: its line opens the box, its action ends the row. */}
-            {folded ? (
-              <button
-                type="button"
-                className={styles.foldLine}
-                data-slot="fold-line"
-                aria-expanded={false}
-                data-muted={fold === null && status === null ? "" : undefined}
-                onClick={unfold}
-              >
-                {fold === null && status !== null ? (
-                  <StatusMark state={status.state} />
-                ) : null}
-                <span className={styles.foldWords}>
-                  {fold ?? status?.label ?? ports.placeholder ?? placeholder}
-                </span>
-              </button>
-            ) : null}
             {/* Attach leads the row; what is sent with the words follows it, then the words. */}
-            {accept === null || folded ? null : (
+            {accept === null ? null : (
               <>
                 <input
                   ref={fileInputRef}
@@ -1057,7 +955,7 @@ function RoomComposerView({
                 </PromptInputButton>
               </>
             )}
-            {comments > 0 && !folded ? (
+            {comments > 0 ? (
               // The count opens the page the comments are on; the cross removes them all.
               <span className={styles.commentsToken} data-slot="comments-token">
                 <button
@@ -1120,7 +1018,7 @@ function RoomComposerView({
               }
             />
             <PromptInputToolbar>
-              {needsProvider || folded ? null : mic}
+              {needsProvider ? null : mic}
               {needsProvider ? (
                 <UiButton
                   type="button"
@@ -1160,7 +1058,6 @@ function RoomComposerView({
   );
   return (
     <Composer
-      folded={folded}
       // With nothing but the card to show, the box is its typing row alone.
       bare={
         cardHidden &&
