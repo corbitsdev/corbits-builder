@@ -429,7 +429,9 @@ function reviewerRow(
       );
       const file = await filterZipArchiveEntries(rawFile, state.excludedPaths);
       triggerBrowserDownload(file);
-      toast.success(wording.paneFile.downloaded(file.name));
+      toast.success(
+        roundText.downloadedZip(fields.name.trim() || reviewer.name),
+      );
       set({ downloadOpen: false });
     } catch (error) {
       set({ fault: humanFault(error, roundText.failed) });

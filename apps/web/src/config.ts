@@ -364,7 +364,8 @@ export const wording = {
     shareDesign: "Share the design",
     downloadSheet: "Download as CSV",
     shareSheet: "Share as CSV",
-    downloaded: (name: string) => `Downloaded ${name}.`,
+    downloaded: (name: string, version: number) =>
+      `Downloaded ${name}, version ${String(version)}.`,
     shareReady: (name: string) => `${name} is ready to share.`,
     shareNow: "Share now",
   },
@@ -1643,6 +1644,8 @@ export const wording = {
     },
     downloadReviewerZip: (name: string) =>
       `Download approval package for ${name}`,
+    downloadedZip: (name: string) =>
+      `Downloaded the approval package for ${name}.`,
     downloadZipShort: "Download package",
     downloadingZipShort: "Downloading…",
     outcomeLabel: "Decision",

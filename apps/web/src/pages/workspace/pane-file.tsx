@@ -88,7 +88,7 @@ async function builtOrReported(prepared: Prepared): Promise<Built | null> {
   }
 }
 
-type Built = { file: File; note?: string; stale?: boolean };
+type Built = { file: File; note: string; stale?: boolean };
 
 export type PaneFile = {
   type: string;
@@ -105,9 +105,13 @@ export type PaneFile = {
   build: () => Promise<Built>;
 };
 
-/** A file the pane already holds, given away as it is shown. */
+/**
+ * A file the pane already holds, given away as it is shown. Its toast names it by `title`, as the
+ * person knows it: the file's own name carries the whole project name and can run for lines.
+ */
 export const shownFile = (
   file: File,
+  title: { name: string; version: number },
   download: string,
   share: string,
 ): PaneFile => ({
@@ -116,13 +120,21 @@ export const shownFile = (
   share,
   key: file.name,
   prepare: "shown",
-  build: () => Promise.resolve({ file }),
+  build: () =>
+    Promise.resolve({
+      file,
+      note: wording.paneFile.downloaded(title.name, title.version),
+    }),
 });
 
 /** A written document as the Markdown file the bar downloads and shares. */
-export const documentFile = (file: File) =>
+export const documentFile = (
+  file: File,
+  title: { name: string; version: number },
+) =>
   shownFile(
     file,
+    title,
     wording.paneFile.downloadDocument,
     wording.paneFile.shareDocument,
   );
@@ -170,9 +182,7 @@ export function useFileGroup(
     const built = await builtOrReported(prepare(file));
     if (built === null) return;
     save(built.file);
-    (built.stale === true ? toast.warning : toast.success)(
-      built.note ?? wording.paneFile.downloaded(built.file.name),
-    );
+    (built.stale === true ? toast.warning : toast.success)(built.note);
   };
   // The build outlived the press, so sharing needs a press of its own.
   const offerShare = async (held: Prepared) => {

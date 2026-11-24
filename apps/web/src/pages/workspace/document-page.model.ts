@@ -88,17 +88,18 @@ export function useDocumentPage({
   const versions = useVersionReading(reading);
   const { viewing, shown, afterText, beforeText, compareWith } = versions;
   const text = afterText ?? "";
+  const filed =
+    document.versions.find((item) => item.version === viewing)?.title ??
+    document.title;
   const files = useFileGroup(
     afterText === null
       ? null
       : documentFile(
           markdownFile(fileStem(project, name, `v${String(viewing)}`), text),
+          { name: filed, version: viewing },
         ),
     true,
   );
-  const filed =
-    document.versions.find((item) => item.version === viewing)?.title ??
-    document.title;
   const lifted = splitLeadingHeading(text);
   // The page's title already shows the heading both versions share; a heading that changed stays
   // in the comparison so the change can be seen.

@@ -312,8 +312,10 @@ function ReadyDocument({
   const design =
     kind === "design" && afterText !== null ? parseBundle(afterText) : null;
   const plan = designPart === "plan" ? design?.["DESIGN.md"] : undefined;
+  const named = { name: title, version: viewing };
   const sourceFile = (): PaneFile | null => {
-    if (plan !== undefined) return documentFile(markdownFile(stem, plan));
+    if (plan !== undefined)
+      return documentFile(markdownFile(stem, plan), named);
     if (design !== null && designPart === "mockup")
       return {
         type: ZIP_TYPE,
@@ -321,7 +323,10 @@ function ReadyDocument({
         share: wording.paneFile.shareDesign,
         key: `${stem}.zip`,
         prepare: "shown",
-        build: async () => ({ file: await zipFile(stem, design) }),
+        build: async () => ({
+          file: await zipFile(stem, design),
+          note: wording.paneFile.downloaded(title, viewing),
+        }),
       };
     if (kind === "approval_package") {
       return null;
@@ -329,6 +334,7 @@ function ReadyDocument({
     if (kind === "sheet" && afterText !== null)
       return shownFile(
         csvFile(stem, afterText),
+        named,
         wording.paneFile.downloadSheet,
         wording.paneFile.shareSheet,
       );
