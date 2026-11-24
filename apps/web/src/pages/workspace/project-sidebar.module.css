@@ -6,6 +6,8 @@
   --inset: var(--frame-edge, var(--space-2));
   /* flex keeps the plan in the closed card under the name; none leaves the closed card the name alone. */
   --plan-when-closed: flex;
+  /* Behind the collapsed plan: var(--wb-background) fills the title row alone, var(--card) the card. */
+  --closed-ground: var(--wb-background);
 
   position: relative;
   display: flex;
@@ -42,13 +44,26 @@
   box-sizing: border-box;
   width: var(--width);
   height: auto;
+  --ground: var(--card);
+
   overflow: hidden;
   border-radius: var(--radius-lg);
-  background: var(--card);
+  background: var(--ground);
   interpolate-size: allow-keywords;
   transition:
     height var(--speed) var(--ease-out),
+    background-color var(--speed) var(--ease-out),
     box-shadow var(--speed) var(--ease-out);
+}
+
+/* Collapsed, the title row is a filled pill of its own and the plan stands on the closed ground. */
+.sidebar:not([data-open]) .card {
+  --ground: var(--closed-ground);
+}
+
+.sidebar:not([data-open]) .head {
+  border-radius: var(--radius-lg);
+  background: var(--card);
 }
 
 .sidebar[data-open] .card {
@@ -264,7 +279,7 @@
   box-sizing: border-box;
   padding: 6px var(--space-2);
   border-radius: var(--radius-md);
-  background: var(--card);
+  background: var(--ground);
   color: color-mix(in oklab, var(--wb-muted-foreground) 72%, transparent);
   font-size: var(--text-xs);
   line-height: var(--text-xs--line-height);
