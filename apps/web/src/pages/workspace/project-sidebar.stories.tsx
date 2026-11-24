@@ -588,6 +588,23 @@ export const Drawer: Story = {
   globals: { viewport: "mobile1" },
 };
 
+/** The open drawer goes away on Escape and on a press on the page beside it. */
+export const DrawerPutAway: Story = {
+  args: { ...buildingArgs, drawer: true },
+  globals: { viewport: "mobile1" },
+  play: async ({ args, canvasElement }) => {
+    await userEvent.keyboard("{Escape}");
+    await expect(args.onToggleSidebar).toHaveBeenCalledTimes(1);
+    const toggle = within(canvasElement).getByRole("button", {
+      name: "Bakery orders",
+      expanded: false,
+    });
+    await userEvent.click(toggle);
+    await userEvent.click(document.body);
+    await expect(args.onToggleSidebar).toHaveBeenCalledTimes(3);
+  },
+};
+
 export const DrawerDark: Story = {
   args: { ...buildingArgs, drawer: true },
   globals: { viewport: "mobile1", mode: "dark" },

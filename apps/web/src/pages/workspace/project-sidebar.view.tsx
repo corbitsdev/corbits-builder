@@ -204,11 +204,37 @@ export function SidebarFrame({
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, []);
+  // An open drawer lies over the page, so Escape or a press on the page puts it away, as a dialog's
+  // would. Escape is heard before the room's own, which would otherwise close the view beneath.
+  const rootRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (!drawer || !open) return;
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      event.preventDefault();
+      toggleByKey();
+    };
+    const onPress = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      // The mark's and the name's menus are drawn outside the sidebar but belong to it.
+      if (rootRef.current?.contains(target) || target.closest('[role="menu"]'))
+        return;
+      toggleByKey();
+    };
+    document.addEventListener("keydown", onKey, true);
+    document.addEventListener("pointerdown", onPress);
+    return () => {
+      document.removeEventListener("keydown", onKey, true);
+      document.removeEventListener("pointerdown", onPress);
+    };
+  }, [drawer, open]);
   const Icon = open ? PanelLeftClose : PanelLeftOpen;
   // One root open or closed, so the toggle keeps focus and the plan stays as it is as the sidebar
   // opens and closes.
   return (
     <aside
+      ref={rootRef}
       className={styles.sidebar}
       data-slot="project-sidebar"
       data-open={open ? "" : undefined}

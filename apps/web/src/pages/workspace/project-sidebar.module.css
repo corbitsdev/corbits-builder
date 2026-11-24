@@ -70,8 +70,12 @@
   height: calc(100% - 2 * var(--inset));
 }
 
+/* Over the page as a drawer it is lifted clear of the text beneath, as the room's floating cards
+   are. */
 .sidebar[data-drawer][data-open] .card {
-  box-shadow: var(--wb-shadow);
+  box-shadow:
+    var(--wb-pane-shadow),
+    0 8px 24px rgb(0 0 0 / 0.16);
 }
 
 /* Opened or closed from the keyboard it moves at once: a shortcut is pressed too often to wait on. */
