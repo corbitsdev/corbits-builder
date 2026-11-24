@@ -95,7 +95,10 @@ export function RoomSkeleton({
                 disabled
                 aria-hidden="true"
               >
-                <PromptInputTextarea placeholder={said} />
+                {/* The room's own empty box, so nothing in it changes when the room arrives. What is
+                    opening is read out by the line above, not written into the box: a project's
+                    name can be the person's whole first message. */}
+                <PromptInputTextarea placeholder={wording.composer.reply} />
                 <PromptInputToolbar>
                   <PromptInputSubmit className="ms-auto" />
                 </PromptInputToolbar>

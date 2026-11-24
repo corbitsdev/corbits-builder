@@ -39,6 +39,31 @@ export const Loading: Story = {
   },
 };
 
+/** A project just started takes its first words as its name; the box stays the room's empty box. */
+export const LoadingLongTitle: Story = {
+  args: {
+    ...opened,
+    title:
+      "Can you build me a calculator app that I can use and also which helps me track expenses daily and hit some target goal, lets say whatever I set",
+  },
+  render: (args) => <RoomSkeleton {...args} />,
+  play: async ({ canvas, canvasElement }) => {
+    await expect(canvas.getByRole("textbox", { hidden: true })).toHaveAttribute(
+      "placeholder",
+      wording.composer.reply,
+    );
+    const foot = canvasElement.querySelector('[data-slot="composer"]');
+    const box = canvasElement.querySelector('[data-slot="composer-box"]');
+    await expect(foot).not.toBeNull();
+    await expect(box).not.toBeNull();
+    if (foot === null || box === null) return;
+    // The box keeps inside its column, however long the name.
+    await expect(box.getBoundingClientRect().right).toBeLessThanOrEqual(
+      foot.getBoundingClientRect().right + 1,
+    );
+  },
+};
+
 export const LoadingSidebarClosed: Story = {
   args: { ...opened, sidebar: { ...opened.sidebar, open: false } },
   render: (args) => <RoomSkeleton {...args} />,
