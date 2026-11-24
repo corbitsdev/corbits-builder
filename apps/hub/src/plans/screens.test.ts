@@ -9,7 +9,7 @@ import {
   readPluginFolder,
   type Found,
 } from "@corbits-builder/plugin-host/folder";
-import type { StoredPlanStep } from "@corbits-builder/schemas/project";
+import type { StoredPlanStep } from "@corbits-builder/schemas/plan";
 import { type } from "arktype";
 import type { createArtifactService } from "../artifacts/service.ts";
 import { HOST, PLUGINS_FOLDER } from "../plugins/catalog.ts";

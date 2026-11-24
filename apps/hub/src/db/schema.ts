@@ -22,7 +22,7 @@ import {
 } from "@intx/db/schema";
 import type { RunBlock } from "@corbits-builder/schemas/activity";
 import type { CustomModel } from "@corbits-builder/schemas/models";
-import type { StoredPlan } from "@corbits-builder/schemas/project";
+import type { StoredPlan } from "@corbits-builder/schemas/plan";
 
 export const project = pgTable(
   "project",

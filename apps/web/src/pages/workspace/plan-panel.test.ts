@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { isValidElement, type ReactNode } from "react";
-import type { PlanView } from "@corbits-builder/schemas/project";
+import type { PlanView } from "@corbits-builder/schemas/plan";
 import { StepControls, planProgress } from "./plan-panel.tsx";
 
 type Child = Extract<PlanView["steps"][number], { plugin: string }>;

@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import type { Fact } from "@corbits-builder/plugin";
-import { protectedSteps, type PlanStepView } from "./plan.ts";
+import type { PlanViewChild } from "@corbits-builder/schemas/plan";
+import { protectedSteps } from "./plan.ts";
 
 const records = {
   facts: new Set<Fact>(),
@@ -8,7 +9,7 @@ const records = {
   asksApprovals: true,
 };
 // A check step that matches a failed record some earlier plan left.
-const check: PlanStepView = {
+const check: PlanViewChild = {
   id: "check",
   title: "Check the app",
   plugin: "tester",
@@ -20,7 +21,7 @@ const check: PlanStepView = {
   kind: "check",
   checkId: "earlier",
 };
-const build: PlanStepView = {
+const build: PlanViewChild = {
   id: "build",
   title: "Build the app",
   plugin: "builder",
@@ -31,7 +32,7 @@ const build: PlanStepView = {
   finished: false,
   kind: "workflow",
 };
-const built: PlanStepView = {
+const built: PlanViewChild = {
   id: "build",
   title: "Build the app",
   plugin: "builder",
@@ -43,7 +44,7 @@ const built: PlanStepView = {
   kind: "workflow",
   runId: "run",
 };
-const answered: PlanStepView = {
+const answered: PlanViewChild = {
   id: "ask",
   title: "Choose the look",
   plugin: "designer",
@@ -69,7 +70,7 @@ test("a plan is under way once one of its own steps has begun, not because a ste
 });
 
 test("a skipped step is not held for its approval, since it will not run", () => {
-  const skipped: PlanStepView = {
+  const skipped: PlanViewChild = {
     id: "design",
     title: "Design the look",
     plugin: "designer",

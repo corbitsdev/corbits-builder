@@ -4,11 +4,7 @@ import type { Context, Hono } from "hono";
 import { describeRoute, resolver } from "hono-openapi";
 import type { TenantEnv } from "@intx/hub-api";
 import { showsScreen } from "@corbits-builder/schemas/conversation";
-import {
-  PlanView,
-  PlanWrite,
-  StoredPlan,
-} from "@corbits-builder/schemas/project";
+import { PlanView, PlanWrite, StoredPlan } from "@corbits-builder/schemas/plan";
 import type { Catalog } from "@corbits-builder/plugin-host/catalog";
 import { planRefusal } from "@corbits-builder/plugin-host/coordinator";
 import { resolveFacts, unmet } from "@corbits-builder/plugin-host/facts";

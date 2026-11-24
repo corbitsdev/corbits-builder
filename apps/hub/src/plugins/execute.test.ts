@@ -1,16 +1,13 @@
 import { expect, test } from "bun:test";
 import type { RuntimeCapabilities } from "@intx/types/runtime-capabilities";
-import {
-  planState,
-  type PlanRecords,
-  type PlanStep as SavedStep,
-} from "@corbits-builder/plugin-host/plan";
+import { planState, type PlanRecords } from "@corbits-builder/plugin-host/plan";
 import {
   PlanView,
   PlanWrite,
   type PlanChildWrite,
   type PlanStepWrite,
-} from "@corbits-builder/schemas/project";
+  type StoredPlanChild,
+} from "@corbits-builder/schemas/plan";
 import { CATALOG } from "./catalog.ts";
 import { createExecuteTools } from "./tools.ts";
 
@@ -656,9 +653,9 @@ test("a group is finished once nothing in it is left to do, so an optional step 
   const at = new Date(0).toISOString();
   const step = (
     id: string,
-    marks: Pick<SavedStep, "cancelled" | "optional">,
-  ): SavedStep => {
-    const made: SavedStep = {
+    marks: Partial<Pick<StoredPlanChild, "cancelled" | "optional">>,
+  ): StoredPlanChild => {
+    const made: StoredPlanChild = {
       id,
       title: id,
       plugin: "designer",
@@ -673,7 +670,7 @@ test("a group is finished once nothing in it is left to do, so an optional step 
   const cancelled = (id: string) =>
     step(id, { cancelled: { by: "person", at } });
   const optional = step("extra", { optional: true });
-  const groupOf = (steps: SavedStep[], runs: PlanRecords["runs"] = []) =>
+  const groupOf = (steps: StoredPlanChild[], runs: PlanRecords["runs"] = []) =>
     planState(CATALOG, [{ id: "group", title: "Publish", steps }], {
       facts: new Set(),
       personFacts: new Set(),

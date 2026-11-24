@@ -16,9 +16,9 @@ import {
 } from "@corbits-builder/schemas/conversation";
 import type {
   AskedScreen,
-  PlanView,
   ShownScreen,
 } from "@corbits-builder/schemas/project";
+import type { PlanView } from "@corbits-builder/schemas/plan";
 import {
   readProjectValues,
   type ProjectState,

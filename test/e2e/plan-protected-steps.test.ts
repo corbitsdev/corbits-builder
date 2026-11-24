@@ -5,7 +5,7 @@ import { toolConsumer } from "@intx/authz";
 import { createNoopCredentialCipher } from "@intx/crypto";
 import { createRunTokenStore } from "@intx/db";
 import { grant } from "@intx/db/schema";
-import type { StoredPlan } from "@corbits-builder/schemas/project";
+import type { StoredPlan } from "@corbits-builder/schemas/plan";
 import { startInProcessHub } from "./support/in-process-hub.ts";
 
 let hub: Awaited<ReturnType<typeof startInProcessHub>>;

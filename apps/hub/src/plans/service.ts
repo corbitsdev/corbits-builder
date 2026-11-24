@@ -9,7 +9,7 @@ import {
   type StoredPlanChild,
   type StoredPlanGroup,
   type StoredPlanStep,
-} from "@corbits-builder/schemas/project";
+} from "@corbits-builder/schemas/plan";
 import type { ScreenQuestion } from "@corbits-builder/schemas/conversation";
 import type { Catalog } from "@corbits-builder/plugin-host/catalog";
 import {

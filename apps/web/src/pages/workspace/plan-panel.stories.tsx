@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { fn } from "storybook/test";
-import type { PlanView } from "@corbits-builder/schemas/project";
+import type { PlanView } from "@corbits-builder/schemas/plan";
 import { PlanPanel } from "./plan-panel.tsx";
 
 type Child = Extract<PlanView["steps"][number], { plugin: string }>;

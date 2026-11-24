@@ -7,7 +7,7 @@ import { toolConsumer } from "@intx/authz";
 import { createNoopCredentialCipher } from "@intx/crypto";
 import { createRunTokenStore } from "@intx/db";
 import { grant } from "@intx/db/schema";
-import type { PlanView } from "@corbits-builder/schemas/project";
+import type { PlanView } from "@corbits-builder/schemas/plan";
 
 // The hub reads its plugins once, from the repository's plugins folder, when it loads. A place to
 // publish to is copied there: the hoster fixture and its plan, listed in the publish group, and

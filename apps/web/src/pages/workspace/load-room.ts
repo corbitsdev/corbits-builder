@@ -9,7 +9,7 @@ import { wording } from "../../config.ts";
 import type { QueryClient } from "@tanstack/react-query";
 import type { ProjectArtifact } from "@corbits-builder/client";
 import type { FailedRun, InFlightRun } from "@corbits-builder/schemas/artifact";
-import type { PlanView } from "@corbits-builder/schemas/project";
+import type { PlanView } from "@corbits-builder/schemas/plan";
 import type { ConversationQuestion } from "@corbits-builder/schemas/conversation";
 import {
   listProjectArtifacts,

@@ -10,7 +10,7 @@ import {
   type PointerEvent,
 } from "react";
 import { PanelRightClose } from "lucide-react";
-import type { PlanView } from "@corbits-builder/schemas/project";
+import type { PlanView } from "@corbits-builder/schemas/plan";
 import { Button, Switch } from "@corbits/react-ui";
 import {
   Steps,

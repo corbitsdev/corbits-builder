@@ -1,5 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
-import type { Approval, Fact } from "@corbits-builder/plugin";
+import type { Fact } from "@corbits-builder/plugin";
 import type { ReadyPlanOffer } from "@corbits-builder/schemas/project";
 import {
   isCheckAction,
@@ -9,7 +9,15 @@ import {
   type Catalog,
 } from "./catalog.ts";
 import { gateOf, makersIn, type Run } from "./coordinator.ts";
-import { leftToDo, stepFinished } from "./finished.ts";
+import {
+  leftToDo,
+  stepFinished,
+  type PlanStepStateName,
+  type PlanViewChild,
+  type PlanViewGroup,
+  type StoredPlanChild,
+  type StoredPlanGroup,
+} from "@corbits-builder/schemas/plan";
 import { holds, resolveFacts, unmet } from "./facts.ts";
 import { missingTexts, unfinishedText } from "./text.ts";
 
@@ -40,74 +48,6 @@ export const readyPlanOffers = (catalog: Catalog): ReadyPlanOffer[] =>
         : { takeDown: removes ? { ...takeDown, removes } : takeDown }),
     };
   });
-
-type Mark = { by: string; at: string };
-
-/** A step of a project's plan as the host stores it: a plugin action with its input. */
-export type PlanStep = {
-  id: string;
-  title: string;
-  plugin: string;
-  action: string;
-  input: Record<string, unknown>;
-  askFirst: boolean;
-  goAhead?: Mark;
-  cancelled?: Mark;
-  optional?: boolean;
-  approval?: Approval;
-  requires?: Fact[];
-  declined?: Mark;
-  // The person answered the step's screen, which is what doing a screen step is.
-  answered?: Mark;
-};
-
-/** A step that only groups the steps it holds: it names no action and starts nothing. */
-export type PlanGroup = {
-  id: string;
-  title: string;
-  // The ready-made plan the group was added as, by its handle.
-  plan?: string;
-  steps: readonly PlanStep[];
-};
-
-export type StepState =
-  | "done"
-  | "failed"
-  | "running"
-  | "needs_you"
-  | "waiting"
-  | "not_started"
-  | "skipped"
-  | "cancelled";
-
-/** A plan step with where it stands, worked out from what the host has recorded. */
-export type PlanStepView = PlanStep & {
-  state: StepState;
-  // Done, skipped or cancelled: nothing more will happen to it unless the plan changes.
-  finished: boolean;
-  kind: "workflow" | "screen" | "check";
-  // One plain line: the check's summary, the run's last activity, or why it failed.
-  summary?: string;
-  evidence?: string[];
-  // While it waits, each requirement that does not hold, with what would make it true.
-  needs?: string[];
-  startedAt?: string;
-  endedAt?: string;
-  runId?: string;
-  checkId?: string;
-};
-
-/** A group with where it stands, worked out from its steps. */
-export type PlanGroupView = {
-  id: string;
-  title: string;
-  plan?: string;
-  state: StepState;
-  // Nothing in it is left to do: every step is finished, apart from optional steps nobody started.
-  finished: boolean;
-  needs?: string[];
-  steps: PlanStepView[];
-};
 
 /** What the host has recorded of a project, which a plan's state is worked out from. */
 export type PlanRecords = {
@@ -161,12 +101,12 @@ const DECLINED_SUMMARY = "declined by the person";
  */
 export function planState(
   catalog: Catalog,
-  steps: readonly (PlanStep | PlanGroup)[],
+  steps: readonly (StoredPlanChild | StoredPlanGroup)[],
   records: PlanRecords,
-): (PlanStepView | PlanGroupView)[] {
+): (PlanViewChild | PlanViewGroup)[] {
   const { facts } = records;
   const makers = makersIn(catalog);
-  const stepView = (step: PlanStep): PlanStepView => {
+  const stepView = (step: StoredPlanChild): PlanViewChild => {
     const action = catalog.actions.find(
       (each) => each.plugin === step.plugin && each.action === step.action,
     );
@@ -174,7 +114,7 @@ export function planState(
       throw new Error(
         `The plan names ${step.plugin} ${step.action}, which is not installed`,
       );
-    const view: PlanStepView = {
+    const view: PlanViewChild = {
       id: step.id,
       title: step.title,
       plugin: step.plugin,
@@ -236,7 +176,7 @@ export function planState(
     const asked = records.questions.some(
       (each) => each.plugin === step.plugin && each.action === step.action,
     );
-    const state = (): StepState => {
+    const state = (): PlanStepStateName => {
       if (step.cancelled) return "cancelled";
       if (step.declined) return "skipped";
       if (step.answered) return "done";
@@ -274,7 +214,7 @@ export function planState(
     if (!("steps" in step)) return stepView(step);
     const children = step.steps.map(stepView);
     const left = children.filter(leftToDo);
-    const view: PlanGroupView = {
+    const view: PlanViewGroup = {
       id: step.id,
       title: step.title,
       state: "not_started",
@@ -282,7 +222,7 @@ export function planState(
       steps: children,
     };
     if (step.plan) view.plan = step.plan;
-    const any = (state: StepState) =>
+    const any = (state: PlanStepStateName) =>
       children.some((child) => child.state === state);
     const [next] = left;
     if (any("failed")) view.state = "failed";
@@ -304,7 +244,7 @@ export function planState(
 
 /** A step only the person may take out of the plan, with why. */
 export type ProtectedStep = {
-  step: PlanStepView;
+  step: PlanViewChild;
   reason: "approval" | "done" | "started" | "underway";
 };
 
@@ -315,14 +255,14 @@ export type ProtectedStep = {
  * theirs to drop already.
  */
 export function protectedSteps(
-  steps: readonly (PlanStepView | PlanGroupView)[],
+  steps: readonly (PlanViewChild | PlanViewGroup)[],
   records: Pick<PlanRecords, "facts" | "personFacts" | "asksApprovals">,
 ): ProtectedStep[] {
   const plans = [
     steps.flatMap((step) => ("steps" in step ? [] : [step])),
     ...steps.flatMap((step) => ("steps" in step ? [step.steps] : [])),
   ];
-  const started = (step: PlanStepView) =>
+  const started = (step: PlanViewChild) =>
     step.state === "running" ||
     (step.state === "needs_you" && step.runId !== undefined);
   return plans.flatMap((plan) => {
@@ -331,7 +271,7 @@ export function protectedSteps(
     const underway = plan.some(
       (step) => step.runId !== undefined || step.answered !== undefined,
     );
-    const reasonOf = (step: PlanStepView): ProtectedStep["reason"] | null => {
+    const reasonOf = (step: PlanViewChild): ProtectedStep["reason"] | null => {
       if (
         step.approval &&
         !step.finished &&

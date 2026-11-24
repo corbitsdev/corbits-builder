@@ -35,7 +35,14 @@ import {
   templateField,
   unmet,
 } from "./facts.ts";
-import { leftToDo, unstartedOptional } from "./finished.ts";
+import {
+  leftToDo,
+  unstartedOptional,
+  type PlanChildWrite,
+  type PlanStepWrite,
+  type PlanViewChild,
+  type PlanViewStep,
+} from "@corbits-builder/schemas/plan";
 import { fields } from "./search/fields.ts";
 import type { Strategy } from "./search/words.ts";
 import {
@@ -97,55 +104,10 @@ export type CheckRan =
     }
   | { started: true; plugin: string; action: string; checkId: string };
 
-/**
- * An action step of the project's plan as the host shows it: a plugin action with its input, and
- * where it stands.
- */
-type SavedPlanChild = {
-  id: string;
-  title: string;
-  plugin: string;
-  action: string;
-  input: Record<string, unknown>;
-  askFirst: boolean;
-  goAhead?: { by: string; at: string };
-  optional?: boolean;
-  approval?: Approval;
-  requires?: Fact[];
-  declined?: { by: string; at: string };
-  state: string;
-  finished: boolean;
-  runId?: string;
-};
-/**
- * A step of the plan: an action step, or a group that only holds action steps, with the handle of
- * the ready-made plan it was added as when it was.
- */
-export type SavedPlanStep =
-  | SavedPlanChild
-  | {
-      id: string;
-      title: string;
-      plan?: string;
-      steps: readonly SavedPlanChild[];
-    };
-/** A step of the plan as saved: one with no id is new, and the host gives it one. */
-type PlanChildWrite = Omit<
-  SavedPlanChild,
-  "id" | "declined" | "state" | "finished" | "runId"
-> & {
-  id?: string;
-};
-type PlanGroupWrite = {
-  id?: string;
-  title: string;
-  plan?: string;
-  steps: PlanChildWrite[];
-};
-export type PlanStepWrite = PlanChildWrite | PlanGroupWrite;
+type PlanGroupWrite = Extract<PlanStepWrite, { steps: unknown }>;
 
 // The plan's action steps, those its groups hold among them.
-const actionSteps = (steps: readonly SavedPlanStep[]) =>
+const actionSteps = (steps: readonly PlanViewStep[]) =>
   steps.flatMap((step) => ("steps" in step ? step.steps : [step]));
 
 /** What the coordinator's tools need from the project they act on, which only the host can do. */
@@ -168,7 +130,7 @@ export type Project = StarterProject & {
   // Stops a run the coordinator started that is still at work.
   stop(runId: string): Promise<unknown>;
   // The project's plan as the host shows it, with what it says of each step besides what was saved.
-  plan(): Promise<{ steps: readonly SavedPlanStep[] }>;
+  plan(): Promise<{ steps: readonly PlanViewStep[] }>;
   // Replaces the plan; a step saved with its id keeps the person's marks on it.
   savePlan(steps: readonly PlanStepWrite[]): Promise<unknown>;
   // Whether a credential of this name that deploy can use reaches the project, saved in its tenant or one above it.
@@ -469,7 +431,7 @@ function readiness(
 }
 
 // The plan's action steps for this action whose gate still holds: a finished step's gate is spent.
-const gatingSteps = (action: Action, steps: readonly SavedPlanStep[]) =>
+const gatingSteps = (action: Action, steps: readonly PlanViewStep[]) =>
   actionSteps(steps).filter(
     (step) =>
       step.plugin === action.plugin &&
@@ -732,7 +694,7 @@ export type Outcome = { content: string; isError?: true };
 function stepsFor(
   action: Action,
   input: unknown,
-  steps: readonly SavedPlanStep[],
+  steps: readonly PlanViewStep[],
 ) {
   const returns = action.builder.returns ?? [];
   const making = resolveFacts(returns, input);
@@ -1298,7 +1260,7 @@ function planCallProblems(catalog: Catalog, asked: PlanCall) {
 // What is wrong with the step ids a call names, against the plan as saved.
 function planIdProblems(
   asked: PlanCall,
-  saved: readonly SavedPlanStep[],
+  saved: readonly PlanViewStep[],
   adding: readonly PlanStepWrite[],
 ) {
   const children = saved.flatMap((step) => ("steps" in step ? step.steps : []));
@@ -1344,7 +1306,7 @@ function childWrite({
   optional,
   approval,
   requires,
-}: SavedPlanChild): PlanChildWrite {
+}: PlanViewChild): PlanChildWrite {
   const written: PlanChildWrite = {
     id,
     title,
@@ -1358,7 +1320,7 @@ function childWrite({
   if (requires) written.requires = requires;
   return written;
 }
-function stepWrite(step: SavedPlanStep): PlanStepWrite {
+function stepWrite(step: PlanViewStep): PlanStepWrite {
   if (!("steps" in step)) return childWrite(step);
   const group: PlanGroupWrite = {
     id: step.id,
@@ -1444,7 +1406,7 @@ function removed(plan: PlanStepWrite[], ids: readonly string[]) {
 
 // The plan as it stands, and once only optional steps are left unstarted, what is owed on them.
 async function planAnswer(
-  saved: { steps: readonly SavedPlanStep[] },
+  saved: { steps: readonly PlanViewStep[] },
   project: Project,
 ) {
   const steps = actionSteps(saved.steps);
