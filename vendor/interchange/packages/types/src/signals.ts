@@ -58,6 +58,36 @@ export const QuestionAnswer = type({
 export type QuestionAnswer = typeof QuestionAnswer.infer;
 
 /**
+ * What a person gives the hub for a parked question: a {@link QuestionAnswer},
+ * whose answers may come with `details`, their own words beside the answer to
+ * a question, by the same id. A run never receives this shape: a sidecar from
+ * before it would refuse it, so the hub delivers {@link deliveredAnswer}.
+ */
+export const GivenQuestionAnswer = QuestionAnswer.or({
+  "+": "reject",
+  answers: "Record<string, (string > 0)[]>",
+  details: "Record<string, string > 0>",
+});
+export type GivenQuestionAnswer = typeof GivenQuestionAnswer.infer;
+
+/**
+ * The answer a run receives for what a person gave: each question's details
+ * follow what was picked for it, as the last of its answers.
+ */
+export function deliveredAnswer(given: GivenQuestionAnswer): QuestionAnswer {
+  if (!("details" in given)) return given;
+  const { answers, details } = given;
+  return {
+    answers: Object.fromEntries(
+      Object.entries(answers).map(([id, picked]) => {
+        const added = details[id]?.trim() ?? "";
+        return [id, added === "" ? picked : [...picked, added]];
+      }),
+    ),
+  };
+}
+
+/**
  * Map a signal kind to the reactor gate type it clears. The default arm
  * calls `assertNever` so a newly added SignalKind that is not classified
  * here fails to type-check — a bare switch without a default does not.
