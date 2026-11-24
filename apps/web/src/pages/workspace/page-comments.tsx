@@ -54,7 +54,9 @@ export function usePageComments(
   textRef: RefObject<HTMLElement | null>,
 ): {
   passages: readonly MarginPassage[] | undefined;
-  margin: ((place: PassagePlace) => ReactNode) | undefined;
+  margin: ((place: PassagePlace, pointed: boolean) => ReactNode) | undefined;
+  /** Takes up a saved comment from its passage, to edit it. */
+  press: ((id: string) => void) | undefined;
   /** Takes what the person selects in the text as the passage to write about. */
   select: { onMouseUp: () => void; onKeyUp: (event: KeyboardEvent) => void };
   /** The passage being written about, made wider or narrower by its handles. */
@@ -92,6 +94,7 @@ export function usePageComments(
       margin: undefined,
       select: { onMouseUp: () => {}, onKeyUp: () => {} },
       resize: undefined,
+      press: undefined,
     };
 
   const { drafts, onSave, onDelete } = comments;
@@ -103,7 +106,7 @@ export function usePageComments(
   if (writing !== null && writing.id === null)
     passages.push({ id: NEW, quote: writing.quote, state: "selected" });
 
-  const margin = (place: PassagePlace): ReactNode => {
+  const margin = (place: PassagePlace, pointed: boolean): ReactNode => {
     const draft = drafts.find((item) => item.id === place.id);
     const editing =
       writing !== null &&
@@ -128,6 +131,7 @@ export function usePageComments(
       <CommentCard
         state="saved"
         comment={draft?.comment ?? ""}
+        paired={pointed}
         onEdit={() => setWriting({ id: place.id, quote })}
         onDelete={() => onDelete(place.id)}
       />
@@ -144,6 +148,10 @@ export function usePageComments(
   return {
     passages,
     margin,
+    press: (id) => {
+      const draft = drafts.find((item) => item.id === id);
+      if (draft !== undefined) setWriting({ id, quote: draft.quote });
+    },
     resize: (_id, range) => {
       const quote = rangeText(range).trim();
       if (quote === "") return;

@@ -101,6 +101,7 @@ export function WrittenDocumentView({
       passages={page.passages}
       margin={page.margin}
       onResize={page.resize}
+      onPassagePress={page.press}
     >
       {text}
     </DocumentPage>

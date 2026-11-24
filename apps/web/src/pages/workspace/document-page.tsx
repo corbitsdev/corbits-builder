@@ -100,9 +100,12 @@ function putAway<Card extends { place: PassagePlace }>(was: Card | null) {
   return was?.place.state === "selected" ? was : null;
 }
 
-const HIGHLIGHTS: Readonly<Record<PassageState | "commented", string>> = {
+const HIGHLIGHTS: Readonly<
+  Record<PassageState | "commented" | "pointed", string>
+> = {
   commented: "document-passage",
   selected: "document-passage-selected",
+  pointed: "document-passage-pointed",
 };
 
 type Painted = { highlight: string; range: Range };
@@ -204,6 +207,7 @@ export function DocumentPage({
   passages = [],
   margin,
   onResize,
+  onPassagePress,
   children,
 }: {
   title: string;
@@ -216,10 +220,15 @@ export function DocumentPage({
   notes?: ReactNode;
   /** Passages something is said about; each is underlined and given a place in the margin. */
   passages?: readonly MarginPassage[] | undefined;
-  /** What sits in the right margin beside a passage, such as its comment. */
-  margin?: ((passage: PassagePlace) => ReactNode) | undefined;
+  /**
+   * What sits in the right margin beside a passage, such as its comment. `pointed` is true while
+   * the pointer is on the passage or on the item itself.
+   */
+  margin?: ((passage: PassagePlace, pointed: boolean) => ReactNode) | undefined;
   /** The passage being written about was dragged wider or narrower by one of its handles. */
   onResize?: ((id: string, range: Range) => void) | undefined;
+  /** A passage's underline was pressed, to take up what is said about it. */
+  onPassagePress?: ((id: string) => void) | undefined;
   /** The document's body, drawn at the page's type scale. */
   children: ReactNode;
 }) {
@@ -244,6 +253,9 @@ export function DocumentPage({
   const [places, setPlaces] = useState<readonly PassagePlace[]>([]);
   const [roomy, setRoomy] = useState(true);
   const ranges = useRef(new Map<string, Range>());
+  // The passage the pointer is on, on the page or by its margin item: each shows the other.
+  const [pointed, setPointed] = useState<string | null>(null);
+  const pointedOwner = useRef({});
   const cardId = useId();
   const [card, setCard] = useState<{
     place: PassagePlace;
@@ -448,6 +460,20 @@ export function DocumentPage({
     };
   }, [measure]);
 
+  // A passage pointed at from its margin item is tinted; one being written is tinted already.
+  useEffect(() => {
+    const owner = pointedOwner.current;
+    const place = places.find((item) => item.id === pointed);
+    const range = ranges.current.get(pointed ?? "");
+    paint(
+      owner,
+      place === undefined || place.state === "selected" || range === undefined
+        ? []
+        : [{ highlight: HIGHLIGHTS.pointed, range }],
+    );
+    return () => paint(owner, []);
+  }, [pointed, places]);
+
   // A card opened from its passage sits under the line, or above it when the view ends first.
   useLayoutEffect(() => {
     const box = cardRef.current;
@@ -579,22 +605,28 @@ export function DocumentPage({
     return null;
   };
 
-  // With the margin too narrow for its cards, a passage's underline opens its card instead.
+  const pressable = narrow || onPassagePress !== undefined;
+
+  // A passage's underline takes up its comment; with the margin too narrow for its cards, it opens
+  // the card from the line as well.
   const openFromMark = (event: MouseEvent) => {
-    if (!narrow || window.getSelection()?.isCollapsed === false) return;
+    if (!pressable || window.getSelection()?.isCollapsed === false) return;
     const hit = passageAt(event.clientX, event.clientY);
     if (hit === null) return;
-    // The card takes this press; quoting the passage into a message is not offered as well.
+    // The comment takes this press; quoting the passage into a message is not offered as well.
     event.stopPropagation();
+    if (hit.place.state !== "selected") onPassagePress?.(hit.place.id);
+    if (!narrow) return;
     cardTrigger.current = null;
     setCard(hit);
   };
 
   const pointAtMark = (event: MouseEvent<HTMLElement>) => {
-    if (!narrow) return;
+    const hit = passageAt(event.clientX, event.clientY);
+    setPointed(hit?.place.id ?? null);
     event.currentTarget.toggleAttribute(
       "data-pointing",
-      passageAt(event.clientX, event.clientY) !== null,
+      pressable && hit !== null,
     );
   };
 
@@ -668,6 +700,7 @@ export function DocumentPage({
             data-writing={writing}
             onClickCapture={openFromMark}
             onPointerMove={pointAtMark}
+            onPointerLeave={() => setPointed(null)}
           >
             <div className={styles.head}>
               <h1 className={styles.title}>{title}</h1>
@@ -728,8 +761,10 @@ export function DocumentPage({
                   }}
                   className={styles.marginItem}
                   data-slot="document-margin-item"
+                  onPointerEnter={() => setPointed(place.id)}
+                  onPointerLeave={() => setPointed(null)}
                 >
-                  {margin(place)}
+                  {margin(place, pointed === place.id)}
                 </div>
               ))}
         </div>
@@ -756,7 +791,7 @@ export function DocumentPage({
                   setCard(putAway);
               }}
             >
-              {margin(card.place)}
+              {margin(card.place, false)}
             </div>,
             document.body,
           )}
