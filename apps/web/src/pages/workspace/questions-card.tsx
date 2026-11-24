@@ -592,7 +592,7 @@ function OpenCard({
     }
   };
 
-  // The open question heads the card, with Back, where it stands and Not now beside it; Continue
+  // The open question heads the card, with Back and where it stands beside it; Continue
   // stands where Send does only once something is picked, else the box's own Send. It reads
   // Continue on the last question too: the box is one step of a flow, and its tooltip says that
   // this step sends.
@@ -643,16 +643,6 @@ function OpenCard({
             </p>
           </div>
         ) : null}
-        {/* The way out of the questions without choosing, as a waiting screen has. */}
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          className={styles.notNow}
-          onClick={() => deliver({ reply: wording.promptBox.waiting.notNow })}
-        >
-          {wording.promptBox.waiting.notNow}
-        </Button>
       </header>
       <h3 className={styles.boxQuestion}>{question.question}</h3>
       <div ref={choices} className={styles.thread}>
