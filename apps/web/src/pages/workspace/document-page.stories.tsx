@@ -118,7 +118,7 @@ function MarginStandIn({ place }: { place: PassagePlace }) {
   );
 }
 
-/** Download and Share beside the contents' heading, as a written document gives them. */
+/** Download and Share above the contents, as a written document gives them. */
 const files: PaneBarGroup = [
   {
     id: "download",

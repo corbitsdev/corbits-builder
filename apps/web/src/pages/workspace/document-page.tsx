@@ -130,13 +130,7 @@ function paint(owner: object, marks: readonly Painted[]) {
  * The text is read once, so every passage on the page is found from one pass over it.
  */
 function quoteFinder(root: HTMLElement): (quote: string) => Range | null {
-  // Download and Share are on the page but are not the document's words.
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
-    acceptNode: (node) =>
-      node.parentElement?.closest('[data-slot="document-files"]') === null
-        ? NodeFilter.FILTER_ACCEPT
-        : NodeFilter.FILTER_REJECT,
-  });
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   const nodes: { node: Text; start: number }[] = [];
   let text = "";
   for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
@@ -683,6 +677,7 @@ export function DocumentPage({
     >
       <div className={styles.layout}>
         <div className={styles.side}>
+          <FileActions files={files} />
           <DocumentContents
             title={title}
             sections={contents}
@@ -702,10 +697,7 @@ export function DocumentPage({
             onPointerMove={pointAtMark}
             onPointerLeave={() => setPointed(null)}
           >
-            <div className={styles.head}>
-              <h1 className={styles.title}>{title}</h1>
-              <FileActions files={files} />
-            </div>
+            <h1 className={styles.title}>{title}</h1>
             {children}
             {writing === "stopped" ? (
               <Fault onRetry={onResume}>{words.stopped}</Fault>

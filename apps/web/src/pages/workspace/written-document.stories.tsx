@@ -40,7 +40,7 @@ export const SAMPLE_MANUAL: UserManual = {
   pictures: { "docs/pictures/orders.png": ORDERS_PICTURE },
 };
 
-/** Download and Share beside the contents' heading. */
+/** Download and Share above the contents. */
 const files: PaneBarGroup = [
   {
     id: "download",

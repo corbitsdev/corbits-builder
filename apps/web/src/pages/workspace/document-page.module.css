@@ -48,13 +48,15 @@
   padding: 14px 0 96px;
 }
 
+/* Download and Share, then the contents, against the page's left edge. */
 .side {
   grid-column: 1;
   display: flex;
-  justify-content: flex-end;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-3);
   box-sizing: border-box;
   min-width: 0;
-  container: side / inline-size;
   position: sticky;
   /* Level with the page's top edge, and held there as the page scrolls past. */
   top: 8px;
@@ -140,14 +142,19 @@
   pointer-events: none;
 }
 
-/* Download and Share: small and quiet, each said in words beside its icon. */
+/* Download and Share: small and quiet, each said in words beside its icon, starting where the
+   contents' first line does. They never take the selection's highlight with the text around them. */
 .files {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  box-sizing: border-box;
+  width: 240px;
+  max-width: 100%;
+  user-select: none;
 }
 
-/* Small beside the title, well under its weight, but outlined so it reads as something to press. */
+/* Small and quiet, but outlined so it reads as something to press. */
 .file {
   gap: 6px;
   height: 1.75rem;
@@ -160,20 +167,6 @@
 .file > svg {
   width: 14px;
   height: 14px;
-}
-
-/* The title, with Download and Share across from its first line, their words ending at the
-   text's right edge. They never take the selection's highlight with the text around them. */
-.head {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-4);
-}
-
-.head > .files {
-  flex-shrink: 0;
-  margin: 0 0 0 auto;
-  user-select: none;
 }
 
 /* The document set on the page: the sheet sets the measure, and every block keeps the same small
@@ -352,10 +345,24 @@
   background-color: color-mix(in oklab, var(--wb-primary) 10%, transparent);
 }
 
-/* Without room for the contents beside the page, they give way to it. */
-@container side (width < 8rem) {
-  .side > * {
+/* Without room beside the page for the contents, an 8rem column with its padding, they give way to
+   it, and Download and Share stand above the page instead. */
+@container (width < 64rem) {
+  .side {
+    grid-column: 2;
+    grid-row: 1;
+    position: static;
+    align-items: flex-start;
+    padding: 0 0 var(--space-3);
+  }
+
+  .side > [data-slot="document-contents"] {
     display: none;
+  }
+
+  .column,
+  .margin {
+    grid-row: 2;
   }
 }
 
@@ -372,7 +379,6 @@
     background: none;
   }
 
-  .files,
   .side,
   .margin {
     display: none;
