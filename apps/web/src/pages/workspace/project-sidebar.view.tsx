@@ -23,8 +23,6 @@ import {
   Building2,
   CircleUser,
   Ellipsis,
-  Folder,
-  Lock,
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
@@ -111,8 +109,6 @@ export type ProjectSidebarViewProps = {
   /** Opens what a step made, on its tab. */
   onOpenStep: (tab: string) => void;
   onProjectSettings: () => void;
-  onSecrets: () => void;
-  onAllProjects: () => void;
   onNewProject: () => void;
   onWorkspaceSettings: () => void;
   onAccount: () => void;
@@ -132,8 +128,6 @@ export function ProjectSidebarView({
   onOpenApp,
   onOpenStep,
   onProjectSettings,
-  onSecrets,
-  onAllProjects,
   onNewProject,
   onWorkspaceSettings,
   onAccount,
@@ -164,14 +158,8 @@ export function ProjectSidebarView({
           <SidebarLink icon={Settings} onClick={onProjectSettings}>
             {words.projectSettings}
           </SidebarLink>
-          <SidebarLink icon={Lock} onClick={onSecrets}>
-            {wording.settings.tab.secrets}
-          </SidebarLink>
         </SidebarLinks>
         <SidebarLinks label={words.groups.projects}>
-          <SidebarLink icon={Folder} onClick={onAllProjects}>
-            {words.allProjects}
-          </SidebarLink>
           <SidebarLink icon={Plus} onClick={onNewProject}>
             {wording.shell.newProject}
           </SidebarLink>

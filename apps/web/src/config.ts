@@ -508,7 +508,6 @@ export const wording = {
     },
     openApp: "Open app",
     projectSettings: "Project settings",
-    allProjects: "All projects",
     workspaceSettings: "Workspace settings",
     account: "Account",
   },

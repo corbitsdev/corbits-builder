@@ -403,7 +403,6 @@ export type StageWorkspaceProps = {
   menuProject?: MenuProject;
   onProjectError: (cause: unknown) => void;
   onOpenSettings: (tab?: SettingsTab) => void;
-  onAllProjects: () => void;
   onNewProject: () => void;
   /** The opening sentence the project was started with. It is not a stored
    *  artifact but the first conversation message, sent here once the
@@ -571,7 +570,6 @@ export function useRoom({
   menuProject,
   onProjectError,
   onOpenSettings,
-  onAllProjects,
   onNewProject,
   openingMessage,
   status,
@@ -1870,7 +1868,6 @@ export function useRoom({
     onProjectChanged: onChanged,
     onProjectError,
     onOpenSettings,
-    onAllProjects,
     onNewProject,
     plan: snapshot.plan.steps,
     documents: paneDocuments,

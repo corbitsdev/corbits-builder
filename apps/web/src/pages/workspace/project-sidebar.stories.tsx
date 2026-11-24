@@ -174,8 +174,6 @@ const meta = {
     onOpenApp: fn(),
     onOpenStep: fn(),
     onProjectSettings: fn(),
-    onSecrets: fn(),
-    onAllProjects: fn(),
     onNewProject: fn(),
     onWorkspaceSettings: fn(),
     onAccount: fn(),

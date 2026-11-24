@@ -522,7 +522,6 @@ export function useApp(): AppScreen {
         onChanged: refresh,
         onProjectError: reportProjectError,
         onOpenSettings: openSettings,
-        onAllProjects: () => navigate("library"),
         onNewProject: () => navigate("projects"),
         ...(openingMessage !== undefined ? { openingMessage } : {}),
       },

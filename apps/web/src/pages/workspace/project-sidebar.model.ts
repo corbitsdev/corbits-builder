@@ -33,7 +33,6 @@ import { LIVE_TAB } from "./tab-follow.ts";
 /** Where the sidebar leads outside the room. */
 export type SidebarWays = {
   onOpenSettings: (tab?: SettingsTab) => void;
-  onAllProjects: () => void;
   onNewProject: () => void;
 };
 
@@ -102,8 +101,6 @@ export function useProjectSidebar(input: ProjectSidebarInput): {
       onOpenApp: () => input.onOpen(LIVE_TAB),
       onOpenStep: input.onOpen,
       onProjectSettings: () => setSettingsOpen(true),
-      onSecrets: () => input.onOpenSettings("secrets"),
-      onAllProjects: input.onAllProjects,
       onNewProject: input.onNewProject,
       onWorkspaceSettings: () => input.onOpenSettings(),
       // The account is at the foot of Preferences.
