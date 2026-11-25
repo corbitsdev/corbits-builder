@@ -45,7 +45,7 @@
   justify-content: center;
 }
 
-/* The new project page's corner: Workspace settings and Account, quiet as the room's own top row. */
+/* The corner of the pages without a sidebar: Settings, quiet as the room's own top row. */
 .canvas {
   position: relative;
 }
@@ -53,7 +53,7 @@
 /* Level with the corner's buttons, across the page from them. */
 .brand {
   position: absolute;
-  top: var(--space-2);
+  top: var(--space-4);
   left: var(--space-4);
   z-index: 1;
   display: flex;
@@ -66,7 +66,7 @@
 
 .corner {
   position: absolute;
-  top: var(--space-2);
+  top: var(--space-4);
   right: var(--space-3);
   z-index: 1;
   display: flex;
@@ -78,7 +78,7 @@
   color: var(--wb-muted-foreground);
 }
 
-.cornerLink:hover {
+.cornerLink:is(:hover, [aria-current="page"]) {
   color: var(--wb-foreground);
 }
 
@@ -92,7 +92,7 @@
 }
 
 .canvasBody[data-below-corner] {
-  padding-block-start: 3.5rem;
+  padding-block-start: 4.5rem;
 }
 
 /* Everything beside the sidebar. Scrolls, except where a surface fills instead. The scroller
@@ -190,6 +190,13 @@
 
   .canvas:has(> .canvasBody[data-fill]) {
     padding: 0;
+  }
+
+  /* The canvas's own padding already holds part of the corner's room, and the new project page
+     is too tall here to centre beside the corner, so every page without a sidebar starts below
+     it. */
+  .app[data-bare] .canvasBody {
+    padding-block-start: 3.5rem;
   }
 }
 

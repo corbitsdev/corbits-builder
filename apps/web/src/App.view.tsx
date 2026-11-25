@@ -1,11 +1,11 @@
 /**
  * The app shell as it looks: outside a project the workspace sidebar on the
  * left, and beside it the canvas with its notices and the page on screen. A
- * project's room draws its own sidebar. The new project page and the Projects
- * page have none: the product's mark and name sit in their top left corner and
- * Settings in the top right. Settings has none either: its way back stands
- * beside its title. The page, which reads the hub, arrives as a slot, so any
- * state of the shell can be drawn without one.
+ * project's room draws its own sidebar. The new project page, the Projects
+ * page and Settings have none: the product's mark and name sit in their top
+ * left corner and Settings in the top right, so moving between them keeps one
+ * header. The page, which reads the hub, arrives as a slot, so any state of the
+ * shell can be drawn without one.
  */
 import { useState, type ReactNode } from "react";
 import { Settings } from "lucide-react";
@@ -51,15 +51,14 @@ export function AppView({
   page,
 }: AppViewProps) {
   const home = current === "newProject";
-  const corner = home || current === "library";
-  const bare = corner || current === "settings";
+  const corner = home || current === "library" || current === "settings";
   return (
     <div
       className={styles.app}
       data-room={roomOpen ? "" : undefined}
-      data-bare={bare ? "" : undefined}
+      data-bare={corner ? "" : undefined}
     >
-      {roomOpen || bare ? null : (
+      {roomOpen || corner ? null : (
         <WorkspaceSidebarView
           {...sidebar}
           current={current === "project" ? null : current}
@@ -82,6 +81,7 @@ export function AppView({
               variant="ghost"
               size="sm"
               className={styles.cornerLink}
+              aria-current={current === "settings" ? "page" : undefined}
               onClick={sidebar.onSettings}
             >
               <Settings aria-hidden="true" />

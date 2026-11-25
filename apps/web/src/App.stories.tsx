@@ -124,8 +124,9 @@ export const RoomOpen: Story = {
 };
 
 /**
- * Settings stands alone, as the new project page does: no sidebar, only the arrow beside its
- * title.
+ * Settings keeps the new project page's header: no sidebar, the product's mark and name in one
+ * top corner and Settings, marked as the page on screen, in the other. Its way back stands
+ * beside its title.
  */
 export const Settings: Story = {
   args: {
@@ -134,9 +135,13 @@ export const Settings: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
+    await expect(canvas.getByText(productName)).toBeVisible();
     await expect(
       canvas.queryByRole("complementary", { name: "Workspace" }),
     ).toBeNull();
+    await expect(
+      canvas.getByRole("button", { name: "Settings" }),
+    ).toHaveAttribute("aria-current", "page");
     await expect(
       canvas.getByRole("button", { name: "Back to Bakery orders" }),
     ).toBeVisible();
