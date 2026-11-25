@@ -196,6 +196,20 @@ body {
   color: HighlightText;
 }
 
+/* The library's dialog body scrolls flush with its fields, which cut a focused field's ring down
+   to its top edge; the body takes the ring's reach as padding and gives it back as margin. Its
+   footer's wash and rule stop short of the dialog's edges and read as a grey box, so they go. */
+[data-slot="dialog-body"] {
+  margin: -5px;
+  padding: 5px;
+}
+
+[data-slot="dialog-footer"] {
+  border-top: 0;
+  background: none;
+  padding-top: 0;
+}
+
 /* Clickable controls show a hand. UA styles leave `button` at default, and the
    design-system Button ships no cursor either — so every primary, ghost, crumb,
    disclosure, and role=button tile used to look inert on hover. */
