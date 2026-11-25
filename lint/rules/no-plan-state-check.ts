@@ -1,8 +1,8 @@
 import type { Operand, Rule } from "../rule.ts";
 
-const ENDED = new Set(["skipped", "cancelled"]);
+const ENDED: ReadonlySet<unknown> = new Set(["skipped", "cancelled"]);
 // The plan's finished states; no other status in Builder pairs two of them.
-const FINISHED = new Set(["done", ...ENDED]);
+const FINISHED: ReadonlySet<unknown> = new Set(["done", ...ENDED]);
 const MESSAGE =
   "Read a plan step's finished mark, or a rule from @corbits-builder/plan, rather than testing its state for skipped or cancelled.";
 
@@ -12,9 +12,9 @@ const isState = (operand: Operand | undefined): boolean =>
     ? isState(operand.expression)
     : operand?.name === "state" || operand?.property?.name === "state";
 const literal = (operand: Operand | null | undefined) =>
-  operand?.type === "Literal" ? String(operand.value) : undefined;
+  operand?.type === "Literal" ? operand.value : undefined;
 const isEnded = (operand: Operand | null | undefined) =>
-  ENDED.has(literal(operand) ?? "");
+  ENDED.has(literal(operand));
 
 // Whether plan work is finished is decided once, in @corbits-builder/plan; a second test of a step's
 // state for skipped or cancelled, or a second list of finished states, is a second copy of that rule.
@@ -38,7 +38,7 @@ const rule: Rule = {
     },
     ArrayExpression(node) {
       const finished = new Set(
-        node.elements?.map(literal).filter((name) => FINISHED.has(name ?? "")),
+        node.elements?.map(literal).filter((value) => FINISHED.has(value)),
       );
       if (finished.size >= 2 && [...ENDED].some((name) => finished.has(name)))
         context.report({ node, message: MESSAGE });
