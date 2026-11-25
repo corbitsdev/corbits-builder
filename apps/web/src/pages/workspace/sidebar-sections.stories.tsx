@@ -7,7 +7,7 @@ import {
   type SidebarSection,
   type SidebarSectionsProps,
 } from "./sidebar-sections.tsx";
-import { LIVE_TAB } from "./tab-follow.ts";
+import { LIVE_TAB, MANUAL_TAB } from "./tab-follow.ts";
 
 /** The room's one section, as it passes it once there is an app: the preview, not on the page. */
 export const preview: SidebarSection = {
@@ -71,3 +71,25 @@ export const Default: Story = {
 };
 
 export const Dark: Story = { globals: { mode: "dark" } };
+
+/** Once the hub has the app's user manual, a row under Preview opens it. */
+export const WithUserManual: Story = {
+  args: {
+    sections: [
+      preview,
+      {
+        id: MANUAL_TAB,
+        label: wording.projectShell.userManual,
+        selected: false,
+      },
+    ],
+  },
+  play: async ({ args, canvasElement }) => {
+    await userEvent.click(
+      within(canvasElement).getByRole("button", {
+        name: wording.projectShell.userManual,
+      }),
+    );
+    await expect(args.onOpen).toHaveBeenCalledWith(MANUAL_TAB);
+  },
+};

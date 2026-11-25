@@ -1896,6 +1896,7 @@ export function useRoom({
     plan: snapshot.plan.steps,
     documents: paneDocuments,
     appShown: liveApp !== null,
+    manualShown: userManual !== null,
     shown: projectOpen && !nothingYet ? shownTab : null,
     waitsOn,
     onOpen: openProject,

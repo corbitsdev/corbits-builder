@@ -16,7 +16,7 @@ import type { FilesListProps } from "./files-list.tsx";
 import { projectOutline, type OutlineAppState } from "./project-outline.ts";
 import type { ProjectSidebarViewProps } from "./project-sidebar.view.tsx";
 import type { SidebarSectionsProps } from "./sidebar-sections.tsx";
-import { LIVE_TAB } from "./tab-follow.ts";
+import { LIVE_TAB, MANUAL_TAB } from "./tab-follow.ts";
 
 const words = wording.projectShell;
 
@@ -38,6 +38,8 @@ export type ProjectSidebarInput = SidebarWays & {
   documents: readonly PaneDocument[];
   /** The project view can show an app, built or being built. */
   appShown: boolean;
+  /** The hub has the app's user manual, so the project view can show it. */
+  manualShown: boolean;
   /** The tab on the page; null while the chat fills the room. */
   shown: string | null;
   /** The document opened from what waits in the prompt box, while it still waits; else null. */
@@ -87,7 +89,7 @@ export function useProjectSidebar(input: ProjectSidebarInput): {
         },
       },
       files: filesProps(input, open),
-      sections: sectionsProps(outline.app, input.shown, open),
+      sections: sectionsProps(outline.app, input, open),
     },
     projectMenu:
       input.project === undefined
@@ -110,21 +112,25 @@ function filesProps(
   return { files: fileRows(input.documents), shown: input.shown, onOpen: open };
 }
 
-/** The sections at the foot: the app's preview, once there is an app. */
+/** The sections at the foot: the app's preview once there is an app, and its user manual. */
 function sectionsProps(
   app: OutlineAppState,
-  shown: string | null,
+  { shown, manualShown }: ProjectSidebarInput,
   open: (tab: string) => void,
 ): SidebarSectionsProps | undefined {
   if (app === "not_built") return undefined;
+  const preview = {
+    id: LIVE_TAB,
+    label: words.preview,
+    selected: shown === LIVE_TAB,
+  };
+  const manual = {
+    id: MANUAL_TAB,
+    label: words.userManual,
+    selected: shown === MANUAL_TAB,
+  };
   return {
-    sections: [
-      {
-        id: LIVE_TAB,
-        label: words.preview,
-        selected: shown === LIVE_TAB,
-      },
-    ],
+    sections: manualShown ? [preview, manual] : [preview],
     onOpen: open,
   };
 }

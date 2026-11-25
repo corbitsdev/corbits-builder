@@ -498,6 +498,8 @@ export const wording = {
     skipped: "skipped",
     /** The row at the sidebar's foot that opens the running app. */
     preview: "Preview",
+    /** The row under Preview that opens the app's user manual, once the hub has one. */
+    userManual: "User manual",
     /** The group of the project's files, under the plan. */
     files: "Files",
     /** A filed design's two rows in Files, named after the design: "Friendly design plan". */
