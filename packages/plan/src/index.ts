@@ -59,7 +59,7 @@ export const awaitsGoAhead = (
   step: Pick<StoredPlanChild, "askFirst" | "goAhead">,
 ) => step.askFirst && step.goAhead === undefined;
 
-// ---- Rules: where plan work stands, decided here and read everywhere else ----
+// ---- Where plan work stands ----
 
 /** Whether nothing more will happen to a step in this state unless the plan changes. */
 export const isFinished = (state: PlanStepStateName) =>
@@ -70,10 +70,7 @@ type StepStanding = Pick<
   "state" | "finished" | "optional" | "runId"
 >;
 
-/**
- * An optional step nobody started leaves nothing to do: it does not hold its group open, and the
- * coordinator offers it once the rest is done. One that started keeps its group open.
- */
+/** An optional step nobody started, which does not hold its group open; one that started does. */
 export const isUnstartedOptional = (step: Omit<StepStanding, "finished">) =>
   step.optional === true &&
   step.runId === undefined &&
@@ -93,7 +90,7 @@ export const groupEndState = (
 export const canDrop = (state: PlanStepStateName) =>
   state !== "done" && state !== "cancelled";
 
-// ---- The person's marks: each changes the stored plan in place ----
+// ---- Changing a plan: each function edits the plan it is given ----
 
 /** Gives the go-ahead to the action steps with these ids, and returns them. */
 export function giveGoAhead(
@@ -143,8 +140,6 @@ export function markAnswered(
   if (step) step.answered = mark;
   return step;
 }
-
-// ---- Changing a plan's steps ----
 
 /** Adds these steps at the end, or after or before the step named, at its level; a group takes only action steps. */
 export function insertSteps(
@@ -218,28 +213,30 @@ export function toWriteStep(step: PlanViewStep): PlanStepWrite {
   return group;
 }
 
-/** A step as written, stored under this id with the person's marks and settings from marks when given. */
+/**
+ * A step as written, stored under this id. Its marks and settings come from kept: the person's own
+ * write, or for a run's save the step as stored, so a run cannot change them.
+ */
 export function toStoredStep(
   step: PlanChildWrite,
   id: string,
-  marks?: PlanChildWrite,
+  kept?: PlanChildWrite,
 ): StoredPlanChild {
-  // A run's save of a stored step keeps whether it asks first, may be declined and its gate as stored.
-  const said = marks ?? step;
+  const settings = kept ?? step;
   const stored: StoredPlanChild = {
     id,
     title: step.title,
     plugin: step.plugin,
     action: step.action,
     input: step.input,
-    askFirst: said.askFirst,
+    askFirst: settings.askFirst,
   };
-  if (said.optional) stored.optional = said.optional;
-  if (said.approval) stored.approval = said.approval;
-  if (said.requires) stored.requires = said.requires;
-  if (marks?.goAhead) stored.goAhead = marks.goAhead;
-  if (marks?.cancelled) stored.cancelled = marks.cancelled;
-  if (marks?.declined && stored.optional) stored.declined = marks.declined;
-  if (marks?.answered) stored.answered = marks.answered;
+  if (settings.optional) stored.optional = settings.optional;
+  if (settings.approval) stored.approval = settings.approval;
+  if (settings.requires) stored.requires = settings.requires;
+  if (kept?.goAhead) stored.goAhead = kept.goAhead;
+  if (kept?.cancelled) stored.cancelled = kept.cancelled;
+  if (kept?.declined && stored.optional) stored.declined = kept.declined;
+  if (kept?.answered) stored.answered = kept.answered;
   return stored;
 }

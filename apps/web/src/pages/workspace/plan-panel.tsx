@@ -79,7 +79,7 @@ function markOf(step: PlanViewChild): PlanMark {
  */
 export function planProgress(steps: readonly PlanViewStep[]) {
   if (steps.length === 0) return null;
-  // Finished without being done means it will not happen: neither done nor still to do.
+  // A step that will not happen counts as neither done nor left.
   const counted = actionSteps(steps).filter(
     ({ finished, state }) => !finished || state === "done",
   );

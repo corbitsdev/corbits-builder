@@ -84,7 +84,7 @@
         "corbits-builder/no-tool-replay": "off"
       }
     },
-    // Where the plan's rules for when its work is finished are defined.
+    // The plan package defines the rule this check guards.
     {
       "files": ["packages/plan/src/**"],
       "rules": {
