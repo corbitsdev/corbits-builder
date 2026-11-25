@@ -1,4 +1,7 @@
-import type { ScreenViewProps } from "@corbits-builder/plugin-ui/screen";
+import type {
+  ChoosableConcept as Concept,
+  ScreenViewProps,
+} from "@corbits-builder/plugin-ui/screen";
 /**
  * The choice between the filed design concepts: every concept's mockup side
  * by side in the host's sandboxed frame, one picked, a comment on any. The answer names the picked
@@ -19,15 +22,6 @@ import { Comparison } from "@corbits-builder/plugin-ui/comparison";
 import type { FrameProps } from "../review/view.tsx";
 import type { Comment, Input, Output } from "./schema.ts";
 import styles from "./view.module.css";
-
-/** A filed concept the person can choose, and the design option choosing it approves, if any. */
-export type Concept = {
-  label: string;
-  direction: string | undefined;
-  files: Readonly<Record<string, string>>;
-  version: number;
-  approval: { option: string } | { unavailable: string };
-};
 
 export type Host = {
   designConcepts: readonly Concept[];

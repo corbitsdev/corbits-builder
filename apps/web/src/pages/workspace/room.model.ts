@@ -167,11 +167,10 @@ import { CommentCard } from "./comment-card.tsx";
 import { MockupFrame } from "./mockup-frame.tsx";
 import type {
   ChoosableConcept,
-  HostSupplies,
-  ListedHostProps,
   ReviewedDesign,
   ShownDocument,
-} from "./screen-question.tsx";
+} from "@corbits-builder/plugin-ui/screen";
+import type { HostSupplies, ListedHostProps } from "./screen-question.tsx";
 import { inShort } from "@corbits-builder/schemas/in-short";
 import { roleOf, screenWords } from "./roles.ts";
 import { screensFor, selectionNames } from "./screens.ts";

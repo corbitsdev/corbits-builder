@@ -4,7 +4,12 @@
  * answers the question through the hub, which saves the values it writes and records what it approves.
  * What the person has chosen so far is kept across a reload as the question card keeps its answers.
  */
-import type { ScreenViewProps } from "@corbits-builder/plugin-ui/screen";
+import type {
+  ChoosableConcept,
+  ReviewedDesign,
+  ScreenViewProps,
+  ShownDocument,
+} from "@corbits-builder/plugin-ui/screen";
 import { useQuestionOutcome } from "./question-outcome.tsx";
 import {
   useContext,
@@ -33,7 +38,6 @@ import {
 import { SettledFrame } from "@corbits-builder/plugin-ui/screen-card";
 import { wording } from "../../config.ts";
 import { Fault, InlineNote } from "../../components.jsx";
-import type { DesignFiles } from "./design-bundle.ts";
 import type { CommentCardProps } from "./comment-card.tsx";
 import type { MockupFrameProps } from "./mockup-frame.tsx";
 import { SettledReply, useAnswer } from "./questions-card.tsx";
@@ -47,24 +51,6 @@ export const projectFacts: readonly string[] = [];
 /** Reads the open project's values by name. */
 export type ProjectValuesStore = {
   read(keys: readonly string[], signal: AbortSignal): Promise<ProjectValues>;
-};
-
-/** The design a screen reviews, and the design option an approval of it chooses, if any. */
-export type ReviewedDesign = {
-  files: DesignFiles;
-  version: number;
-  approval: { option: string } | { unavailable: string };
-};
-
-/** A filed document at its current version, as a screen lists it to approve. */
-export type ShownDocument = {
-  kind: string;
-  title: string;
-  artifactId: string;
-  version: number;
-  approvedVersion?: number;
-  /** The document's own `## In short` section, as markdown, when it has one. */
-  summary?: string;
 };
 
 /** What the interface itself supplies a screen's view, by the names a manifest lists under host. */
@@ -117,15 +103,6 @@ export type ReplyBox = {
   /** The box holds more than whitespace. */
   drafted: boolean;
   stage(staged: Staged | null): void;
-};
-
-/** A filed design concept, and the design option choosing it approves, if any. */
-export type ChoosableConcept = {
-  label: string;
-  direction: string | undefined;
-  files: DesignFiles;
-  version: number;
-  approval: ReviewedDesign["approval"];
 };
 
 const SUPPLIED: ReadonlySet<string> = new Set<keyof HostSupplies>([

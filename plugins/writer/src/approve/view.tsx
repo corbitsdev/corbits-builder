@@ -1,4 +1,7 @@
-import type { ScreenViewProps } from "@corbits-builder/plugin-ui/screen";
+import type {
+  ScreenViewProps,
+  ShownDocument,
+} from "@corbits-builder/plugin-ui/screen";
 /**
  * The ask to approve the documents, as one card: what is asked, a lone document's own summary in
  * a line, and each document as a chip that opens it. The host answers it from the screen's
@@ -16,17 +19,6 @@ import {
 } from "@corbits-builder/plugin-ui/screen-card";
 import type { Input, Output } from "./schema.ts";
 import styles from "./view.module.css";
-
-/** A filed document at its current version, as the host lists it. */
-export type ShownDocument = {
-  kind: string;
-  title: string;
-  artifactId: string;
-  version: number;
-  approvedVersion?: number;
-  /** The document's own `## In short` section, as markdown, when it has one. */
-  summary?: string;
-};
 
 export type Host = {
   documents: { list: readonly ShownDocument[] };

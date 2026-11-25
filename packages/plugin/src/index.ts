@@ -1244,30 +1244,6 @@ export const isCheck = (value: unknown): value is Check<unknown> =>
 // coordinator in a doom loop; a length floor the schema states gives it a refusal to act on instead.
 export const Instruction = SpecialistInstruction.and("string >= 40");
 
-// What a screen placed on the page shares with the prompt box the person still types in.
-export type PageControls = {
-  // Back to the conversation without answering; the screen keeps its draft until reopened.
-  close(): void;
-};
-
-// What the interface hands a screen's view. Plain props, so this package needs no React. host
-// holds what the manifest names under host, and page is there for a screen placed on the page.
-export type ScreenViewProps<Input, Output, Prepared, Host = unknown> = {
-  input: Input;
-  project: ProjectValues;
-  prepared: Prepared;
-  facts: readonly Fact[];
-  draft: Partial<Output>;
-  setDraft(change: Partial<Output>): void;
-  submit(output: Output): Promise<void>;
-  submitting: boolean;
-  answer: Output | undefined;
-  host?: Host;
-  page?: PageControls | undefined;
-  // How a screen with a decision tells the host what it offers, each time that changes.
-  offer?: (offer: Offer<Output>) => void;
-};
-
 export type Refused = { ok: false; refusal: Refusal; text: string };
 
 // What did not happen, as the refusal's first words: "was not shown" for a screen.

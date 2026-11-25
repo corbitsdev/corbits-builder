@@ -1,4 +1,7 @@
-import type { ScreenViewProps } from "@corbits-builder/plugin-ui/screen";
+import type {
+  ReviewedDesign,
+  ScreenViewProps,
+} from "@corbits-builder/plugin-ui/screen";
 /**
  * The mockup review: the design's mockup filling the page in the host's sandboxed frame, as the
  * design pane shows it, with a numbered pin on each place the person tagged. The pane's floating
@@ -92,13 +95,6 @@ export type CardProps = {
   onCancel?: () => void;
   onEdit?: () => void;
   onDelete?: () => void;
-};
-
-/** The design to review, and the design option an approval of it chooses, if any. */
-export type ReviewedDesign = {
-  files: Readonly<Record<string, string>>;
-  version: number | "draft";
-  approval: { option: string } | { unavailable: string };
 };
 
 export type Host = {
