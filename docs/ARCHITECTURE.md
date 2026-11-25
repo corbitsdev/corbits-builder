@@ -103,6 +103,8 @@ Not allowed:
 - A plugin importing the hub, the web app, the plugin host or another plugin.
 - Anything other than the hub importing the plugin host.
 - A package importing an app or a plugin.
+- `packages/schemas` importing anything but other schemas.
+- `packages/plan` importing anything but `packages/schemas`.
 
 ## The hub
 

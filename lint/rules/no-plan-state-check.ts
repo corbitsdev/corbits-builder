@@ -1,8 +1,9 @@
 import type { Operand, Rule } from "../rule.ts";
 
 const ENDED: ReadonlySet<unknown> = new Set(["skipped", "cancelled"]);
-// The plan's finished states; no other status in Builder pairs two of them.
-const FINISHED: ReadonlySet<unknown> = new Set(["done", ...ENDED]);
+// Only a plan step's state lists skipped beside done or cancelled; a check's result pairs it with
+// pass and fail, and a settings status pairs done with cancelled.
+const FINISHED: ReadonlySet<unknown> = new Set(["done", "cancelled"]);
 const MESSAGE =
   "Read a plan step's finished mark, or a rule from @corbits-builder/plan (the plugin SDK for plugins), rather than testing its state for skipped or cancelled.";
 
@@ -38,10 +39,11 @@ const rule: Rule = {
         context.report({ node, message: MESSAGE });
     },
     ArrayExpression(node) {
-      const finished = new Set(
-        node.elements?.map(literal).filter((value) => FINISHED.has(value)),
-      );
-      if (finished.size >= 2 && [...ENDED].some((name) => finished.has(name)))
+      const values = node.elements?.map(literal);
+      if (
+        values?.includes("skipped") &&
+        values.some((value) => FINISHED.has(value))
+      )
         context.report({ node, message: MESSAGE });
     },
   }),
