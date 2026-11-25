@@ -7,15 +7,12 @@ import type { ScreenViewProps } from "@corbits-builder/plugin-ui/screen";
  */
 import { useEffect, useMemo } from "react";
 import type { Offer } from "@corbits-builder/plugin";
-import {
-  DocumentBlock,
-  documentBlockText,
-} from "@corbits-builder/plugin-ui/document-block";
+import { DocumentBlock } from "@corbits-builder/plugin-ui/document-block";
 import { Markdown } from "@corbits-builder/plugin-ui/markdown";
 import { ScreenActions } from "@corbits-builder/plugin-ui/screen-actions";
 import {
   ScreenCard,
-  ScreenSettled,
+  ScreenSettledLine,
 } from "@corbits-builder/plugin-ui/screen-card";
 import type { Input, Output } from "./schema.ts";
 import styles from "./view.module.css";
@@ -49,22 +46,18 @@ export const text = {
   title: "Approve the documents",
   ask: ([only, ...others]: readonly string[]) =>
     only !== undefined && others.length === 0
-      ? `Ready to approve ${named(only)}?`
-      : `Ready to approve these ${String(others.length + 1)} documents?`,
+      ? `Review ${named(only)}`
+      : `Review these ${String(others.length + 1)} documents`,
   approved: "already approved",
   notFiled: (kind: string) => `${kind} is not filed yet.`,
   unfiled: "Each document is approved once it is filed.",
   noDocuments: "The documents cannot be shown here.",
-  settled: (approved: readonly { title: string; version: number }[]) => {
-    const [only, ...others] = approved;
-    if (only !== undefined && others.length === 0)
-      return `Approved, version ${String(only.version)}`;
-    return `Approved ${approved
-      .map(
-        ({ title, version }) =>
-          `${title} ${documentBlockText.version(version)}`,
-      )
-      .join(", ")}`;
+  // A lone document is named by its kind; several are listed by their titles.
+  settled: (kinds: readonly string[], titles: ReadonlyMap<string, string>) => {
+    const [only] = kinds;
+    return only !== undefined && kinds.length === 1
+      ? `You approved ${named(only)}`
+      : `You approved ${kinds.map((kind) => titles.get(kind) ?? kind).join(", ")}`;
   },
 };
 
@@ -121,15 +114,12 @@ export function ApproveDocuments({
       host?.documents.list.map((document) => [document.kind, document.title]),
     );
     return (
-      <ScreenSettled
-        asked={text.ask(answer.approved.map(({ kind }) => kind))}
-        answer={text.settled(
-          answer.approved.map(({ kind, version }) => ({
-            title: titles.get(kind) ?? kind,
-            version,
-          })),
+      <ScreenSettledLine>
+        {text.settled(
+          answer.approved.map(({ kind }) => kind),
+          titles,
         )}
-      />
+      </ScreenSettledLine>
     );
   }
   if (host === undefined)

@@ -1050,7 +1050,7 @@ export const ApproveInBox: Story = {
     await expect(box).not.toBeNull();
     if (box === null) return;
     await expect(
-      within(box).getByText("Ready to approve the build plan?"),
+      within(box).getByText("Review the build plan"),
     ).toBeInTheDocument();
     await expect(
       canvasElement.querySelector('[data-slot="plugin-space"]'),

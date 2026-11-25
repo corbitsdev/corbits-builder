@@ -84,6 +84,12 @@
 
 /* One line each, question then answer at the same size, so a decision reads as a note between
    the messages rather than a heading over them. */
+.settledLine {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.25rem;
+}
+
 .answers > div {
   display: flex;
   flex-wrap: wrap;

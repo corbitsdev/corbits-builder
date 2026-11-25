@@ -19,7 +19,10 @@ import {
 import { Info, MapPin } from "lucide-react";
 import type { Offer } from "@corbits-builder/plugin";
 import { ScreenActions } from "@corbits-builder/plugin-ui/screen-actions";
-import { ScreenSettled } from "@corbits-builder/plugin-ui/screen-card";
+import {
+  ScreenSettled,
+  ScreenSettledLine,
+} from "@corbits-builder/plugin-ui/screen-card";
 import { Output, type At, type Comment, type Input } from "./schema.ts";
 import styles from "./view.module.css";
 
@@ -127,10 +130,7 @@ export const text = {
     said === undefined ? `Pin ${String(pin)}` : `Pin ${String(pin)}: ${said}`,
   noDesign: "There is no design to review yet.",
   asked: "Approve the design?",
-  approved: (version: number | "draft") =>
-    version === "draft"
-      ? "Approved the draft"
-      : `Approved, version ${String(version)}`,
+  approved: "You approved the design",
   changes: (count: number) =>
     count === 0 ? "Asked for changes" : `Sent ${plural(count)} instead`,
 };
@@ -304,15 +304,13 @@ export function MockupReview(props: Props) {
     answer,
     prepared: { resources: host },
   } = props;
+  if (answer?.decision === "approved")
+    return <ScreenSettledLine>{text.approved}</ScreenSettledLine>;
   if (answer !== undefined)
     return (
       <ScreenSettled
         asked={text.asked}
-        answer={
-          answer.decision === "approved"
-            ? text.approved(answer.version)
-            : text.changes(answer.comments.length)
-        }
+        answer={text.changes(answer.comments.length)}
       />
     );
   if (host === undefined || host.design === null)

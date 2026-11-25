@@ -119,3 +119,8 @@ export function ScreenSettled({
 }) {
   return <SettledAnswers answers={[{ asked, answer }]} />;
 }
+
+/** An answered screen whose outcome reads as one sentence, where there was no question to repeat. */
+export function ScreenSettledLine({ children }: { children: string }) {
+  return <p className={styles.settledLine}>{children}</p>;
+}

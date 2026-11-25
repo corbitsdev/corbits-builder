@@ -10,8 +10,6 @@ import styles from "./document-block.module.css";
 
 export const documentBlockText = {
   version: (version: number) => `v${String(version)}`,
-  /** The version as the compact line spells it out beside the title. */
-  versionLong: (version: number) => `Version ${String(version)}`,
   openShort: "Open",
   open: "Read the full document",
   // Several blocks can share a card, so each link's name says which document it opens.
@@ -33,15 +31,15 @@ export type DocumentBlockProps = {
       summary: string | undefined;
     }
   /**
-   * One line, for when the card around it already says what is asked: its title and version, and
-   * the whole line opens it. It never repeats the question.
+   * One line, for when the card around it already says what is asked: its title, and the whole
+   * line opens it. It never repeats the question.
    */
   | { compact: true; summary?: never }
 );
 
 export function DocumentBlock(props: DocumentBlockProps) {
   const { kind, title, version, note, onOpen } = props;
-  if (props.compact === true)
+  if (props.compact === true) {
     // Named by what it shows, Open included, so a spoken "Open" or the title reaches it.
     return (
       <button
@@ -55,16 +53,14 @@ export function DocumentBlock(props: DocumentBlockProps) {
           <FileText />
         </span>
         <span className={styles.compactTitle}>{title}</span>
-        <span className={styles.compactMeta}>
-          {documentBlockText.versionLong(version)}
-          {note === undefined ? null : ` · ${note}`}
-        </span>
+        <span className={styles.compactMeta}>{note}</span>
         <span className={styles.compactOpen}>
           {documentBlockText.openShort}
           <ExternalLink aria-hidden="true" />
         </span>
       </button>
     );
+  }
   const { summary } = props;
   return (
     <div className={styles.block} data-slot="document-block">
