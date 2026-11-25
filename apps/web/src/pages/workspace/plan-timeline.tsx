@@ -219,11 +219,12 @@ export function PlanTimeline({
 
 /**
  * One step of the plan, as a stop on a timeline: a circle on the line that joins the steps, and the
- * step's name beside it. Only the step at work, one that waits on the person, one that failed, one
- * that was skipped and the app's own step have a line under the name: how long it has run, that it
- * waits, that it did not finish, that it was skipped, or how the app runs. The one whose document is
- * on the page is shaded. What a run last did is often a tool's own words, so it is kept to the
- * row's tooltip. Once a step has made something it opens it.
+ * step's name beside it. Only the step at work, one that waits on the person, one that was skipped
+ * and the app's own step have a line under the name: how long it has run, that it waits, that it
+ * was skipped, or how the app runs. A step whose work stopped is not shown as an error: it waits on
+ * the person to try again, so it is drawn as one that waits, and only its name for a screen reader
+ * says it stopped. The one whose document is on the page is shaded. What a run last did is often a
+ * tool's own words, so it is kept to the row's tooltip. Once a step has made something it opens it.
  */
 function PlanRow({
   row,
@@ -243,7 +244,8 @@ function PlanRow({
   /** Opens what it made; null while there is nothing to show. */
   onOpen: (() => void) | null;
 } & StepItemProps) {
-  const state = waits && row.state !== "failed" ? "needs_you" : row.state;
+  const stopped = row.state === "failed";
+  const state = waits || stopped ? "needs_you" : row.state;
   const next = row.steps.find(
     (step) => step.state === "to_do" && step.declined !== true,
   );
@@ -252,6 +254,7 @@ function PlanRow({
   const doing = live ? words.appNow[app] : null;
   const said = [
     row.name,
+    ...(stopped ? [words.stepState.failed] : []),
     state === "declined" ? words.skipped : words.stepState[state],
     ...(doing === null ? [] : [doing]),
     ...(pauses ? [words.pausesFirst] : []),
@@ -267,8 +270,6 @@ function PlanRow({
       <span className={styles.doing} data-tone="you">
         {words.stepNow.needsYou}
       </span>
-    ) : state === "failed" ? (
-      <span className={styles.doing}>{words.stepNow.failed}</span>
     ) : state === "declined" ? (
       <span className={styles.doing}>{words.stepNow.skipped}</span>
     ) : doing === null ? null : (

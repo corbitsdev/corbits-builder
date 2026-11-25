@@ -479,7 +479,7 @@ export const wording = {
       running: "running",
       needs_you: "needs you",
       done: "done",
-      failed: "failed",
+      failed: "stopped",
       declined: "declined",
     },
     /** The heading over the plan's steps in the open sidebar. */
@@ -490,7 +490,6 @@ export const wording = {
     stepNow: {
       working: "Working",
       needsYou: "Waiting on you",
-      failed: "Didn't finish",
       skipped: "Skipped",
     },
     /** Read after a step's name, and shown on its pause mark. */
@@ -625,10 +624,10 @@ export const wording = {
       /** One piece of work, and how many more go on beside it. */
       andMore: (doing: string, more: number) =>
         `${doing} and ${String(more)} more`,
-      didNotFinish: (doing: string) => `${doing} did not finish`,
-      stepFailed: (step: string) => `${step} did not finish`,
-      /** The hub has no retry, so the button asks for one, and says so. */
-      tryAgain: "Ask to try again",
+      /** Work or a step of the plan that stopped, said as what to do next rather than an error. */
+      stopped: (what: string) => `${what} stopped`,
+      /** The hub has no retry, so the button asks for one in the chat. */
+      tryAgain: "Try again",
       tryAgainMessage: "That did not finish. Please try again.",
       ready: (title: string, version: number) =>
         version > 1

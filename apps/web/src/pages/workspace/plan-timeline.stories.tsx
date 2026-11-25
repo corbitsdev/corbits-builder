@@ -263,7 +263,37 @@ export const PublishingDark: Story = {
   globals: { mode: "dark" },
 };
 
-/** Every state a step takes: done, running, waiting on the person, failed, declined, to do. */
+/**
+ * A step whose work stopped is not drawn as an error: it waits on the person, half filled in the
+ * text's colour with one "Waiting on you" line, also where what it made waits in the prompt box.
+ * Only its name for a screen reader says it stopped.
+ */
+export const StoppedStep: Story = {
+  args: {
+    plan: [
+      row("brief", "Write the brief", "done"),
+      row(
+        "design",
+        "Design the screens",
+        "failed",
+        {},
+        { opens: "design", summary: "No colours were chosen" },
+      ),
+    ],
+    waitsOn: "design",
+  },
+  play: async ({ canvasElement }) => {
+    const step = within(canvasElement).getByRole("treeitem", {
+      name: `Design the screens, ${words.stepState.failed}, ${words.stepState.needs_you}`,
+    });
+    await expect(step).toHaveAttribute("data-state", "needs_you");
+    await expect(
+      within(step).getAllByText(words.stepNow.needsYou),
+    ).toHaveLength(1);
+  },
+};
+
+/** Every state a step takes: done, running, waiting on the person, stopped, declined, to do. */
 export const StepStates: Story = {
   args: {
     plan: [

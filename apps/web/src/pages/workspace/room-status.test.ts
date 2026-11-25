@@ -53,10 +53,10 @@ describe("what the status line says", () => {
     );
   });
 
-  test("the newest failure since the person wrote asks to try again, over a new version", () => {
+  test("the newest stopped work since the person wrote offers Try again, neutral, over a new version", () => {
     expect(roomStatus(rooms.buildFailed)).toEqual({
-      state: "failed",
-      label: "Building the app did not finish",
+      state: "ready",
+      label: "Building the app stopped",
       action: {
         label: text.tryAgain,
         kind: "tryAgain",
@@ -69,10 +69,10 @@ describe("what the status line says", () => {
     expect(roomStatus(rooms.failedBeforeMessage)).toBeNull();
   });
 
-  test("a failed step of the plan, inside a group, asks to try again", () => {
+  test("a stopped step of the plan, inside a group, offers Try again, neutral", () => {
     expect(roomStatus(rooms.stepFailed)).toMatchObject({
-      state: "failed",
-      label: "Build the app did not finish",
+      state: "ready",
+      label: "Build the app stopped",
       action: { kind: "tryAgain" },
     });
   });

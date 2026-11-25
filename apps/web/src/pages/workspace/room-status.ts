@@ -61,8 +61,9 @@ const working = (label: string): RoomStatus => ({
   action: null,
 });
 
+// Stopped work is the person's next step, not an error in front of them, so it reads as one.
 const tryAgain = (label: string): RoomStatus => ({
-  state: "failed",
+  state: "ready",
   label,
   action: {
     label: text.tryAgain,
@@ -111,7 +112,7 @@ export const rules: readonly { name: string; rule: Rule }[] = [
       );
       if (latest === undefined) return undefined;
       if (lastSentAt !== null && latest.endedAt <= lastSentAt) return undefined;
-      return tryAgain(text.didNotFinish(latest.doing));
+      return tryAgain(text.stopped(latest.doing));
     },
   },
   {
@@ -120,7 +121,7 @@ export const rules: readonly { name: string; rule: Rule }[] = [
       const failed = children(plan).find((step) => step.state === "failed");
       return failed === undefined
         ? undefined
-        : tryAgain(text.stepFailed(failed.title));
+        : tryAgain(text.stopped(failed.title));
     },
   },
   {

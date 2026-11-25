@@ -304,16 +304,14 @@ export const NewVersionReady: Story = {
   },
 };
 
-/** Work failed since the person last wrote: the pill says what, and offers to ask again. */
+/** Work stopped since the person last wrote: the pill says what, and offers to try again. */
 export const WorkFailed: Story = {
   args: {
     dock: {
       ...composer,
       status: {
-        state: "failed",
-        label: wording.promptBox.status.didNotFinish(
-          "Writing the Problem brief",
-        ),
+        state: "ready",
+        label: wording.promptBox.status.stopped("Writing the Problem brief"),
         action: wording.promptBox.status.tryAgain,
         onAction: fn(),
       },

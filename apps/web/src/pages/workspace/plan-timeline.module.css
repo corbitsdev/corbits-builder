@@ -85,10 +85,6 @@
   font-weight: 500;
 }
 
-.step[data-state="failed"] {
-  color: var(--destructive);
-}
-
 /* Over the line, on the row's own ground, so the line runs between circles, not through them. */
 .circle {
   position: relative;
@@ -131,11 +127,6 @@
     var(--wb-foreground) 50%,
     transparent 50%
   );
-}
-
-.step[data-state="failed"] .circle::before {
-  border-color: var(--destructive);
-  background: var(--destructive);
 }
 
 /* The open card is near the muted grey, so the step whose document is on the page takes the
