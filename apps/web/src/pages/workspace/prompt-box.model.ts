@@ -212,7 +212,7 @@ export function usePromptBox(room: PromptBoxRoom): PromptBox {
     card?.kind === "screen" &&
     card.from === "question" &&
     screenWords(card.plugin, card.action)?.decides === true;
-  const boxWaiting = ((): BoxWaiting | null => {
+  function waitingInBox(): BoxWaiting | null {
     if (card === null) return null;
     switch (card.kind) {
       case "question":
@@ -261,7 +261,8 @@ export function usePromptBox(room: PromptBoxRoom): PromptBox {
       default:
         return card satisfies never;
     }
-  })();
+  }
+  const boxWaiting = waitingInBox();
 
   const first = spaceScreens(waiting)[0];
   const shown =
@@ -283,7 +284,7 @@ export function usePromptBox(room: PromptBoxRoom): PromptBox {
         : "box";
   const held =
     first !== undefined && place === "box" && card?.key !== first.key;
-  const spaceScreen = ((): SpaceScreenProps | null => {
+  function screenInSpace(): SpaceScreenProps | null {
     if (first === undefined || held) return null;
     if (first.from === "question") {
       if (openQuestion === undefined || !showsScreen(openQuestion)) return null;
@@ -309,7 +310,8 @@ export function usePromptBox(room: PromptBoxRoom): PromptBox {
       Listed,
       listed: { state: shown.state, act: room.act, host: room.supplies },
     };
-  })();
+  }
+  const spaceScreen = screenInSpace();
 
   // Specialists at work, and those that failed, each by what it does.
   const standings = room.dispatches.map((dispatch) => ({
