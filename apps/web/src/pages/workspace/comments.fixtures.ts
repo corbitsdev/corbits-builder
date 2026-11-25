@@ -7,6 +7,7 @@ export const briefPhone: CommentDraft = {
   title: "Problem brief",
   version: 2,
   quote: "Orders are taken by phone and written on paper.",
+  occurrence: 0,
   comment: "Mention text and walk-in orders too.",
 };
 
@@ -16,6 +17,7 @@ export const briefSaturday: CommentDraft = {
   title: "Problem brief",
   version: 2,
   quote: "Saturdays are the busiest day.",
+  occurrence: 0,
   comment: "Say how many orders a Saturday brings.",
 };
 
@@ -25,6 +27,7 @@ export const planDeadline: CommentDraft = {
   title: "Build plan",
   version: 1,
   quote: "Two weeks to the first release.",
+  occurrence: 0,
   comment: "Can the order list ship first?",
 };
 
@@ -35,6 +38,7 @@ export const briefRewritten: CommentDraft = {
   title: "Problem brief",
   version: 1,
   quote: "Small bakeries take cake orders by phone and lose some of them.",
+  occurrence: 0,
   comment: "Is losing orders the real problem, or forgetting them?",
 };
 

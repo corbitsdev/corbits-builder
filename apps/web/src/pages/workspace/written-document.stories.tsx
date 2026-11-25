@@ -279,15 +279,27 @@ function KeptComments(args: WrittenDocumentViewProps) {
       {...args}
       comments={{
         drafts,
-        onSave: ({ id, quote, comment }) =>
+        onSave: ({ id, quote, occurrence, comment }) =>
           setDrafts((was) =>
             id === null
               ? [
                   ...was,
-                  { id: `comment:${String(was.length)}`, quote, comment },
+                  {
+                    id: `comment:${String(was.length)}`,
+                    quote,
+                    occurrence,
+                    comment,
+                  },
                 ]
               : was.map((item) =>
-                  item.id === id ? { id, quote: item.quote, comment } : item,
+                  item.id === id
+                    ? {
+                        id,
+                        quote: item.quote,
+                        occurrence: item.occurrence,
+                        comment,
+                      }
+                    : item,
                 ),
           ),
         onDelete: (id) =>
@@ -304,12 +316,14 @@ const twoComments = {
     {
       id: "texts",
       quote: "Counter staff who answer the phone mid-shift",
+      occurrence: 0,
       comment:
         "Some regulars text their order to the counter. Count texts too?",
     },
     {
       id: "allergy",
       quote: "Flag allergies and dietary needs",
+      occurrence: 0,
       comment: "Should the cake label show the allergy as well?",
     },
   ],

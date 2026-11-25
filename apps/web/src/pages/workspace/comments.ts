@@ -14,8 +14,9 @@ export type CommentDraft = {
   /** The document's title and the version the passage was quoted from, which its message names. */
   title: string;
   version: number;
-  /** The passage's words, as the page shows them. */
+  /** The passage's words, as the page shows them, and which run of them there it is. */
   quote: string;
+  occurrence: number;
   comment: string;
 };
 
@@ -33,6 +34,8 @@ const isDraft = (value: unknown): value is CommentDraft => {
     Number.isInteger(draft.version) &&
     typeof draft.quote === "string" &&
     draft.quote.trim() !== "" &&
+    typeof draft.occurrence === "number" &&
+    Number.isInteger(draft.occurrence) &&
     typeof draft.comment === "string" &&
     draft.comment.trim() !== ""
   );
@@ -84,8 +87,8 @@ export function documentDrafts(
 }
 
 /**
- * How a draft's card reads on the page: level with the first place its quote appears there, or,
- * when the quote is not on the version shown, at the top of the margin with its quote above it so
+ * How a draft's card reads on the page: level with its passage, or, when that passage is not
+ * on the version shown, at the top of the margin with its quote above it so
  * the person still sees what it was about.
  */
 export function draftCard(found: boolean): {

@@ -30,8 +30,16 @@ import styles from "./document-page.module.css";
 /** Where a passage's comment stands, beyond being saved: selected while it is written. */
 export type PassageState = "selected";
 
-/** A passage something is said about, by the words it quotes from the page. */
-export type MarginPassage = { id: string; quote: string; state?: PassageState };
+/**
+ * A passage something is said about, by the words it quotes from the page's text and which run of
+ * them it is, counted from 0, since short words recur.
+ */
+export type MarginPassage = {
+  id: string;
+  quote: string;
+  occurrence: number;
+  state?: PassageState;
+};
 
 /**
  * Where a passage sits: its top, from the top of the margin, and the section it is in. A passage
@@ -117,11 +125,36 @@ function paint(owner: object, marks: readonly Painted[]) {
   }
 }
 
+/** Where each run of a quote starts in a text, in order. */
+function quoteRuns(text: string, quote: string): number[] {
+  const runs: number[] = [];
+  if (quote.length === 0) return runs;
+  for (
+    let at = text.indexOf(quote);
+    at !== -1;
+    at = text.indexOf(quote, at + 1)
+  )
+    runs.push(at);
+  return runs;
+}
+
+/** Which run of a quote starts at a place in a text: a passage names its run by this. */
+export const occurrenceAt = (text: string, quote: string, start: number) =>
+  quoteRuns(text, quote).indexOf(start);
+
+/** Where a passage starts in a text, or -1 when its run of the quote is not there. */
+export const passageStart = (
+  text: string,
+  passage: Pick<MarginPassage, "quote" | "occurrence">,
+) => quoteRuns(text, passage.quote)[passage.occurrence] ?? -1;
+
 /**
- * Finds quotes in the page's text, across inline elements: each quote is its first run there.
- * The text is read once, so every passage on the page is found from one pass over it.
+ * Finds passages in the document's text, across inline elements. The text is read once, so every
+ * passage on the page is found from one pass over it.
  */
-function quoteFinder(root: HTMLElement): (quote: string) => Range | null {
+function passageFinder(
+  root: HTMLElement,
+): (passage: MarginPassage) => Range | null {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   const nodes: { node: Text; start: number }[] = [];
   let text = "";
@@ -129,10 +162,10 @@ function quoteFinder(root: HTMLElement): (quote: string) => Range | null {
     nodes.push({ node: node as Text, start: text.length });
     text += node.textContent ?? "";
   }
-  return (quote) => {
-    const at = quote.length === 0 ? -1 : text.indexOf(quote);
+  return (passage) => {
+    const at = passageStart(text, passage);
     if (at === -1) return null;
-    const end = at + quote.length;
+    const end = at + passage.quote.length;
     const from = nodes.findLast((entry) => entry.start <= at);
     const to = nodes.findLast((entry) => entry.start < end);
     if (from === undefined || to === undefined) return null;
@@ -314,7 +347,10 @@ export function DocumentPage({
   };
 
   const passageKey = passages
-    .map((passage) => `${passage.id}:${passage.state ?? ""}:${passage.quote}`)
+    .map(
+      (passage) =>
+        `${passage.id}:${passage.state ?? ""}:${String(passage.occurrence)}:${passage.quote}`,
+    )
     .join("\n");
   const measure = useCallback(() => {
     const paper = sheet.current;
@@ -332,10 +368,12 @@ export function DocumentPage({
         : headings.map(({ id, title }) => ({ id, title })),
     );
     const origin = column?.getBoundingClientRect().top ?? 0;
-    const find = quoteFinder(paper);
+    // A passage's run is counted in the document's text alone, as it was selected, not the title.
+    const text = paper.querySelector<HTMLElement>('[data-slot="prose"]');
+    const find = text === null ? () => null : passageFinder(text);
     const found = passages
       .flatMap((passage) => {
-        const range = find(passage.quote);
+        const range = find(passage);
         if (range === null) return [];
         const top = range.getBoundingClientRect().top;
         const section =

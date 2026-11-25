@@ -58,7 +58,7 @@ export function pageComments(
   const drafts = documentDrafts(comments.drafts, comments.document);
   return {
     drafts,
-    onSave: ({ id, quote, comment }) => {
+    onSave: ({ id, quote, occurrence, comment }) => {
       const was = drafts.find((draft) => draft.id === id);
       comments.onSave(
         was === undefined
@@ -68,6 +68,7 @@ export function pageComments(
               title: reading.title,
               version: reading.version,
               quote,
+              occurrence,
               comment,
             }
           : { ...was, comment },

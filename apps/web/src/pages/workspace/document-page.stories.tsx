@@ -79,15 +79,17 @@ ${Array.from(
 - What happens to an order nobody collects
 `;
 
-const COMMENTED: readonly { id: string; quote: string; note: string }[] = [
+const COMMENTED: readonly (MarginPassage & { note: string })[] = [
   {
     id: "texts",
     quote: "Counter staff who answer the phone mid-shift",
+    occurrence: 0,
     note: "Some regulars text their order to the counter. Should texts count too?",
   },
   {
     id: "allergy",
     quote: "Flag allergies and dietary needs",
+    occurrence: 0,
     note: "Should the cake label show the allergy as well?",
   },
 ];
@@ -192,6 +194,7 @@ export const PassageNotOnPage: Story = {
         id: "rewritten",
         quote:
           "Small bakeries take cake orders by phone and lose some of them.",
+        occurrence: 0,
       },
     ],
   },

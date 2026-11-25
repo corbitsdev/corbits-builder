@@ -1385,17 +1385,20 @@ const briefComments: NonNullable<WrittenDocumentViewProps["comments"]> = {
     {
       id: "texts",
       quote: "Counter staff who answer the phone mid-shift",
+      occurrence: 0,
       comment:
         "Some regulars text their order to the counter. Count texts too?",
     },
     {
       id: "allergy",
       quote: "Flag allergies and dietary needs",
+      occurrence: 0,
       comment: "Should the cake label show the allergy as well?",
     },
     {
       id: "rewritten",
       quote: "Small bakeries take cake orders by phone and lose some of them.",
+      occurrence: 0,
       comment: "Is losing orders the real problem, or forgetting them?",
     },
   ],

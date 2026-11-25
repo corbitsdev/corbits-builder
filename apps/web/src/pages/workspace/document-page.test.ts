@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { sectionRead } from "./document-page.tsx";
+import { occurrenceAt, passageStart, sectionRead } from "./document-page.tsx";
 
 const headings = [
   { id: "problem", top: -400 },
@@ -20,4 +20,12 @@ test("above the first heading no section is read", () => {
 test("scrolled to the foot, the last heading in view is read, as short closing sections never reach the top", () => {
   expect(sectionRead(headings, 54, 900)).toBe("bounds");
   expect(sectionRead(headings, 54, 400)).toBe("success");
+});
+
+test("a short quote that recurs is found at the run that was selected, not its first", () => {
+  const text =
+    "Cake orders come in by phone. Lost orders hurt nobody but the bakery.";
+  const selected = text.indexOf("nobody") + 4;
+  const occurrence = occurrenceAt(text, "d", selected);
+  expect(passageStart(text, { quote: "d", occurrence })).toBe(selected);
 });

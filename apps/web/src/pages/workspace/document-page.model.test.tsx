@@ -137,7 +137,12 @@ describe("a written document's comments", () => {
       comments(saved),
       { title: "Problem brief", version: 3 },
       () => "draft-new",
-    ).onSave({ id: null, quote: "Saturdays", comment: "Which hours?" });
+    ).onSave({
+      id: null,
+      quote: "Saturdays",
+      occurrence: 0,
+      comment: "Which hours?",
+    });
     expect(saved).toEqual([
       {
         id: "draft-new",
@@ -145,6 +150,7 @@ describe("a written document's comments", () => {
         title: "Problem brief",
         version: 3,
         quote: "Saturdays",
+        occurrence: 0,
         comment: "Which hours?",
       },
     ]);
@@ -158,6 +164,7 @@ describe("a written document's comments", () => {
     }).onSave({
       id: briefPhone.id,
       quote: briefPhone.quote,
+      occurrence: briefPhone.occurrence,
       comment: "Texts too.",
     });
     expect(saved).toEqual([{ ...briefPhone, comment: "Texts too." }]);
