@@ -237,7 +237,6 @@ const meta = {
     },
     dock: composer,
     ...paneOf(),
-    tabStatus: [],
     topRight: [],
     sidebar: sidebarOf({}, []),
     paneRef: createRef(),
@@ -605,11 +604,11 @@ export const ChoosingADesign: Story = {
   },
 };
 
-/** A plugin's tab says where its work stands in the room's top bar, and opens from there. */
+/** A plugin's tab says where its work stands at the room's top right, and opens from there. */
 export const TabStatus: Story = {
   args: {
     ...withDocuments,
-    tabStatus: [
+    topRight: [
       { tab: "Publish", label: "Published", mark: "done", onOpen: fn() },
     ],
   },

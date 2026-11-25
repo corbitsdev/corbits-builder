@@ -172,7 +172,6 @@ import type {
 } from "@corbits-builder/plugin-ui/screen";
 import type { HostSupplies, ListedHostProps } from "./screen-question.tsx";
 import { inShort } from "@corbits-builder/schemas/in-short";
-import type { EntryPlace } from "@corbits-builder/schemas/project";
 import { roleOf, screenWords } from "./roles.ts";
 import { screensFor, selectionNames } from "./screens.ts";
 
@@ -1904,17 +1903,6 @@ export function useRoom({
     waitsOn,
     onOpen: openProject,
   });
-  // Each screen's entry at a place, which opens the screen in the main pane.
-  const entriesAt = (at: EntryPlace) =>
-    pluginScreens.tabs.flatMap(({ value, label, entries }) =>
-      entries
-        .filter(({ place }) => place === at)
-        .map(({ status }) => ({
-          ...status,
-          tab: label,
-          onOpen: () => openProject(value),
-        })),
-    );
   const emptyConversation = () => {
     if (archived) return "archived";
     return shownTurns.length === 0 && !thinking ? "new" : null;
@@ -2005,8 +1993,15 @@ export function useRoom({
             }),
         plugins: pluginScreens.tabs,
       },
-      tabStatus: entriesAt("sidebar-left"),
-      topRight: entriesAt("top-right"),
+      topRight: pluginScreens.tabs.flatMap(({ value, label, entries }) =>
+        entries
+          .filter(({ place }) => place === "top-right")
+          .map(({ status }) => ({
+            ...status,
+            tab: label,
+            onOpen: () => openProject(value),
+          })),
+      ),
       paneRef: documentPaneRef,
     },
     projectMenu,

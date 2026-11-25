@@ -197,7 +197,7 @@ export const ScreenStatus = type({
 export type ScreenStatus = typeof ScreenStatus.infer;
 // The places of the room a screen fills. A screen shown on its own may stand at an entry place, which
 // says where it stands and opens it.
-export const ENTRY_PLACES = ["sidebar-left", "top-right"] as const;
+export const ENTRY_PLACES = ["top-right"] as const;
 export const EntryPlace = type.enumerated(...ENTRY_PLACES);
 export type EntryPlace = typeof EntryPlace.infer;
 export const ScreenPlace = type.enumerated(

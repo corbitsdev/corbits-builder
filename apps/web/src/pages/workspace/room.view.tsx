@@ -231,9 +231,7 @@ export type RoomContent = {
    */
   space: { key: string; title: string; place: "page" | "box" } | null;
   documentPane: ArtifactPaneContent;
-  /** Where each plugin tab that says so stands, beside the plan, each opening its tab. */
-  tabStatus: readonly TabStatus[];
-  /** The same, for each plugin tab that says so at the top right of the room. */
+  /** Where each plugin tab that says so stands, at the top right of the room, each opening its tab. */
   topRight: readonly TabStatus[];
   /** The project view's pane, which takes focus as it opens. */
   paneRef: RefObject<HTMLElement | null>;
@@ -252,7 +250,6 @@ export function RoomView({
   waiting,
   space,
   documentPane,
-  tabStatus,
   topRight,
   paneRef,
   paneParts,
@@ -420,8 +417,12 @@ export function RoomView({
     <StageView aria-label={`Conversation for ${title}`}>
       <RoomFrame
         sidebar={<ProjectSidebarView {...sidebar} menu={projectMenu} />}
+        // An entry opens the project view, so it waits until there is one; a view over the
+        // conversation puts its way back in that corner, so the entries give way.
         actions={
-          topRight.length === 0 ? undefined : <Entries entries={topRight} />
+          !projectReady || covered || topRight.length === 0 ? undefined : (
+            <Entries entries={topRight} />
+          )
         }
       >
         <div ref={mainRef} className={styles.main} data-slot="room-main">
@@ -431,13 +432,6 @@ export function RoomView({
             aria-label="Project conversation"
           >
             <div className={styles.conversation}>
-              <div className={styles.top}>
-                {projectReady ? (
-                  <div className={styles.controls}>
-                    <Entries entries={tabStatus} />
-                  </div>
-                ) : null}
-              </div>
               <RoomThread {...conversation.thread}>
                 <EmptyConversation empty={conversation.empty} />
               </RoomThread>

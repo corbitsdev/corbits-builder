@@ -414,10 +414,9 @@ the draft and the prepared input:
   prepared, the resources the host supplies and the draft to what accepting
   and sending back answer, or why it cannot be accepted yet. The host works it
   out and draws the controls without the view.
-- `sidebar-left`: a row beside the plan, and `top-right`: an action at the top
-  right of the room. Each declares `status`, which says from the screen's state
-  where it stands, and opens the screen's main pane. Either needs a `state` and
-  a `main-pane`.
+- `top-right`: an action at the top right of the room. It declares `status`,
+  which says from the screen's state where it stands, and opens the screen's
+  main pane. It needs a `state` and a `main-pane`.
 
 The designer's review fills `main-pane` and `prompt-box` at `sm`, so the
 mockup covers the page and Approve stands in the box.
@@ -433,9 +432,9 @@ time, the saved app's version, whether the coordinator is mid-turn, the
 coordinator's runs, the screens of open questions, and the ready-made plans a
 group lists. `changesAt` says when the clock alone next changes the state, and
 the room reads it again then. The browser never saves the state. A
-`sidebar-left` or `top-right` entry's `status`, also run in the hub, says from
-its state where it stands in a word or two, which the room shows at that place
-and opens the tab from. The view runs
+`top-right` entry's `status`, also run in the hub, says from its state where it
+stands in a word or two, which the room shows at that place and opens the tab
+from. The view runs
 its plugin's actions through `act`; a task (`defineTask`) runs in the hub on
 that press, saves the values it `writes`, and may tell the coordinator a note.
 

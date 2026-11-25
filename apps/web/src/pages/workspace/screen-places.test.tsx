@@ -5,8 +5,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { SpecialistBuilder } from "@corbits-builder/plugin";
 import { usePromptBox } from "./prompt-box.model.ts";
-import room from "./room.stories.tsx";
-import { RoomView } from "./room.view.tsx";
+import room, { TabStatus } from "./room.stories.tsx";
+import { RoomView, type RoomViewProps } from "./room.view.tsx";
 import { storySupplies } from "./screen-story.tsx";
 import { installScreens, screensFor, type ScreenFiles } from "./screens.ts";
 
@@ -130,15 +130,17 @@ describe.each(screens)("$plugin $action", (screen) => {
   });
 });
 
-test("the room's top right holds an action only where a screen puts one", () => {
-  const empty = renderToStaticMarkup(<RoomView {...room.args} />);
-  expect(empty).not.toContain('data-slot="room-actions"');
-  const filled = renderToStaticMarkup(
-    <RoomView
-      {...room.args}
-      topRight={[{ tab: "Publish", label: "Live", onOpen: () => {} }]}
-    />,
+test("the room's top right holds an action only where a screen puts one and its tab can open", () => {
+  const shown = (args: Partial<RoomViewProps>) =>
+    renderToStaticMarkup(
+      <RoomView {...room.args} {...TabStatus.args} {...args} />,
+    );
+  const actions = shown({});
+  expect(actions.slice(actions.indexOf('data-slot="room-actions"'))).toContain(
+    "Published",
   );
-  const actions = filled.slice(filled.indexOf('data-slot="room-actions"'));
-  expect(actions).toContain("Live");
+  expect(shown({ topRight: [] })).not.toContain('data-slot="room-actions"');
+  expect(shown({ layout: room.args.layout })).not.toContain(
+    'data-slot="room-actions"',
+  );
 });
