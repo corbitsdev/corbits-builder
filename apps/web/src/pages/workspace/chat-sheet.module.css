@@ -123,6 +123,7 @@
 }
 
 .history {
+  position: relative;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -148,24 +149,31 @@
 }
 
 /* Over the history by 1px, as the handle above a closed sheet sits over the
-   box's edge, so the handle never steps as the sheet sets off or lands. */
+   box's edge, so the handle never steps as the sheet sets off or lands. Above the header's fill,
+   so the handle's focus ring is never cut by it. */
 .handleRow {
+  position: relative;
+  z-index: 2;
   display: flex;
   justify-content: center;
   flex: none;
   margin-bottom: -1px;
 }
 
-/* No heading: the messages under it are plainly the chat, so the header holds only its controls. */
+/* No heading: the messages under it are plainly the chat, so the header holds only its controls.
+   It lies over the thread's own top inset, which a full page keeps for reading, so the first line
+   starts right under it; lines scrolled up are hidden behind its fill rather than cut half way. */
 .header {
+  position: absolute;
+  inset: 0 0 auto;
+  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: var(--space-1);
   flex: none;
-  height: 44px;
-  margin-bottom: var(--space-2);
   padding: 0 var(--space-2) 0 var(--space-4);
+  background: var(--wb-background);
 }
 
 .icon {

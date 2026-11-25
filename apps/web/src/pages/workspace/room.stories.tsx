@@ -715,10 +715,24 @@ async function openChat(canvasElement: HTMLElement) {
 /** Over the project view the box has a handle on its top edge; the chat waits behind it. */
 export const ChatSheetClosed: Story = { args: chatBehindBox };
 
-/** The chat pulled up over the page, the box where it was; the page still shows above it. */
+/**
+ * The chat pulled up over the page, the box where it was; the page still shows above it. The first
+ * line starts right under the two controls, with no empty band between them.
+ */
 export const ChatSheetOpen: Story = {
   args: chatBehindBox,
-  play: async ({ canvasElement }) => openChat(canvasElement),
+  play: async ({ canvasElement }) => {
+    await openChat(canvasElement);
+    const history = chatHistory(canvasElement);
+    const put = within(canvasElement).getByRole("button", {
+      name: wording.promptBox.chat.putBack,
+    });
+    const first = history?.querySelector('[data-slot="conversation-item"]');
+    if (!first) throw new Error("No first line in the chat");
+    await expect(
+      first.getBoundingClientRect().top - put.getBoundingClientRect().bottom,
+    ).toBeLessThan(16);
+  },
 };
 
 /**
