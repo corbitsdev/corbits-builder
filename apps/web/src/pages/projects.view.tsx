@@ -274,7 +274,7 @@ export function ProjectsView({
           <section className={styles.recent} aria-labelledby="recent-title">
             <div className={styles.recentHead}>
               <h2 id="recent-title" className={styles.recentTitle}>
-                {wording.shell.recent}
+                {wording.shell.recentProjects}
               </h2>
               <Button variant="link" onClick={onOpenLibrary}>
                 {wording.shell.allProjects}

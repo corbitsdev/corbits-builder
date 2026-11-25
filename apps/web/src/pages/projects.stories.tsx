@@ -127,7 +127,7 @@ export const OpensRecentProject: Story = {
   },
 };
 
-/** All projects beside Recent opens the Projects page. */
+/** All projects beside Recent projects opens the Projects page. */
 export const OpensAllProjects: Story = {
   play: async ({ args, canvasElement }) => {
     await userEvent.click(

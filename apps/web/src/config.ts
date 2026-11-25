@@ -458,9 +458,11 @@ export const wording = {
     /** The sidebar outside a project, as a screen reader names it. */
     sidebar: "Workspace",
     connectModel: "Connect a model",
-    /** The projects last worked on, under the new project's prompt and in the sidebar. */
+    /** The projects last worked on, in the sidebar. */
     recent: "Recent",
-    /** Beside Recent under the new project's prompt: the Projects page, with every project. */
+    /** The projects last worked on, under the new project's prompt. */
+    recentProjects: "Recent projects",
+    /** Beside Recent projects under the new project's prompt: the Projects page, with every project. */
     allProjects: "All projects",
     /** The new project page's top right corner, as a screen reader names it. */
     corner: "Workspace and account",
