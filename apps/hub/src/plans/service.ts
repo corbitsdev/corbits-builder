@@ -223,6 +223,8 @@ export function createPlanService(
         const step = stepById(plan.steps, stepId);
         if (!step)
           throw new ProjectError(404, "plan_step_not_found", { id: stepId });
+        if (step.cancelled)
+          throw new ProjectError(409, "plan_step_cancelled", { id: stepId });
         if (!step.optional)
           throw new ProjectError(409, "plan_step_required", {
             id: stepId,
@@ -397,6 +399,8 @@ export function createPlanService(
         const step = stepById(plan.steps, stepId);
         if (!step)
           throw new ProjectError(404, "plan_step_not_found", { id: stepId });
+        if (step.cancelled)
+          throw new ProjectError(409, "plan_step_cancelled", { id: stepId });
         let note: string;
         if ("goAhead" in change.ask) {
           if (!step.askFirst)
