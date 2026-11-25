@@ -1,7 +1,8 @@
 /**
  * The project's files under a heading that folds them, as a compact file tree: a folder leads with a
- * chevron that folds it, a file leaves that space empty so names line up, and what a folder holds
- * stands 1rem in. Where the list is taller than its room it scrolls inside itself. It is a tree with a single tab stop, after the
+ * chevron that folds it, a file beside one leaves that space empty so names line up, and what a
+ * folder holds stands 1rem in. With no folder in the list, the rows drop that space, so the icons
+ * line up with the heading. Where the list is taller than its room it scrolls inside itself. It is a tree with a single tab stop, after the
  * WAI-ARIA tree view pattern: up and down move between rows, right and left open and fold a row that
  * holds others and step into and out of it, Home and End jump, a letter finds the next row starting
  * with it, and Enter or Space opens a file or folds a folder. Folding only changes the look, so it is
@@ -184,6 +185,7 @@ export function FilesList({
   });
   // Until the project has a file there is no group to fold.
   if (files.length === 0) return null;
+  const chevrons = files.some((file) => file.files.length > 0);
   return (
     <section className={styles.files}>
       <h2 className={styles.head}>
@@ -211,6 +213,7 @@ export function FilesList({
             key={file.id}
             file={file}
             level={1}
+            chevrons={chevrons}
             folded={folded}
             shown={shown}
             icons={icons}
@@ -230,6 +233,7 @@ export function FilesList({
 function FileItem({
   file,
   level,
+  chevrons,
   folded,
   shown,
   icons,
@@ -239,6 +243,8 @@ function FileItem({
 }: {
   file: SidebarFile;
   level: number;
+  /** Some row in the list holds others, so every row leaves room for a chevron. */
+  chevrons: boolean;
   folded: ReadonlySet<string>;
   shown: string | null;
   icons: boolean;
@@ -271,21 +277,23 @@ function FileItem({
         title={file.name}
         onClick={onActivate ?? undefined}
       >
-        <span
-          className={styles.arrowBox}
-          onClick={
-            holds
-              ? (event) => {
-                  event.stopPropagation();
-                  onFold(key);
-                }
-              : undefined
-          }
-        >
-          {holds ? (
-            <ChevronRight className={styles.arrow} aria-hidden="true" />
-          ) : null}
-        </span>
+        {chevrons ? (
+          <span
+            className={styles.arrowBox}
+            onClick={
+              holds
+                ? (event) => {
+                    event.stopPropagation();
+                    onFold(key);
+                  }
+                : undefined
+            }
+          >
+            {holds ? (
+              <ChevronRight className={styles.arrow} aria-hidden="true" />
+            ) : null}
+          </span>
+        ) : null}
         {icons ? <Icon className={styles.icon} aria-hidden="true" /> : null}
         <span className={rowStyles.name}>{file.name}</span>
       </span>
@@ -296,6 +304,7 @@ function FileItem({
               key={child.id}
               file={child}
               level={level + 1}
+              chevrons={chevrons}
               folded={folded}
               shown={shown}
               icons={icons}
