@@ -1155,7 +1155,8 @@ export function useRoom({
     setPaneTab({ value: tab });
     setProjectOpen(true);
   };
-  const openDocument = (id: string) => openProject(documentTab(id));
+  // A link opens the page it names, so the design opens on its plan. Only the mockup's row opens the mockup.
+  const openDocument = (id: string) => openProject(id);
   // "settled" is a 409: someone already decided the ask, or its run moved on; the page reads
   // where it stands.
   const saveDecision = async (decision: {
@@ -1918,7 +1919,7 @@ export function useRoom({
           projectOpen &&
           !nothingYet &&
           waitsOn !== null &&
-          shownTab === documentTab(waitsOn),
+          (shownTab === waitsOn || shownTab === documentTab(waitsOn)),
         onCloseProject: () => setProjectOpen(false),
       },
       conversation: {
@@ -2027,5 +2028,5 @@ function lastSentAt(
   return awaitingSince === null ? wrote : Math.max(wrote, awaitingSince);
 }
 
-// The conversation opens the design as it is drawn, its mockup, as the pane always has.
+// A screen that shows more of the design takes the mockup's place.
 const documentTab = (id: string) => (id === "design" ? MOCKUP_TAB : id);
