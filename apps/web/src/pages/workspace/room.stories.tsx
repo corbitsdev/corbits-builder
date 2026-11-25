@@ -207,7 +207,6 @@ function paneOf(story: Partial<ArtifactPaneProps> = {}) {
 const layout: RoomViewProps["layout"] = {
   projectReady: false,
   projectOpen: false,
-  documentShown: false,
   documentGround: "white",
   onCloseProject: fn(),
 };
@@ -1066,7 +1065,7 @@ export const ApproveOverDocument: Story = {
   args: {
     ...withDocuments,
     ...ApproveInBox.args,
-    layout: { ...withDocuments.layout, projectOpen: true, documentShown: true },
+    layout: { ...withDocuments.layout, projectOpen: true },
   },
   play: async ({ canvasElement }) => {
     const box = canvasElement.querySelector<HTMLElement>(

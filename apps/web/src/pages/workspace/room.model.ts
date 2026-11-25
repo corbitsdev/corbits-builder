@@ -1914,9 +1914,6 @@ export function useRoom({
         projectReady: !nothingYet,
         // The view cannot be open once it has nothing to show, or the prompt box is placed in it unseen.
         projectOpen: projectOpen && !nothingYet,
-        documentShown:
-          projectOpen &&
-          paneDeliverables.some((item) => item.kind === shownTab),
         documentGround,
         onCloseProject: () => setProjectOpen(false),
       },
