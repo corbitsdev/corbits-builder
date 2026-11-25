@@ -608,6 +608,47 @@ export const TabStatus: Story = {
   },
 };
 
+// Enough turns that the conversation scrolls, so its scrollbar shows beside the corner.
+const longThread = Array.from({ length: 6 }, (_, index) => [
+  {
+    role: "person" as const,
+    text: "Can the order form ask for a pickup time as well as the date?",
+    at: index * 2 + 1,
+  },
+  {
+    role: "assistant" as const,
+    text: "Yes. The form asks for a date, then offers the times the bakery is open that day, so nobody picks a time when the shop is shut.",
+    at: index * 2 + 2,
+  },
+]).flat();
+
+/** Publishing waits on the person: the corner says so in words, and the turns scroll beside it. */
+export const TabStatusNeedsYou: Story = {
+  args: {
+    ...withDocuments,
+    conversation: {
+      ...conversation,
+      thread: { ...conversation.thread, turns: longThread },
+    },
+    tabStatus: [
+      {
+        tab: "Publish",
+        label: "Publishing needs you",
+        mark: "needs_you",
+        onOpen: fn(),
+      },
+    ],
+  },
+};
+
+/** With the sidebar put away, the corner keeps its place. */
+export const TabStatusSidebarClosed: Story = {
+  args: {
+    ...TabStatus.args,
+    sidebar: { ...withDocuments.sidebar, open: false },
+  },
+};
+
 const appArgs = paneOf(appAndManual.args);
 
 /** The app is up with the hub keeping it while the project is open; the sidebar's Preview row opens it. */

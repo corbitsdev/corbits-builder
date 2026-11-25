@@ -28,7 +28,7 @@ export const text = {
     unpublished: PUBLISH,
     publishing: "Publishing…",
     stalled: CARRY_ON,
-    needsYou: "Publish · needs you",
+    needsYou: "Publishing needs you",
     published: "Published",
     changes: PUBLISH_CHANGES,
     failed: "Publish failed",

@@ -30,15 +30,16 @@
   isolation: isolate;
 }
 
-/* Above the turns, the plugin tabs' controls at the end: no bar of its own, no hairline, only the
-   page with buttons in its corner. Without a control, there is nothing. */
+/* The plugin tabs' controls float in the conversation's top corner, where the project view's
+   close button stands, clear of the scrollbar, so the turns scroll the pane's full height. Without a
+   control, there is nothing. */
 .top {
+  position: absolute;
+  top: var(--space-4);
+  right: var(--space-4);
+  z-index: 1;
   display: flex;
-  flex-shrink: 0;
   align-items: center;
-  min-width: 0;
-  min-height: 2.75rem;
-  padding-inline-end: var(--space-2);
 }
 
 .top:empty {
@@ -49,38 +50,34 @@
   display: flex;
   flex: none;
   align-items: center;
-  gap: var(--space-1);
-  margin-inline-start: auto;
+  gap: var(--space-2);
 }
 
-/* Quiet like the project view's bar: muted until hovered. */
+/* Boxed like the close button and a page's Download and Share, and muted until hovered. The words
+   say where the tab stands; one that needs the person or failed reads darker or red. */
 .control {
+  height: 1.75rem;
+  padding-inline: 10px;
+  border: 1px solid var(--wb-border);
+  border-radius: var(--radius-control);
+  background: var(--wb-background);
   color: var(--wb-muted-foreground);
+  font-size: 0.8125rem;
+  font-weight: 500;
 }
 
-.control:hover {
+.control:hover,
+.control[data-mark="needs_you"] {
   color: var(--wb-foreground);
 }
 
-/* A plugin tab's mark beside where it stands: neutral, or the plan's colour for done, failed or
-   waiting on the person. */
-.alert {
-  width: 6px;
-  height: 6px;
-  border-radius: 999px;
-  background: var(--wb-border);
+.control[data-mark="failed"] {
+  color: var(--wb-destructive);
 }
 
-.alert[data-mark="done"] {
-  background: var(--wb-okay);
-}
-
-.alert[data-mark="failed"] {
-  background: var(--wb-destructive);
-}
-
-.alert[data-mark="needs_you"] {
-  background: var(--wb-proceed);
+/* With controls in the corner, the turns start below them, where the row that held them ended. */
+.conversation:has(> .top .control) [role="log"] {
+  padding-top: calc(var(--space-4) + 1.75rem + var(--space-5));
 }
 
 .conversation {

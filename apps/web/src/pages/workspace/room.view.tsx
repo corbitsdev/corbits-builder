@@ -427,16 +427,14 @@ export function RoomView({
                         key={tab}
                         type="button"
                         size="sm"
-                        variant="ghost"
+                        variant="outline"
                         className={styles.control}
+                        data-mark={mark}
                         aria-label={wording.conversation.tabStatus(tab, label)}
                         title={wording.conversation.openTab(tab)}
                         onClick={onOpen}
                       >
-                        <span>{label}</span>
-                        {mark === undefined ? null : (
-                          <span className={styles.alert} data-mark={mark} />
-                        )}
+                        {label}
                       </UiButton>
                     ))}
                   </div>
