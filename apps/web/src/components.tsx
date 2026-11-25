@@ -191,8 +191,8 @@ export function BannerAction({ children }: { children: ReactNode }) {
 }
 
 /**
- * Words for work under way, such as Thinking or a running step's Working: action blue with a
- * lighter band sweeping through. Without motion they are plain action blue.
+ * Words for work under way, such as Thinking or a running step's Working: the text colour with a
+ * lighter band sweeping through. Without motion they are plain text colour.
  */
 export function WorkingText({
   role,

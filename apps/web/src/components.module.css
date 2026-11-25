@@ -185,8 +185,13 @@ button.quietControl {
 
 /* ShimmerText draws its sweep from these two variables and, without motion, shows the first. */
 .working {
-  --muted-foreground: var(--wb-action);
-  --foreground: color-mix(in oklab, var(--wb-action) 45%, white);
+  --muted-foreground: var(--wb-foreground);
+  /* Toward the page colour, so the band is lighter on white and darker on black. */
+  --foreground: color-mix(
+    in oklab,
+    var(--wb-foreground) 35%,
+    var(--wb-background)
+  );
 }
 
 .working .sweep {
