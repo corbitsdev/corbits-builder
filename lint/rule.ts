@@ -4,6 +4,7 @@ export type Operand = Name & {
   type?: string;
   property?: Name;
   expression?: Operand;
+  computed?: boolean;
 };
 export type Node = {
   key?: Name;
