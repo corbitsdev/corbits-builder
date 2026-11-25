@@ -190,10 +190,15 @@
 }
 
 /* Three labelled buttons overrun the column, so the toggle is a disclosure arrow, named for a
-   screen reader: right while the list is folded, down while it is open, turning as the list moves. */
+   screen reader: right while the list is folded, down while it is open, turning as the list moves.
+   Only the arrow shows, without the outline Download and Share have. */
 .contentsToggle {
   padding-inline: 0;
   aspect-ratio: 1;
+}
+
+.file.contentsToggle {
+  border-color: transparent;
 }
 
 .contentsToggle > svg {
