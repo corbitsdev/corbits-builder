@@ -243,6 +243,9 @@
 /* The project view, or the plugin sheet on a narrow room, fills the canvas edge to edge, the prompt
    box at its foot. */
 .page {
+  --close-size: 2.25rem;
+  --controls-right: calc(var(--space-4) + var(--close-size) + var(--space-2));
+
   position: absolute;
   inset: 0;
   z-index: 10;
@@ -309,20 +312,16 @@
    the page, at the size of the page's own Download and Share. The page is 768px at the pane's middle, as the document lays it; where the pane leaves
    no room beside it, the button keeps to the corner. */
 .page:has(
-    > [data-slot="artifact-pane"]
-      [data-slot="panel-pane"][data-state="active"]
-      [data-slot="document-page"]
-  )
-  > .close {
+  > [data-slot="artifact-pane"]
+    [data-slot="panel-pane"][data-state="active"]
+    [data-slot="document-page"]
+) {
   --close-size: 1.75rem;
-
-  right: auto;
-  left: min(
+  --close-left: min(
     50% + min(768px, 100% - 2 * var(--space-4)) / 2 + var(--space-3),
     100% - var(--close-size) - var(--space-4)
   );
-  width: var(--close-size);
-  height: var(--close-size);
+  --controls-right: calc(100% - var(--close-left) + var(--space-2));
 }
 
 /* On the white ground no sheet edge shows, so the button goes just past the text instead, inside
@@ -331,13 +330,36 @@
     > [data-slot="artifact-pane"]
       [data-slot="panel-pane"][data-state="active"]
       [data-slot="document-page"]
-  )
-  > .close {
-  left: min(
+  ) {
+  --close-left: min(
     50% + min(768px, 100% - 2 * var(--space-4)) / 2 -
       var(--document-page-gutter) + var(--space-3),
     100% - var(--close-size) - var(--space-4)
   );
+}
+
+.page:has(
+    > [data-slot="artifact-pane"]
+      [data-slot="panel-pane"][data-state="active"]
+      [data-slot="document-page"]
+  )
+  > .close {
+  right: auto;
+  left: var(--close-left);
+  width: var(--close-size);
+  height: var(--close-size);
+}
+
+/* The tabs' status goes just left of the close button and moves with it. */
+.pageControls {
+  position: absolute;
+  top: var(--space-4);
+  right: var(--controls-right);
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: var(--close-size);
 }
 
 .page:has(
@@ -361,6 +383,16 @@
     )
     > .close {
     top: var(--document-controls-top);
+  }
+
+  /* Next to the button it would cover a long title, so it goes in the corner, where the chat has it. */
+  .page:has(
+      > [data-slot="artifact-pane"]
+        [data-slot="panel-pane"][data-state="active"]
+        [data-slot="document-page"]
+    )
+    > .pageControls {
+    --controls-right: var(--space-4);
   }
 }
 

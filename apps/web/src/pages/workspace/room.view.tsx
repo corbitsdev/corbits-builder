@@ -453,24 +453,11 @@ export function RoomView({
           >
             <div className={styles.conversation}>
               <div className={styles.top}>
-                {projectReady ? (
-                  <div className={styles.controls}>
-                    {tabStatus.map(({ tab, label, mark, onOpen }) => (
-                      <UiButton
-                        key={tab}
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        className={styles.control}
-                        data-mark={mark}
-                        aria-label={wording.conversation.tabStatus(tab, label)}
-                        title={wording.conversation.openTab(tab)}
-                        onClick={onOpen}
-                      >
-                        {label}
-                      </UiButton>
-                    ))}
-                  </div>
+                {projectReady && !projectOpen ? (
+                  <TabStatusControls
+                    tabStatus={tabStatus}
+                    className={styles.controls}
+                  />
                 ) : null}
               </div>
               <RoomThread {...conversation.thread}>
@@ -487,6 +474,13 @@ export function RoomView({
               hidden={!projectOpen}
             >
               <BackToChat onClose={closeProject} />
+              {/* Open, the view covers the chat's corner, so the tabs' status moves next to its close button. */}
+              {projectOpen ? (
+                <TabStatusControls
+                  tabStatus={tabStatus}
+                  className={styles.pageControls}
+                />
+              ) : null}
               <SketchingShown value={showSketch}>
                 <ArtifactPane
                   {...documentPane}
@@ -642,6 +636,36 @@ function BackToChat({ onClose }: { onClose: () => void }) {
     >
       <X size={18} aria-hidden="true" />
     </UiButton>
+  );
+}
+
+/** Each plugin tab's status, as a button that opens the tab. */
+function TabStatusControls({
+  tabStatus,
+  className,
+}: {
+  tabStatus: readonly TabStatus[];
+  className: string | undefined;
+}) {
+  if (tabStatus.length === 0) return null;
+  return (
+    <div className={className}>
+      {tabStatus.map(({ tab, label, mark, onOpen }) => (
+        <UiButton
+          key={tab}
+          type="button"
+          size="sm"
+          variant="outline"
+          className={styles.control}
+          data-mark={mark}
+          aria-label={wording.conversation.tabStatus(tab, label)}
+          title={wording.conversation.openTab(tab)}
+          onClick={() => onOpen()}
+        >
+          {label}
+        </UiButton>
+      ))}
+    </div>
   );
 }
 

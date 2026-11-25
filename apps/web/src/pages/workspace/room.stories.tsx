@@ -606,14 +606,13 @@ export const ChoosingADesign: Story = {
   },
 };
 
+const published = [
+  { tab: "Publish", label: "Published", mark: "done" as const, onOpen: fn() },
+];
+
 /** A plugin's tab says where its work stands in the room's top bar, and opens from there. */
 export const TabStatus: Story = {
-  args: {
-    ...withDocuments,
-    tabStatus: [
-      { tab: "Publish", label: "Published", mark: "done", onOpen: fn() },
-    ],
-  },
+  args: { ...withDocuments, tabStatus: published },
 };
 
 // Enough turns that the conversation scrolls, so its scrollbar shows beside the corner.
@@ -665,6 +664,38 @@ export const AppRunning: Story = {
     ...withDocuments,
     ...appArgs,
     sidebar: sidebarOf(appArgs.documentPane, planning.plan, "running"),
+  },
+};
+
+/** Over a written page the tab's status is next to the close button, so it can still be clicked. */
+export const TabStatusOverDocument: Story = {
+  args: {
+    ...TabStatus.args,
+    layout: { ...withDocuments.layout, projectOpen: true },
+  },
+  play: async ({ args, canvasElement }) => {
+    await userEvent.click(
+      within(canvasElement).getByRole("button", {
+        name: wording.conversation.tabStatus("Publish", "Published"),
+      }),
+    );
+    await expect(args.tabStatus[0]?.onOpen).toHaveBeenCalled();
+  },
+};
+
+/** Over the preview too, beside the close button. */
+export const TabStatusOverPreview: Story = {
+  args: {
+    ...AppBuilt.args,
+    tabStatus: published,
+  },
+  play: async ({ args, canvasElement }) => {
+    await userEvent.click(
+      within(canvasElement).getByRole("button", {
+        name: wording.conversation.tabStatus("Publish", "Published"),
+      }),
+    );
+    await expect(args.tabStatus[0]?.onOpen).toHaveBeenCalled();
   },
 };
 
