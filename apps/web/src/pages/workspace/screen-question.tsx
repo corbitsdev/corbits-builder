@@ -20,7 +20,7 @@ import {
 } from "react";
 import { type, type ArkErrors, type Type } from "arktype";
 import {
-  placesOf,
+  screenPlacement,
   validateInput,
   validateOutput,
   type Decision,
@@ -276,7 +276,7 @@ export function screenHost<In, Out, Data, Prepared>(
   const { screen, view: View, data } = plugin;
   const readDraft = draftOf(screen.output);
   const { reads = [], host: supplied = [] } = builder;
-  const promptBox = placesOf(screen)["prompt-box"];
+  const promptBox = screenPlacement(screen).promptBox;
   const decision = promptBox?.decision;
   const offerOf = (
     input: Type<In>["infer"],

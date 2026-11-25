@@ -60,7 +60,7 @@ export function pluginTabs(room: PluginScreensRoom) {
     const { changesIn } = screen;
     if (changesIn !== undefined)
       rereadIn = Math.min(rereadIn ?? Infinity, changesIn);
-    if (installed.places["main-pane"] === undefined) continue;
+    if (!installed.placement.mainPane) continue;
     const { listed: Listed } = installed;
     const key = `${screen.plugin} ${screen.action}`;
     tabs.push({

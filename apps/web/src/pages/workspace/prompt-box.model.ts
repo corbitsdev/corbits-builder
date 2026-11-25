@@ -270,7 +270,7 @@ export function usePromptBox(room: PromptBoxRoom): PromptBox {
   const firstScreen = first?.from === "question" ? questionScreen : shown;
   const installed =
     firstScreen === undefined ? undefined : screenOf(firstScreen);
-  const place = installed?.places["main-pane"] === undefined ? "box" : "page";
+  const place = installed?.placement.mainPane ? "page" : "box";
   const held =
     first !== undefined && place === "box" && card?.key !== first.key;
   const spaceScreen = ((): SpaceScreenProps | null => {

@@ -8,10 +8,10 @@ import type { ScreenViewProps } from "@corbits-builder/plugin-ui/screen";
 import type { ComponentType } from "react";
 import {
   isScreen,
-  placesOf,
+  placeScreen,
   ScreenActionBuilder,
   SpecialistBuilder,
-  type ScreenPlaces,
+  type ScreenPlacement,
 } from "@corbits-builder/plugin";
 import { byAction, pluginFolder } from "./roles.ts";
 import {
@@ -36,7 +36,7 @@ export type ScreenFiles = {
 type Installed = {
   host: ComponentType<ScreenHostProps>;
   listed: ComponentType<ListedHostProps>;
-  places: ScreenPlaces<unknown, unknown, unknown, unknown>;
+  placement: ScreenPlacement<unknown, unknown, unknown, unknown>;
 };
 
 let installed: ReadonlyMap<string, Installed> = new Map();
@@ -111,7 +111,12 @@ export function installScreens({
           }
           const host = screenHost(name, declared, { screen, view, data });
           const listed = listedHost(name, handle, view);
-          return [[name, { host, listed, places: placesOf(screen) }] as const];
+          return [
+            [
+              name,
+              { host, listed, placement: placeScreen(name, screen) },
+            ] as const,
+          ];
         });
       },
     ),

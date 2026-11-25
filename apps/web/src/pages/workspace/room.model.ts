@@ -1772,8 +1772,8 @@ export function useRoom({
     onRequestChanges: requestChanges,
     plan: snapshot.plan.steps,
     // Only a screen with a place in the prompt box waits there.
-    screens: snapshot.plan.screens.filter(
-      (screen) => screenOf(screen)?.places["prompt-box"] !== undefined,
+    screens: snapshot.plan.screens.filter((screen) =>
+      Boolean(screenOf(screen)?.placement.promptBox),
     ),
     screenOf,
     supplies,

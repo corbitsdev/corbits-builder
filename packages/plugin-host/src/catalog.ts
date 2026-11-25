@@ -5,11 +5,7 @@ import {
   CHECK_MS,
   WriterDocumentKind,
 } from "@corbits-builder/schemas/artifact";
-import {
-  ENTRY_PLACES,
-  ScreenPlace,
-  type EntryPlace,
-} from "@corbits-builder/schemas/project";
+import type { EntryPlace } from "@corbits-builder/schemas/project";
 import {
   CheckActionBuilder,
   guidanceText,
@@ -54,7 +50,7 @@ import {
   type OutputBudget,
   type Refused,
   type Removes,
-  placesOf,
+  placeScreen,
   type Screen,
   type ScreenStatus,
   type ProjectRead,
@@ -1031,61 +1027,6 @@ function declaredCredentials(
   return [...credentials.values()];
 }
 
-/** The entries of a screen placed where the room can draw it; throws for any other placing. */
-function placedEntries(
-  name: string,
-  screen: Extract<Declared, { kind: "screen" }>["definition"],
-): ScreenAction["entries"] {
-  // Each part of the contract before places, which would otherwise install with nothing shown.
-  for (const part of ["render", "status", "decision"])
-    if (part in screen)
-      throw new Error(`${name}'s definition ${part} now goes under places`);
-  if (screen.describe.says !== undefined && "reply" in screen.describe.says)
-    throw new Error(
-      `${name}'s definition says.reply is now the prompt-box's reply under places`,
-    );
-  const places = placesOf(screen);
-  const stray = Object.keys(places).find((place) => !ScreenPlace.allows(place));
-  if (stray !== undefined)
-    throw new Error(
-      `${name}'s definition places ${stray}, which is not a place in the room`,
-    );
-  if (Object.keys(places).length === 0)
-    throw new Error(
-      `${name}'s definition places the screen nowhere; leave places out for a card in the prompt box`,
-    );
-  const box = places["prompt-box"];
-  if (box === undefined && screen.state === undefined)
-    throw new Error(
-      `${name}'s definition asks a question, which waits in the prompt box, but places none there`,
-    );
-  if (box?.size === "sm" && places["main-pane"] === undefined)
-    throw new Error(
-      `${name}'s definition draws only a decision in the prompt box, so its view needs a main-pane`,
-    );
-  if (box?.size === "sm" && screen.state !== undefined)
-    throw new Error(
-      `${name}'s definition prompt-box size sm draws a question's decision, which a screen with a state never asks`,
-    );
-  if (box !== undefined && box.size !== "sm" && box.size !== "md")
-    throw new Error(`${name}'s definition prompt-box size must be sm or md`);
-  if (box?.size === "md" && places["main-pane"] !== undefined)
-    throw new Error(
-      `${name}'s definition draws its view in the main pane and as a card in the prompt box`,
-    );
-  if (box?.decision !== undefined && typeof box.decision.offer !== "function")
-    throw new Error(`${name}'s definition decision offer must be a function`);
-  return ENTRY_PLACES.flatMap((place) => {
-    const status = places[place]?.status;
-    if (status === undefined) return [];
-    if (screen.state === undefined || places["main-pane"] === undefined)
-      throw new Error(
-        `${name}'s definition ${place} opens a screen shown on its own, so it needs a state and a main-pane`,
-      );
-    return [{ place, status }];
-  });
-}
-
 function installScreen(
   handle: string,
   action: string,
@@ -1136,7 +1077,7 @@ function installScreen(
       throw new Error(`${name}'s definition ${part} must be a function`);
   if (screen.changesAt !== undefined && screen.state === undefined)
     throw new Error(`${name}'s definition changesAt needs a state to change`);
-  const entries = placedEntries(name, screen);
+  const { entries } = placeScreen(name, screen);
   if (screen.fromProject !== undefined && screen.state !== undefined)
     throw new Error(
       `${name}'s definition fromProject prepares a question, which a screen with a state never asks`,

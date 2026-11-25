@@ -88,6 +88,28 @@ module.exports = {
       to: { path: "^(apps|plugins)/" },
     },
     {
+      name: "schemas-stay-at-the-bottom",
+      comment:
+        "Schemas hold the shapes every layer reads, so they depend on nothing but other schemas.",
+      severity: "error",
+      from: { path: "^packages/schemas/" },
+      to: {
+        path: "^(apps|packages|plugins|workflows)/",
+        pathNot: "^packages/schemas/",
+      },
+    },
+    {
+      name: "plugin-sdk-above-schemas-only",
+      comment:
+        "The plugin SDK holds shared plugin contracts and screen-placement rules read by both the hub and the web interface, so it stays below plugin-host, plugin-ui, apps and plugins.",
+      severity: "error",
+      from: { path: "^packages/plugin/" },
+      to: {
+        path: "^(apps|packages|plugins|workflows)/",
+        pathNot: "^packages/(plugin|plan|schemas|zip)/",
+      },
+    },
+    {
       name: "browser-files-stay-off-node",
       comment:
         "The interface bundles each plugin's definitions and views, so nothing they reach may need Node or Bun; a browser build only externalizes those modules and the page fails when it loads.",

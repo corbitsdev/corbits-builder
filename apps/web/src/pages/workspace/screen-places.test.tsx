@@ -116,15 +116,15 @@ function drawn(
     </QueryClientProvider>,
   );
   const box = html.slice(html.indexOf('data-slot="room-dock"'));
-  return { places: installed.places, html, box };
+  return { placement: installed.placement, html, box };
 }
 
 describe.each(screens)("$plugin $action", (screen) => {
   test("its view is drawn once, and never in the prompt box when it fills the main pane", () => {
     for (const projectOpen of [false, true]) {
-      const { places, html, box } = drawn(screen, projectOpen);
+      const { placement, html, box } = drawn(screen, projectOpen);
       expect(html.split(VIEW).length - 1).toBeLessThanOrEqual(1);
-      if (places["main-pane"] !== undefined) expect(box).not.toContain(VIEW);
+      if (placement.mainPane) expect(box).not.toContain(VIEW);
       else expect(box).toContain(VIEW);
     }
   });

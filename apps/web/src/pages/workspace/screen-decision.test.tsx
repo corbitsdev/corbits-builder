@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
-  placesOf,
+  screenPlacement,
   validateOutput,
   type Offer,
   type Screen,
@@ -29,7 +29,7 @@ const twoComments = [said("Bigger."), said("Fewer words.")];
 const declared = <In, Out, Data, Prepared, Resources>(
   screen: Screen<In, Out, Data, Prepared, Resources>,
 ) => {
-  const decision = placesOf(screen)["prompt-box"]?.decision;
+  const decision = screenPlacement(screen).promptBox?.decision;
   if (decision === undefined)
     throw new Error("The screen declares no decision.");
   return decision;

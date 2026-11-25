@@ -965,10 +965,14 @@ export const defineScreen = <In, Out, Data, Prepared, Resources = unknown>(
   screen: Screen<In, Out, Data, Prepared, Resources>,
 ) => screen;
 
-export const placesOf = <In, Out, Data, Prepared, Resources>(
-  screen: Screen<In, Out, Data, Prepared, Resources>,
-): ScreenPlaces<Type<In>["infer"], Type<Out>["infer"], Prepared, Resources> =>
-  screen.places ?? { "prompt-box": { size: "md" } };
+export {
+  placeScreen,
+  placesOf,
+  screenPlacement,
+  type PlacedEntry,
+  type PromptBoxPlacement,
+  type ScreenPlacement,
+} from "./places.ts";
 
 // A workflow action's input and how the coordinator fills it, and the record its start may keep
 // for each run, which the host stores against the run when this schema takes it.

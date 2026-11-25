@@ -7,7 +7,7 @@
 import { type } from "arktype";
 import {
   isScreen,
-  placesOf,
+  screenPlacement,
   isWorkflow,
   SpecialistBuilder,
   WorkflowActionBuilder,
@@ -115,7 +115,7 @@ export function installRoles({
         const screen = definitionOf.get(`${folder} ${action}`);
         if (!isScreen(screen) || screen.describe.says === undefined) return [];
         const { label, chose } = screen.describe.says;
-        const box = placesOf(screen)["prompt-box"];
+        const box = screenPlacement(screen).promptBox;
         const words: ScreenWords = {
           label: (raw) => {
             const input = screen.input(raw);
