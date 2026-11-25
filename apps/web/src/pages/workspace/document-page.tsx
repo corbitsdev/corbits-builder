@@ -496,7 +496,7 @@ export function DocumentPage({
   useEffect(() => {
     const owner = pointedOwner.current;
     const place = places.find((item) => item.id === pointed);
-    const range = ranges.current.get(pointed ?? "");
+    const range = pointed === null ? undefined : ranges.current.get(pointed);
     paint(
       owner,
       place === undefined || place.state === "selected" || range === undefined

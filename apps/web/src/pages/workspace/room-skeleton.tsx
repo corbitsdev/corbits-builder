@@ -143,7 +143,8 @@ export function RoomSkeleton({
               {/* What is typed waits in the box until the room is there to send it. */}
               <Composer>
                 <PromptInput
-                  value={draft?.value ?? ""}
+                  // With no draft the box is a disabled stand-in, so it holds nothing.
+                  value={draft === undefined ? "" : draft.value}
                   onValueChange={draft?.onValueChange ?? nothing}
                   onSubmit={nothing}
                   canSubmit={false}

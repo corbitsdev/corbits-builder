@@ -41,12 +41,12 @@ const NEW = "comment:new";
 function rangeText(range: Range): string {
   const root = range.commonAncestorContainer;
   if (root.nodeType === Node.TEXT_NODE)
-    return (root.textContent ?? "").slice(range.startOffset, range.endOffset);
+    return (root as Text).data.slice(range.startOffset, range.endOffset);
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   let text = "";
   for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
     if (!range.intersectsNode(node)) continue;
-    const words = node.textContent ?? "";
+    const words = (node as Text).data;
     const start = node === range.startContainer ? range.startOffset : 0;
     const end = node === range.endContainer ? range.endOffset : words.length;
     text += words.slice(start, end);
@@ -158,7 +158,8 @@ export function usePageComments(
     const card = editing ? (
       <CommentCard
         state="writing"
-        comment={draft?.comment ?? ""}
+        // A new comment starts with nothing written.
+        comment={draft === undefined ? "" : draft.comment}
         paired
         onSave={(comment) => {
           onSave({ id: draft?.id ?? null, quote, occurrence, comment });
@@ -166,10 +167,10 @@ export function usePageComments(
         }}
         onCancel={() => setWriting(null)}
       />
-    ) : (
+    ) : draft === undefined ? null : (
       <CommentCard
         state="saved"
-        comment={draft?.comment ?? ""}
+        comment={draft.comment}
         paired={pointed}
         onEdit={() => setWriting({ id: place.id, quote, occurrence })}
         onDelete={() => onDelete(place.id)}

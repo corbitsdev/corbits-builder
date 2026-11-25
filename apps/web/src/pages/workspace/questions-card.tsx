@@ -176,23 +176,23 @@ export function answerLabels(question: Question, answer: Answer): string[] {
 export function sentAnswer(
   card: readonly { question: Question; answer: Answer }[],
 ): GivenQuestionAnswer {
-  const given = card.map(({ question, answer }) => ({
-    id: question.id,
-    labels: answerLabels(question, answer),
-    details: answer.details?.trim() ?? "",
-  }));
-  const details = given.filter((each) => each.details !== "");
   const sent = {
-    answers: Object.fromEntries(given.map(({ id, labels }) => [id, labels])),
+    answers: Object.fromEntries(
+      card.map(({ question, answer }) => [
+        question.id,
+        answerLabels(question, answer),
+      ]),
+    ),
   };
+  const details = card.flatMap(({ question, answer }) => {
+    const words = answer.details?.trim();
+    return words === undefined || words === ""
+      ? []
+      : [[question.id, words] as const];
+  });
   return details.length === 0
     ? sent
-    : {
-        answers: sent.answers,
-        details: Object.fromEntries(
-          details.map((each) => [each.id, each.details]),
-        ),
-      };
+    : { answers: sent.answers, details: Object.fromEntries(details) };
 }
 
 /**

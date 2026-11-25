@@ -84,7 +84,7 @@ export function screenActions(
                     {(entry.states.length === 0 ? [null] : entry.states).map(
                       (state) => (
                         <MenuItem
-                          key={state ?? ""}
+                          key={String(state)}
                           onSelect={() => goto(stateHash(entry.screen, state))}
                         >
                           <MenuItemLabel>
