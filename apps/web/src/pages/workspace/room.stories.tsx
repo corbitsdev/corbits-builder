@@ -693,7 +693,7 @@ export const OpenFileKeepsMessage: Story = {
     await expect(
       canvasElement.querySelector('[data-slot="room-project"]'),
     ).not.toHaveAttribute("hidden");
-    // The box moves into the project view, with what was typed.
+    // The box stays where it was, over the project view, with what was typed.
     await expect(canvas.getByRole("textbox")).toHaveValue(
       "Also take orders by",
     );
@@ -714,13 +714,13 @@ const chatBehindBox = {
 /** The chat over the project view, which is shown only while pulled up. */
 const chatHistory = (canvasElement: HTMLElement) =>
   canvasElement.querySelector(
-    '[data-slot="room-project"] [data-slot="chat-history"]',
+    '[data-slot="room-dock"] [data-slot="chat-history"]',
   );
 
 /** Pulls the chat up from the handle, as the keyboard does it, so it opens at once. */
 async function openChat(canvasElement: HTMLElement) {
   const handle = canvasElement.querySelector<HTMLElement>(
-    '[data-slot="room-project"] [data-slot="pull-handle"]',
+    '[data-slot="room-dock"] [data-slot="pull-handle"]',
   );
   if (handle === null) throw new Error("No handle on the box");
   handle.focus();
@@ -955,14 +955,13 @@ export const ScreenWaiting: Story = {
       within(space).queryByRole("button", { name: "Close" }),
     ).not.toBeInTheDocument();
     // The screen has the whole page, not a strip beside the chat, down to the box under it.
-    const page = space.closest('[data-slot="room-space-sheet"]');
-    if (!(page instanceof HTMLElement))
+    if (space.closest('[data-slot="room-space-sheet"]') === null)
       throw new Error("No page for the screen");
     const main = canvasElement.querySelector('[data-slot="room-main"]');
     if (main === null) throw new Error("No room main");
     const shape = space.getBoundingClientRect();
     await expect(shape.width).toBe(main.getBoundingClientRect().width);
-    const box = page.querySelector('[data-slot="composer-box"]');
+    const box = main.querySelector('[data-slot="composer-box"]');
     if (box === null) throw new Error("No prompt box under the screen");
     await expect(box.getBoundingClientRect().top).toBeGreaterThanOrEqual(
       shape.bottom,
@@ -1136,15 +1135,12 @@ export const ApproveOverDocument: Story = {
   },
   play: async ({ canvasElement }) => {
     const box = canvasElement.querySelector<HTMLElement>(
-      '[data-slot="room-project"] [data-slot="composer"]',
+      '[data-slot="room-dock"] [data-slot="composer"]',
     );
     if (box === null) throw new Error("No prompt box over the page");
-    // The view fades in as it opens.
-    await waitFor(() =>
-      expect(
-        within(box).getByRole("textbox", { name: "Message" }),
-      ).toBeVisible(),
-    );
+    await expect(
+      within(box).getByRole("textbox", { name: "Message" }),
+    ).toBeVisible();
     await expect(
       box.querySelector('[data-slot="composer-panel"]'),
     ).toHaveAttribute("hidden");
@@ -1196,7 +1192,7 @@ export const ChatSheetOverApproval: Story = {
   play: async ({ canvasElement }) => {
     await openChat(canvasElement);
     const field = canvasElement.querySelector(
-      '[data-slot="room-project"] [data-slot="prompt-input"]',
+      '[data-slot="room-dock"] [data-slot="prompt-input"]',
     );
     if (field === null) throw new Error("No typing row in the box");
     await waitFor(() =>
@@ -1338,7 +1334,7 @@ export const DarkScreenSheetNarrow: Story = {
 /** The prompt box over the project view. */
 const projectBox = (canvasElement: HTMLElement) =>
   canvasElement.querySelector<HTMLElement>(
-    '[data-slot="room-project"] [data-slot="composer"]',
+    '[data-slot="room-dock"] [data-slot="composer"]',
   );
 
 /** Waits until the words can be typed in. */

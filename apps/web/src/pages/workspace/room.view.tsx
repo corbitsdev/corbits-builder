@@ -77,7 +77,7 @@ export type RoomSlots = {
   pluginSpace: ReactNode;
   /**
    * The conversation for the chat sheet that pulls up around the prompt box over the project view
-   * or a page. The room's own conversation already shows the thread, so its box has no sheet.
+   * or a page. The room's own conversation already shows the thread, so over it the box has none.
    * Absent, no box has a handle.
    */
   chat?: ReactNode;
@@ -269,24 +269,14 @@ export function RoomView({
   const mainRef = useRef<HTMLDivElement>(null);
   // The box floats over the foot of the project view and of a screen over the conversation, so
   // each keeps what it must reach clear of it by the box's height, which grows as the person writes.
-  const projectRef = useRef<HTMLDivElement>(null);
-  const sheetRef = useRef<HTMLDivElement>(null);
+  const dockRef = useRef<HTMLDivElement>(null);
   // Set before paint, so the page's first frame already keeps clear of the box.
   useLayoutEffect(() => {
-    const page = sheetRef.current ?? projectRef.current;
-    const box = page?.querySelector<HTMLElement>(
-      ':scope > [data-slot="composer"]',
-    );
-    if (page === null || page === undefined) return;
-    // Checked on every render, as the box comes and goes with what stands in its place; the
-    // height stays set between renders so the view's foot never jumps while it is read again.
-    if (box === null || box === undefined) {
-      page.style.removeProperty("--box-height");
-      page.style.removeProperty("--dock-height");
-      return;
-    }
+    const main = mainRef.current;
+    const box = dockRef.current;
+    if (main === null || box === null) return;
     // The pill or handle standing above the box, which a view that fills the pane ends above too,
-    // so nothing of it shows beneath them.
+    // so nothing of it shows beneath them. Found on every render, as it comes and goes.
     const grip = box.querySelector<HTMLElement>('[data-slot="chat-grip"]');
     // The box at rest: while the chat is pulled up over the view, the view keeps the foot it had.
     const measure = () => {
@@ -294,11 +284,11 @@ export function RoomView({
         box.querySelector('[data-slot="chat-sheet"]:not([data-state="closed"])')
       )
         return;
-      page.style.setProperty("--box-height", `${String(box.offsetHeight)}px`);
+      main.style.setProperty("--box-height", `${String(box.offsetHeight)}px`);
       const top = box.getBoundingClientRect().top;
       const reach =
         grip === null ? 0 : Math.max(0, top - grip.getBoundingClientRect().top);
-      page.style.setProperty(
+      main.style.setProperty(
         "--dock-height",
         `${String(Math.ceil(box.offsetHeight + reach))}px`,
       );
@@ -326,7 +316,7 @@ export function RoomView({
     if (!sheetOpen) setSheetOpen(true);
     else headingRef.current?.focus();
   };
-  // The box moves with the sheet, so the cursor goes back to it once it has moved.
+  // Closing takes away the control that had the cursor, so it goes back to the box.
   const refocusBox = useRef(false);
   const closeSheet = () => {
     setSheetOpen(false);
@@ -393,10 +383,8 @@ export function RoomView({
     setSketches((count) => count + 1);
     return () => setSketches((count) => count - 1);
   }, []);
-  // The prompt box stays in reach under whatever covers the conversation.
-  const dockInSheet = sheetShown;
-  const dockInProject = projectOpen && !sheetShown;
-  const dockInConversation = !projectOpen && !sheetShown;
+  // The project view is in sight unless the plugin sheet covers it too.
+  const projectShown = projectOpen && !sheetShown;
   // A screen in the plugin space reaches the box: its forward action, placeholder and Send.
   const ports = useBoxPorts();
   const card = waitingCard(
@@ -404,38 +392,17 @@ export function RoomView({
     sheetShown ? undefined : openSpace,
     space?.place === "box" ? pluginSpace : null,
   );
-  const conversationDock = (
-    <RoomDockView
-      dock={dock}
-      ports={ports}
-      waiting={card}
-      answersShell={shell.answers}
-    />
-  );
-  const projectDock =
-    dockInProject && sketches > 0 ? sketchingDock(dock) : dock;
   // Over the page it asks the person to accept, a document or a screen such as a mockup's review,
   // what waits would only repeat the page: the box shows its typing row and action alone.
   // A screen open over the page is itself what waits, so the box shows its typing row alone.
   const decidesPage =
-    (dockInProject && documentShown && decides(waiting)) ||
-    (dockInSheet && waiting?.kind === "screen");
-  // Full screen is the room's own conversation: what the chat was pulled up over is put away.
-  const roomDock = (
-    <RoomDockView
-      dock={projectDock}
-      ports={ports}
-      waiting={card}
-      cardHidden={decidesPage}
-      chat={chat}
-      chatStart={{
-        // The conversation is out of sight behind the project, so the pill says what is running.
-        saysWork: true,
-        onFullScreen: dockInSheet ? closeSheet : closeProject,
-      }}
-      answersShell={shell.answers}
-    />
-  );
+    (projectShown && documentShown && decides(waiting)) ||
+    (sheetShown && waiting?.kind === "screen");
+  // Covered, the conversation is out of sight, so the box has the chat to pull up and its pill says
+  // what is running. Full screen is the room's own conversation: what the chat was pulled up over
+  // is put away.
+  const covered = projectOpen || sheetShown;
+  const fullScreen = sheetShown ? closeSheet : closeProject;
   // The screen the box lists is the one that hands its action to the box; any other keeps its own.
   const spaceScreen =
     side === null ? null : (
@@ -481,13 +448,11 @@ export function RoomView({
               <RoomThread {...conversation.thread}>
                 <EmptyConversation empty={conversation.empty} />
               </RoomThread>
-              {dockInConversation ? conversationDock : null}
             </div>
           </section>
           {projectReady ? (
             // Kept while closed, so its panes, previews and drafts keep their place.
             <div
-              ref={projectRef}
               className={styles.page}
               data-slot="room-project"
               hidden={!projectOpen}
@@ -501,22 +466,33 @@ export function RoomView({
                   open={projectOpen}
                 />
               </SketchingShown>
-              {dockInProject ? roomDock : null}
             </div>
           ) : null}
           {sheetShown && side !== null ? (
-            <div
-              ref={sheetRef}
-              className={styles.page}
-              data-slot="room-space-sheet"
-            >
+            <div className={styles.page} data-slot="room-space-sheet">
               <BackToChat onClose={closeSheet} />
               <PluginSpace title={side.title} headingRef={headingRef}>
                 {spaceScreen}
               </PluginSpace>
-              {dockInSheet ? roomDock : null}
             </div>
           ) : null}
+          {/* One box over the conversation and whatever covers it, so opening or closing a view
+              never moves it or starts it over. */}
+          <div ref={dockRef} className={styles.dock} data-slot="room-dock">
+            <RoomDockView
+              dock={projectShown && sketches > 0 ? sketchingDock(dock) : dock}
+              ports={ports}
+              waiting={card}
+              cardHidden={decidesPage}
+              chat={covered ? chat : undefined}
+              chatStart={
+                covered
+                  ? { saysWork: true, onFullScreen: fullScreen }
+                  : undefined
+              }
+              answersShell={shell.answers}
+            />
+          </div>
         </div>
       </RoomFrame>
       {shell.reply}

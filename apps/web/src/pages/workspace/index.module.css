@@ -1,6 +1,6 @@
-/* The frame's main pane, beside the sidebar: the conversation, the project view over it and the
-   plugin sheet over both. What each holds is centred in it. Its own stacking context, so what
-   covers it stays under the sidebar's drawer. */
+/* The frame's main pane, beside the sidebar: the conversation, the project view over it, the
+   plugin sheet over both and the prompt box at its foot over them all. What each holds is centred
+   in it. Its own stacking context, so what covers it stays under the sidebar's drawer. */
 .main {
   /* The prompt box's width: the turns' text measure inside their 48rem column, so the box's edges
      line up with the words above it, and a document's page runs a little wider either side. */
@@ -9,6 +9,7 @@
   position: relative;
   isolation: isolate;
   display: flex;
+  flex-direction: column;
   flex: 1;
   min-width: 0;
   min-height: 0;
@@ -90,10 +91,6 @@
   position: relative;
 }
 
-.conversation > :last-child {
-  flex: none;
-}
-
 /* A plugin's screen for the page takes the page over the conversation down to the prompt box and
    what stands on it, as an app does over the project view. */
 .page > [data-slot="plugin-space"] {
@@ -105,28 +102,34 @@
 
 /* The status pill floats 8px above the box where the way back to the latest message stands; while
    the pill shows, that button stands clear above it. */
-.conversation:has(> [data-slot="composer"] [data-slot="pill"])
-  [data-slot="conversation-scroll-button"] {
+.main:has(> .dock [data-slot="pill"]) [data-slot="conversation-scroll-button"] {
   bottom: calc(var(--space-2) + 32px + var(--space-3));
 }
 
-/* The prompt box, and what stands in its place, keep the box's measure in the middle of the pane
-   however wide it is. */
-:is(.conversation, .page) > :is([data-slot="composer"], .archived, .notice) {
+/* The prompt box, and what stands in its place, at the pane's foot on the box's measure in its
+   middle. In the flow beneath the conversation, so its last turn ends above it; over whatever
+   covers the conversation and what that lays over itself, its bar's popovers and panels among
+   them. */
+.dock {
+  position: relative;
+  z-index: 11;
   box-sizing: border-box;
   width: 100%;
   max-width: calc(var(--box-measure) + 2 * var(--space-4));
   margin-inline: auto;
 }
 
-/* The archived line sits where the composer would, on the same measure and padding. */
+/* The archived line sits where the composer would, on the same measure and padding. Unlike the box
+   it has no card of its own, so it covers what a page scrolls beneath it. */
 .archived {
   padding: var(--space-2) var(--space-4) var(--space-4);
+  background: var(--wb-background);
 }
 
 /* Why there is no box yet, or none at all: the box's measure, clear of the window's foot. */
 .notice {
   padding: var(--space-2) var(--space-4) var(--space-4);
+  background: var(--wb-background);
 }
 
 /* A quiet line on an archived project, with its way on beside it. */
@@ -311,20 +314,13 @@
   );
 }
 
-/* Above whatever the page lays over itself, its bar's popovers and panels among them. */
-.page > [data-slot="composer"] {
-  position: absolute;
-  inset-inline: 0;
-  bottom: 0;
-  z-index: 4;
-}
-
 /* Pulled up, the chat covers the view's foot and, on a narrow canvas, its edge where the view's
    floating bar stands, so the bar steps aside until the chat is put away. */
-.page:has(
-    > [data-slot="composer"]
-      > [data-slot="chat-sheet"]:is([data-state="open"], [data-state="moving"])
+.main:has(
+    > .dock
+      [data-slot="chat-sheet"]:is([data-state="open"], [data-state="moving"])
   )
+  > .page
   :is([data-slot="pane-bar"][data-floating], [data-slot="pane-bar-handle"]) {
   visibility: hidden;
 }

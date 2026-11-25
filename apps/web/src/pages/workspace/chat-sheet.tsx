@@ -247,6 +247,11 @@ export function ChatSheet({
 
   useEffect(() => stopSpring, []);
 
+  // With no chat to hold, such as once the room's own conversation is back in sight, it is put away.
+  useLayoutEffect(() => {
+    if (!hasChat) settle("closed");
+  }, [hasChat]);
+
   // The first frame of a motion is painted before the history is shown and can be measured, so it
   // is painted again once it is. What a motion left on the elements is cleared in the same commit
   // as the state it lands in: any sooner, a frame would be painted between the two, the sheet
