@@ -1,8 +1,8 @@
 /**
- * The sidebar outside a project, on the projects, not on the new project page or Settings, which
- * stand alone: the sidebar's card and title row, holding only what starts or resumes work. A new
- * project, connecting a model while none is, and the projects last worked on, to go straight back
- * to one.
+ * The sidebar outside a project, shown where a project was asked for and none opened; the new
+ * project page, the Projects page and Settings have none. The sidebar's card and title row, holding
+ * only what starts or resumes work. A new project, connecting a model while none is, and the
+ * projects last worked on, to go straight back to one.
  */
 import { Plus, Unplug } from "lucide-react";
 import { SidebarItem } from "@corbits/react-ui";

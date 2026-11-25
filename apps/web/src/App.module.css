@@ -91,6 +91,10 @@
   padding-block-start: 3.5rem;
 }
 
+.canvasBody[data-below-corner] {
+  padding-block-start: 3.5rem;
+}
+
 /* Everything beside the sidebar. Scrolls, except where a surface fills instead. The scroller
    spans the canvas so its scrollbar sits at the window's edge, and the page's width is held by
    its one column instead. */

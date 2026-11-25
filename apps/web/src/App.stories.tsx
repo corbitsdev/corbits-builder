@@ -8,6 +8,8 @@ import {
 } from "./App.view.tsx";
 import projects from "./pages/projects.stories.tsx";
 import { ProjectsView } from "./pages/projects.view.tsx";
+import library from "./pages/project-library.stories.tsx";
+import { ProjectLibraryView } from "./pages/project-library.view.tsx";
 import { productName } from "./config.ts";
 import settings from "./pages/settings/settings.stories.tsx";
 import { SettingsView } from "./pages/settings/settings.view.tsx";
@@ -17,7 +19,7 @@ const meta = {
   component: AppView,
   parameters: { layout: "fullscreen" },
   args: {
-    current: "library",
+    current: null,
     roomOpen: false,
     sidebar: {
       name: "Acme product team",
@@ -70,6 +72,39 @@ export const Home: Story = {
 
 export const HomeDark: Story = {
   args: { current: "newProject" },
+  globals: { mode: "dark" },
+};
+
+/**
+ * The Projects page has no sidebar either, and the new project page's corner. Its covers have no
+ * mockups: the action logger throws reading a click's window when mockup frames are on the page.
+ */
+export const Library: Story = {
+  args: {
+    current: "library",
+    page: (
+      <ProjectLibraryView
+        {...library.args}
+        projects={library.args.projects.map((project) => ({
+          ...project,
+          mockup: null,
+        }))}
+      />
+    ),
+  },
+  play: async ({ args, canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText(productName)).toBeVisible();
+    await expect(
+      canvas.queryByRole("complementary", { name: "Workspace" }),
+    ).toBeNull();
+    await userEvent.click(canvas.getByRole("button", { name: "Settings" }));
+    await expect(args.sidebar.onSettings).toHaveBeenCalled();
+  },
+};
+
+export const LibraryDark: Story = {
+  ...Library,
   globals: { mode: "dark" },
 };
 

@@ -1,9 +1,9 @@
 /**
  * The app shell as it looks: outside a project the workspace sidebar on the
  * left, and beside it the canvas with its notices and the page on screen. A
- * project's room draws its own sidebar. The new project page has none: it is
- * the prompt alone, with the product's mark and name in its top left corner
- * and Settings in its top right. Settings has none either: its way back stands
+ * project's room draws its own sidebar. The new project page and the Projects
+ * page have none: the product's mark and name sit in their top left corner and
+ * Settings in the top right. Settings has none either: its way back stands
  * beside its title. The page, which reads the hub, arrives as a slot, so any
  * state of the shell can be drawn without one.
  */
@@ -51,7 +51,8 @@ export function AppView({
   page,
 }: AppViewProps) {
   const home = current === "newProject";
-  const bare = home || current === "settings";
+  const corner = home || current === "library";
+  const bare = corner || current === "settings";
   return (
     <div
       className={styles.app}
@@ -68,13 +69,13 @@ export function AppView({
       <main className={styles.canvas}>
         {/* Floats over the page, so it stands outside the page's own column. */}
         <HubNotice hub={hub} />
-        {home ? (
+        {corner ? (
           <p className={styles.brand}>
             <Mark size={22} />
             <span>{productName}</span>
           </p>
         ) : null}
-        {home ? (
+        {corner ? (
           <nav className={styles.corner} aria-label={wording.shell.corner}>
             <UiButton
               type="button"
@@ -91,6 +92,8 @@ export function AppView({
         <div
           className={styles.canvasBody}
           data-fill={current === "project" ? "" : undefined}
+          // The home page lays itself out around the corner; any other page starts below it.
+          data-below-corner={corner && !home ? "" : undefined}
         >
           {hub.state === "answering" && setupFault ? (
             <Banner tone="error" title={wording.workspace.setupIncomplete}>
