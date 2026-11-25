@@ -251,6 +251,7 @@
   z-index: 10;
   display: flex;
   flex-direction: column;
+  container-type: inline-size;
   background: var(--wb-background);
   /* The one way a view comes and goes over the conversation, however it was opened or closed: it
      rises into place as it shows, and runs the same motion backwards as it hides. Display waits
@@ -312,6 +313,19 @@
     50% + min(768px, 100% - 2 * var(--space-4)) / 2 + var(--space-3),
     100% - 36px - var(--space-4)
   );
+}
+
+/* Where the written page lays its contents beside it, the button is level with the page's title, as
+   Download and Share are; narrower, they stand above the title and the button keeps to the corner. */
+@container (width >= 74rem) {
+  .page:has(
+      > [data-slot="artifact-pane"]
+        [data-slot="panel-pane"][data-state="active"]
+        [data-slot="document-page"]
+    )
+    > .close {
+    top: calc(var(--document-title-centre) - 18px);
+  }
 }
 
 /* Pulled up, the chat covers the view's foot and, on a narrow canvas, its edge where the view's

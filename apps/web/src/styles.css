@@ -108,6 +108,14 @@
   --space-6: 24px;
   --space-8: 32px;
   --space-12: 48px;
+  /* The written page's title, and the controls beside it, are laid from these: one line, its
+     centre the level the contents toggle, Download, Share and the close button all sit at. */
+  --document-page-inset: 14px;
+  --document-title-top: 60px;
+  --document-title-line: 1.875rem;
+  --document-title-centre: calc(
+    var(--document-title-top) + var(--document-title-line) / 2
+  );
   --target: 44px;
   --section-max: 1320px;
   font-family: var(--wb-font-ui);

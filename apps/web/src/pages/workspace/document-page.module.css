@@ -45,7 +45,7 @@
   grid-template-columns:
     minmax(0, calc((100% - var(--page-width)) / 2))
     auto minmax(0, 1fr);
-  padding: 14px 0 96px;
+  padding: var(--document-page-inset) 0 96px;
 }
 
 .side {
@@ -57,11 +57,13 @@
   box-sizing: border-box;
   min-width: 0;
   position: sticky;
-  /* Level with the page's top edge, and held there as the page scrolls past. */
-  top: 8px;
   align-self: start;
-  /* Download and Share sit 20px down, centred on the line of the 36px close button 16px down. */
-  padding: 6px var(--space-8) 0 var(--space-4);
+  /* The 28px controls are centred on the title's first line, at rest and held there as the page
+     scrolls past. */
+  --controls-top: calc(var(--document-title-centre) - 14px);
+  margin-top: calc(var(--controls-top) - var(--document-page-inset));
+  top: var(--controls-top);
+  padding: 0 var(--space-8) 0 var(--space-4);
 }
 
 /* Download and Share and the contents share one width where there is room, so they start and end
@@ -97,8 +99,8 @@
 .sheet {
   box-sizing: border-box;
   width: var(--page-width);
-  /* The title stands level with the contents, under Download and Share and the gap after them. */
-  padding: 46px 64px 120px;
+  padding: calc(var(--document-title-top) - var(--document-page-inset)) 64px
+    120px;
   color: var(--wb-foreground);
 }
 
@@ -288,7 +290,7 @@
 
 .title {
   margin: 0 0 10px;
-  font-size: 1.875rem;
+  font-size: var(--document-title-line);
   font-weight: 600;
   line-height: 1;
   letter-spacing: -0.025em;
@@ -395,6 +397,7 @@
     grid-row: 1;
     position: static;
     align-items: flex-start;
+    margin-top: 0;
     padding: 0 0 var(--space-3);
   }
 
