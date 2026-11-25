@@ -2,3 +2,64 @@
 .screen {
   display: contents;
 }
+
+/* Fade the rows in after 200ms so a fast load shows nothing, but reserve their height from the
+   start. */
+.loading {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-width: var(--wb-question-width);
+  padding: var(--space-4) var(--space-4) 14px;
+  opacity: 0;
+  animation: arrive 240ms var(--ease-out) 200ms forwards;
+}
+
+.loading > span {
+  display: block;
+  height: 0.75rem;
+  border-radius: 999px;
+  /* 7% of the text colour, as in the room skeleton, so it works in light and dark. */
+  background: color-mix(in oklab, var(--wb-foreground) 7%, transparent);
+  animation: breathe 1.6s ease-in-out infinite;
+}
+
+/* The card's heading. */
+.loading > span:first-child {
+  width: 40%;
+  height: 0.875rem;
+  margin-bottom: var(--space-1);
+}
+
+.loading > span:nth-child(2) {
+  width: 88%;
+  animation-delay: 160ms;
+}
+
+.loading > span:nth-child(3) {
+  width: 64%;
+  animation-delay: 320ms;
+}
+
+@keyframes arrive {
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes breathe {
+  50% {
+    opacity: 0.55;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loading {
+    opacity: 1;
+    animation: none;
+  }
+
+  .loading > span {
+    animation: none;
+  }
+}

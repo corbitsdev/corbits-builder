@@ -146,6 +146,7 @@ export function ScreenStory({
   plan = [],
   plans = () => [],
   inSpace = false,
+  loading = false,
 }: {
   screen: ReturnType<typeof storyScreen>;
   state: ScreenState;
@@ -161,6 +162,8 @@ export function ScreenStory({
   plans?: (group: string) => readonly ReadyPlanOffer[];
   /** Drawn in the plugin space, as the room draws a screen for the page, not as a thread entry. */
   inSpace?: boolean;
+  /** The project read never resolves, to show the screen's loading state. */
+  loading?: boolean;
 }) {
   const signalName = `story-${state}`;
   const [ready, setReady] = useState(false);
@@ -189,7 +192,10 @@ export function ScreenStory({
       signalName={signalName}
       host={state === "missing" ? undefined : screen.host}
       input={input}
-      projectValues={{ read: () => Promise.resolve(project) }}
+      projectValues={{
+        read: () =>
+          loading ? new Promise<never>(() => {}) : Promise.resolve(project),
+      }}
       answer={given ?? answers[state]}
       disabled={state === "sending"}
       // Refused stories fail every send, so the fault shows once something is sent.
@@ -214,7 +220,10 @@ export function ScreenStory({
       }}
       supplies={{
         ...storySupplies,
-        asked: () => screen.asked(input, storyRead(project, plan, plans)),
+        asked: () =>
+          loading
+            ? undefined
+            : screen.asked(input, storyRead(project, plan, plans)),
       }}
     />
   );

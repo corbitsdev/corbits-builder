@@ -315,8 +315,7 @@ export function screenHost<In, Out, Data, Prepared>(
     // Once answered, the project already holds the answer, so the settled screen draws from it alone.
     const shown: ProjectValues | undefined = settled ? {} : project;
     const { tenants } = host;
-    if (shown === undefined || tenants === null)
-      return <InlineNote>{text.screenLoading}</InlineNote>;
+    if (shown === undefined || tenants === null) return <ScreenLoading />;
     const checked = validateInput(handle, screen, input, data, shown);
     const answered =
       output === undefined ? undefined : validateOutput(handle, screen, output);
@@ -328,12 +327,10 @@ export function screenHost<In, Out, Data, Prepared>(
         ? checked.prepared
         : (host.asked(signalName) as Prepared | undefined);
     if (prepared === undefined)
-      return (
-        <InlineNote>
-          {screen.fromProject === undefined
-            ? text.screenUnavailable
-            : text.screenLoading}
-        </InlineNote>
+      return screen.fromProject === undefined ? (
+        <InlineNote>{text.screenUnavailable}</InlineNote>
+      ) : (
+        <ScreenLoading />
       );
 
     const answerWith = (chosen: Type<Out>["infer"]) => {
@@ -468,6 +465,25 @@ export type ListedHostProps = {
   host: HostSupplies;
 };
 
+/**
+ * Placeholder rows at a screen card's inset, so the box opens near the card's size before the view
+ * loads. The heading is a row too, because some screens word it from the data being loaded.
+ */
+function ScreenLoading() {
+  return (
+    <div
+      className={styles.loading}
+      data-slot="screen-loading"
+      role="status"
+      aria-label={text.screenLoading}
+    >
+      <span aria-hidden="true" />
+      <span aria-hidden="true" />
+      <span aria-hidden="true" />
+    </div>
+  );
+}
+
 type Click =
   | { is: "idle" }
   | { is: "acting" }
@@ -484,7 +500,7 @@ export function listedHost(
     const [click, setClick] = useState<Click>({ is: "idle" });
     const [draft, setDraft] = useState({});
     const { tenants } = host;
-    if (tenants === null) return <InlineNote>{text.screenLoading}</InlineNote>;
+    if (tenants === null) return <ScreenLoading />;
     const run = async (action: string, input: Record<string, unknown> = {}) => {
       setClick({ is: "acting" });
       const reason = await act(plugin, action, input);

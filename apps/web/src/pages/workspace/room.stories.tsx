@@ -22,6 +22,9 @@ import LooksView from "@plugins/designer/src/looks/view.tsx";
 import writer from "@plugins/writer/package.json";
 import approve from "@plugins/writer/src/approve/definition.ts";
 import ApproveView from "@plugins/writer/src/approve/view.tsx";
+import publish from "@plugins/publish/package.json";
+import confirm from "@plugins/publish/src/confirm/definition.ts";
+import ConfirmView from "@plugins/publish/src/confirm/view.tsx";
 import review from "@plugins/designer/src/review/definition.ts";
 import ReviewView from "@plugins/designer/src/review/view.tsx";
 import { DESIGN_MEDIA_TYPE } from "./design-bundle.ts";
@@ -1005,6 +1008,12 @@ const approveScreen = storyScreen(
   { screen: approve, view: ApproveView, data: undefined },
 );
 
+const confirmScreen = storyScreen(
+  "@corbits-builder/publish confirm",
+  publish.builder.actions["confirm"],
+  { screen: confirm, view: ConfirmView, data: undefined },
+);
+
 /**
  * A screen its plugin draws for the conversation is the box's card: its choices over the words,
  * its forward action where Send is, and no space beside the room.
@@ -1107,6 +1116,39 @@ export const ApproveInBox: Story = {
 export const ApproveInBoxDark: Story = {
   ...ApproveInBox,
   globals: { mode: "dark" },
+};
+
+/** While a screen loads its project data, the box shows placeholder rows at the card's inset. */
+export const ScreenInBoxLoading: Story = {
+  args: {
+    waiting: { kind: "screen", title: "Publish your app?", decides: true },
+    space: {
+      key: "screen:confirm",
+      title: "Publish your app?",
+      place: "box",
+      shows: null,
+    },
+    pluginSpace: (
+      <ScreenStory
+        screen={confirmScreen}
+        state="open"
+        input={{ plan: "publish-to-server" }}
+        project={{}}
+        loading
+      />
+    ),
+  },
+  play: async ({ canvasElement }) => {
+    const box = canvasElement.querySelector<HTMLElement>(
+      '[data-slot="composer"]',
+    );
+    if (box === null) throw new Error("No prompt box");
+    await expect(
+      within(box).getByRole("status", {
+        name: wording.questions.screenLoading,
+      }),
+    ).toBeInTheDocument();
+  },
 };
 
 /**
