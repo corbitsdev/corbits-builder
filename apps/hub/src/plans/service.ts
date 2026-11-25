@@ -50,8 +50,8 @@ import {
 const newPlanStepId = () => crypto.randomUUID().slice(0, 12);
 
 // The plan as stored, with its project row locked until the transaction ends so that no other write
-// lands between this read and the write made from it. A project with no plan saved yet has no steps;
-// every write sets the time.
+// lands between this read and the write made from it. A project with no plan saved yet has an empty
+// one, whose time the write sets.
 async function lockedPlan(
   tx: DBExecutor,
   projectId: string,

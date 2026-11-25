@@ -39,7 +39,6 @@ import {
   awaitsGoAhead,
   insertSteps,
   isLeftToDo,
-  isUnstartedOptional,
   readyPlanGroups,
   removeSteps,
   stepIds,
@@ -1350,9 +1349,9 @@ async function planAnswer(
 ) {
   const steps = actionSteps(saved.steps);
   const answer = `${planForModel(saved)}\n\n${PLAN_STEP_REMINDER}`;
-  // A waiting step is not offered: what it needs does not hold, so execute would refuse it.
+  // Only a step that can start is offered: execute refuses a waiting one.
   const optionalToOffer = steps.filter(
-    (step) => isUnstartedOptional(step) && step.state === "not_started",
+    (step) => step.optional && step.state === "not_started",
   );
   if (optionalToOffer.length === 0 || steps.some(isLeftToDo)) return answer;
   const { asksApprovals } = await project.state();

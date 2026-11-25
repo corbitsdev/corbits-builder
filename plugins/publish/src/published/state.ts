@@ -318,20 +318,19 @@ function standing(records: Records): PublishState {
   const live =
     release !== undefined &&
     records.ends.some((fact) => project.facts.has(fact));
-  // Publish plans on the project's plan with work left. A failed step keeps its plan open, since
-  // what it needs, such as a change to the app, is often worked on next.
-  const openPublishPlans = done
-    ? []
-    : project.planned.filter(
-        ({ plan, finished }) => records.plans.includes(plan) && !finished,
-      );
-  if (busy(records) && !behind && !live && openPublishPlans.length > 0)
+  const openPublishPlans = project.planned.filter(
+    ({ plan, finished }) => records.plans.includes(plan) && !finished,
+  );
+  if (busy(records) && !done && !behind && !live && openPublishPlans.length > 0)
     return { state: "publishing" };
   const outcome =
     latest !== undefined && stopped(latest) && !latestRemoves
       ? outcomeOf(latest, release)
       : null;
-  const planAhead = openPublishPlans.some(({ state }) => state !== "failed");
+  // A failed step keeps its plan open with nothing ahead: what it needs, such as a change to the
+  // app, is often worked on next.
+  const planAhead =
+    !done && openPublishPlans.some(({ state }) => state !== "failed");
   if (live) return { state: "published", url: release.url, at: release.at };
   if (release !== undefined && outcome === "published")
     return { state: "published", url: release.url, at: release.at };

@@ -70,13 +70,12 @@ type StepStanding = Pick<
   "state" | "finished" | "optional" | "runId"
 >;
 
-/** An optional step nobody started, which does not hold its group open; one that started does. */
-export const isUnstartedOptional = (step: Omit<StepStanding, "finished">) =>
+const isUnstartedOptional = (step: StepStanding) =>
   step.optional === true &&
   step.runId === undefined &&
   (step.state === "not_started" || step.state === "waiting");
 
-/** A step that still holds its group open. */
+/** A step that still holds its group open: unfinished, and not an optional step nobody started. */
 export const isLeftToDo = (step: StepStanding) =>
   !step.finished && !isUnstartedOptional(step);
 
