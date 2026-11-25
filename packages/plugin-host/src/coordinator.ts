@@ -1350,7 +1350,10 @@ async function planAnswer(
 ) {
   const steps = actionSteps(saved.steps);
   const answer = `${planForModel(saved)}\n\n${PLAN_STEP_REMINDER}`;
-  const optionalToOffer = steps.filter(isUnstartedOptional);
+  // A waiting step is not offered: what it needs does not hold, so execute would refuse it.
+  const optionalToOffer = steps.filter(
+    (step) => isUnstartedOptional(step) && step.state === "not_started",
+  );
   if (optionalToOffer.length === 0 || steps.some(isLeftToDo)) return answer;
   const { asksApprovals } = await project.state();
   return `${answer}\n\n${optionalLeft(

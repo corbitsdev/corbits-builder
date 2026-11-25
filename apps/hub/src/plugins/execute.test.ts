@@ -654,7 +654,9 @@ test("a group is finished once nothing in it is left to do, so an optional step 
   const at = new Date(0).toISOString();
   const step = (
     id: string,
-    marks: Partial<Pick<StoredPlanChild, "cancelled" | "optional">>,
+    marks: Partial<
+      Pick<StoredPlanChild, "cancelled" | "declined" | "optional">
+    >,
   ): StoredPlanChild => {
     const made: StoredPlanChild = {
       id,
@@ -665,6 +667,7 @@ test("a group is finished once nothing in it is left to do, so an optional step 
       askFirst: false,
     };
     if (marks.cancelled) made.cancelled = marks.cancelled;
+    if (marks.declined) made.declined = marks.declined;
     if (marks.optional) made.optional = marks.optional;
     return made;
   };
@@ -683,6 +686,14 @@ test("a group is finished once nothing in it is left to do, so an optional step 
   expect(
     groupOf([cancelled("first"), cancelled("second"), optional]),
   ).toMatchObject({ state: "cancelled", finished: true });
+  const declined = step("skipped", {
+    optional: true,
+    declined: { by: "person", at },
+  });
+  expect(groupOf([declined, cancelled("publish")])).toMatchObject({
+    state: "cancelled",
+    finished: true,
+  });
   const blocked = {
     runId: "run",
     plugin: "designer",
@@ -698,7 +709,7 @@ test("a group is finished once nothing in it is left to do, so an optional step 
   ).toMatchObject({ state: "waiting", finished: false });
 });
 
-test("the plan offers the optional steps nobody started only once nothing else is left to do", async () => {
+test("the plan offers the optional steps that can start only once nothing else is left to do", async () => {
   const idea = project([filed("app")]);
   const step = (
     id: string,
@@ -722,12 +733,15 @@ test("the plan offers the optional steps nobody started only once nothing else i
     step("built", "done", false),
     tried,
     step("never", "not_started", true),
+    step("held", "waiting", true),
   ];
   const offer = "Every other step is done.";
   expect((await idea.plan({ operation: "show" })).content).not.toContain(offer);
   tried.state = "done";
   tried.finished = true;
-  expect((await idea.plan({ operation: "show" })).content).toContain(offer);
+  expect((await idea.plan({ operation: "show" })).content).toContain(
+    'yes or no before saying the work is done, and say which they left out: "never".',
+  );
 });
 
 test("a step whose run is held on the person's approval needs them, and its group says so", () => {

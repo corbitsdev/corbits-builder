@@ -83,15 +83,11 @@ export const isUnstartedOptional = (step: Omit<StepStanding, "finished">) =>
 export const isLeftToDo = (step: StepStanding) =>
   !step.finished && !isUnstartedOptional(step);
 
-/** Where a group stands once nothing in it is left to do. */
-export function groupEndState(
-  steps: readonly Pick<StepStanding, "state" | "finished">[],
-): "done" | "cancelled" {
-  const ended = steps.filter((step) => step.finished);
-  const allCancelled =
-    ended.length > 0 && ended.every((step) => step.state === "cancelled");
-  return allCancelled ? "cancelled" : "done";
-}
+/** Where a group stands once nothing in it is left to do: cancelled if the person stopped any of it. */
+export const groupEndState = (
+  steps: readonly Pick<StepStanding, "state">[],
+): "done" | "cancelled" =>
+  steps.some((step) => step.state === "cancelled") ? "cancelled" : "done";
 
 /** Whether the person can still drop a step: a done step stays as the record of the work. */
 export const canDrop = (state: PlanStepStateName) =>
