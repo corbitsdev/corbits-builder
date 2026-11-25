@@ -1,6 +1,6 @@
 /**
- * A project's options menu as it looks, with the dialogs it opens: project
- * info (and rename) and export.
+ * A project's options menu as it looks, with the dialogs it opens: rename and
+ * export.
  */
 import { wording } from "../config.ts";
 import { Checkbox, Input } from "@corbits/react-ui";
@@ -23,7 +23,6 @@ import {
 import { useId, useState, type ReactElement, type ReactNode } from "react";
 import { Button, DangerMenuItem, Fault, Field } from "../components.jsx";
 import styles from "./project-menu.module.css";
-import { Dictated } from "../dictation.jsx";
 
 export type ProjectMenuViewProps = {
   /** The element that opens the menu: the rail row's ellipsis, the top bar's title. */
@@ -35,14 +34,13 @@ export type ProjectMenuViewProps = {
   archived: boolean;
   /** A shipped project offers to reopen rather than to mark it shipped. */
   shipped: boolean;
-  onShowInfo: () => void;
   onRename: () => void;
   onExport: () => void;
   onToggleShipped: () => void;
   onToggleArchived: () => void;
   onDelete: () => void;
-  /** The project info dialog while it is open, else null. */
-  infoDialog: ReactNode;
+  /** The rename dialog while it is open, else null. */
+  renameDialog: ReactNode;
   /** The export dialog while it is open, else null. */
   exportDialog: ReactNode;
 };
@@ -54,24 +52,25 @@ export function ProjectMenuView({
   sideOffset,
   archived,
   shipped,
-  onShowInfo,
   onRename,
   onExport,
   onToggleShipped,
   onToggleArchived,
   onDelete,
-  infoDialog,
+  renameDialog,
   exportDialog,
 }: ProjectMenuViewProps) {
-  // Deleting takes two clicks, both in the menu: the second item only exists
-  // after the first, so a slip cannot remove a project.
-  const [confirming, setConfirming] = useState(false);
+  // Archiving and deleting take two clicks, both in the menu: the second item
+  // only exists after the first, so a slip cannot remove or hide a project.
+  const [confirming, setConfirming] = useState<"archive" | "delete" | null>(
+    null,
+  );
 
   return (
     <>
       <Menu
         onOpenChange={(open) => {
-          if (!open) setConfirming(false);
+          if (!open) setConfirming(null);
         }}
       >
         <MenuTrigger asChild>{trigger}</MenuTrigger>
@@ -81,7 +80,6 @@ export function ProjectMenuView({
           align={align}
           sideOffset={sideOffset}
         >
-          <MenuItem onSelect={onShowInfo}>Project info…</MenuItem>
           <MenuItem onSelect={onRename}>Rename</MenuItem>
           <MenuSeparator />
           <MenuItem onSelect={onExport}>Export</MenuItem>
@@ -91,17 +89,32 @@ export function ProjectMenuView({
             </MenuItem>
           )}
           <MenuSeparator />
-          <MenuItem onSelect={onToggleArchived}>
-            {archived ? wording.action.unarchive : wording.action.archive}
-          </MenuItem>
+          {archived ? (
+            <MenuItem onSelect={onToggleArchived}>
+              {wording.action.unarchive}
+            </MenuItem>
+          ) : null}
+          {archived || confirming === "archive" ? null : (
+            <MenuItem
+              onSelect={(event) => {
+                event.preventDefault();
+                setConfirming("archive");
+              }}
+            >
+              {wording.action.archive}…
+            </MenuItem>
+          )}
+          {archived || confirming !== "archive" ? null : (
+            <MenuItem onSelect={onToggleArchived}>Yes, archive it</MenuItem>
+          )}
           <MenuSeparator />
-          {confirming ? (
+          {confirming === "delete" ? (
             <DangerMenuItem onSelect={onDelete}>Yes, delete it</DangerMenuItem>
           ) : (
             <DangerMenuItem
               onSelect={(event) => {
                 event.preventDefault();
-                setConfirming(true);
+                setConfirming("delete");
               }}
             >
               Delete…
@@ -109,7 +122,7 @@ export function ProjectMenuView({
           )}
         </MenuContent>
       </Menu>
-      {infoDialog === null ? null : (
+      {renameDialog === null ? null : (
         // Portaled, but React-nested in the host: its events bubble to a
         // card face's handlers unless stopped here, the same as the menu's.
         <div
@@ -118,7 +131,7 @@ export function ProjectMenuView({
           onContextMenu={(event) => event.stopPropagation()}
           onKeyDown={(event) => event.stopPropagation()}
         >
-          {infoDialog}
+          {renameDialog}
         </div>
       )}
       {exportDialog === null ? null : (
@@ -196,93 +209,56 @@ export function ExportDialogView({
   );
 }
 
-export type ProjectInfoDialogViewProps = {
-  /** The project's name as saved, which heads the dialog. */
-  title: string;
+export type RenameDialogViewProps = {
   /** The name as typed; nothing is written until Save. */
   name: string;
   onNameChange: (name: string) => void;
-  /** Open with the name field focused (the menu's Rename). */
-  focusName: boolean;
-  /** When the project was created, where its host knows; else null. */
-  created: string | null;
-  state: "active" | "shipped" | "archived";
   /** The typed name is one worth keeping: not blank, and not the saved one. */
   canSave: boolean;
   saving: boolean;
-  archiving: boolean;
   onSave: () => void;
-  onToggleArchived: () => void;
   onClose: () => void;
 };
 
-export function ProjectInfoDialogView({
-  title,
+export function RenameDialogView({
   name,
   onNameChange,
-  focusName,
-  created,
-  state,
   canSave,
   saving,
-  archiving,
   onSave,
-  onToggleArchived,
   onClose,
-}: ProjectInfoDialogViewProps) {
+}: RenameDialogViewProps) {
   const nameId = `project-name-${useId()}`;
   return (
     <Dialog open onOpenChange={(open) => (open ? undefined : onClose())}>
-      <DialogContent className={styles.info}>
+      <DialogContent>
         <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
+          <DialogTitle>Rename</DialogTitle>
         </DialogHeader>
         <DialogBody>
           <Field>
             <label htmlFor={nameId}>Name</label>
-            <Dictated value={name} onValueChange={onNameChange} align="center">
-              <Input
-                id={nameId}
-                autoFocus={focusName}
-                value={name}
-                onChange={(event) => onNameChange(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") onSave();
-                  if (event.key === "Escape") onNameChange(title);
-                }}
-                aria-label="Project name"
-              />
-            </Dictated>
+            <Input
+              id={nameId}
+              autoFocus
+              onFocus={(event) => event.target.select()}
+              value={name}
+              onChange={(event) => onNameChange(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") onSave();
+              }}
+              aria-label="Project name"
+            />
           </Field>
-          <dl className={styles.facts}>
-            {created !== null ? (
-              <div>
-                <dt>Created</dt>
-                <dd>{created}</dd>
-              </div>
-            ) : null}
-            <div>
-              <dt>State</dt>
-              <dd>{wording.status[state]}</dd>
-            </div>
-          </dl>
         </DialogBody>
         <DialogFooter>
-          <Button
-            loading={archiving}
-            disabled={saving}
-            onClick={onToggleArchived}
-          >
-            {state === "archived"
-              ? wording.action.unarchive
-              : wording.action.archive}
+          <Button disabled={saving} onClick={onClose}>
+            {wording.action.cancel}
           </Button>
-          {/* Deleting is the menu's two-step affair, not part of editing a
-              project's info. */}
           <Button
             variant="primary"
             loading={saving}
-            disabled={!canSave || archiving}
+            disabled={!canSave}
             onClick={onSave}
           >
             {saving ? wording.action.saving : wording.action.save}

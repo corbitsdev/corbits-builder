@@ -5,30 +5,24 @@ import { fn } from "storybook/test";
 import { Button } from "../components.jsx";
 import {
   ExportDialogView,
-  ProjectInfoDialogView,
+  RenameDialogView,
   ProjectMenuView,
   type ExportDialogViewProps,
-  type ProjectInfoDialogViewProps,
+  type RenameDialogViewProps,
 } from "./project-menu.view.tsx";
 
 // Holds what the dialog asks its host to keep: the name being typed.
-function Info(args: ProjectInfoDialogViewProps) {
+function Rename(args: RenameDialogViewProps) {
   const [name, setName] = useState(args.name);
-  return <ProjectInfoDialogView {...args} name={name} onNameChange={setName} />;
+  return <RenameDialogView {...args} name={name} onNameChange={setName} />;
 }
 
-const info: ProjectInfoDialogViewProps = {
-  title: "Bakery orders",
+const rename: RenameDialogViewProps = {
   name: "Bakery orders",
   onNameChange: fn(),
-  focusName: false,
-  created: "3/14/2026, 9:26:53 AM",
-  state: "active",
   canSave: false,
   saving: false,
-  archiving: false,
   onSave: fn(),
-  onToggleArchived: fn(),
   onClose: fn(),
 };
 
@@ -55,13 +49,12 @@ const meta = {
     sideOffset: 4,
     archived: false,
     shipped: false,
-    onShowInfo: fn(),
     onRename: fn(),
     onExport: fn(),
     onToggleShipped: fn(),
     onToggleArchived: fn(),
     onDelete: fn(),
-    infoDialog: null,
+    renameDialog: null,
     exportDialog: null,
   },
 } satisfies Meta<typeof ProjectMenuView>;
@@ -77,26 +70,21 @@ export const Shipped: Story = { args: { shipped: true } };
 /** An archived project does not offer the shipped mark. */
 export const Archived: Story = { args: { archived: true } };
 
-export const ProjectInfo: Story = {
-  args: { infoDialog: <Info {...info} /> },
+export const Renaming: Story = {
+  args: { renameDialog: <Rename {...rename} /> },
 };
 
-export const Renaming: Story = {
+export const Renamed: Story = {
   args: {
-    infoDialog: <Info {...info} focusName name="Bakery order list" canSave />,
+    renameDialog: <Rename {...rename} name="Bakery order list" canSave />,
   },
 };
 
 export const SavingName: Story = {
   args: {
-    infoDialog: <Info {...info} name="Bakery order list" canSave saving />,
-  },
-};
-
-export const ArchivedProjectInfo: Story = {
-  args: {
-    archived: true,
-    infoDialog: <Info {...info} state="archived" created={null} />,
+    renameDialog: (
+      <Rename {...rename} name="Bakery order list" canSave saving />
+    ),
   },
 };
 

@@ -1,22 +1,22 @@
 /**
  * A project's options menu, the same wherever a project is named: the
- * rail row and the title in the top bar. Info (and rename),
- * export, the shipped mark, archive, and a two-step delete, matching
- * the project operations the hub offers. The dialogs it opens live here too,
- * so the menu is complete on its own.
+ * rail row and the title in the top bar. Rename,
+ * export, the shipped mark, a two-step archive and a two-step delete,
+ * matching the project operations the hub offers. The dialogs it opens live
+ * here too, so the menu is complete on its own.
  */
 import type { ReactElement } from "react";
 import {
   useExportDialog,
-  useProjectInfoDialog,
+  useRenameDialog,
   useProjectMenu,
   type ExportDialogProps,
-  type ProjectInfoDialogProps,
+  type RenameDialogProps,
   type ProjectMenuHost,
 } from "./project-menu.model.ts";
 import {
   ExportDialogView,
-  ProjectInfoDialogView,
+  RenameDialogView,
   ProjectMenuView,
 } from "./project-menu.view.tsx";
 
@@ -37,7 +37,7 @@ export function ProjectMenu({
   sideOffset = 4,
   ...host
 }: ProjectMenuProps) {
-  const { view, infoDialog, exportDialog } = useProjectMenu(host);
+  const { view, renameDialog, exportDialog } = useProjectMenu(host);
   return (
     <ProjectMenuView
       {...view}
@@ -45,8 +45,8 @@ export function ProjectMenu({
       align={align}
       side={side}
       sideOffset={sideOffset}
-      infoDialog={
-        infoDialog === null ? null : <ProjectInfoDialog {...infoDialog} />
+      renameDialog={
+        renameDialog === null ? null : <RenameDialog {...renameDialog} />
       }
       exportDialog={
         exportDialog === null ? null : <ExportDialog {...exportDialog} />
@@ -59,6 +59,6 @@ function ExportDialog(props: ExportDialogProps) {
   return <ExportDialogView {...useExportDialog(props)} />;
 }
 
-function ProjectInfoDialog(props: ProjectInfoDialogProps) {
-  return <ProjectInfoDialogView {...useProjectInfoDialog(props)} />;
+function RenameDialog(props: RenameDialogProps) {
+  return <RenameDialogView {...useRenameDialog(props)} />;
 }
