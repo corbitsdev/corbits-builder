@@ -22,8 +22,11 @@ export const packageName = (spec: string) => spec.replace(/(?<=.)@.*$/, "");
 const pinnedVersion = (spec: string) =>
   spec.slice(packageName(spec).length + 1) || undefined;
 
-// The packages the approved version of each of the project's documents declares, by its kind.
+// What a coder run may install without asking the person. installsFreely is true while the run's
+// install_packages grant is "allow", which the "Install freely" setting turns on; then any registry
+// package installs. documents lists, per document kind, the packages its approved version declares.
 export const ApprovedPackages = type({
+  installsFreely: "boolean",
   documents: type({ kind: "string", packages: "string[]" }).array(),
 });
 export type ApprovedPackages = typeof ApprovedPackages.infer;

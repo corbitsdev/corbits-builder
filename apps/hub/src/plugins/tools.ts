@@ -98,7 +98,7 @@ export function withPluginHint(hint: PluginHint, message: string): string {
 const questionDefinition = {
   name: QUESTION_TOOL_NAME,
   description:
-    "Ask the person one or more questions and wait for their answers. Use it only when the work would be done differently depending on the answer, and never for a choice an action has a screen for: open that screen with execute instead. The result is { answers: [{ question, answer: [the chosen labels or what they typed] }] } in the order asked, or { reply } when the person wrote back instead of answering; a reply is their answer in their own words.",
+    "Ask the person one or more questions and wait for their answers. Use it only when the work would be done differently depending on the answer, and never for a choice an action has a screen for: open that screen with execute instead. The result is { answers: [{ question, answer: [the chosen labels or what they typed, then anything they added in their own words] }] } in the order asked, or { reply } when the person wrote back instead of answering; a reply is their answer in their own words.",
   inputSchema: describedSchema(
     { toJsonSchema: () => questionInputSchema },
     {

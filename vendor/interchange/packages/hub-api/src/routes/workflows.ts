@@ -36,7 +36,7 @@ import {
   type WorkflowDeploymentStatus,
 } from "@intx/types";
 import { type AskedQuestion, runQuestions } from "@intx/types/runtime-core";
-import { QuestionAnswer } from "@intx/types/signals";
+import { GivenQuestionAnswer, deliveredAnswer } from "@intx/types/signals";
 import { WorkflowDefinitionSource } from "@intx/types/workflow-sources";
 import {
   createWorkflowRunReader,
@@ -624,7 +624,7 @@ export function createWorkflowRoutes({
     describeRoute({
       tags: ["Workflows"],
       summary: "Deliver a signal or a question's answer to a workflow run",
-      description: `Delivers a caller-supplied, stable signal to the named run of a workflow deployment. The signalId must be supplied by the caller; the run state machine dedups on it. A signalId may not start with "${DELIVERY_KEY_PREFIX}", which is reserved for mail delivery keys. An onTrigger body await is addressed by correlationId from that relay's SignalAwaited together with the author signalName. Omit correlationId to address a name-FIFO await, such as a loop or a top-level gate. An open question is answered on the reserved signalName its SignalAwaited shows, with that signalName as the signalId so a repeated answer dedups, without correlationId, with a payload of { answers } that answers every question by its id within its options, or { reply }.`,
+      description: `Delivers a caller-supplied, stable signal to the named run of a workflow deployment. The signalId must be supplied by the caller; the run state machine dedups on it. A signalId may not start with "${DELIVERY_KEY_PREFIX}", which is reserved for mail delivery keys. An onTrigger body await is addressed by correlationId from that relay's SignalAwaited together with the author signalName. Omit correlationId to address a name-FIFO await, such as a loop or a top-level gate. An open question is answered on the reserved signalName its SignalAwaited shows, with that signalName as the signalId so a repeated answer dedups, without correlationId, with a payload of { answers } that answers every question by its id within its options, or { reply }. Beside answers, details may hold the person's own words on a question, by its id; the run receives them as the last of that question's answers.`,
       responses: {
         202: {
           description: "Signal accepted for delivery",
@@ -727,7 +727,7 @@ export function createWorkflowRoutes({
             "An answer to a question takes its signalName as its signalId",
           );
         }
-        const answer = QuestionAnswer(body.payload);
+        const answer = GivenQuestionAnswer(body.payload);
         if (answer instanceof type.errors) {
           return errorResponse(
             c,
@@ -747,6 +747,22 @@ export function createWorkflowRoutes({
         if (issue !== undefined) {
           return errorResponse(c, "invalid_request", issue);
         }
+        // Past the check above, every id in `answers` is an asked question.
+        const stray =
+          "details" in answer
+            ? Object.keys(answer.details).find(
+                (id) => !Object.hasOwn(answer.answers, id),
+              )
+            : undefined;
+        if (stray !== undefined) {
+          return errorResponse(
+            c,
+            "invalid_request",
+            `Details name question ${stray}, which was not asked`,
+          );
+        }
+        // The run takes the answer in the shape every sidecar reads.
+        body.payload = deliveredAnswer(answer);
       }
 
       // The prefix is reserved for mail delivery keys (`deriveDeliveryKey`),

@@ -69,7 +69,7 @@ import type {
   ConversationMessage,
   ConversationReceipt,
   ConversationEvents,
-  QuestionAnswer,
+  GivenQuestionAnswer,
 } from "@corbits-builder/schemas/conversation";
 import type {
   CreateInvitation,
@@ -284,7 +284,7 @@ export type ProductApiClient = Readonly<{
     tenantId: string,
     projectId: string,
     signalName: string,
-    answer: QuestionAnswer,
+    answer: GivenQuestionAnswer,
     signal?: AbortSignal,
   ): Promise<void>;
   mePrincipals(

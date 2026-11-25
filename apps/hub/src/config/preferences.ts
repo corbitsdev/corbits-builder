@@ -243,7 +243,7 @@ export const PREFERENCES: readonly PreferenceEntry[] = [
         guidance: "New packages install without asking the person.",
       },
     ],
-    default: "no",
+    default: "yes",
     // Delivered as the coder deployment the coder plugin starts, not as guidance.
   },
   {

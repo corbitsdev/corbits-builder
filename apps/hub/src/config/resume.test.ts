@@ -39,3 +39,42 @@ test("a resumed message with a plugin hint shows only the person's words", () =>
   expect(delivered).toContain("Builder's note");
   expect(withoutResumeContext(delivered)).toBe("the font is ugly");
 });
+
+test("a long answer to one earlier question does not cut off the next", () => {
+  const context = resumeContext({
+    turns: [],
+    questions: [
+      {
+        signalName: "asked",
+        at: 1,
+        asked: {
+          questions: [
+            {
+              id: "who",
+              header: "Audience",
+              question: "Who signs up on it?",
+              options: [],
+              multiple: false,
+              custom: true,
+            },
+            {
+              id: "when",
+              header: "Shifts",
+              question: "When are the shifts?",
+              options: [],
+              multiple: false,
+              custom: true,
+            },
+          ],
+        },
+        status: "answered",
+        answer: { answers: { who: ["x".repeat(3_000)], when: ["Mornings"] } },
+      },
+    ],
+    awaiting: [],
+    withApp: false,
+  });
+  expect(context).toContain(
+    "You asked: When are the shifts? / Person answered: Mornings",
+  );
+});

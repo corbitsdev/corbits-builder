@@ -92,8 +92,8 @@ Under **Reviews and approvals**:
 
 Under **Building the app**:
 
-- **New packages**: Ask me first, so you approve each new package the coder
-  wants to add, or Install freely.
+- **New packages**: Install freely, so the coder adds the packages it needs, or
+  Ask me first, so you approve each new package it wants to add.
 - **Internet**: Any website, or npm registry only, so the coder can still
   install packages but reach nothing else.
 
@@ -363,13 +363,13 @@ one. **Show the acceptance checklist** lists what it must do and how much is
 The conversation shows who is working and what they are doing. You do not need
 to do anything except answer what is asked of you:
 
-- **Packages**: a card may ask "Install … into your project?" for packages
-  that no approved build plan names. Choose **Yes, go ahead**, **Always allow**
+- **Packages**: with **New packages** set to **Ask me first** in Settings, a
+  card asks "Install … into your project?" for packages that no approved build
+  plan names. Choose **Yes, go ahead**, **Always allow**
   (for the rest of this build or change; the next change asks again) or
   **Decline**. While the card is open, typing a plain "yes", "ok" or "go ahead"
   approves it after a short countdown ("Approving in 5s"); **Undo** sends your
-  words as an ordinary message instead. Set **New packages** to **Install
-  freely** in Settings to skip these cards.
+  words as an ordinary message instead.
 - **Questions**: the coder never asks you directly. The coordinator passes its
   questions on when they need you.
 
