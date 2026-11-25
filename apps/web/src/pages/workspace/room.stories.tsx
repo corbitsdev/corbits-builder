@@ -1303,6 +1303,25 @@ export const ScreenWaitingProjectOpen: Story = {
   },
 };
 
+/** A screen opened from the box gives way to a file opened from the sidebar, so the file is seen. */
+export const ScreenGivesWayToSidebar: Story = {
+  args: { ...ScreenWaitingProjectOpen.args },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const screen = () =>
+      canvas.queryByRole("complementary", { name: chooseText.title });
+    await userEvent.click(
+      canvas.getByRole("button", {
+        name: wording.promptBox.waiting.openScreen,
+      }),
+    );
+    await waitFor(() => expect(screen()).toBeInTheDocument());
+    const file = canvas.getByRole("treeitem", { name: "Product requirements" });
+    await userEvent.click(within(file).getByText("Product requirements"));
+    await waitFor(() => expect(screen()).not.toBeInTheDocument());
+  },
+};
+
 const reviewScreen = storyScreen(
   "@corbits-builder/designer review",
   designer.builder.actions["review"],

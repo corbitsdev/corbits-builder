@@ -324,9 +324,12 @@ export function RoomView({
     side !== null &&
     (sheetOpen ||
       ((!projectOpen || showsPane) && closedKey !== (space?.key ?? null)));
-  // Opening that tab again brings the screen back after it was closed.
+  // Opening that tab again brings the screen back after it was closed. Opening any other tab from
+  // the sidebar puts away a screen opened from the box, or the tab would open behind it.
   const opening = (tab: string) => {
-    if (side !== null && tab === side.shows) setClosedKey(null);
+    if (side === null) return;
+    if (tab === side.shows) setClosedKey(null);
+    else setSheetOpen(false);
   };
   const headingRef = useRef<HTMLHeadingElement>(null);
   const inputRef = dock.kind === "composer" ? dock.inputRef : null;
@@ -642,14 +645,24 @@ function BackToChat({ onClose }: { onClose: () => void }) {
   );
 }
 
-/** The sidebar, telling the room which tab each of its files and steps opens before it opens it. */
+/** The sidebar, telling the room which tab each of its steps, files and rows opens before it opens it. */
 function openingFrom(
   sidebar: ProjectSidebarViewProps,
   opening: (tab: string) => void,
 ): ProjectSidebarViewProps {
-  const { files, plan } = sidebar;
+  const { files, plan, sections } = sidebar;
   return {
     ...sidebar,
+    sections:
+      sections === undefined
+        ? undefined
+        : {
+            ...sections,
+            onOpen: (tab) => {
+              opening(tab);
+              sections.onOpen(tab);
+            },
+          },
     plan: {
       ...plan,
       onOpenStep: (id, tab) => {
