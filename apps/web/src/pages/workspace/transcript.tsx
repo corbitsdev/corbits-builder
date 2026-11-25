@@ -531,7 +531,7 @@ function askedLabel(asked: AskedQuestion): string {
   if (!("plugin" in asked))
     return asked.questions[0]?.header ?? wording.questions.title(1);
   return (
-    screenWords(asked.plugin, asked.action ?? "")?.label(asked.input) ??
+    screenWords(asked.plugin, asked.action)?.label(asked.input) ??
     wording.questions.title(1)
   );
 }

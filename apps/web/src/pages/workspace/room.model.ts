@@ -749,7 +749,7 @@ export function useRoom({
   // the changes they want in place of accepting.
   const screenDecides =
     screenQuestion !== undefined &&
-    screenWords(screenQuestion.asked.plugin, screenQuestion.asked.action ?? "")
+    screenWords(screenQuestion.asked.plugin, screenQuestion.asked.action)
       ?.decides === true;
   // A document opened from the screen waiting in the box, so the plan can say it waits on the
   // person while that screen stays unanswered.

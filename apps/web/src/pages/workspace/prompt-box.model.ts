@@ -185,7 +185,7 @@ export function usePromptBox(room: PromptBoxRoom): PromptBox {
                 ? null
                 : titleOf(
                     questionScreen.plugin,
-                    questionScreen.action ?? "",
+                    questionScreen.action,
                     questionScreen.input,
                   ),
           },
