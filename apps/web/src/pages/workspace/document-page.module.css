@@ -58,11 +58,9 @@
   min-width: 0;
   position: sticky;
   align-self: start;
-  /* The 28px controls are centred on the title's first line, at rest and held there as the page
-     scrolls past. */
-  --controls-top: calc(var(--document-title-centre) - 14px);
-  margin-top: calc(var(--controls-top) - var(--document-page-inset));
-  top: var(--controls-top);
+  /* At rest and held there as the page scrolls past. */
+  margin-top: calc(var(--document-controls-top) - var(--document-page-inset));
+  top: var(--document-controls-top);
   padding: 0 var(--space-8) 0 var(--space-4);
 }
 
@@ -120,19 +118,6 @@
      instead. */
   [data-ground="grey"] .side {
     --wb-muted: var(--wb-background);
-  }
-
-  /* Text scrolling out at the reader's foot fades into the ground. As tall as the layout's foot, so
-     once the page is scrolled to its end the fade lies on the ground below the sheet. */
-  [data-ground="grey"] .reader::after {
-    content: "";
-    position: sticky;
-    bottom: 0;
-    height: 96px;
-    flex-shrink: 0;
-    margin-top: -96px;
-    background: linear-gradient(to bottom, transparent, var(--wb-frame));
-    pointer-events: none;
   }
 
   /* A4 and a page tall at the least. The height is a minimum, not an aspect ratio: a sheet

@@ -210,7 +210,7 @@ export type RoomContent = {
     projectOpen: boolean;
     /** The project view shows a written document, open on its page. */
     documentShown: boolean;
-    /** What a written page lies on: grey, raised as a sheet over a fade at its foot, or plain white. */
+    /** What a written page lies on: grey, raised as a sheet, or plain white. */
     documentGround: "grey" | "white";
     onCloseProject: () => void;
   };

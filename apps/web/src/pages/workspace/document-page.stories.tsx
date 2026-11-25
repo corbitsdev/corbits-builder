@@ -177,7 +177,7 @@ type Story = StoryObj<typeof meta>;
 /** A filed document with two commented passages, their notes level with them in the margin. */
 export const Filed: Story = {};
 
-/** The same document on the plain white ground, with no sheet and no fade. */
+/** The same document on the plain white ground, with no sheet. */
 export const WhiteGround: Story = { parameters: { ground: "white" } };
 
 /** A passage in each state its comment can be in: saved, and selected while it is written. */

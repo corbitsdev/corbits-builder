@@ -339,8 +339,8 @@
   height: 14px;
 }
 
-/* Where the written page lays its contents beside it, the button is level with the page's title, as
-   Download and Share are; narrower, they stand above the title and the button keeps to the corner. */
+/* Where the written page lays its contents beside it, the button is level with Download and
+   Share; narrower, they stand above the title and the button keeps to the corner. */
 @container (width >= 74rem) {
   .page:has(
       > [data-slot="artifact-pane"]
@@ -348,7 +348,7 @@
         [data-slot="document-page"]
     )
     > .close {
-    top: calc(var(--document-title-centre) - var(--close-size) / 2);
+    top: var(--document-controls-top);
   }
 }
 
