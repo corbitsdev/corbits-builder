@@ -88,7 +88,6 @@ export function useDocumentPage({
   const { document, changesOpen } = reading;
   const versions = useVersionReading(reading);
   const { viewing, shown, afterText, beforeText, compareWith } = versions;
-  const text = afterText ?? "";
   const filed =
     document.versions.find((item) => item.version === viewing)?.title ??
     document.title;
@@ -96,16 +95,23 @@ export function useDocumentPage({
     afterText === null
       ? null
       : documentFile(
-          markdownFile(fileStem(project, name, `v${String(viewing)}`), text),
+          markdownFile(
+            fileStem(project, name, `v${String(viewing)}`),
+            afterText,
+          ),
           { name: filed, version: viewing },
         ),
     true,
   );
-  const lifted = splitLeadingHeading(text);
+  const lifted = afterText === null ? null : splitLeadingHeading(afterText);
   // The page's title already shows the heading both versions share; a heading that changed stays
   // in the comparison so the change can be seen.
-  const liftedBefore = splitLeadingHeading(beforeText ?? "");
-  const sameHeading = liftedBefore.heading === lifted.heading;
+  const liftedBefore =
+    beforeText === null ? null : splitLeadingHeading(beforeText);
+  const sameHeading =
+    liftedBefore !== null &&
+    lifted !== null &&
+    liftedBefore.heading === lifted.heading;
   const comparing =
     changesOpen &&
     compareWith !== null &&
@@ -117,7 +123,7 @@ export function useDocumentPage({
     viewing === document.version ? approachChoice?.choose : undefined;
 
   return {
-    title: lifted.heading ?? filed,
+    title: lifted?.heading ?? filed,
     files,
     notes: {
       viewing,
@@ -139,18 +145,20 @@ export function useDocumentPage({
           afterVersion: viewing,
           onClose: versions.stopComparing,
         }
-      : {
-          kind: "text",
-          source: lifted.body,
-          approaches:
-            approaches === undefined
-              ? undefined
-              : {
-                  meta: approaches,
-                  chosen: approachChoice?.chosen(approaches, filedAt),
-                  onChoose: choose,
-                },
-        },
+      : lifted === null
+        ? { kind: "reading" }
+        : {
+            kind: "text",
+            source: lifted.body,
+            approaches:
+              approaches === undefined
+                ? undefined
+                : {
+                    meta: approaches,
+                    chosen: approachChoice?.chosen(approaches, filedAt),
+                    onChoose: choose,
+                  },
+          },
     comments:
       comments === undefined
         ? undefined

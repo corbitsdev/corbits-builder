@@ -324,7 +324,6 @@ function ReadyDocument({
   const mediaType = viewed?.mediaType ?? document.mediaType;
   const title = viewed?.title ?? document.title;
   const kind = mediaKind(mediaType, title);
-  const body = afterText ?? "";
   const comparing =
     changesOpen &&
     compareWith !== null &&
@@ -414,10 +413,12 @@ function ReadyDocument({
   const visual =
     kind === "html" || (kind === "design" && designPart === "mockup");
   const readingView = () => {
+    // Nothing while the version on show is read; its notes say so.
+    if (afterText === null) return null;
     if (kind === "html")
       return (
         <DevicePreview
-          html={body}
+          html={afterText}
           device={device}
           onDevice={setDevice}
           trailing={barGroups}
@@ -426,7 +427,7 @@ function ReadyDocument({
     if (kind === "design")
       return (
         <DesignPreviewView
-          files={parseBundle(body)}
+          files={parseBundle(afterText)}
           part={designPart}
           device={device}
           onDevice={setDevice}
@@ -438,20 +439,20 @@ function ReadyDocument({
     if (kind === "approval_package")
       return (
         <ApprovalPackagePreview
-          content={body}
+          content={afterText}
           stem={stem}
           {...(onOpenSource === undefined ? {} : { onOpenSource })}
         />
       );
     if (kind === "sheet")
-      return <CsvTable text={body} caption={title} interactive />;
+      return <CsvTable text={afterText} caption={title} interactive />;
     if (kind === "json" || kind === "text")
-      return <pre className={styles.raw}>{body}</pre>;
+      return <pre className={styles.raw}>{afterText}</pre>;
     if (kind === "image")
-      return <img className={styles.image} src={body} alt={title} />;
+      return <img className={styles.image} src={afterText} alt={title} />;
     return (
       <p>
-        <a href={body} download={title}>
+        <a href={afterText} download={title}>
           {wording.attach.open(title)}
         </a>
       </p>
@@ -501,17 +502,19 @@ function ReadyDocument({
         data-fill={fill ? "" : undefined}
       >
         {kind === "approval_package" ? (
-          approvalRounds({
-            packageVersion: viewing,
-            packageContent: body,
-            packageVersions: document.versions.map((item) => item.version),
-            onReadPackageVersion: fetchVersion,
-            shareOpen,
-            onShareOpenChange: setShareOpen,
-            onOpenSource,
-            onAddToPrompt,
-            onDeliverMessage,
-          })
+          afterText === null ? null : (
+            approvalRounds({
+              packageVersion: viewing,
+              packageContent: afterText,
+              packageVersions: document.versions.map((item) => item.version),
+              onReadPackageVersion: fetchVersion,
+              shareOpen,
+              onShareOpenChange: setShareOpen,
+              onOpenSource,
+              onAddToPrompt,
+              onDeliverMessage,
+            })
+          )
         ) : (
           <>
             {readingView()}

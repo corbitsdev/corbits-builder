@@ -14,8 +14,12 @@ import type { PaneBarGroup } from "./pane-bar.tsx";
 import { usePageComments, type PageComments } from "./page-comments.tsx";
 import { VersionNotes, type VersionNotesProps } from "./version-notes.tsx";
 
-/** What the page reads: the version's text, or that version set against an earlier one. */
+/**
+ * What the page reads: the version's text, that version set against an earlier one, or nothing yet
+ * while its text is read, which the version notes say.
+ */
 export type WrittenBody =
+  | { kind: "reading" }
   | {
       kind: "text";
       /** The document's Markdown, its own title lifted onto the page. */
@@ -67,7 +71,7 @@ export function WrittenDocumentView({
     textRef,
   );
   const text =
-    body.kind === "comparison" ? (
+    body.kind === "reading" ? null : body.kind === "comparison" ? (
       <ComparisonView
         before={body.before}
         after={body.after}
