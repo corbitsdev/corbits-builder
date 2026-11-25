@@ -193,7 +193,7 @@ export const Approaches: Story = {
 /** The app's manual: nothing to download, its pictures where it places them. */
 export const UserManualPage: Story = {
   args: {
-    title: wording.documentTab["user_manual"] ?? "",
+    title: wording.documentTab.user_manual,
     files: [],
     notes: undefined,
     body: {

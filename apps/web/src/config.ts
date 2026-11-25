@@ -287,7 +287,7 @@ export const wording = {
     approval_package: "Approval",
     app: "App",
     user_manual: "User manual",
-  } as Record<string, string>,
+  } as Record<string, string> & { user_manual: string },
   documentRetryFailed: "The project could not be read. Try again.",
   tips: {
     label: "Tips",

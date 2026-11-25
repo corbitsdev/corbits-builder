@@ -148,7 +148,7 @@ const FILL_PANE = styles.fill;
 /** The app's manual as a written page: no versions to pick, its pictures where it places them. */
 function manualPage(manual: UserManual): WrittenDocumentViewProps {
   return {
-    title: wording.documentTab["user_manual"] ?? "",
+    title: wording.documentTab.user_manual,
     files: [],
     body: {
       kind: "text",
