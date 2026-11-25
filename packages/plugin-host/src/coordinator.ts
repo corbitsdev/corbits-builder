@@ -38,6 +38,7 @@ import {
   actionSteps,
   awaitsGoAhead,
   insertSteps,
+  isDeclined,
   isLeftToDo,
   readyPlanGroups,
   removeSteps,
@@ -785,7 +786,7 @@ async function executing(
   if (!checked.ok) return { refused: checked.text };
   const { plan } = state;
   const doing = stepsFor(action, checked.input, plan.steps);
-  const declined = doing.find((step) => step.declined !== undefined);
+  const declined = doing.find(isDeclined);
   if (declined) return { refused: stepDeclined(action.name, declined.title) };
   const open = doing.filter(({ finished }) => !finished);
   const asking = open.find(awaitsGoAhead);

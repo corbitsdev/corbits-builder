@@ -53,6 +53,9 @@ flowchart TD
     contract["packages/publish-contract"]
     ssh["packages/ssh-publish"]
   end
+  subgraph planlayer["Plan rules"]
+    plan["packages/plan"]
+  end
   subgraph base["Schemas"]
     schemas["packages/schemas"]
   end
@@ -62,13 +65,16 @@ flowchart TD
 
   hub --> host
   hub --> api
+  hub --> plan
   hub --> schemas
   hub --> intx
   web --> client
   web --> ui
   web --> api
+  web --> plan
   web --> schemas
   host --> api
+  host --> plan
   host --> schemas
   plugins --> api
   plugins --> ui
@@ -76,7 +82,9 @@ flowchart TD
   plugins --> contract
   plugins --> ssh
   plugins --> schemas
+  api --> plan
   api --> schemas
+  plan --> schemas
   contract --> api
   ssh --> api
   ssh --> contract

@@ -10,7 +10,12 @@ import {
   type PointerEvent,
 } from "react";
 import { PanelRightClose } from "lucide-react";
-import { actionSteps, awaitsGoAhead, stepById } from "@corbits-builder/plan";
+import {
+  actionSteps,
+  awaitsGoAhead,
+  isDeclined,
+  stepById,
+} from "@corbits-builder/plan";
 import type {
   PlanViewChild,
   PlanViewStep,
@@ -151,14 +156,12 @@ export function StepControls({
   onGoAhead: () => void;
 }) {
   const words = wording.conversation.plan;
-  const declined = step.declined !== undefined;
+  const declined = isDeclined(step);
   const waitingOnGo = awaitsGoAhead(step) && step.state === "needs_you";
   const mayAsk =
-    !declined &&
-    step.cancelled === undefined &&
-    (step.state === "waiting" ||
-      step.state === "not_started" ||
-      step.state === "needs_you");
+    step.state === "waiting" ||
+    step.state === "not_started" ||
+    step.state === "needs_you";
   const mayDecline =
     declined ||
     (step.optional === true && !step.finished && step.state !== "running");

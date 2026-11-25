@@ -157,5 +157,6 @@ test("an optional step has no controls once it is done, cancelled or running", (
   expect(stepControls(step("looks", "running", true)).found.size).toBe(0);
   const cancelled = step("looks", "cancelled", true);
   cancelled.cancelled = { by: "person", at: "2026-01-01T00:00:00.000Z" };
+  cancelled.declined = cancelled.cancelled;
   expect(stepControls(cancelled).found.size).toBe(0);
 });

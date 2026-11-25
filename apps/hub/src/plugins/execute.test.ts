@@ -393,7 +393,7 @@ test("a second plan step for coder build with no approval does not let the build
   expect(following.deployed).toEqual([]);
 });
 
-test("a cancelled step that asked first no longer holds back its action", async () => {
+test("a cancelled step no longer holds back its action, though it asked first or was declined", async () => {
   const cancelledAsk = project([]);
   cancelledAsk.state.plan = [
     {
@@ -403,6 +403,8 @@ test("a cancelled step that asked first no longer holds back its action", async 
       action: "mockup",
       input: {},
       askFirst: true,
+      optional: true,
+      declined: { by: "person", at: new Date(0).toISOString() },
       cancelled: { by: "person", at: new Date(0).toISOString() },
       state: "cancelled",
       finished: true,
@@ -674,7 +676,7 @@ test("a group is finished once nothing in it is left to do, so an optional step 
   const step = (
     id: string,
     marks: Partial<
-      Pick<StoredPlanChild, "cancelled" | "declined" | "optional">
+      Pick<StoredPlanChild, "cancelled" | "declined" | "goAhead" | "optional">
     >,
   ): StoredPlanChild => {
     const made: StoredPlanChild = {
@@ -687,6 +689,7 @@ test("a group is finished once nothing in it is left to do, so an optional step 
     };
     if (marks.cancelled) made.cancelled = marks.cancelled;
     if (marks.declined) made.declined = marks.declined;
+    if (marks.goAhead) made.goAhead = marks.goAhead;
     if (marks.optional) made.optional = marks.optional;
     return made;
   };
@@ -705,6 +708,13 @@ test("a group is finished once nothing in it is left to do, so an optional step 
   expect(
     groupOf([cancelled("first"), cancelled("second"), optional]),
   ).toMatchObject({ state: "cancelled", finished: true });
+  const wanted = step("extra", {
+    optional: true,
+    goAhead: { by: "person", at },
+  });
+  expect(groupOf([cancelled("first"), wanted])).toMatchObject({
+    finished: false,
+  });
   const declined = step("skipped", {
     optional: true,
     declined: { by: "person", at },

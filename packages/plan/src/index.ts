@@ -54,6 +54,11 @@ export const readyPlanGroups = <Step extends { id: string; plan?: string }>(
       "steps" in step && step.plan !== undefined,
   );
 
+/** Whether the person declined a step and it stands declined: cancelling it ends that. */
+export const isDeclined = (
+  step: Pick<StoredPlanChild, "declined" | "cancelled">,
+) => step.declined !== undefined && step.cancelled === undefined;
+
 /** Whether a step waits for the person's go-ahead before it starts. */
 export const awaitsGoAhead = (
   step: Pick<StoredPlanChild, "askFirst" | "goAhead">,
@@ -67,12 +72,14 @@ export const isFinished = (state: PlanStepStateName) =>
 
 type StepStanding = Pick<
   PlanViewChild,
-  "state" | "finished" | "optional" | "runId"
+  "state" | "finished" | "optional" | "runId" | "goAhead"
 >;
 
+// A go-ahead means the person wants it, so it holds the group open until its run starts.
 const isUnstartedOptional = (step: StepStanding) =>
   step.optional === true &&
   step.runId === undefined &&
+  step.goAhead === undefined &&
   (step.state === "not_started" || step.state === "waiting");
 
 /** A step that still holds its group open: unfinished, and not an optional step nobody started. */
@@ -140,7 +147,7 @@ export function markAnswered(
   return step;
 }
 
-/** Adds these steps at the end, or after or before the step named, at its level; a group takes only action steps. Throws when no step has that id. */
+/** Adds these steps at the end, or after or before the step named, at its level. Throws when no step has that id, or when a group would go inside a group. */
 export function insertSteps(
   steps: PlanStepWrite[],
   adding: readonly PlanStepWrite[],
@@ -162,7 +169,11 @@ export function insertSteps(
       "steps" in step && step.steps.some(({ id }) => id === next),
   );
   if (!group) throw new Error(`No plan step has the id ${next}.`);
-  const held = adding.flatMap((each) => ("steps" in each ? [] : [each]));
+  const held = adding.filter(
+    (each): each is PlanChildWrite => !("steps" in each),
+  );
+  if (held.length < adding.length)
+    throw new Error(`A group cannot go inside the group holding ${next}.`);
   const under = group.steps.findIndex(({ id }) => id === next);
   group.steps.splice(under + offset, 0, ...held);
 }

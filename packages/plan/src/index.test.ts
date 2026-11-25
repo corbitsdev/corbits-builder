@@ -46,6 +46,10 @@ test("steps go in at the end, or beside the step named at its level", () => {
   expect(() => insertSteps(plan(), [step("new")], { after: "gone" })).toThrow(
     "No plan step has the id gone.",
   );
+  const group = { id: "more", title: "More", steps: [step("new")] };
+  expect(() => insertSteps(plan(), [group], { after: "check" })).toThrow(
+    "A group cannot go inside the group holding check.",
+  );
 });
 
 test("taking out a step takes it out of its group, and a group with all it holds", () => {

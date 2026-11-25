@@ -2,7 +2,7 @@
   "name": "@corbits-builder/plan",
   "version": "0.1.0-rc.3",
   "private": true,
-  "description": "The rules for where a project's plan work stands, and the helpers that read a plan.",
+  "description": "The rules for where a project's plan work stands, and the functions that read and change a plan.",
   "license": "SEE LICENSE IN ../../LICENSE.md",
   "type": "module",
   "exports": {
