@@ -32,7 +32,7 @@ describe("which drafts exist", () => {
   });
 
   test("nothing stored, or what is stored unreadable, is no drafts", () => {
-    expect(readDrafts(null)).toEqual([]);
+    expect(readDrafts("")).toEqual([]);
     expect(readDrafts("not json")).toEqual([]);
     expect(readDrafts('{"id":"draft-phone"}')).toEqual([]);
   });
@@ -50,7 +50,7 @@ describe("which drafts exist", () => {
   });
 
   test("with no drafts left, nothing is stored", () => {
-    expect(storedDrafts([])).toBeNull();
+    expect(storedDrafts([])).toBe("");
   });
 
   test("a new draft goes last, its comment trimmed", () => {

@@ -449,7 +449,7 @@ export function useCommentDrafts(room: CommentsRoom): {
   const [going, setGoing] = useState(false);
   const change = useCallback(
     (next: (drafts: CommentDraft[]) => CommentDraft[]) =>
-      setStored((was) => storedDrafts(next(readDrafts(was))) ?? ""),
+      setStored((was) => storedDrafts(next(readDrafts(was)))),
     [setStored],
   );
   const send = commentsSend({

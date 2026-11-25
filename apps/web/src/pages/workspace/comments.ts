@@ -41,21 +41,25 @@ const isDraft = (value: unknown): value is CommentDraft => {
   );
 };
 
-/** The drafts as stored; anything stored that is not a whole draft is left out. */
-export function readDrafts(stored: string | null): CommentDraft[] {
-  if (stored === null) return [];
+/**
+ * The drafts as stored, where nothing stored reads as the empty string; anything stored that is not
+ * a whole draft is left out.
+ */
+export function readDrafts(stored: string): CommentDraft[] {
+  if (stored === "") return [];
   let parsed: unknown;
   try {
     parsed = JSON.parse(stored);
-  } catch {
-    return [];
+  } catch (error) {
+    if (error instanceof SyntaxError) return [];
+    throw error;
   }
   return Array.isArray(parsed) ? parsed.filter(isDraft) : [];
 }
 
-/** What to store for the drafts; with none left, nothing is kept. */
-export function storedDrafts(drafts: readonly CommentDraft[]): string | null {
-  return drafts.length === 0 ? null : JSON.stringify(drafts);
+/** What to store for the drafts; with none left, the empty string, which keeps nothing. */
+export function storedDrafts(drafts: readonly CommentDraft[]): string {
+  return drafts.length === 0 ? "" : JSON.stringify(drafts);
 }
 
 /** Saves a draft: a new one goes last, an edited one keeps its place. */
