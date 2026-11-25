@@ -71,8 +71,8 @@ export type ProjectsViewProps = {
   recent: readonly LibraryProject[];
   /** A recent card's cover has come near the screen, so its mockup is read now. */
   onCoverNear: (projectId: string) => void;
-  /** Opens the Projects page, where every project is. */
-  onOpenLibrary: () => void;
+  /** Opens the Projects page; absent when the recent cards already show every project. */
+  onOpenLibrary: (() => void) | undefined;
   onOpenProject: (projectId: string) => void;
   onConnectProvider: () => void;
   onImportFile: (file: File) => void;
@@ -276,9 +276,11 @@ export function ProjectsView({
               <h2 id="recent-title" className={styles.recentTitle}>
                 {wording.shell.recentProjects}
               </h2>
-              <Button variant="link" onClick={onOpenLibrary}>
-                {wording.shell.allProjects}
-              </Button>
+              {onOpenLibrary === undefined ? null : (
+                <Button variant="link" onClick={onOpenLibrary}>
+                  {wording.shell.allProjects}
+                </Button>
+              )}
             </div>
             <ProjectCards
               className={styles.recentCards}

@@ -328,7 +328,8 @@ export function useProjects({
         libraryProject(project, covers.pages[index]!),
       ),
       onCoverNear: covers.onNear,
-      onOpenLibrary,
+      onOpenLibrary:
+        projects.length > recent.length ? onOpenLibrary : undefined,
       onOpenProject: (projectId) => onOpen(projectId),
       onConnectProvider: () => setConnecting(true),
       onImportFile: (file) => void chooseImport(file),

@@ -137,6 +137,11 @@ export const OpensAllProjects: Story = {
   },
 };
 
+/** When the recent cards are every project there is, nothing offers All projects. */
+export const RecentIsEverything: Story = {
+  render: (args) => <Page {...args} onOpenLibrary={undefined} />,
+};
+
 /** A new workspace has no projects yet, so the prompt stands alone. */
 export const NoRecentProjects: Story = { args: { recent: [] } };
 
