@@ -107,7 +107,13 @@ function Choose({
     picked !== undefined && "option" in picked.approval
       ? (words) => {
           if (!("option" in picked.approval)) return false;
-          void choose(picked, picked.approval.option, words);
+          // Enter in an empty box sends the pick alone, with no comment to go with it.
+          const details = words.trim();
+          void choose(
+            picked,
+            picked.approval.option,
+            details === "" ? undefined : details,
+          );
           return true;
         }
       : undefined,

@@ -16,7 +16,9 @@ import { coordinatorPlan, planning } from "./project-outline.fixtures.ts";
 import { projectOutline, type OutlineAppState } from "./project-outline.ts";
 import designer from "@plugins/designer/package.json";
 import choose from "@plugins/designer/src/choose/definition.ts";
-import ChooseView from "@plugins/designer/src/choose/view.tsx";
+import ChooseView, {
+  text as chooseText,
+} from "@plugins/designer/src/choose/view.tsx";
 import looks from "@plugins/designer/src/looks/definition.ts";
 import LooksView from "@plugins/designer/src/looks/view.tsx";
 import writer from "@plugins/writer/package.json";
@@ -1255,6 +1257,24 @@ export const ChatSheetOverApproval: Story = {
         window.innerHeight,
       ),
     );
+  },
+};
+
+/** With a look picked, Enter in the empty box answers with that look, as Use would. */
+export const ChooseOnEnter: Story = {
+  args: { ...ScreenWaiting.args },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const choice = await canvas.findByRole("region", {
+      name: chooseText.title,
+    });
+    await userEvent.click(within(choice).getAllByRole("radio")[0]!);
+    const use = await canvas.findByRole("button", {
+      name: (name) => name.startsWith(chooseText.use("")),
+    });
+    await userEvent.click(canvas.getByRole("textbox", { name: "Message" }));
+    await userEvent.keyboard("{Enter}");
+    await waitFor(() => expect(use).not.toBeInTheDocument());
   },
 };
 
