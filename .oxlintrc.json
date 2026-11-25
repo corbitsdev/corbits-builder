@@ -84,9 +84,9 @@
         "corbits-builder/no-tool-replay": "off"
       }
     },
-    // The plan package defines the rule this check guards.
+    // The plan package defines the rule this check guards, and the check names the states it looks for.
     {
-      "files": ["packages/plan/src/**"],
+      "files": ["packages/plan/src/**", "lint/rules/no-plan-state-check.ts"],
       "rules": {
         "corbits-builder/no-plan-state-check": "off"
       }
