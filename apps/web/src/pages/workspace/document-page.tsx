@@ -92,14 +92,6 @@ const MARGIN_INSET = 32 + 24;
 // The underline sits below the line's box, so a press just under the words still reaches it.
 const UNDERLINE_REACH = 8;
 // Each state is its own highlight, named as the stylesheet paints it.
-/**
- * A card opened from its passage closes on a press or focus elsewhere, except one being written:
- * its field decides, putting away a comment with nothing written and keeping one with words.
- */
-function putAway<Card extends { place: PassagePlace }>(was: Card | null) {
-  return was?.place.state === "selected" ? was : null;
-}
-
 const HIGHLIGHTS: Readonly<
   Record<PassageState | "commented" | "pointed", string>
 > = {
@@ -253,10 +245,16 @@ export function DocumentPage({
   const [pointed, setPointed] = useState<string | null>(null);
   const pointedOwner = useRef({});
   const cardId = useId();
-  const [card, setCard] = useState<{
-    place: PassagePlace;
-    line: DOMRect;
-  } | null>(null);
+  // A card opened from its passage, by the passage's id and the line it opened from. Its passage is
+  // read from the page as it stands now, so whether it is being written is said in one place.
+  const [card, setCard] = useState<{ id: string; line: DOMRect } | null>(null);
+  const writtenId = places.find((place) => place.state === "selected")?.id;
+  const cardPlace = places.find((place) => place.id === card?.id);
+  /**
+   * A card opened from its passage closes on a press or focus elsewhere, except one being written:
+   * its field decides, putting away a comment with nothing written and keeping one with words.
+   */
+  const putAway = (was: typeof card) => (was?.id === writtenId ? was : null);
   const { rootRef: cardRef, triggerRef: cardTrigger } = useDismissablePopover<
     HTMLDivElement,
     HTMLButtonElement
@@ -545,9 +543,7 @@ export function DocumentPage({
   useLayoutEffect(() => {
     // A card whose passage is gone, such as one just saved under a new name, closes with it.
     setCard((was) =>
-      was === null || places.some((place) => place.id === was.place.id)
-        ? was
-        : null,
+      was === null || places.some((place) => place.id === was.id) ? was : null,
     );
     const writing = places.find((place) => place.state === "selected");
     if (!narrow || writing === undefined) {
@@ -559,7 +555,7 @@ export function DocumentPage({
     const line = ranges.current.get(writing.id)?.getClientRects()[0];
     if (line === undefined) return;
     cardTrigger.current = null;
-    setCard({ place: writing, line });
+    setCard({ id: writing.id, line });
   }, [places, narrow, cardTrigger]);
 
   // Items too close to fit level with their passages stack below one another, in page order.
@@ -614,7 +610,7 @@ export function DocumentPage({
     if (hit.place.state !== "selected") onPassagePress?.(hit.place.id);
     if (!narrow) return;
     cardTrigger.current = null;
-    setCard(hit);
+    setCard({ id: hit.place.id, line: hit.line });
   };
 
   const pointAtMark = (event: MouseEvent<HTMLElement>) => {
@@ -632,7 +628,7 @@ export function DocumentPage({
       ranges.current.get(place.id)?.getClientRects()[0] ??
       button.getBoundingClientRect();
     cardTrigger.current = button;
-    setCard({ place, line });
+    setCard({ id: place.id, line });
   };
 
   // The reader's scroll behaviour is smooth unless the person asks for less motion.
@@ -664,9 +660,10 @@ export function DocumentPage({
         follow();
         // A comment being written rides along with its line rather than closing on its words.
         setCard((was) => {
-          if (was?.place.state !== "selected") return null;
-          const line = ranges.current.get(was.place.id)?.getClientRects()[0];
-          return line === undefined ? was : { ...was, line };
+          const kept = putAway(was);
+          if (kept === null) return null;
+          const line = ranges.current.get(kept.id)?.getClientRects()[0];
+          return line === undefined ? kept : { id: kept.id, line };
         });
       }}
       onWheel={scrollOn}
@@ -751,10 +748,8 @@ export function DocumentPage({
                   style={{ top: place.top }}
                   aria-label={words.passageNote(place.quote)}
                   aria-haspopup="dialog"
-                  aria-expanded={card?.place.id === place.id}
-                  aria-controls={
-                    card?.place.id === place.id ? cardId : undefined
-                  }
+                  aria-expanded={card?.id === place.id}
+                  aria-controls={card?.id === place.id ? cardId : undefined}
                   onClick={(event) => openFromKeys(place, event.currentTarget)}
                 >
                   <MessageSquare aria-hidden="true" />
@@ -781,7 +776,7 @@ export function DocumentPage({
               ))}
         </div>
       </div>
-      {card === null || margin === undefined
+      {cardPlace === undefined || margin === undefined
         ? null
         : createPortal(
             <div
@@ -793,8 +788,10 @@ export function DocumentPage({
               id={cardId}
               data-slot="document-margin-card"
               role="dialog"
-              aria-label={words.passageNote(card.place.quote)}
+              aria-label={words.passageNote(cardPlace.quote)}
               tabIndex={-1}
+              onPointerEnter={() => setPointed(cardPlace.id)}
+              onPointerLeave={() => setPointed(null)}
               onBlur={(event) => {
                 if (
                   event.relatedTarget !== null &&
@@ -803,7 +800,7 @@ export function DocumentPage({
                   setCard(putAway);
               }}
             >
-              {margin(card.place, false)}
+              {margin(cardPlace, pointed === cardPlace.id)}
             </div>,
             document.body,
           )}

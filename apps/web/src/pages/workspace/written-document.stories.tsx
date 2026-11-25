@@ -1,7 +1,8 @@
 import type { UserManual } from "@corbits-builder/schemas/artifact";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { Download, Share2 } from "lucide-react";
-import { expect, fn, waitFor } from "storybook/test";
+import { useState } from "react";
+import { expect, fn, userEvent, waitFor } from "storybook/test";
 import { wording } from "../../config.ts";
 import { PROBLEM_BRIEF } from "./document-page.stories.tsx";
 import type { PaneBarGroup } from "./pane-bar.tsx";
@@ -268,4 +269,146 @@ export const Narrow: Story = {
       </div>
     ),
   ],
+};
+
+/** Comments kept as the room keeps them, so saving one shows it on the page. */
+function KeptComments(args: WrittenDocumentViewProps) {
+  const [drafts, setDrafts] = useState(args.comments?.drafts ?? []);
+  return (
+    <WrittenDocumentView
+      {...args}
+      comments={{
+        drafts,
+        onSave: ({ id, quote, comment }) =>
+          setDrafts((was) =>
+            id === null
+              ? [
+                  ...was,
+                  { id: `comment:${String(was.length)}`, quote, comment },
+                ]
+              : was.map((item) =>
+                  item.id === id ? { id, quote: item.quote, comment } : item,
+                ),
+          ),
+        onDelete: (id) =>
+          setDrafts((was) => was.filter((item) => item.id !== id)),
+      }}
+    />
+  );
+}
+
+const twoComments = {
+  onSave: fn(),
+  onDelete: fn(),
+  drafts: [
+    {
+      id: "texts",
+      quote: "Counter staff who answer the phone mid-shift",
+      comment:
+        "Some regulars text their order to the counter. Count texts too?",
+    },
+    {
+      id: "allergy",
+      quote: "Flag allergies and dietary needs",
+      comment: "Should the cake label show the allergy as well?",
+    },
+  ],
+} satisfies WrittenDocumentViewProps["comments"];
+
+/** The middle of the passage's first line, where a person points at it. */
+function passagePoint(canvasElement: HTMLElement, quote: string) {
+  const words = [...canvasElement.querySelectorAll("article li")].find((item) =>
+    item.textContent.startsWith(quote),
+  )?.firstChild;
+  if (words === null || words === undefined) throw new Error("No passage");
+  const range = document.createRange();
+  range.setStart(words, 0);
+  range.setEnd(words, quote.length);
+  const line = range.getClientRects()[0];
+  if (line === undefined) throw new Error("No line");
+  return {
+    target: words.parentElement ?? canvasElement,
+    at: {
+      bubbles: true,
+      clientX: line.left + line.width / 2,
+      clientY: line.top + line.height / 2,
+    },
+  };
+}
+
+const pointedPassages = () =>
+  CSS.highlights.get("document-passage-pointed")?.size ?? 0;
+
+/**
+ * Pointing at a passage marks its comment, pointing at a comment marks its passage, and one press
+ * on a passage opens its comment to edit, wherever the page puts its comments.
+ */
+const commentsPointAndOpen: Story["play"] = async ({ canvasElement }) => {
+  const quote = "Counter staff who answer the phone mid-shift";
+  const card = () =>
+    canvasElement.ownerDocument.querySelector<HTMLElement>(
+      '[data-slot="comment-card"]',
+    );
+  const passage = passagePoint(canvasElement, quote);
+
+  // Wide, the card is in the margin already; narrow, the first press on its passage opens it, and
+  // saving it as it stands leaves it open beside its passage.
+  if (card() === null) {
+    passage.target.dispatchEvent(new MouseEvent("click", passage.at));
+    await waitFor(() =>
+      expect(card()).toHaveAttribute("data-state", "writing"),
+    );
+    await userEvent.keyboard("{Enter}");
+    await waitFor(() => expect(card()).toHaveAttribute("data-state", "saved"));
+  }
+
+  passage.target.dispatchEvent(new PointerEvent("pointermove", passage.at));
+  await waitFor(() => expect(card()).toHaveAttribute("data-paired"));
+  passage.target.dispatchEvent(
+    new PointerEvent("pointerout", {
+      bubbles: true,
+      relatedTarget: canvasElement.ownerDocument.body,
+    }),
+  );
+
+  const saved = card();
+  if (saved === null) throw new Error("No comment");
+  await userEvent.hover(saved);
+  await waitFor(() => expect(pointedPassages()).toBe(1));
+  await userEvent.unhover(saved);
+  await waitFor(() => expect(pointedPassages()).toBe(0));
+
+  passage.target.dispatchEvent(new MouseEvent("click", passage.at));
+  await waitFor(() => expect(card()).toHaveAttribute("data-state", "writing"));
+};
+
+/** Where the page has room beside it, each comment sits in the margin level with its passage. */
+export const CommentsBesideThePage: Story = {
+  args: { comments: twoComments },
+  render: KeptComments,
+  decorators: [
+    (Story) => (
+      <div style={{ display: "flex", width: 1440, height: "100vh" }}>
+        <Story />
+      </div>
+    ),
+  ],
+  play: commentsPointAndOpen,
+};
+
+/**
+ * Just short of that room, as the room gives a 1440px window, each comment opens from its passage
+ * over the page.
+ */
+export const CommentsFromThePassage: Story = {
+  args: { comments: twoComments },
+  render: KeptComments,
+  decorators: [
+    (Story) => (
+      <div style={{ display: "flex", width: 1192, height: "100vh" }}>
+        <Story />
+      </div>
+    ),
+  ],
+  play: commentsPointAndOpen,
 };
