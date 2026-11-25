@@ -225,9 +225,15 @@ export type RoomContent = {
   /**
    * The plugin screen waiting first, by this name, and where its plugin draws it: a screen for the
    * page opens in the plugin space, any other inside the box's card. Null while none does, and
-   * then there is no space. Its key changes when another screen takes its place.
+   * then there is no space. Its key changes when another screen takes its place. It may show more
+   * of what a project view tab shows, such as a mockup to review; null when it shows none.
    */
-  space: { key: string; title: string; place: "page" | "box" } | null;
+  space: {
+    key: string;
+    title: string;
+    place: "page" | "box";
+    shows: string | null;
+  } | null;
   documentPane: ArtifactPaneContent;
   /** Where each plugin tab that says so stands, beside the plan, each opening its tab. */
   tabStatus: readonly TabStatus[];
@@ -303,9 +309,22 @@ export function RoomView({
   const side = space?.place === "page" ? space : null;
   const [sheetOpen, setSheetOpen] = useState(false);
   const [closedKey, setClosedKey] = useState<string | null>(null);
+  const [paneShown, setPaneShown] = useState<string | null>(null);
+  // While it waits, the screen stands in for the tab it shows more of, so the person never has
+  // the tab on the page and the screen to open beside it.
+  const showsPane =
+    side !== null &&
+    projectOpen &&
+    side.shows !== null &&
+    side.shows === paneShown;
   const sheetShown =
     side !== null &&
-    (sheetOpen || (!projectOpen && closedKey !== (space?.key ?? null)));
+    (sheetOpen ||
+      ((!projectOpen || showsPane) && closedKey !== (space?.key ?? null)));
+  // Opening that tab again brings the screen back after it was closed.
+  const opening = (tab: string) => {
+    if (side !== null && tab === side.shows) setClosedKey(null);
+  };
   const headingRef = useRef<HTMLHeadingElement>(null);
   const inputRef = dock.kind === "composer" ? dock.inputRef : null;
   const openSpace = () => {
@@ -315,9 +334,11 @@ export function RoomView({
   };
   // Closing takes away the control that had the cursor, so it goes back to the box.
   const refocusBox = useRef(false);
+  // Closed over the tab it stands in for, it goes back to the conversation, as it does from there.
   const closeSheet = () => {
     setSheetOpen(false);
     setClosedKey(space?.key ?? null);
+    if (showsPane) closeProject();
     refocusBox.current = true;
   };
   // A space the person opened from the box takes focus to its heading; one that comes of its own
@@ -410,7 +431,12 @@ export function RoomView({
   return (
     <StageView aria-label={`Conversation for ${title}`}>
       <RoomFrame
-        sidebar={<ProjectSidebarView {...sidebar} menu={projectMenu} />}
+        sidebar={
+          <ProjectSidebarView
+            {...openingFrom(sidebar, opening)}
+            menu={projectMenu}
+          />
+        }
       >
         <div ref={mainRef} className={styles.main} data-slot="room-main">
           <section
@@ -457,6 +483,10 @@ export function RoomView({
               <SketchingShown value={showSketch}>
                 <ArtifactPane
                   {...documentPane}
+                  onShownChange={(tab) => {
+                    setPaneShown(tab);
+                    documentPane.onShownChange?.(tab);
+                  }}
                   {...paneParts}
                   paneRef={paneRef}
                   open={projectOpen}
@@ -606,6 +636,34 @@ function BackToChat({ onClose }: { onClose: () => void }) {
       <X size={18} aria-hidden="true" />
     </UiButton>
   );
+}
+
+/** The sidebar, telling the room which tab each of its files and steps opens before it opens it. */
+function openingFrom(
+  sidebar: ProjectSidebarViewProps,
+  opening: (tab: string) => void,
+): ProjectSidebarViewProps {
+  const { files, plan } = sidebar;
+  return {
+    ...sidebar,
+    plan: {
+      ...plan,
+      onOpenStep: (id, tab) => {
+        opening(tab);
+        plan.onOpenStep(id, tab);
+      },
+    },
+    files:
+      files === undefined
+        ? undefined
+        : {
+            ...files,
+            onOpen: (tab) => {
+              opening(tab);
+              files.onOpen(tab);
+            },
+          },
+  };
 }
 
 const decides = (waiting: BoxWaiting | null) =>

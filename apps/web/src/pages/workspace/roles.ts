@@ -38,6 +38,8 @@ export type ScreenWords = {
   reply: string | undefined;
   /** The screen asks the person to accept something, such as approving a document. */
   decides: boolean;
+  /** The kind of filed artifact the screen shows more of, when it says. */
+  shows: string | undefined;
 };
 let screens: ReadonlyMap<string, ScreenWords> = new Map();
 
@@ -127,6 +129,7 @@ export function installRoles({
           },
           reply,
           decides: screen.decision !== undefined,
+          shows: screen.shows,
         };
         return [[`${builder.handle} ${action}`, words] as const];
       }),

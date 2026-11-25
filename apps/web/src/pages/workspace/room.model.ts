@@ -1155,9 +1155,7 @@ export function useRoom({
     setPaneTab({ value: tab });
     setProjectOpen(true);
   };
-  // The conversation opens the design as it is drawn, its mockup, as the pane always has.
-  const openDocument = (id: string) =>
-    openProject(id === "design" ? MOCKUP_TAB : id);
+  const openDocument = (id: string) => openProject(documentTab(id));
   // "settled" is a 409: someone already decided the ask, or its run moved on; the page reads
   // where it stands.
   const saveDecision = async (decision: {
@@ -1943,7 +1941,16 @@ export function useRoom({
       dock: dock(),
       sidebar,
       waiting: promptBox.waiting,
-      space: promptBox.space,
+      space:
+        promptBox.space === null
+          ? null
+          : {
+              ...promptBox.space,
+              shows:
+                promptBox.space.shows === null
+                  ? null
+                  : documentTab(promptBox.space.shows),
+            },
       documentPane: {
         projectId,
         projectTitle,
@@ -2013,3 +2020,6 @@ function lastSentAt(
   if (wrote === undefined) return awaitingSince;
   return awaitingSince === null ? wrote : Math.max(wrote, awaitingSince);
 }
+
+// The conversation opens the design as it is drawn, its mockup, as the pane always has.
+const documentTab = (id: string) => (id === "design" ? MOCKUP_TAB : id);

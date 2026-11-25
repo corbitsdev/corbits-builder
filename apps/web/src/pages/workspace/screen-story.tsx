@@ -145,6 +145,7 @@ export function ScreenStory({
   output,
   plan = [],
   plans = () => [],
+  inSpace = false,
 }: {
   screen: ReturnType<typeof storyScreen>;
   state: ScreenState;
@@ -158,6 +159,8 @@ export function ScreenStory({
   plan?: readonly StepStatus[];
   /** The installed ready-made plans a screen that prepares from the project reads. */
   plans?: (group: string) => readonly ReadyPlanOffer[];
+  /** Drawn in the plugin space, as the room draws a screen for the page, not as a thread entry. */
+  inSpace?: boolean;
 }) {
   const signalName = `story-${state}`;
   const [ready, setReady] = useState(false);
@@ -217,7 +220,11 @@ export function ScreenStory({
   );
   return (
     <QuestionOutcomes value={outcomes}>
-      <QuestionEntry signalName={signalName}>{question}</QuestionEntry>
+      {inSpace ? (
+        question
+      ) : (
+        <QuestionEntry signalName={signalName}>{question}</QuestionEntry>
+      )}
     </QuestionOutcomes>
   );
 }

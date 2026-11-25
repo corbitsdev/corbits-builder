@@ -120,9 +120,15 @@ export type PromptBox = {
   waiting: BoxWaiting | null;
   /**
    * The first plugin screen waiting: one for the page opens in the plugin space, any other in the
-   * box's card once it is the box's turn; null while none is shown.
+   * box's card once it is the box's turn; null while none is shown. It names the kind of filed
+   * artifact it shows more of, when its plugin says.
    */
-  space: { key: string; title: string; place: "page" | "box" } | null;
+  space: {
+    key: string;
+    title: string;
+    place: "page" | "box";
+    shows: string | null;
+  } | null;
   spaceScreen: SpaceScreenProps | null;
   /** The pill's line and button. */
   status: StatusPillContent | null;
@@ -376,7 +382,12 @@ export function usePromptBox(room: PromptBoxRoom): PromptBox {
     space:
       first === undefined || held
         ? null
-        : { key: first.key, title: first.title, place },
+        : {
+            key: first.key,
+            title: first.title,
+            place,
+            shows: screenWords(first.plugin, first.action)?.shows ?? null,
+          },
     spaceScreen,
     status,
     restarts: sendWarning(waiting),

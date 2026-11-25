@@ -22,9 +22,13 @@ import LooksView from "@plugins/designer/src/looks/view.tsx";
 import writer from "@plugins/writer/package.json";
 import approve from "@plugins/writer/src/approve/definition.ts";
 import ApproveView from "@plugins/writer/src/approve/view.tsx";
+import review from "@plugins/designer/src/review/definition.ts";
+import ReviewView from "@plugins/designer/src/review/view.tsx";
+import { DESIGN_MEDIA_TYPE } from "./design-bundle.ts";
+import { sampleDesign } from "./sample-design.ts";
 import { question } from "./prompt-box.fixtures.ts";
 import { ScreenStory, storyScreen } from "./screen-story.tsx";
-import { LIVE_TAB } from "./tab-follow.ts";
+import { LIVE_TAB, MOCKUP_TAB } from "./tab-follow.ts";
 import { RoomThread } from "./transcript.tsx";
 import writtenDocument, {
   Comparing as comparingVersions,
@@ -905,7 +909,12 @@ export const ScreenWaiting: Story = {
       title: "Choose a design",
       decides: false,
     },
-    space: { key: "screen:story", title: "Choose a design", place: "page" },
+    space: {
+      key: "screen:story",
+      title: "Choose a design",
+      place: "page",
+      shows: null,
+    },
     pluginSpace: (
       <ScreenStory
         screen={chooseScreen}
@@ -1011,6 +1020,7 @@ export const ScreenInBox: Story = {
       key: "screen:looks",
       title: "How many looks to compare",
       place: "box",
+      shows: null,
     },
     pluginSpace: (
       <ScreenStory
@@ -1063,6 +1073,7 @@ export const ApproveInBox: Story = {
       key: "screen:approve",
       title: "Approve the documents",
       place: "box",
+      shows: null,
     },
     pluginSpace: (
       <ScreenStory
@@ -1200,6 +1211,126 @@ export const ScreenWaitingProjectOpen: Story = {
     await waitFor(() => expect(space()).not.toBeNull());
     await userEvent.keyboard("{Escape}");
     await waitFor(() => expect(space()).toBeNull());
+  },
+};
+
+const reviewScreen = storyScreen(
+  "@corbits-builder/designer review",
+  designer.builder.actions["review"],
+  { screen: review, view: ReviewView, data: undefined },
+);
+
+// A filed design, its plan and its mockup each a row in Files.
+const filedDesign = paneOf({
+  documents: [
+    ...(documentPane.args.documents ?? []),
+    {
+      id: "design",
+      title: "Crisp",
+      status: wording.documentStatus.drafted(1),
+      unread: false,
+      removable: false,
+    },
+  ],
+  selectedId: "design",
+  state: {
+    status: "ready",
+    document: {
+      title: "Crisp",
+      mediaType: DESIGN_MEDIA_TYPE,
+      content: JSON.stringify({ files: sampleDesign }),
+      filedAt: "2026-10-30T12:00:00.000Z",
+      version: 1,
+      sha256: "b".repeat(64),
+      before: null,
+      versions: [{ version: 1, title: "Crisp", mediaType: DESIGN_MEDIA_TYPE }],
+    },
+  },
+});
+
+/**
+ * With the design waiting for review, its mockup opens as the review, with Approve and the change
+ * controls, and the box offers no Open for what is already on the page.
+ */
+export const ReviewWaitingOverMockup: Story = {
+  args: {
+    ...withDocuments,
+    ...filedDesign,
+    documentPane: {
+      ...filedDesign.documentPane,
+      openTab: { value: MOCKUP_TAB },
+    },
+    layout: { ...withDocuments.layout, projectOpen: true },
+    waiting: { kind: "screen", title: "Review the mockup", decides: true },
+    space: {
+      key: "screen:review",
+      title: "Review the mockup",
+      place: "page",
+      shows: MOCKUP_TAB,
+    },
+    pluginSpace: (
+      <ScreenStory
+        screen={reviewScreen}
+        state="open"
+        input={{}}
+        project={{}}
+        inSpace
+      />
+    ),
+  },
+  play: async ({ canvasElement }) => {
+    await waitFor(() =>
+      expect(
+        canvasElement.querySelector('[data-slot="room-space-sheet"]'),
+      ).not.toBeNull(),
+    );
+    await expect(
+      within(canvasElement).queryByRole("button", {
+        name: wording.promptBox.waiting.openScreen,
+      }),
+    ).not.toBeInTheDocument();
+  },
+};
+
+/** Closed, the review goes back to the conversation; the mockup's row in Files opens it again. */
+export const ReviewOpensFromFiles: Story = {
+  ...ReviewWaitingOverMockup,
+  play: async ({ canvasElement }) => {
+    const sheet = () =>
+      canvasElement.querySelector('[data-slot="room-space-sheet"]');
+    const shown = await waitFor(() => {
+      const found = sheet();
+      if (!(found instanceof HTMLElement)) throw new Error("No review");
+      return found;
+    });
+    await userEvent.click(
+      within(shown).getByRole("button", {
+        name: wording.conversation.backToChat,
+      }),
+    );
+    await waitFor(() => expect(sheet()).toBeNull());
+    await expect(
+      canvasElement.querySelector('[data-slot="room-project"]'),
+    ).not.toBeVisible();
+    await userEvent.click(
+      within(canvasElement).getByTitle("Crisp design mockup"),
+    );
+    await waitFor(() => expect(sheet()).not.toBeNull());
+  },
+};
+
+/** Once the design is approved nothing waits, so its mockup opens as itself. */
+export const MockupAfterApproval: Story = {
+  args: {
+    ...ReviewWaitingOverMockup.args,
+    waiting: null,
+    space: null,
+    pluginSpace: null,
+  },
+  play: async ({ canvasElement }) => {
+    await expect(
+      canvasElement.querySelector('[data-slot="room-space-sheet"]'),
+    ).toBeNull();
   },
 };
 
