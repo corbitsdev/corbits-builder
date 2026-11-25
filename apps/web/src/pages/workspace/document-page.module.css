@@ -150,7 +150,7 @@
   pointer-events: none;
 }
 
-/* Download and Share, then the contents' toggle, in one row that stays put whether the contents
+/* The contents' toggle, then Download and Share, in one row that stays put whether the contents
    are open or folded. They never take the selection's highlight with the text around them. */
 .bar,
 .files {
@@ -160,10 +160,25 @@
   user-select: none;
 }
 
-/* Three labelled buttons overrun the column, so the toggle is its icon, named for a screen reader. */
+/* Three labelled buttons overrun the column, so the toggle is a disclosure arrow, named for a
+   screen reader: right while the list is folded, down while it is open, turning as the list moves. */
 .contentsToggle {
   padding-inline: 0;
   aspect-ratio: 1;
+}
+
+.contentsToggle > svg {
+  transition: rotate var(--duration-standard) var(--ease-out);
+}
+
+.contentsToggle[aria-expanded="true"] > svg {
+  rotate: 90deg;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .contentsToggle > svg {
+    transition: none;
+  }
 }
 
 /* Small and quiet: outlined as lightly as the prompt box, so it reads as something to press

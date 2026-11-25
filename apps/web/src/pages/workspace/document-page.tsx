@@ -4,7 +4,7 @@
  * placed beside a passage, level with it.
  */
 import { Button, useDismissablePopover } from "@corbits/react-ui";
-import { MessageSquare, TableOfContents } from "lucide-react";
+import { ChevronRight, MessageSquare } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -678,7 +678,6 @@ export function DocumentPage({
       <div className={styles.layout}>
         <div className={styles.side}>
           <div className={styles.bar}>
-            <FileActions files={files} />
             {contents.length === 0 ? null : (
               <Button
                 type="button"
@@ -691,9 +690,10 @@ export function DocumentPage({
                 aria-controls={contentsId}
                 onClick={() => setContentsOpen(!contentsOpen)}
               >
-                <TableOfContents aria-hidden="true" />
+                <ChevronRight aria-hidden="true" />
               </Button>
             )}
+            <FileActions files={files} />
           </div>
           {contents.length === 0 ? null : (
             <DocumentContents
