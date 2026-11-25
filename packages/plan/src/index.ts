@@ -141,7 +141,7 @@ export function markAnswered(
   return step;
 }
 
-/** Adds these steps at the end, or after or before the step named, at its level; a group takes only action steps. */
+/** Adds these steps at the end, or after or before the step named, at its level; a group takes only action steps. Throws when no step has that id. */
 export function insertSteps(
   steps: PlanStepWrite[],
   adding: readonly PlanStepWrite[],
@@ -158,12 +158,14 @@ export function insertSteps(
     steps.splice(at + offset, 0, ...adding);
     return;
   }
+  const group = steps.find(
+    (step): step is PlanGroupWrite =>
+      "steps" in step && step.steps.some(({ id }) => id === next),
+  );
+  if (!group) throw new Error(`No plan step has the id ${next}.`);
   const held = adding.flatMap((each) => ("steps" in each ? [] : [each]));
-  for (const step of steps) {
-    if (!("steps" in step)) continue;
-    const under = step.steps.findIndex(({ id }) => id === next);
-    if (under >= 0) step.steps.splice(under + offset, 0, ...held);
-  }
+  const under = group.steps.findIndex(({ id }) => id === next);
+  group.steps.splice(under + offset, 0, ...held);
 }
 
 /** Takes out the steps with these ids, and what they hold. */

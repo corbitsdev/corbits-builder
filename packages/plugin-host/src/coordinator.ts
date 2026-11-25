@@ -788,12 +788,12 @@ async function executing(
   const doing = stepsFor(action, checked.input, plan.steps);
   const declined = doing.find((step) => step.declined !== undefined);
   if (declined) return { refused: stepDeclined(action.name, declined.title) };
-  const asking = doing.find(awaitsGoAhead);
+  const open = doing.filter(({ finished }) => !finished);
+  const asking = open.find(awaitsGoAhead);
   if (asking) return { refused: stepAwaitsGoAhead(action.name, asking.title) };
   // A step id is a hint for tying the run to the plan, never a reason to hold work back: one that
   // names none of the steps this start would do falls back to the one of them still open. Every open
   // step it would do holds it with its gate, so another step for the same work cannot slip past one.
-  const open = doing.filter(({ finished }) => !finished);
   const stepId =
     doing.find(({ id }) => id === asked.step)?.id ??
     (open.length === 1 ? open[0]?.id : undefined);

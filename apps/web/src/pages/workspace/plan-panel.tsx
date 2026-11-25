@@ -161,9 +161,7 @@ export function StepControls({
       step.state === "needs_you");
   const mayDecline =
     declined ||
-    (step.optional === true &&
-      step.state !== "done" &&
-      step.state !== "running");
+    (step.optional === true && !step.finished && step.state !== "running");
   if (!waitingOnGo && !mayAsk && !mayDecline) return null;
   // "Ask me first" stays on a skipped step, switched off, so skipping does not change the row's
   // height.

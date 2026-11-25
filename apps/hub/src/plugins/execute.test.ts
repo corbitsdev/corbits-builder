@@ -393,6 +393,25 @@ test("a second plan step for coder build with no approval does not let the build
   expect(following.deployed).toEqual([]);
 });
 
+test("a cancelled step that asked first no longer holds back its action", async () => {
+  const cancelledAsk = project([]);
+  cancelledAsk.state.plan = [
+    {
+      id: "looks",
+      title: "Design the looks",
+      plugin: "designer",
+      action: "mockup",
+      input: {},
+      askFirst: true,
+      cancelled: { by: "person", at: new Date(0).toISOString() },
+      state: "cancelled",
+      finished: true,
+      kind: "workflow",
+    },
+  ];
+  expect((await cancelledAsk.execute(designerMockup)).isError).toBeUndefined();
+});
+
 test("designer mockup starts a designer with nothing filed, unless its build-web-app step waits on the requirements being approved", async () => {
   const alone = project([]);
   expect(
