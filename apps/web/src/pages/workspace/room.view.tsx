@@ -213,6 +213,8 @@ export type RoomContent = {
     projectOpen: boolean;
     /** The project view shows a written document, open on its page. */
     documentShown: boolean;
+    /** What a written page lies on: grey, raised as a sheet over a fade at its foot, or plain white. */
+    documentGround: "grey" | "white";
     onCloseProject: () => void;
   };
   conversation: {
@@ -262,6 +264,7 @@ export function RoomView({
     projectReady,
     projectOpen,
     documentShown,
+    documentGround,
     onCloseProject: closeProject,
   } = layout;
   const conversationRef = useRef<HTMLElement>(null);
@@ -455,6 +458,7 @@ export function RoomView({
             <div
               className={styles.page}
               data-slot="room-project"
+              data-ground={documentGround}
               hidden={!projectOpen}
             >
               <BackToChat onClose={closeProject} />

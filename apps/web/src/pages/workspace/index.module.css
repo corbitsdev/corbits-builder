@@ -299,6 +299,15 @@
   color: var(--wb-foreground);
 }
 
+/* A written page on the grey ground ends above the prompt box, which stands on the same grey. */
+.page[data-ground="grey"]:has(
+    > [data-slot="artifact-pane"]
+      [data-slot="panel-pane"][data-state="active"]
+      [data-slot="document-page"]
+  ) {
+  background: var(--wb-frame);
+}
+
 /* Over a written page it stands just beyond the page's top right corner, so it reads as closing
    the page, at the size of the page's own Download and Share. The page is 768px at the pane's middle, as the document lays it; where the pane leaves
    no room beside it, the button keeps to the corner. */

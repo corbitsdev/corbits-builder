@@ -51,6 +51,8 @@
   /* Surfaces are the page colour; the rail alone keeps the library's grey.
      Grey cards on a white canvas read as disabled panels, not content. */
   --wb-card: var(--background);
+  /* The grey a written page lies on, raised as a sheet; dark mode below. */
+  --wb-frame: var(--muted);
   --wb-canvas: color-mix(in srgb, var(--muted) 40%, var(--background));
   --wb-shadow: 0 1px 2px color-mix(in srgb, var(--foreground) 6%, transparent);
   /* What floats over the room, edged in a Bedrock Charcoal hairline; dark mode below. */
@@ -155,6 +157,7 @@ body {
 /* Night: a Pure Black ground under the theme's own page colour, edged in
    Canvas Cream, the brand's structure colour on dark. */
 :root.dark {
+  --wb-frame: #000000;
   --wb-action: #6aa0f0;
   --wb-proceed: #5cb573;
   --wb-pane-shadow: 0 0 0 1px color-mix(in srgb, #e4d5bc 12%, transparent);

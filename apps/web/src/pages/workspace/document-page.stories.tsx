@@ -150,7 +150,8 @@ const meta = {
   component: DocumentPage,
   // The written document's stories read the same document.
   excludeStories: ["PROBLEM_BRIEF"],
-  parameters: { layout: "fullscreen" },
+  // The ground the room lays a written page on, from the person's preference.
+  parameters: { layout: "fullscreen", ground: "grey" },
   args: {
     title: "Problem brief",
     files,
@@ -159,8 +160,9 @@ const meta = {
     children: body(PROBLEM_BRIEF),
   },
   decorators: [
-    (Story) => (
+    (Story, { parameters }) => (
       <div
+        data-ground={parameters.ground}
         style={{ display: "flex", flexDirection: "column", height: "100vh" }}
       >
         <Story />
@@ -174,6 +176,9 @@ type Story = StoryObj<typeof meta>;
 
 /** A filed document with two commented passages, their notes level with them in the margin. */
 export const Filed: Story = {};
+
+/** The same document on the plain white ground, with no sheet and no fade. */
+export const WhiteGround: Story = { parameters: { ground: "white" } };
 
 /** A passage in each state its comment can be in: saved, and selected while it is written. */
 export const PassageStates: Story = { args: { passages: STATES } };

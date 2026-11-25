@@ -104,6 +104,48 @@
   color: var(--wb-foreground);
 }
 
+/* The grey ground is drawn on screen only; a printed page is plain. */
+@media screen {
+  /* On the grey ground the page is a sheet of paper raised on it. On dark the ground is black, as
+     the page colour is, so the sheet takes the first raised step. */
+  [data-ground="grey"] .reader {
+    background: var(--wb-frame);
+  }
+
+  :global(.dark) [data-ground="grey"] .reader {
+    --wb-background: var(--muted);
+  }
+
+  /* The contents' open section is shaded in the ground's grey, so it lifts onto the sheet's colour
+     instead. */
+  [data-ground="grey"] .side {
+    --wb-muted: var(--wb-background);
+  }
+
+  /* Text scrolling out at the reader's foot fades into the ground. As tall as the layout's foot, so
+     once the page is scrolled to its end the fade lies on the ground below the sheet. */
+  [data-ground="grey"] .reader::after {
+    content: "";
+    position: sticky;
+    bottom: 0;
+    height: 96px;
+    flex-shrink: 0;
+    margin-top: -96px;
+    background: linear-gradient(to bottom, transparent, var(--wb-frame));
+    pointer-events: none;
+  }
+
+  /* A4 and a page tall at the least. The height is a minimum, not an aspect ratio: a sheet
+     narrowed by its max-width would hold an aspect ratio's height and let a long text run off its
+     foot. */
+  [data-ground="grey"] .sheet {
+    min-height: calc(var(--page-width) * 1.4142);
+    border-radius: 2px;
+    background: var(--wb-background);
+    box-shadow: var(--wb-pane-shadow);
+  }
+}
+
 /* The ends of the passage being written about, as a text selection's own handles are drawn: a bar
    the height of the line, its round knob above the start and below the end, in the passage's
    underline colour. Each takes a finger's width around it. */
