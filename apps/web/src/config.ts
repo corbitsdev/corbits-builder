@@ -464,6 +464,8 @@ export const wording = {
     recentProjects: "Recent projects",
     /** Beside Recent projects under the new project's prompt: the Projects page, with every project. */
     allProjects: "All projects",
+    /** The mark and name in the top left corner of the pages without a sidebar, which lead home. */
+    home: `${productName} home`,
     /** The new project page's top right corner, as a screen reader names it. */
     corner: "Workspace and account",
   },

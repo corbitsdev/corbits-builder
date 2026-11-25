@@ -220,17 +220,25 @@ export function useApp(): AppScreen {
       setFocusSeq((seq) => seq + 1);
     }
   };
-  const leaveSettings = () => {
+  const closeSettings = () => {
     const url = new URL(window.location.href);
     for (const key of ["view", "tab", "focus"]) url.searchParams.delete(key);
     window.history.replaceState(window.history.state, "", url);
     setSettingsTab(undefined);
     setFocusPreference(undefined);
+  };
+  const leaveSettings = () => {
+    closeSettings();
     setView(settingsFrom);
   };
   const navigate = (next: View) => {
-    if (next === "settings") openSettings();
-    else setView(next);
+    if (next === "settings") {
+      openSettings();
+      return;
+    }
+    // The header's mark leaves Settings too, and a reload should not open it again.
+    if (view === "settings") closeSettings();
+    setView(next);
   };
 
   const sidebar = useSidebar();

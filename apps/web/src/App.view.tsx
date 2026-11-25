@@ -69,10 +69,18 @@ export function AppView({
         {/* Floats over the page, so it stands outside the page's own column. */}
         <HubNotice hub={hub} />
         {corner ? (
-          <p className={styles.brand}>
+          <UiButton
+            type="button"
+            variant="ghost"
+            size="sm"
+            className={styles.brand}
+            aria-label={wording.shell.home}
+            aria-current={home ? "page" : undefined}
+            onClick={sidebar.onNewProject}
+          >
             <Mark size={22} />
             <span>{productName}</span>
-          </p>
+          </UiButton>
         ) : null}
         {corner ? (
           <nav className={styles.corner} aria-label={wording.shell.corner}>

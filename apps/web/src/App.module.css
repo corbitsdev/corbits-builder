@@ -51,16 +51,17 @@
 }
 
 /* Level with the corner's buttons, across the page from them. */
+/* A ghost button, like Settings across from it. Its padding comes off the left offset, so the mark
+   doesn't move. */
 .brand {
   position: absolute;
   top: var(--space-4);
-  left: var(--space-4);
+  left: var(--space-2);
   z-index: 1;
-  display: flex;
-  align-items: center;
   gap: var(--space-2);
   height: 2rem;
-  margin: 0;
+  padding-inline: var(--space-2);
+  font-size: inherit;
   font-weight: 600;
 }
 
