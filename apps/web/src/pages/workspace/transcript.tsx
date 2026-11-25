@@ -46,6 +46,7 @@ import {
   type PartTool,
   type ToolApprovalStatus,
 } from "@corbits/react-ui";
+import { Tooltip } from "@corbits/react-ui/ui/tooltip";
 import { commandLine, readStep, type Step } from "./agent-activity.tsx";
 import { DOCUMENT_LINK, Markdown } from "@corbits-builder/plugin-ui/markdown";
 import { toast } from "sonner";
@@ -507,15 +508,19 @@ function CopyAction({ text }: { text: string }) {
     setCopied(true);
     setTimeout(() => setCopied(false), COPIED_MS);
   };
+  const label = copied ? wording.message.copied : wording.message.copy;
+  // The tooltip names it; the button's own title would show a second one.
   return (
-    <MessageAction
-      label={copied ? wording.message.copied : wording.message.copy}
-      onClick={() => void copy()}
-      data-copied={copied ? "" : undefined}
-    >
-      {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
-      {copied ? wording.message.copied : wording.message.copy}
-    </MessageAction>
+    <Tooltip label={label}>
+      <MessageAction
+        label={label}
+        title={undefined}
+        onClick={() => void copy()}
+        data-copied={copied ? "" : undefined}
+      >
+        {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
+      </MessageAction>
+    </Tooltip>
   );
 }
 

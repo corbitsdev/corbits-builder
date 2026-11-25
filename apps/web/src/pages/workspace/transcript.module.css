@@ -90,19 +90,17 @@
   min-height: 2rem;
 }
 
-/* The copy action floats as a small button on the page's colour, the size of the document
-   page's file buttons. */
-.footer [data-slot="message-action"] {
-  gap: 6px;
-  height: 1.75rem;
-  width: auto;
-  padding-inline: 10px;
-  border: 1px solid var(--wb-border);
-  border-radius: var(--radius-control);
-  background: var(--wb-background);
-  box-shadow: var(--wb-shadow);
-  font-size: 0.8125rem;
-  font-weight: 500;
+/* Once the turn is done, its copy action goes at the end of the last line, in a narrow column
+   beside the words, not on a row of its own under them. */
+[data-slot="message"]:has(> .footer [data-slot="message-actions"]) {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+[data-slot="message"]:has(> .footer [data-slot="message-actions"]) > .footer {
+  grid-row: 1;
+  grid-column: 2;
+  align-self: end;
+  min-height: 0;
 }
 
 .footer [data-slot="message-action"] > svg {
