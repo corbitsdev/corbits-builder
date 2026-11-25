@@ -110,8 +110,17 @@
   );
 }
 
-/* In progress, at work or waiting on the person: half filled. */
-.step:is([data-state="running"], [data-state="needs_you"]) .circle::before {
+/* At work: a turning ring in the action blue on a pale track of the same blue. */
+.step[data-state="running"] .circle::before {
+  width: 12px;
+  height: 12px;
+  border-color: color-mix(in oklab, var(--wb-action) 22%, transparent);
+  border-top-color: var(--wb-action);
+  animation: global(spin) 900ms linear infinite;
+}
+
+/* Waiting on the person: half filled. */
+.step[data-state="needs_you"] .circle::before {
   border-color: var(--wb-foreground);
   background: linear-gradient(
     to right,
@@ -156,9 +165,42 @@
   color: var(--wb-foreground);
 }
 
+.verb {
+  flex: none;
+  font-weight: 500;
+}
+
 /* How long the step at work has run, in figures of one width so the line holds still as it
-   counts. */
+   counts. The figures carry it; their units are lighter. */
 .clock {
   flex: none;
+  color: color-mix(
+    in oklab,
+    var(--wb-muted-foreground) 70%,
+    var(--ground, var(--card))
+  );
   font-variant-numeric: tabular-nums;
+}
+
+.figure {
+  color: var(--wb-muted-foreground);
+  font-weight: 500;
+}
+
+/* The time in words, for a screen reader only. */
+.spoken {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Without motion the ring holds still with its arc at the top; the global rule would only speed
+   the turn up. */
+@media (prefers-reduced-motion: reduce) {
+  .step[data-state="running"] .circle::before {
+    animation: none;
+  }
 }

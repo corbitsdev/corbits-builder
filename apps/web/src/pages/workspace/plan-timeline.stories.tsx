@@ -301,6 +301,57 @@ export const StepStatesDark: Story = {
   globals: { mode: "dark" },
 };
 
+/** The look being designed, the given seconds in. */
+const designing = (seconds: number) => [
+  row(
+    "requirements",
+    "Write the requirements",
+    "done",
+    {},
+    made("product_requirements"),
+  ),
+  row("looks", "Choose how many looks", "done"),
+  row("design", "Design the look", "running", {}, ran(seconds)),
+  row("build_plan", "Write the build plan", "to_do"),
+  row("build", "Build the app", "to_do"),
+];
+
+/** A screen reader reads Working and the time after the running step's name. */
+const hears = (said: RegExp) => ({
+  play: async ({ canvasElement }: { canvasElement: HTMLElement }) => {
+    const step = within(canvasElement).getByRole("treeitem", {
+      name: `Design the look, ${words.stepState.running}`,
+    });
+    await expect(step).toHaveAccessibleDescription(said);
+  },
+});
+
+/**
+ * The step at work has a turning blue ring, Working in blue with a light sweep, and how long it has
+ * run: under a minute, seconds alone.
+ */
+export const RunningUnderAMinute: Story = {
+  args: { plan: designing(41) },
+  ...hears(/^Working \d+ seconds$/),
+};
+
+/** Past a minute, minutes and seconds. */
+export const RunningForMinutes: Story = {
+  args: { plan: designing(221) },
+  ...hears(/^Working 3 minutes \d+ seconds$/),
+};
+
+/** Past an hour, hours and minutes. */
+export const RunningOverAnHour: Story = {
+  args: { plan: designing(3780) },
+  ...hears(/^Working 1 hour 3 minutes$/),
+};
+
+export const RunningDark: Story = {
+  ...RunningForMinutes,
+  globals: { mode: "dark" },
+};
+
 /** A long step name is cut short with an ellipsis rather than wrapping. */
 export const LongNames: Story = {
   args: {
@@ -382,11 +433,13 @@ export const StepsBeforeTheyStart: Story = {
       }),
     ).toHaveTextContent(`Visit the market stalls${words.stepNow.skipped}`);
     await expect(canvas.queryByRole("switch", { hidden: true })).toBeNull();
-    await expect(
-      within(
-        canvas.getByRole("treeitem", { name: /^Compare approaches/ }),
-      ).getByText(/^\d+:\d{2}$/),
-    ).toBeVisible();
+    const running = canvas.getByRole("treeitem", {
+      name: /^Compare approaches/,
+    });
+    await expect(running).toHaveTextContent(/\d+m \d{2}s/);
+    await expect(running).toHaveAccessibleDescription(
+      /^Working 1 minute \d+ seconds$/,
+    );
   },
 };
 

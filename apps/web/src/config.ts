@@ -800,6 +800,38 @@ export const wording = {
     },
     elapsed: (minutes: number, seconds: number) =>
       `${String(minutes)}:${String(seconds).padStart(2, "0")}`,
+    /**
+     * How long a plan step has run, as figures and units styled apart (41s, 3m 05s, 1h 03m), and in
+     * words for a screen reader.
+     */
+    runningFor: (total: number) => {
+      const hours = Math.floor(total / 3600);
+      const minutes = Math.floor(total / 60) % 60;
+      const seconds = total % 60;
+      const two = (count: number) => String(count).padStart(2, "0");
+      const say = (count: number, unit: string) =>
+        `${String(count)} ${unit}${count === 1 ? "" : "s"}`;
+      if (hours > 0)
+        return {
+          parts: [
+            { figure: String(hours), unit: "h" },
+            { figure: two(minutes), unit: "m" },
+          ],
+          spoken: `${say(hours, "hour")} ${say(minutes, "minute")}`,
+        };
+      if (minutes > 0)
+        return {
+          parts: [
+            { figure: String(minutes), unit: "m" },
+            { figure: two(seconds), unit: "s" },
+          ],
+          spoken: `${say(minutes, "minute")} ${say(seconds, "second")}`,
+        };
+      return {
+        parts: [{ figure: String(seconds), unit: "s" }],
+        spoken: say(seconds, "second"),
+      };
+    },
   },
   design: {
     mockupTab: "Design mockup",

@@ -182,3 +182,13 @@ button.quietControl {
 .menuPanel > [role="separator"] {
   margin: 6px 4px;
 }
+
+/* ShimmerText draws its sweep from these two variables and, without motion, shows the first. */
+.working {
+  --muted-foreground: var(--wb-action);
+  --foreground: color-mix(in oklab, var(--wb-action) 45%, white);
+}
+
+.working .sweep {
+  animation-duration: 2.2s;
+}

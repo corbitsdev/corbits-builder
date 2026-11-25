@@ -14,6 +14,7 @@ import {
   wording,
   type ActivityShown,
 } from "../../config.ts";
+import { WorkingText } from "../../components.tsx";
 import { Fragment, useState, type ReactNode } from "react";
 import { Check, Copy } from "lucide-react";
 import {
@@ -35,7 +36,6 @@ import {
   MessageHeader,
   MessageParts,
   MessageSendStatus,
-  ShimmerText,
   Tool,
   ToolHeader,
   ToolInput,
@@ -489,7 +489,7 @@ function Run({ steps }: { steps: readonly ActivityStep[] }) {
 function ThinkingLine() {
   return (
     <span className={styles.thinking}>
-      <ShimmerText role="status">{wording.activity.thinkingNow}</ShimmerText>
+      <WorkingText role="status">{wording.activity.thinkingNow}</WorkingText>
     </span>
   );
 }

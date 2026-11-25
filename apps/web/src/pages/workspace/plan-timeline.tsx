@@ -5,6 +5,7 @@
  * starting with it, and Enter or Space opens what a waiting step made.
  */
 import {
+  Fragment,
   useEffect,
   useId,
   useRef,
@@ -12,8 +13,9 @@ import {
   type ComponentProps,
   type KeyboardEvent,
 } from "react";
+import { WorkingText } from "../../components.tsx";
 import { wording } from "../../config.ts";
-import { clock, useElapsedMs } from "./elapsed.tsx";
+import { useElapsedMs } from "./elapsed.tsx";
 import rowStyles from "./sidebar-row.module.css";
 import styles from "./plan-timeline.module.css";
 
@@ -235,11 +237,14 @@ function PlanRow({
     state === "declined" ? words.skipped : words.stepState[state],
     ...(pauses ? [words.pausesFirst] : []),
   ].join(", ");
+  // The row's label holds only its name and state, so Working and the time go in its description.
+  const lineId = useId();
   const line =
     state === "running" ? (
-      <span className={styles.doing}>
-        {words.stepNow.working}
-        <span aria-hidden="true">·</span>
+      <span id={lineId} className={styles.doing}>
+        <span className={styles.verb}>
+          <WorkingText>{words.stepNow.working}</WorkingText>
+        </span>
         <RunningFor since={row.startedAt} />
       </span>
     ) : state === "needs_you" ? (
@@ -254,6 +259,7 @@ function PlanRow({
       role="treeitem"
       aria-level={1}
       aria-label={said}
+      aria-describedby={state === "running" ? lineId : undefined}
       aria-current={current ? "page" : undefined}
       className={`${rowStyles.row} ${styles.step}`}
       data-state={state}
@@ -280,8 +286,25 @@ function scrollerOf(element: HTMLElement) {
   return null;
 }
 
-/** How long a step has run, as a clock that counts up each second. */
+/**
+ * How long a step has run, updated each second. Figures and units are styled apart, and a screen
+ * reader gets the time in words.
+ */
 function RunningFor({ since }: { since: string | null }) {
   const seconds = Math.floor(useElapsedMs(since) / 1000);
-  return <span className={styles.clock}>{clock(seconds)}</span>;
+  const { parts, spoken } = wording.activity.runningFor(seconds);
+  return (
+    <span className={styles.clock}>
+      <span aria-hidden="true">
+        {parts.map(({ figure, unit }, index) => (
+          <Fragment key={unit}>
+            {index > 0 ? " " : null}
+            <span className={styles.figure}>{figure}</span>
+            {unit}
+          </Fragment>
+        ))}
+      </span>
+      <span className={styles.spoken}>{spoken}</span>
+    </span>
+  );
 }

@@ -4,6 +4,7 @@ import {
   Badge,
   Button as UiButton,
   Select,
+  ShimmerText,
   StatusDot,
   type StatusDotTone,
 } from "@corbits/react-ui";
@@ -186,6 +187,29 @@ export function BannerAction({ children }: { children: ReactNode }) {
     <div className={styles.bannerAction} data-slot="banner-action">
       {children}
     </div>
+  );
+}
+
+/**
+ * Words for work under way, such as Thinking or a running step's Working: action blue with a
+ * lighter band sweeping through. Without motion they are plain action blue.
+ */
+export function WorkingText({
+  role,
+  children,
+}: {
+  role?: "status";
+  children: string;
+}) {
+  return (
+    <span className={styles.working}>
+      <ShimmerText
+        {...(role === undefined ? {} : { role })}
+        className={styles.sweep}
+      >
+        {children}
+      </ShimmerText>
+    </span>
   );
 }
 
