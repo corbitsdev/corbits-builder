@@ -270,7 +270,12 @@ export function ChatSheet({
     const active = document.activeElement;
     // Only when the control that had focus is gone, so a person typing keeps their place. A press
     // springs the sheet first, its control still in place, so the way back waits for it to settle.
-    if (active !== null && active !== document.body) {
+    // A control the sheet has hidden keeps focus until the browser next draws, so it is gone too.
+    if (
+      active !== null &&
+      active !== document.body &&
+      !(active instanceof HTMLElement && !active.checkVisibility())
+    ) {
       if (!moving) refocus.current = null;
       return;
     }
