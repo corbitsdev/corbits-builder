@@ -4,9 +4,12 @@ The pieces a plugin's screen view draws with, on the interface's own components
 and tokens, so every screen reads alike. Each is its own entry point.
 
 - `screen`: `ScreenViewProps`, the view boundary: prepared data, the draft and
-  functional draft setter, submission, outcome feedback and placement. Decision
-  views offer an answer to host controls; writer approval alone receives
-  `openDocument(kind)`. Room reply staging and page closure stay in the host.
+  functional draft setter, submission, outcome feedback and placement, and the
+  resources the host lists a screen (`ShownDocument`, `ReviewedDesign`,
+  `ChoosableConcept`). A decision's accept is declared in the screen's
+  definition, so the host draws it without the view; writer approval alone
+  receives `openDocument(kind)`. Room reply staging and page closure stay in the
+  host.
 - `screen-card`: `ScreenCard`, a question's framed card, and `ScreenSettled`,
   the one quiet line it leaves once answered.
 - `screen-actions`: `ScreenActions`, a question's row of actions with the

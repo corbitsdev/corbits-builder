@@ -20,10 +20,10 @@ const UNDER_WAY =
 const TRY_AGAIN = "Try again";
 const KEEP_YOUR_APP = "Keep your app";
 
-// What the person reads in the Publish tab and beside the plan.
+// What the person reads in the Publish tab and at the top right of the room.
 export const text = {
   tab: PUBLISH,
-  // Beside the plan, in each state of publishing.
+  // At the top right of the room, in each state of publishing.
   status: {
     unpublished: PUBLISH,
     publishing: "Publishing…",
@@ -169,10 +169,9 @@ const statusOf = ({ state, keep }: Publishing): ScreenStatus => {
 };
 
 export default defineScreen({
-  render: "plugin-bar",
+  places: { "main-pane": {}, "top-right": { status: statusOf } },
   state: publishState,
   changesAt,
-  status: statusOf,
   input: type({ "+": "reject" }),
   output: type({ "+": "reject" }),
   describe: {

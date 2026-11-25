@@ -5,7 +5,7 @@ import {
   CHECK_MS,
   WriterDocumentKind,
 } from "@corbits-builder/schemas/artifact";
-import { ScreenRender } from "@corbits-builder/schemas/project";
+import type { EntryPlace } from "@corbits-builder/schemas/project";
 import {
   CheckActionBuilder,
   guidanceText,
@@ -50,6 +50,7 @@ import {
   type OutputBudget,
   type Refused,
   type Removes,
+  placeScreen,
   type Screen,
   type ScreenStatus,
   type ProjectRead,
@@ -246,10 +247,13 @@ type KeptCheck = { ok: true; record: unknown } | { ok: false; problem: string };
 export type ScreenAction = ActionBase & {
   kind: "screen";
   builder: ScreenActionBuilder;
-  render: ScreenRender;
   state?: (project: ProjectRead) => unknown;
   changesAt?: (project: ProjectRead) => number | undefined;
-  status?: (state: unknown) => ScreenStatus | undefined;
+  // Where it stands at each place that shows it as an entry, from its state.
+  entries: readonly {
+    place: EntryPlace;
+    status: (state: unknown) => ScreenStatus | undefined;
+  }[];
   // What the view of a question with this input draws, prepared in the hub.
   fromProject?: (input: unknown, project: ProjectRead) => unknown;
   // Why this input cannot be shown, or undefined when it can.
@@ -1068,21 +1072,12 @@ function installScreen(
         ? `${name} returns facts, but its screen approves nothing`
         : `${name}'s screen approves, but its manifest returns no facts`,
     );
-  const render = ScreenRender(screen.render ?? "inline-chat");
-  if (render instanceof type.errors)
-    throw new Error(`${name}'s definition render ${render.summary}`);
   for (const part of ["state", "changesAt", "fromProject"] as const)
     if (screen[part] !== undefined && typeof screen[part] !== "function")
       throw new Error(`${name}'s definition ${part} must be a function`);
   if (screen.changesAt !== undefined && screen.state === undefined)
     throw new Error(`${name}'s definition changesAt needs a state to change`);
-  if (
-    screen.status !== undefined &&
-    (screen.state === undefined || render !== "plugin-bar")
-  )
-    throw new Error(
-      `${name}'s definition status is shown only for a plugin-bar screen with a state`,
-    );
+  const { entries } = placeScreen(name, screen);
   if (screen.fromProject !== undefined && screen.state !== undefined)
     throw new Error(
       `${name}'s definition fromProject prepares a question, which a screen with a state never asks`,
@@ -1093,7 +1088,7 @@ function installScreen(
     action,
     name,
     builder,
-    render,
+    entries,
     when: screen.describe.when,
     unless: screen.describe.unless,
     description: screen.describe.summary,
@@ -1130,7 +1125,6 @@ function installScreen(
   };
   if (screen.state) installed.state = screen.state;
   if (screen.changesAt) installed.changesAt = screen.changesAt;
-  if (screen.status) installed.status = screen.status;
   const { fromProject } = screen;
   if (fromProject)
     installed.fromProject = (input, project) =>

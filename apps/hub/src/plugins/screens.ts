@@ -105,29 +105,33 @@ export const shownScreens = (
   catalog: Catalog,
   project: ProjectRead,
 ): ShownScreen[] =>
-  catalog.shown.flatMap(
-    ({ plugin, action, render, state, changesAt, status }) => {
-      // One plugin's failing screen must not cost the person the plan and every other screen, and
-      // a failing part of a screen costs only that part.
-      const tried = <T>(part: string, run: () => T): T | undefined => {
-        try {
-          return run();
-        } catch (error) {
-          log.error(`A screen's ${part} failed`, { plugin, action, error });
-          return undefined;
-        }
-      };
-      const drawn = tried("state", () => state(project));
-      if (drawn === undefined) return [];
-      const shown: ShownScreen = { plugin, action, render, state: drawn };
-      const changes = tried("changesAt", () => changesAt?.(project));
-      if (changes !== undefined && Number.isFinite(changes))
-        shown.changesIn = Math.max(SOONEST_REREAD_MS, changes - project.now);
-      const stands = tried("status", () => status?.(drawn));
-      if (stands !== undefined) shown.status = stands;
-      return [shown];
-    },
-  );
+  catalog.shown.flatMap(({ plugin, action, state, changesAt, entries }) => {
+    // One plugin's failing screen must not cost the person the plan and every other screen, and
+    // a failing part of a screen costs only that part.
+    const tried = <T>(part: string, run: () => T): T | undefined => {
+      try {
+        return run();
+      } catch (error) {
+        log.error(`A screen's ${part} failed`, { plugin, action, error });
+        return undefined;
+      }
+    };
+    const drawn = tried("state", () => state(project));
+    if (drawn === undefined) return [];
+    const shown: ShownScreen = {
+      plugin,
+      action,
+      state: drawn,
+      entries: entries.flatMap(({ place, status }) => {
+        const stands = tried(place, () => status(drawn));
+        return stands === undefined ? [] : [{ place, status: stands }];
+      }),
+    };
+    const changes = tried("changesAt", () => changesAt?.(project));
+    if (changes !== undefined && Number.isFinite(changes))
+      shown.changesIn = Math.max(SOONEST_REREAD_MS, changes - project.now);
+    return [shown];
+  });
 
 /**
  * What the hub prepares for each question's screen that prepares from the project, open or

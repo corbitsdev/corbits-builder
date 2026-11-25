@@ -52,7 +52,7 @@ import {
 } from "@corbits-builder/schemas/artifact";
 import { toast } from "sonner";
 import { sendMessage } from "../../api/conversation.ts";
-import { inTab, pluginTabs, type SpaceScreenProps } from "./plugin-screens.tsx";
+import { pluginTabs, type SpaceScreenProps } from "./plugin-screens.tsx";
 import { useCommentDrafts, usePromptBox } from "./prompt-box.model.ts";
 import { subscribeWorkflowRun } from "../../api/run-stream.ts";
 import {
@@ -167,11 +167,10 @@ import { CommentCard } from "./comment-card.tsx";
 import { MockupFrame } from "./mockup-frame.tsx";
 import type {
   ChoosableConcept,
-  HostSupplies,
-  ListedHostProps,
   ReviewedDesign,
   ShownDocument,
-} from "./screen-question.tsx";
+} from "@corbits-builder/plugin-ui/screen";
+import type { HostSupplies, ListedHostProps } from "./screen-question.tsx";
 import { inShort } from "@corbits-builder/schemas/in-short";
 import { roleOf, screenWords } from "./roles.ts";
 import { screensFor, selectionNames } from "./screens.ts";
@@ -1772,8 +1771,10 @@ export function useRoom({
     onDecide: onDecideApproval,
     onRequestChanges: requestChanges,
     plan: snapshot.plan.steps,
-    // A screen with a tab of its own waits there, not in the space.
-    screens: snapshot.plan.screens.filter((screen) => !inTab(screen)),
+    // Only a screen with a place in the prompt box waits there.
+    screens: snapshot.plan.screens.filter((screen) =>
+      Boolean(screenOf(screen)?.placement.promptBox),
+    ),
     screenOf,
     supplies,
     projectValues,
@@ -1992,10 +1993,14 @@ export function useRoom({
             }),
         plugins: pluginScreens.tabs,
       },
-      tabStatus: pluginScreens.tabs.flatMap(({ value, label, status }) =>
-        status === undefined
-          ? []
-          : [{ ...status, tab: label, onOpen: () => openProject(value) }],
+      topRight: pluginScreens.tabs.flatMap(({ value, label, entries }) =>
+        entries
+          .filter(({ place }) => place === "top-right")
+          .map(({ status }) => ({
+            ...status,
+            tab: label,
+            onOpen: () => openProject(value),
+          })),
       ),
       paneRef: documentPaneRef,
     },

@@ -10,7 +10,7 @@
 /* A row starts at the files' left edge and stands as tall as theirs, so the files and the sections
    read as one column. */
 .row {
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
   width: 100%;
   height: var(--sidebar-row-height);
@@ -30,13 +30,4 @@
 .row:focus-visible {
   outline: 2px solid var(--wb-action);
   outline-offset: -2px;
-}
-
-.status {
-  color: var(--wb-muted-foreground);
-  font-weight: 400;
-}
-
-.status[data-tone="destructive"] {
-  color: var(--destructive);
 }

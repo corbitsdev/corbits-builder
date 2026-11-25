@@ -1,4 +1,7 @@
-import type { ScreenViewProps } from "@corbits-builder/plugin-ui/screen";
+import type {
+  ReviewedDesign,
+  ScreenViewProps,
+} from "@corbits-builder/plugin-ui/screen";
 /**
  * The mockup review: the design's mockup filling the page in the host's sandboxed frame, as the
  * design pane shows it, with a numbered pin on each place the person tagged. The pane's floating
@@ -7,8 +10,6 @@ import type { ScreenViewProps } from "@corbits-builder/plugin-ui/screen";
  * the comments back. Settles to one line in the conversation once answered.
  */
 import {
-  useEffect,
-  useMemo,
   useReducer,
   useRef,
   useState,
@@ -17,8 +18,6 @@ import {
   type Ref,
 } from "react";
 import { Info, MapPin } from "lucide-react";
-import type { Offer } from "@corbits-builder/plugin";
-import { ScreenActions } from "@corbits-builder/plugin-ui/screen-actions";
 import {
   ScreenSettled,
   ScreenSettledLine,
@@ -92,13 +91,6 @@ export type CardProps = {
   onCancel?: () => void;
   onEdit?: () => void;
   onDelete?: () => void;
-};
-
-/** The design to review, and the design option an approval of it chooses, if any. */
-export type ReviewedDesign = {
-  files: Readonly<Record<string, string>>;
-  version: number | "draft";
-  approval: { option: string } | { unavailable: string };
 };
 
 export type Host = {
@@ -280,25 +272,6 @@ export function framePins(state: Pins, shown: Place | null): FramePin[] {
     });
 }
 
-/** What the review offers the host: approving the design with the comments, or sending them back. */
-export const offerOf = (
-  { version, approval }: ReviewedDesign,
-  comments: Said[],
-): Offer<ReviewOutput> => ({
-  accept:
-    "option" in approval
-      ? {
-          output: {
-            decision: "approved",
-            version,
-            option: approval.option,
-            comments,
-          },
-        }
-      : approval,
-  sendBack: { decision: "changes", version, comments },
-});
-
 export function MockupReview(props: Props) {
   const {
     answer,
@@ -320,7 +293,6 @@ export function MockupReview(props: Props) {
       prepared={props.prepared}
       draft={props.draft}
       setDraft={props.setDraft}
-      offer={props.offer}
       design={host.design}
     />
   );
@@ -330,9 +302,8 @@ function Review({
   prepared: { input, resources: host },
   draft,
   setDraft,
-  offer,
   design,
-}: Pick<Props, "prepared" | "draft" | "setDraft" | "offer"> & {
+}: Pick<Props, "prepared" | "draft" | "setDraft"> & {
   design: ReviewedDesign;
 }) {
   const Frame = host.mockupFrame;
@@ -393,19 +364,11 @@ function Review({
     });
     redraw();
   };
-  const comments = useMemo(() => {
-    if (draft.comments === undefined) return outgoing(NO_PINS);
-    return draft.comments.filter((comment) => comment.text.trim().length > 0);
-  }, [draft.comments]);
   const pins = framePins(state, shown);
   const lastRound =
     host.earlierAnswer === undefined
       ? []
       : Output.assert(host.earlierAnswer).comments;
-
-  useEffect(() => {
-    offer?.(offerOf(design, comments));
-  }, [offer, design, comments]);
 
   const select = (pin: number) => {
     setEditing(null);
@@ -539,7 +502,6 @@ function Review({
           overlay,
         }}
       />
-      <ScreenActions />
     </section>
   );
 }

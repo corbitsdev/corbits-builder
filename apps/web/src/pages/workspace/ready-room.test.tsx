@@ -131,7 +131,6 @@ describe("project room", () => {
           {
             plugin: "keeper",
             action: "kept",
-            render: "plugin-bar",
             state: { link: "https://keep.example/secret-link" },
           },
         ],

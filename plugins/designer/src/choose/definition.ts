@@ -2,7 +2,10 @@ import { defineScreen } from "@corbits-builder/plugin";
 import { Input, Output } from "./schema.ts";
 
 export default defineScreen({
-  render: "main-page",
+  places: {
+    "main-pane": {},
+    "prompt-box": { size: "sm", reply: "Or request a different design…" },
+  },
   input: Input,
   output: Output,
   // The host draws a screen once it is prepared; this one needs nothing past its input.
@@ -11,7 +14,6 @@ export default defineScreen({
     says: {
       label: () => "Choose a look",
       chose: (output) => `Chose ${output.concept}`,
-      reply: "Or request a different design…",
     },
     summary:
       "Opens the filed design concepts side by side over the whole page, where the person tries each one, picks the one they want and may comment on any of them. Builder shows every filed concept itself; do not pass them. The answer is { concept, version, comments }, and Builder has then filed the chosen concept's option as the design; each comment names the concept it is about.",

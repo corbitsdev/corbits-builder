@@ -145,8 +145,8 @@ test("a screen is listed, with its state, only while its state returns one, and 
     {
       plugin: "tester",
       action: "notes",
-      render: "plugin-bar",
       state: { notes: "Try the save button" },
+      entries: [],
     },
   ]);
   const failing = await loadCatalog(
@@ -155,7 +155,7 @@ test("a screen is listed, with its state, only while its state returns one, and 
       tester(
         "./src/notes/definition.ts",
         defineScreen({
-          render: "plugin-bar",
+          places: { "main-pane": {} },
           state: () => {
             throw new Error("the notes screen broke");
           },
@@ -173,6 +173,127 @@ test("a screen is listed, with its state, only while its state returns one, and 
     HOST,
   );
   expect(shown(failing, { "tester.notes": "Try the save button" })).toEqual([]);
+});
+
+test("a screen's entries each say where it stands at their own place", async () => {
+  const entered = await loadCatalog(
+    [
+      ...installed,
+      tester(
+        "./src/notes/definition.ts",
+        defineScreen({
+          places: {
+            "main-pane": {},
+            "top-right": { status: () => ({ label: "Noted" }) },
+          },
+          state: (project) => project.value("tester.notes") ?? undefined,
+          input: type({ "+": "reject" }),
+          output: type({ "+": "reject" }),
+          describe: {
+            summary: "Shows the note.",
+            when: "There is one.",
+            unless: "There is none.",
+            fields: {},
+          },
+        }),
+      ),
+    ],
+    HOST,
+  );
+  expect(
+    shownScreens(entered, projectRead(entered, read({ "tester.notes": "Hi" }))),
+  ).toEqual([
+    {
+      plugin: "tester",
+      action: "notes",
+      state: "Hi",
+      entries: [{ place: "top-right", status: { label: "Noted" } }],
+    },
+  ]);
+});
+
+test("the hub refuses a screen written to the contract before places", async () => {
+  const old = loadCatalog(
+    [
+      ...installed,
+      tester("./src/notes/definition.ts", {
+        render: "plugin-bar",
+        state: () => ({ notes: "Hi" }),
+        input: type({ "+": "reject" }),
+        output: type({ "+": "reject" }),
+        describe: {
+          summary: "Shows the note.",
+          when: "There is one.",
+          unless: "There is none.",
+          fields: {},
+        },
+      }),
+    ],
+    HOST,
+  );
+  await expect(old).rejects.toThrow(
+    "tester notes's definition render now goes under places",
+  );
+});
+
+test("the hub refuses a screen placed where the room cannot draw it", async () => {
+  const status = () => ({ label: "Noted" });
+  const state = () => ({ notes: "Hi" });
+  const refused = [
+    { places: {}, message: "places the screen nowhere" },
+    { places: { "main-pane": {} }, message: "but places none there" },
+    {
+      places: { "prompt-box": { size: "sm" } },
+      message: "so its view needs a main-pane",
+    },
+    {
+      places: { "main-pane": {}, "prompt-box": { size: "md" } },
+      message: "in the main pane and as a card in the prompt box",
+    },
+    {
+      places: { sidebar: {} },
+      message: "places sidebar, which is not a place",
+    },
+    {
+      places: { "top-right": { status } },
+      state,
+      message: "so it needs a state and a main-pane",
+    },
+    { says: { reply: "Say it." }, message: "says.reply is now" },
+    {
+      places: {
+        "prompt-box": { size: "md", decision: { accept: "Yes", offer: "yes" } },
+      },
+      message: "decision offer must be a function",
+    },
+    {
+      places: { "main-pane": {}, "prompt-box": { size: "sm" } },
+      state,
+      message: "prompt-box size sm draws a question's decision",
+    },
+  ];
+  for (const { places, state, says, message } of refused)
+    await expect(
+      loadCatalog(
+        [
+          ...installed,
+          tester("./src/notes/definition.ts", {
+            places,
+            state,
+            input: type({ "+": "reject" }),
+            output: type({ "+": "reject" }),
+            describe: {
+              summary: "Shows the note.",
+              when: "There is one.",
+              unless: "There is none.",
+              fields: {},
+              says,
+            },
+          }),
+        ],
+        HOST,
+      ),
+    ).rejects.toThrow(message);
 });
 
 test("a screen reads each plan step's id and title", () => {

@@ -39,7 +39,7 @@ import {
   type DispatchRoom,
 } from "./dispatch-card.tsx";
 import { humanFault } from "./human-fault.ts";
-import { SLOT, type SpaceScreenProps } from "./plugin-screens.tsx";
+import type { SpaceScreenProps } from "./plugin-screens.tsx";
 import { screenWords } from "./roles.ts";
 import { roomStatus, type RoomStatusFacts } from "./room-status.ts";
 import type { BoxWaiting } from "./room.view.tsx";
@@ -265,16 +265,12 @@ export function usePromptBox(room: PromptBoxRoom): PromptBox {
           (screen) =>
             screen.plugin === first.plugin && screen.action === first.action,
         );
-  // A plugin draws a screen for the page or for the conversation. One for the page opens beside the
-  // room; any other is answered in the box, so it waits there until it is the box's card.
-  const place: "page" | "box" =
-    first?.from === "question"
-      ? questionScreen !== undefined && screenOf(questionScreen)?.page === true
-        ? "page"
-        : "box"
-      : shown !== undefined && SLOT[shown.render] === "page"
-        ? "page"
-        : "box";
+  // A screen in the main pane opens beside the room; any other is answered in the box, so it waits
+  // there until it is the box's card.
+  const firstScreen = first?.from === "question" ? questionScreen : shown;
+  const installed =
+    firstScreen === undefined ? undefined : screenOf(firstScreen);
+  const place = installed?.placement.mainPane ? "page" : "box";
   const held =
     first !== undefined && place === "box" && card?.key !== first.key;
   const spaceScreen = ((): SpaceScreenProps | null => {

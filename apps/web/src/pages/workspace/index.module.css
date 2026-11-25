@@ -30,29 +30,6 @@
   isolation: isolate;
 }
 
-/* Above the turns, the plugin tabs' controls at the end: no bar of its own, no hairline, only the
-   page with buttons in its corner. Without a control, there is nothing. */
-.top {
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-  min-width: 0;
-  min-height: 2.75rem;
-  padding-inline-end: var(--space-2);
-}
-
-.top:empty {
-  display: none;
-}
-
-.controls {
-  display: flex;
-  flex: none;
-  align-items: center;
-  gap: var(--space-1);
-  margin-inline-start: auto;
-}
-
 /* Quiet like the project view's bar: muted until hovered. */
 .control {
   color: var(--wb-muted-foreground);
@@ -149,12 +126,6 @@
 }
 
 /* In the prompt box, one quiet line just above the words it is about: no band, no rule under it. */
-/* What waits in the box, as its panel lays it; kept mounted while hidden so its buttons stay in the
-   row. */
-.card:not([hidden]) {
-  display: contents;
-}
-
 .restarts {
   display: flex;
   align-items: center;

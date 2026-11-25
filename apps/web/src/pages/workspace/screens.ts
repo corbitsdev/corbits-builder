@@ -8,11 +8,12 @@ import type { ScreenViewProps } from "@corbits-builder/plugin-ui/screen";
 import type { ComponentType } from "react";
 import {
   isScreen,
+  placeScreen,
   ScreenActionBuilder,
   SpecialistBuilder,
+  type ScreenPlacement,
 } from "@corbits-builder/plugin";
 import { byAction, pluginFolder } from "./roles.ts";
-import { SLOT } from "./plugin-screens.tsx";
 import {
   listedHost,
   screenHost,
@@ -35,8 +36,7 @@ export type ScreenFiles = {
 type Installed = {
   host: ComponentType<ScreenHostProps>;
   listed: ComponentType<ListedHostProps>;
-  /** The plugin draws it for the page, so it opens beside the room; any other answers in the box. */
-  page: boolean;
+  placement: ScreenPlacement<unknown, unknown, unknown, unknown>;
 };
 
 let installed: ReadonlyMap<string, Installed> = new Map();
@@ -111,9 +111,12 @@ export function installScreens({
           }
           const host = screenHost(name, declared, { screen, view, data });
           const listed = listedHost(name, handle, view);
-          const page =
-            screen.render !== undefined && SLOT[screen.render] === "page";
-          return [[name, { host, listed, page }] as const];
+          return [
+            [
+              name,
+              { host, listed, placement: placeScreen(name, screen) },
+            ] as const,
+          ];
         });
       },
     ),

@@ -4,7 +4,13 @@
  * of buttons; a screen in the plugin space beside the box hands over its row and its forward action
  * alike, whichever it draws, so the box keeps the one main action.
  */
-import { useCallback, useMemo, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import { createPortal } from "react-dom";
 import {
   ActionsSlot,
@@ -13,6 +19,12 @@ import {
   PromptSend,
   type PromptTake,
 } from "@corbits-builder/plugin-ui/screen-actions";
+
+/**
+ * The room already shows what the screen waiting in the box is about, such as the document it asks
+ * to approve, so the box holds only the screen's decision.
+ */
+export const ActionOnly = createContext(false);
 
 export type BoxPorts = {
   /** The typing row's slot, once the box has drawn it. */

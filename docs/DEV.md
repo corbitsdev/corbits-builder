@@ -392,25 +392,49 @@ values its answer saves, each a function of the answer that returns the value
 (any JSON for a `json` value, text for a `text` one, `null` to clear it, or
 `undefined` to leave it as it is); `approves`, the documents it approves at the version
 shown; `validate`, the fields of a well-typed input it still cannot show;
-`data`, the schema of a `data.json` it ships; `decision`, when its answer is
-to accept or send back; and `render: "main-page"` to open over the whole room.
-Its manifest entry may say what it `requires`, the values it `reads`, the facts
-its answer `returns`, and what the interface itself supplies it under `host`.
+`data`, the schema of a `data.json` it ships; and `places`, where in the room
+it shows. Its manifest entry may say what it `requires`, the values it `reads`,
+the facts its answer `returns`, and what the interface itself supplies it under
+`host`.
+
+`places` lists each place the screen fills, each with what it needs there, and
+the room draws exactly those. A definition without a `places` field shows as a
+card in the prompt box, as `hand-over` does; the hub refuses `places: {}`, and
+a screen that asks a question always has a `prompt-box`. The places share only
+the draft and the prepared input:
+
+- `main-pane`: the view over the room's main pane, opened from the prompt box
+  for a question, or from its entry for a screen shown on its own.
+- `prompt-box`: `size: "md"` draws the view as a card in the box; `size: "sm"`
+  draws only its decision's controls, so it needs a `main-pane` for the view
+  and is refused on a screen with a `state`, which asks no question.
+  `reply` is what the box asks while the screen waits. `decision`, when
+  the answer is to accept or send back, names accept and, optionally,
+  `sendBack`, and declares `offer`: a pure function from the input, what was
+  prepared, the resources the host supplies and the draft to what accepting
+  and sending back answer, or why it cannot be accepted yet. The host works it
+  out and draws the controls without the view.
+- `top-right`: an action at the top right of the room. It declares `status`,
+  which says from the screen's state where it stands, and opens the screen's
+  main pane. It needs a `state` and a `main-pane`.
+
+The designer's review fills `main-pane` and `prompt-box` at `sm`, so the
+mockup covers the page and Approve stands in the box.
 
 A screen may instead show on its own, with no question: its definition's
 `state` runs in the hub each time a person reads the plan and returns what the
-view draws, or `undefined` while it should not show. `render` says where:
-`"plugin-bar"` as a tab of the project view, `"main-page"` over the room, or
-`"inline-chat"` after the conversation. `state` reads the project as
+view draws, or `undefined` while it should not show. Its `main-pane` is a tab
+of the project view; without a `places` field it is a card in the prompt box. `state`
+reads the project as
 `ProjectRead`: its values (a private one only for someone who may manage the
 project), facts, plan steps and the ready-made plans on the plan, the hub's
 time, the saved app's version, whether the coordinator is mid-turn, the
 coordinator's runs, the screens of open questions, and the ready-made plans a
 group lists. `changesAt` says when the clock alone next changes the state, and
 the room reads it again then. The browser never saves the state. A
-`"plugin-bar"` screen's `status`, also run in the hub, says from its state where
-it stands in a word or two, which the room shows beside the plan and opens the
-tab from. The view runs
+`top-right` entry's `status`, also run in the hub, says from its state where it
+stands in a word or two, which the room shows at that place and opens the tab
+from. The view runs
 its plugin's actions through `act`; a task (`defineTask`) runs in the hub on
 that press, saves the values it `writes`, and may tell the coordinator a note.
 
