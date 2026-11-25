@@ -65,7 +65,7 @@ export function ProjectSidebarView({
           onPreferences={onPreferences}
         />
       }
-      top={<PlanTimeline {...plan} />}
+      top={plan.plan.length === 0 ? null : <PlanTimeline {...plan} />}
       bottom={
         <>
           {files === undefined ? null : <FilesList {...files} />}

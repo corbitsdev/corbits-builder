@@ -13,15 +13,6 @@
   line-height: var(--text-sm--line-height);
 }
 
-/* No plan yet: one quiet line where the steps will be. */
-.empty {
-  margin: 0;
-  padding: 0 var(--space-2);
-  color: var(--wb-muted-foreground);
-  font-size: var(--text-sm);
-  line-height: var(--text-sm--line-height);
-}
-
 .tree {
   margin: 0;
   padding: 0;

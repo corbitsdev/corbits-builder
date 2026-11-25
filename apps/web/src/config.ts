@@ -485,8 +485,6 @@ export const wording = {
     },
     /** The heading over the plan's steps in the open sidebar. */
     plan: "Plan",
-    /** Under the heading while the project has no plan. */
-    noPlan: "No plan yet. Its steps will show here.",
     /** Under a step's name, where it stands; a running one's line starts with how long it has run. */
     stepNow: {
       working: "Working",

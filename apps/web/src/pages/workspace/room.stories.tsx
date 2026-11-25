@@ -284,7 +284,7 @@ export const CoordinatorPlan: Story = {
 
 /**
  * A request too small to plan, such as a change of font: the coordinator saved no plan, so the
- * sidebar makes up no row and says only that there is no plan yet.
+ * sidebar shows no plan at all.
  */
 export const NoPlan: Story = {
   args: { sidebar: sidebarOf({}, []) },

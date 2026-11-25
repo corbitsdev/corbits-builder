@@ -123,14 +123,6 @@ export function PlanTimeline({
     resized.observe(scroller);
     return () => resized.disconnect();
   }, [hereId]);
-  // With no plan yet, the place the steps will take says so, rather than standing empty.
-  if (plan.length === 0)
-    return (
-      <section className={styles.plan}>
-        <h2 className={styles.head}>{words.plan}</h2>
-        <p className={styles.empty}>{words.noPlan}</p>
-      </section>
-    );
   const onKeyDown = (event: KeyboardEvent<HTMLUListElement>) => {
     // The step the key was pressed on, which is the tab stop unless focus got there unannounced.
     const on =
