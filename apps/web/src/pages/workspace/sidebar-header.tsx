@@ -14,14 +14,12 @@ import {
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import {
   Menu,
-  MenuContent,
   MenuItem,
   MenuSeparator,
   MenuTrigger,
 } from "@corbits/react-ui/ui/menu";
 import { wording } from "../../config.ts";
-import { Mark } from "../../components.jsx";
-import menuStyles from "../project-menu.module.css";
+import { Mark, MenuPanel } from "../../components.jsx";
 import styles from "./sidebar-header.module.css";
 
 const words = wording.projectShell;
@@ -123,18 +121,13 @@ export function SidebarHeader({
             <Mark size={28} />
           </button>
         </MenuTrigger>
-        <MenuContent
-          className={menuStyles.menu}
-          side="bottom"
-          align="start"
-          {...placement}
-        >
+        <MenuPanel side="bottom" align="start" {...placement}>
           <MenuItem onSelect={onHome}>{words.backToProjects}</MenuItem>
           <MenuSeparator />
           <MenuItem onSelect={onPreferences}>
             {wording.settings.tab.preferences}
           </MenuItem>
-        </MenuContent>
+        </MenuPanel>
       </Menu>
       {titleMenu === undefined ? (
         <span className={styles.project}>{title}</span>

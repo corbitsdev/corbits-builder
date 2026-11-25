@@ -165,3 +165,20 @@ button.quietControl {
   outline: 2px solid var(--wb-ring);
   outline-offset: 2px;
 }
+
+.menuPanel {
+  min-width: 14rem;
+  padding: 6px;
+  border-radius: var(--radius-lg);
+  box-shadow:
+    var(--wb-pane-shadow),
+    0 8px 24px rgb(0 0 0 / 0.16);
+}
+
+.menuPanel > [role="menuitem"] {
+  padding: 8px 10px;
+}
+
+.menuPanel > [role="separator"] {
+  margin: 6px 4px;
+}

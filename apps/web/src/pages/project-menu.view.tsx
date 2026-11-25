@@ -15,14 +15,18 @@ import {
 } from "@corbits/react-ui/ui/dialog";
 import {
   Menu,
-  MenuContent,
   MenuItem,
   MenuSeparator,
   MenuTrigger,
 } from "@corbits/react-ui/ui/menu";
 import { useId, useState, type ReactElement, type ReactNode } from "react";
-import { Button, DangerMenuItem, Fault, Field } from "../components.jsx";
-import styles from "./project-menu.module.css";
+import {
+  Button,
+  DangerMenuItem,
+  Fault,
+  Field,
+  MenuPanel,
+} from "../components.jsx";
 
 export type ProjectMenuViewProps = {
   /** The element that opens the menu: the rail row's ellipsis, the top bar's title. */
@@ -74,12 +78,7 @@ export function ProjectMenuView({
         }}
       >
         <MenuTrigger asChild>{trigger}</MenuTrigger>
-        <MenuContent
-          className={styles.menu}
-          side={side}
-          align={align}
-          sideOffset={sideOffset}
-        >
+        <MenuPanel side={side} align={align} sideOffset={sideOffset}>
           <MenuItem onSelect={onRename}>Rename</MenuItem>
           <MenuSeparator />
           <MenuItem onSelect={onExport}>Export</MenuItem>
@@ -120,7 +119,7 @@ export function ProjectMenuView({
               Delete…
             </DangerMenuItem>
           )}
-        </MenuContent>
+        </MenuPanel>
       </Menu>
       {renameDialog === null ? null : (
         // Portaled, but React-nested in the host: its events bubble to a

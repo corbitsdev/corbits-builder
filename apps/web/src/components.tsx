@@ -7,7 +7,7 @@ import {
   StatusDot,
   type StatusDotTone,
 } from "@corbits/react-ui";
-import { MenuItem } from "@corbits/react-ui/ui/menu";
+import { MenuContent, MenuItem } from "@corbits/react-ui/ui/menu";
 import corbitsMark from "./assets/corbits-mark.svg";
 import { wording } from "./config.ts";
 import styles from "./components.module.css";
@@ -248,6 +248,19 @@ export function Field({ children }: { children: ReactNode }) {
     <div className={styles.field} data-slot="field">
       {children}
     </div>
+  );
+}
+
+/** A menu's panel as the room draws it: roomy, in groups, lifted like the room's cards. */
+export function MenuPanel(
+  props: Omit<ComponentProps<typeof MenuContent>, "className">,
+) {
+  return (
+    <MenuContent
+      {...props}
+      className={styles.menuPanel}
+      data-slot="menu-panel"
+    />
   );
 }
 
