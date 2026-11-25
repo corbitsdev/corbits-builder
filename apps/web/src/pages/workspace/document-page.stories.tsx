@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { DocumentView } from "@corbits-builder/plugin-ui/markdown";
 import { Download, Share2 } from "lucide-react";
-import { fn } from "storybook/test";
+import { expect, fn, userEvent, within } from "storybook/test";
 import { wording } from "../../config.ts";
 import {
   DocumentPage,
@@ -224,6 +224,17 @@ export const LongScrolled: Story = {
       '[data-slot="document-page"]',
     );
     reader?.scrollTo({ top: 700 });
+  },
+};
+
+/** The toggle beside Download and Share folds the contents away, and its chevron turns with it. */
+export const ContentsFolded: Story = {
+  play: async ({ canvasElement }) => {
+    const toggle = within(canvasElement).getByRole("button", {
+      name: wording.documentViewer.contentsToggle,
+    });
+    await userEvent.click(toggle);
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
   },
 };
 

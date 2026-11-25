@@ -624,31 +624,13 @@ export const DrawingTheDesign: Story = {
 };
 
 const appArgs = paneOf(appAndManual.args);
-const appSidebar = (state: OutlineAppState) =>
-  sidebarOf(appArgs.documentPane, planning.plan, state);
 
-/** The app runs as the hub keeps it while the project is open; Live opens it. */
+/** The app is up with the hub keeping it while the project is open; the sidebar's Preview row opens it. */
 export const AppRunning: Story = {
   args: {
     ...withDocuments,
     ...appArgs,
-    sidebar: appSidebar("running"),
-  },
-};
-
-export const AppStopped: Story = {
-  args: {
-    ...withDocuments,
-    ...appArgs,
-    sidebar: appSidebar("stopped"),
-  },
-};
-
-export const AppFailed: Story = {
-  args: {
-    ...withDocuments,
-    ...appArgs,
-    sidebar: appSidebar("failed"),
+    sidebar: sidebarOf(appArgs.documentPane, planning.plan, "running"),
   },
 };
 

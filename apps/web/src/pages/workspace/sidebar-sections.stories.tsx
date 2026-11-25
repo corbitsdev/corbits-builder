@@ -1,24 +1,20 @@
 import { useState } from "react";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, userEvent, within } from "storybook/test";
+import { wording } from "../../config.ts";
 import {
   SidebarSections,
   type SidebarSection,
   type SidebarSectionsProps,
 } from "./sidebar-sections.tsx";
+import { LIVE_TAB } from "./tab-follow.ts";
 
-/** A section as the page would pass it, not on the page. */
-const section = (
-  id: string,
-  label: string,
-  status: string,
-  tone?: "destructive",
-): SidebarSection => ({ id, label, status, tone, selected: false });
-
-export const preview = (status: string, tone?: "destructive") =>
-  section("preview", "Preview", status, tone);
-export const publish = (status: string) =>
-  section("publish", "Publish", status);
+/** The room's one section, as it passes it once there is an app: the preview, not on the page. */
+export const preview: SidebarSection = {
+  id: LIVE_TAB,
+  label: wording.projectShell.preview,
+  selected: false,
+};
 
 // Holds what the page would: the section pressed last is the one on the page, so it is marked.
 function Clickable(args: SidebarSectionsProps) {
@@ -43,7 +39,7 @@ const meta = {
   title: "Screens/Workspace/ProjectSidebar/Sections",
   component: SidebarSections,
   args: {
-    sections: [preview("Running"), publish("Live")],
+    sections: [preview],
     onOpen: fn(),
   },
   render: (args) => (
@@ -62,33 +58,16 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** A finished project: the preview runs and the app is live. A pressed row is marked. */
-export const Finished: Story = {
+/** The Preview row opens the app; once pressed, it is marked as the page. */
+export const Default: Story = {
   play: async ({ args, canvasElement }) => {
-    const row = within(canvasElement).getByRole("button", { name: /^Publish/ });
+    const row = within(canvasElement).getByRole("button", {
+      name: wording.projectShell.preview,
+    });
     await userEvent.click(row);
-    await expect(args.onOpen).toHaveBeenCalledWith("publish");
+    await expect(args.onOpen).toHaveBeenCalledWith(LIVE_TAB);
     await expect(row).toHaveAttribute("aria-current", "page");
   },
 };
 
-export const FinishedDark: Story = { globals: { mode: "dark" } };
-
-/** A new project: nothing built yet, and no Publish row until there is something to publish. */
-export const New: Story = { args: { sections: [preview("Not built")] } };
-
-/** The preview could not start: its word is in the destructive colour. */
-export const PreviewFailed: Story = {
-  args: {
-    sections: [preview("Failed", "destructive"), publish("Not published")],
-  },
-};
-
-/** Every state the preview takes, one row each. */
-export const PreviewStates: Story = {
-  args: {
-    sections: ["Not built", "Starting", "Running", "Stopped"].map((status) =>
-      section(`preview-${status}`, "Preview", status),
-    ),
-  },
-};
+export const Dark: Story = { globals: { mode: "dark" } };

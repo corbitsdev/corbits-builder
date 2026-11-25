@@ -5,7 +5,6 @@ import type { FilesListProps } from "./files-list.tsx";
 import {
   finishedFiles,
   largeFiles,
-  longNamedFiles,
   smallFiles,
 } from "./files-list.stories.tsx";
 import { building, planning, ran, row } from "./plan-timeline.stories.tsx";
@@ -14,7 +13,7 @@ import {
   type ProjectSidebarViewProps,
 } from "./project-sidebar.view.tsx";
 import type { SidebarSectionsProps } from "./sidebar-sections.tsx";
-import { preview, publish } from "./sidebar-sections.stories.tsx";
+import { preview } from "./sidebar-sections.stories.tsx";
 import { wording } from "../../config.ts";
 
 const words = wording.projectShell;
@@ -147,30 +146,27 @@ const foot = (
   ...sections: SidebarSectionsProps["sections"]
 ): SidebarSectionsProps => ({ sections, onOpen: fn() });
 
-/** A new project: no files yet, so no Files group, and an app not built with nothing to publish. */
+/** A new project: no files yet, so no Files group, and no app, so no Preview row. */
 export const FilesNone: Story = {
-  args: { files: listed([]), sections: foot(preview("Not built")) },
+  args: { files: listed([]) },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(
       canvas.queryByRole("button", { name: words.files }),
     ).toBeNull();
-    await expect(canvas.queryByRole("button", { name: /^Publish/ })).toBeNull();
+    await expect(
+      canvas.queryByRole("button", { name: words.preview }),
+    ).toBeNull();
   },
 };
 
-/** A small project: its first files under the plan, the sections at the foot. */
-export const FilesSmall: Story = {
-  args: {
-    files: listed(smallFiles),
-    sections: foot(preview("Not built"), publish("Not published")),
-  },
-};
+/** A small project: its first files under the plan, and no app yet. */
+export const FilesSmall: Story = { args: { files: listed(smallFiles) } };
 
 const finishedArgs = {
   plan: { ...plan(building), waitsOn: "build_plan" },
   files: listed(finishedFiles, "build_plan"),
-  sections: foot(preview("Running"), publish("Live")),
+  sections: foot(preview),
 } satisfies Partial<ProjectSidebarViewProps>;
 
 /**
@@ -201,15 +197,21 @@ export const FilesFinishedDark: Story = {
   globals: { mode: "dark" },
 };
 
+// The room lists the filed documents one by one, so the folders and uploads of the files list's own
+// stories are not here.
+const manyDocuments = largeFiles
+  .slice(0, 8)
+  .flatMap((each) => (each.opens === null ? each.files : [each]));
+
 /**
- * A large project: the Files group starts folded; opened, it scrolls inside itself while the plan
- * above and the sections at the foot stay put.
+ * A project with many documents: the Files group starts folded; opened, it scrolls inside itself
+ * while the plan above and the Preview row at the foot stay put.
  */
 export const FilesLarge: Story = {
   args: {
     ...buildingArgs,
-    files: listed(largeFiles),
-    sections: foot(preview("Failed", "destructive"), publish("Not published")),
+    files: listed(manyDocuments),
+    sections: foot(preview),
   },
   play: async ({ canvasElement }) => {
     await userEvent.click(
@@ -218,15 +220,6 @@ export const FilesLarge: Story = {
         expanded: false,
       }),
     );
-  },
-};
-
-/** Long file and folder names are cut short with an ellipsis, nested ones too. */
-export const FilesLongNames: Story = {
-  args: {
-    ...buildingArgs,
-    files: listed(longNamedFiles),
-    sections: foot(preview("Running"), publish("Live")),
   },
 };
 

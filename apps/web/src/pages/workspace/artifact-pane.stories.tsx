@@ -32,7 +32,7 @@ const brief: PaneDocument = {
   removable: false,
 };
 
-// Filed since the person last looked, so its tab is marked.
+// Filed since the person last looked; opening it marks it seen.
 const requirements: PaneDocument = {
   id: "product_requirements",
   title: "Product requirements",

@@ -75,7 +75,14 @@ button {
   color: #fff;
 }`;
 
-const PLAN = `# Bakery orders
+const PLAN = `---
+name: "Bakery orders"
+colors:
+  background: "#fbf8f3"
+  primary: "#d9622b"
+---
+
+# Bakery orders
 
 ## Look
 
