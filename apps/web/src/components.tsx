@@ -1,3 +1,4 @@
+import { clsx } from "clsx";
 import { Fragment, type ComponentProps, type ReactNode } from "react";
 import { Loader2 } from "lucide-react";
 import {
@@ -112,7 +113,9 @@ export function Button({
   type = "button",
   ...rest
 }: {
+  /** `action` is the primary fill in the workspace's action blue rather than the library's orange. */
   variant?:
+    | "action"
     | "primary"
     | "secondary"
     | "outline"
@@ -136,8 +139,11 @@ export function Button({
   return (
     <UiButton
       type={type}
-      variant={variant}
-      className={block ? "w-full" : undefined}
+      variant={variant === "action" ? "primary" : variant}
+      className={clsx(
+        block && "w-full",
+        variant === "action" && styles.actionButton,
+      )}
       disabled={inert}
       aria-busy={loading}
       onClick={inert ? undefined : onClick}

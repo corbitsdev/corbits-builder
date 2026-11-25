@@ -128,6 +128,15 @@
   gap: var(--space-3);
 }
 
+.actionButton {
+  background: var(--wb-action);
+  color: var(--wb-action-foreground);
+}
+
+.actionButton:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--wb-action) 85%, var(--wb-foreground));
+}
+
 /* The one look for every select and menu trigger: borderless quiet text
    that underlines on hover. */
 .quietControl {

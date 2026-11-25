@@ -255,7 +255,7 @@ export function RenameDialogView({
             {wording.action.cancel}
           </Button>
           <Button
-            variant="primary"
+            variant="action"
             loading={saving}
             disabled={!canSave}
             onClick={onSave}
