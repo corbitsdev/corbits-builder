@@ -146,33 +146,37 @@ export function markAnswered(
 
 // ---- Changing a plan's steps ----
 
-/** The steps with these added at the end, or after or before the step named, at its level; a group takes only action steps. */
+/** Adds these steps at the end, or after or before the step named, at its level; a group takes only action steps. */
 export function insertSteps(
   steps: PlanStepWrite[],
   adding: readonly PlanStepWrite[],
   { after, before }: { after?: string; before?: string },
 ) {
   const next = after ?? before;
-  if (next === undefined) return [...steps, ...adding];
+  if (next === undefined) {
+    steps.push(...adding);
+    return;
+  }
   const offset = after === undefined ? 0 : 1;
   const at = steps.findIndex(({ id }) => id === next);
-  if (at >= 0) return steps.toSpliced(at + offset, 0, ...adding);
+  if (at >= 0) {
+    steps.splice(at + offset, 0, ...adding);
+    return;
+  }
   const held = adding.flatMap((each) => ("steps" in each ? [] : [each]));
   for (const step of steps) {
     if (!("steps" in step)) continue;
     const under = step.steps.findIndex(({ id }) => id === next);
-    if (under >= 0)
-      step.steps = step.steps.toSpliced(under + offset, 0, ...held);
+    if (under >= 0) step.steps.splice(under + offset, 0, ...held);
   }
-  return steps;
 }
 
-/** The steps without those with these ids, nor what they hold. */
+/** Takes out the steps with these ids, and what they hold. */
 export function removeSteps(steps: PlanStepWrite[], ids: readonly string[]) {
   const kept = ({ id }: PlanStepWrite) => id === undefined || !ids.includes(id);
   for (const step of steps)
     if ("steps" in step) step.steps = step.steps.filter(kept);
-  return steps.filter(kept);
+  steps.splice(0, steps.length, ...steps.filter(kept));
 }
 
 // ---- Converting a step between its forms ----

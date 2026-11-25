@@ -1405,11 +1405,9 @@ export async function managePlan(
     const adding = readyPlan ? [readyPlanStep(readyPlan)] : steps;
     const wrongIds = planIdProblems(asked, saved, adding);
     if (wrongIds.length > 0) return wrongPlanCall(catalog, wrongIds);
-    const current = saved.map(toWriteStep);
-    steps =
-      asked.operation === "add"
-        ? insertSteps(current, adding, asked)
-        : removeSteps(current, asked.stepIds ?? []);
+    steps = saved.map(toWriteStep);
+    if (asked.operation === "add") insertSteps(steps, adding, asked);
+    else removeSteps(steps, asked.stepIds ?? []);
   }
   const refused = planRefusal(catalog, steps);
   if (refused) return { content: refused.text, isError: true };
