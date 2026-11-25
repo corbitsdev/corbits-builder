@@ -60,16 +60,17 @@ function questionLine(question: ConversationQuestion): string {
           `You asked: ${prompts} / Person replied instead: ${answer.reply}`,
         );
       const { answers } = answer;
-      return clip(
-        asked.questions
-          .map(({ id, question: prompt }) => {
-            const given = answers[id];
-            return given === undefined || given.length === 0
+      // Each question is clipped on its own, so a long answer to one never cuts off the next.
+      return asked.questions
+        .map(({ id, question: prompt }) => {
+          const given = answers[id];
+          return clip(
+            given === undefined || given.length === 0
               ? `You asked: ${prompt} / Left unanswered: ask it again rather than assume an answer.`
-              : `You asked: ${prompt} / Person answered: ${given.join(", ")}`;
-          })
-          .join("\n"),
-      );
+              : `You asked: ${prompt} / Person answered: ${given.join(", ")}`,
+          );
+        })
+        .join("\n");
     }
     default:
       return question satisfies never;

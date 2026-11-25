@@ -52,7 +52,7 @@ test("an open screen is listed the same after the hub restarts, and answering it
   }
 }, 600_000);
 
-test("a replaced coordinator's conversation keeps the earlier answered question and the open screen, closed, and the new coordinator is told both", async () => {
+test("a replaced coordinator's conversation keeps the earlier answered question with its details and the open screen, closed, and the new coordinator is told both", async () => {
   const project = await openProject({
     start: { idea: IDEA, title: "Volunteer Sheet" },
     runs: {
@@ -77,11 +77,25 @@ test("a replaced coordinator's conversation keeps the earlier answered question 
                     },
                   ],
                 },
+                {
+                  header: "Shifts",
+                  question: "When are the shifts?",
+                  options: [
+                    { label: "Mornings", description: "Before lunch." },
+                    { label: "Afternoons", description: "After lunch." },
+                  ],
+                },
               ],
             }),
           ),
           turn(
-            results(ok("c_ask", "question", "Teachers")),
+            results(
+              ok(
+                "c_ask",
+                "question",
+                '"answer":["Teachers","two per class"]},{"question":"When are the shifts?","answer":["Mornings"]}',
+              ),
+            ),
             pickFonts("c_fonts"),
           ),
         ],
@@ -90,7 +104,9 @@ test("a replaced coordinator's conversation keeps the earlier answered question 
         role: "coordinator",
         turns: [
           turn(
-            user("You asked: Who signs up on it? / Person answered: Teachers"),
+            user(
+              "You asked: Who signs up on it? / Person answered: Teachers, two per class\r\nYou asked: When are the shifts? / Person answered: Mornings\r\n",
+            ),
             say("Picking up where we left off."),
           ),
         ],
@@ -101,11 +117,17 @@ test("a replaced coordinator's conversation keeps the earlier answered question 
     const asked = await project.question();
     if (showsScreen(asked))
       throw new Error("The first question opened a screen");
-    const [audience] = asked.asked.questions;
-    const teachers = { [audience!.id]: ["Teachers"] };
-    expect(
-      (await project.answer(asked.signalName, { answers: teachers })).status,
-    ).toBe(200);
+    const [audience, shifts] = asked.asked.questions;
+    const teachers = {
+      answers: { [audience!.id]: ["Teachers"], [shifts!.id]: ["Mornings"] },
+      details: { [audience!.id]: "two per class" },
+    };
+    const unasked = await project.answer(asked.signalName, {
+      answers: teachers.answers,
+      details: { unasked: "two per class" },
+    });
+    expect(unasked.status).toBe(400);
+    expect((await project.answer(asked.signalName, teachers)).status).toBe(200);
     const screen = await project.until("the font picker open", async () =>
       (await project.questions()).find(
         (each) => each.status === "open" && showsScreen(each),
@@ -117,7 +139,13 @@ test("a replaced coordinator's conversation keeps the earlier answered question 
       {
         signalName: asked.signalName,
         status: "answered",
-        answer: { answers: teachers },
+        // The run log holds what the run received: the details as the question's last answer.
+        answer: {
+          answers: {
+            [audience!.id]: ["Teachers", "two per class"],
+            [shifts!.id]: ["Mornings"],
+          },
+        },
       },
       { signalName: screen.signalName, status: "closed" },
     ]);

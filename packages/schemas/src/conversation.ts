@@ -5,10 +5,21 @@ import {
   QuestionScreen,
   runQuestions,
 } from "@intx/types/runtime-core";
-import { QuestionAnswer } from "@intx/types/signals";
+import {
+  GivenQuestionAnswer,
+  QuestionAnswer,
+  deliveredAnswer,
+} from "@intx/types/signals";
 
 // The one place Builder names Interchange's question tool and its shapes; the app imports them here.
-export { AskedQuestion, QUESTION_TOOL_NAME, QuestionAnswer, QuestionScreen };
+export {
+  AskedQuestion,
+  GivenQuestionAnswer,
+  QUESTION_TOOL_NAME,
+  QuestionAnswer,
+  QuestionScreen,
+  deliveredAnswer,
+};
 
 // These are the native mail request/acceptance and committed-event wire shapes.
 // No client-side principal, target run or trigger identity is accepted.
