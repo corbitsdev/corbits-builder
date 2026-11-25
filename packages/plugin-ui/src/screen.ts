@@ -16,13 +16,6 @@ export type ScreenViewProps<Input, Output, Prepared, Resources = unknown> = {
   fault: string | undefined;
   place: "card" | "page";
   answer: Output | undefined;
-  /** Decision screens (writer approval and mockup review) offer their current answer to host controls. */
-  offer?:
-    | ((offer: {
-        accept: { output: Output } | { unavailable: string };
-        sendBack?: Output;
-      }) => void)
-    | undefined;
   act?:
     | ((action: string, input?: Record<string, unknown>) => Promise<void>)
     | undefined;

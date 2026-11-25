@@ -20,6 +20,7 @@ import {
 } from "react";
 import { type, type ArkErrors, type Type } from "arktype";
 import {
+  placesOf,
   validateInput,
   validateOutput,
   type Decision,
@@ -31,6 +32,7 @@ import {
 import { QuestionAnswer } from "@corbits-builder/schemas/conversation";
 import {
   ActionsSlot,
+  ScreenActions,
   ScreenDecision,
   ScreenRow,
   type DecisionControls,
@@ -40,6 +42,7 @@ import { wording } from "../../config.ts";
 import { Fault, InlineNote } from "../../components.jsx";
 import type { CommentCardProps } from "./comment-card.tsx";
 import type { MockupFrameProps } from "./mockup-frame.tsx";
+import { ActionOnly } from "./box-ports.tsx";
 import { SettledReply, useAnswer } from "./questions-card.tsx";
 import styles from "./screen-question.module.css";
 
@@ -115,9 +118,15 @@ const SUPPLIED: ReadonlySet<string> = new Set<keyof HostSupplies>([
   "tenants",
 ]);
 
+/** What a decision says of itself, apart from its offer. */
+type Declared<Out> = Pick<
+  Decision<unknown, Out, unknown, unknown>,
+  "accept" | "sendBack"
+>;
+
 /** The pending items an offer would send back, in the decision's words; null while there are none. */
 export function pendingItems<Out>(
-  decision: Decision<Out>,
+  decision: Declared<Out>,
   sendBack: Out | undefined,
 ): string | null {
   if (
@@ -133,9 +142,9 @@ export function pendingItems<Out>(
   return count === 1 ? `1 ${one}` : `${String(count)} ${many}`;
 }
 
-/** The controls a screen's decision gets from what its view offers and the prompt box holds. */
+/** The controls a screen's decision gets from what it offers and the prompt box holds. */
 export function decisionControls<Out>(
-  decision: Decision<Out>,
+  decision: Declared<Out>,
   offer: Offer<Out> | undefined,
   room: { drafted: boolean; accept: (output: Out) => void },
 ): DecisionControls {
@@ -188,6 +197,54 @@ export const draftOf =
     return isDraft<Type<Out>["infer"]>(saved, checked) ? saved : undefined;
   };
 
+/**
+ * Stages the screen's pending feedback in the prompt box, for a decision that sends it back as
+ * output, so the box's Send sends it with what was typed.
+ */
+function useStaged<Out>(
+  reply: ReplyBox,
+  decision: Declared<Out> | undefined,
+  offer: Offer<Out> | undefined,
+  answer: (output: Out) => Promise<boolean>,
+) {
+  const note = decision?.sendBack?.note;
+  const offered = offer?.sendBack;
+  const pending =
+    decision === undefined ? null : pendingItems(decision, offered);
+  const staging = note !== undefined && offered !== undefined;
+  // The room hands a new prompt box and this render a new answer each time; staging follows what is pending.
+  const box = useRef(reply);
+  box.current = reply;
+  const sendBack = useRef<(message: string | undefined) => Promise<boolean>>(
+    () => Promise.resolve(false),
+  );
+  if (staging)
+    sendBack.current = (message) => answer(sentBack(note, offered, message));
+  useEffect(() => {
+    if (!staging) return;
+    const held = box.current;
+    held.stage({ send: (message) => sendBack.current(message), pending });
+    return () => held.stage(null);
+  }, [staging, pending]);
+}
+
+/** What the host supplies a view; undefined until the tenants a credential is saved to are read. */
+const resourcesOf = (
+  host: HostSupplies,
+  earlierAnswer: unknown,
+): ViewResources | undefined =>
+  host.tenants === null
+    ? undefined
+    : {
+        design: host.design,
+        mockupFrame: host.mockupFrame,
+        commentCard: host.commentCard,
+        earlierAnswer,
+        documents: { list: host.documents.list },
+        designConcepts: host.designConcepts,
+        tenants: host.tenants,
+      };
+
 export type ScreenHostProps = {
   /** The question's signal, which keys what the person has chosen so far. */
   signalName: string;
@@ -204,7 +261,7 @@ export function screenHost<In, Out, Data, Prepared>(
   handle: string,
   builder: ScreenActionBuilder,
   plugin: {
-    screen: Screen<In, Out, Data, Prepared>;
+    screen: Screen<In, Out, Data, Prepared, ViewResources>;
     view: ComponentType<
       ScreenViewProps<
         Type<In>["infer"],
@@ -219,6 +276,17 @@ export function screenHost<In, Out, Data, Prepared>(
   const { screen, view: View, data } = plugin;
   const readDraft = draftOf(screen.output);
   const { reads = [], host: supplied = [] } = builder;
+  const promptBox = placesOf(screen)["prompt-box"];
+  const decision = promptBox?.decision;
+  const offerOf = (
+    input: Type<In>["infer"],
+    data: Prepared,
+    resources: ViewResources | undefined,
+    draft: Partial<Type<Out>["infer"]>,
+  ) =>
+    decision === undefined || resources === undefined
+      ? undefined
+      : decision.offer({ input, data, resources, draft });
   const unknown = supplied.find((name) => !SUPPLIED.has(name));
   if (unknown !== undefined)
     throw new Error(
@@ -236,6 +304,7 @@ export function screenHost<In, Out, Data, Prepared>(
   }) {
     const outcome = useQuestionOutcome(signalName);
     const slot = useContext(ActionsSlot);
+    const actionOnly = useContext(ActionOnly);
     const [project, setProject] = useState<ProjectValues>();
     const [unreadable, setUnreadable] = useState(false);
     const answering = useAnswer(
@@ -243,29 +312,32 @@ export function screenHost<In, Out, Data, Prepared>(
       readDraft,
       onAnswer,
     );
-    const [offer, setOffer] = useState<Offer<Type<Out>["infer"]>>();
     const settled = output !== undefined;
     const busy = answering.sending || outcome?.kind === "sending" || disabled;
-    const { decision } = screen;
-    const pending =
-      decision === undefined ? null : pendingItems(decision, offer?.sendBack);
-    // The prompt box sends the feedback back only where the decision sends it back as output.
-    const staging =
-      !settled &&
-      decision?.sendBack !== undefined &&
-      offer?.sendBack !== undefined;
-    // The room hands a new prompt box and this render a new answer each time; staging follows what is pending.
-    const box = useRef(host.reply);
-    box.current = host.reply;
-    const sendBack = useRef<(message: string | undefined) => Promise<boolean>>(
-      () => Promise.resolve(false),
-    );
-    useEffect(() => {
-      if (!staging) return;
-      const reply = box.current;
-      reply.stage({ send: (message) => sendBack.current(message), pending });
-      return () => reply.stage(null);
-    }, [staging, pending]);
+    // Once answered, the project already holds the answer, so the settled screen draws from it alone.
+    const shown: ProjectValues | undefined = settled ? {} : project;
+    const checked =
+      shown === undefined
+        ? undefined
+        : validateInput(handle, screen, input, data, shown);
+    const valid = checked?.ok === true ? checked : undefined;
+    // A screen that prepares from the project draws once the hub's read of the plan brings it.
+    const prepared =
+      screen.fromProject === undefined
+        ? valid?.prepared
+        : (host.asked(signalName) as Prepared | undefined);
+    const resources = resourcesOf(host, host.earlierAnswer);
+    const draft = answering.draft ?? {};
+    const offer =
+      settled || valid === undefined || prepared === undefined
+        ? undefined
+        : offerOf(valid.input, prepared, resources, draft);
+    const answerWith = (chosen: Type<Out>["infer"]) => {
+      const result = validateOutput(handle, screen, chosen);
+      if (!result.ok) throw new Error(result.text);
+      return answering.send(QuestionAnswer.assert({ output: result.output }));
+    };
+    useStaged(host.reply, decision, offer, answerWith);
 
     useEffect(() => {
       if (settled) return;
@@ -289,21 +361,12 @@ export function screenHost<In, Out, Data, Prepared>(
     }, [projectValues, settled]);
 
     if (unreadable) return <InlineNote>{text.screenUnavailable}</InlineNote>;
-    // Once answered, the project already holds the answer, so the settled screen draws from it alone.
-    const shown: ProjectValues | undefined = settled ? {} : project;
-    const { tenants } = host;
-    if (shown === undefined || tenants === null)
+    if (shown === undefined || checked === undefined || resources === undefined)
       return <InlineNote>{text.screenLoading}</InlineNote>;
-    const checked = validateInput(handle, screen, input, data, shown);
     const answered =
       output === undefined ? undefined : validateOutput(handle, screen, output);
     if (!checked.ok || answered?.ok === false)
       return <InlineNote>{text.screenUnavailable}</InlineNote>;
-    // A screen that prepares from the project draws once the hub's read of the plan brings it.
-    const prepared =
-      screen.fromProject === undefined
-        ? checked.prepared
-        : (host.asked(signalName) as Prepared | undefined);
     if (prepared === undefined)
       return (
         <InlineNote>
@@ -313,19 +376,9 @@ export function screenHost<In, Out, Data, Prepared>(
         </InlineNote>
       );
 
-    const answerWith = (chosen: Type<Out>["infer"]) => {
-      const result = validateOutput(handle, screen, chosen);
-      if (!result.ok) throw new Error(result.text);
-      return answering.send(QuestionAnswer.assert({ output: result.output }));
-    };
     const submit = async (chosen: Type<Out>["infer"]) => {
       await answerWith(chosen);
     };
-    const note = decision?.sendBack?.note;
-    const offered = offer?.sendBack;
-    if (note !== undefined && offered !== undefined)
-      sendBack.current = (message) =>
-        answerWith(sentBack(note, offered, message));
     const view = (
       <View
         prepared={{
@@ -333,17 +386,9 @@ export function screenHost<In, Out, Data, Prepared>(
           data: prepared,
           project: shown,
           facts: projectFacts,
-          resources: {
-            design: host.design,
-            mockupFrame: host.mockupFrame,
-            commentCard: host.commentCard,
-            earlierAnswer: host.earlierAnswer,
-            documents: { list: host.documents.list },
-            designConcepts: host.designConcepts,
-            tenants,
-          },
+          resources,
         }}
-        draft={answering.draft ?? {}}
+        draft={draft}
         setDraft={(change) =>
           answering.change((current) => {
             const draft: Partial<Type<Out>["infer"]> =
@@ -367,7 +412,6 @@ export function screenHost<In, Out, Data, Prepared>(
         openDocument={
           supplied.includes("documents") ? host.documents.open : undefined
         }
-        offer={setOffer}
       />
     );
     if (settled)
@@ -426,7 +470,11 @@ export function screenHost<In, Out, Data, Prepared>(
           >
             {/* While an answer is on its way the whole screen takes no input, whatever it draws. */}
             <div className={styles.screen} inert={busy}>
-              {view}
+              {actionOnly ? null : view}
+              {decision !== undefined &&
+              (actionOnly || promptBox?.size === "sm") ? (
+                <ScreenActions />
+              ) : null}
             </div>
           </ScreenDecision>
         </ActionsSlot>
@@ -460,8 +508,9 @@ export function listedHost(
   return function ListedHost({ state, act, host }) {
     const [click, setClick] = useState<Click>({ is: "idle" });
     const [draft, setDraft] = useState({});
-    const { tenants } = host;
-    if (tenants === null) return <InlineNote>{text.screenLoading}</InlineNote>;
+    const resources = resourcesOf(host, undefined);
+    if (resources === undefined)
+      return <InlineNote>{text.screenLoading}</InlineNote>;
     const run = async (action: string, input: Record<string, unknown> = {}) => {
       setClick({ is: "acting" });
       const reason = await act(plugin, action, input);
@@ -476,15 +525,7 @@ export function listedHost(
           data: state,
           project: {},
           facts: projectFacts,
-          resources: {
-            design: host.design,
-            mockupFrame: host.mockupFrame,
-            commentCard: host.commentCard,
-            earlierAnswer: undefined,
-            documents: { list: host.documents.list },
-            designConcepts: host.designConcepts,
-            tenants,
-          },
+          resources,
         }}
         draft={draft}
         setDraft={(change) =>

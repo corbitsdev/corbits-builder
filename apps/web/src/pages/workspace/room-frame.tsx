@@ -11,14 +11,21 @@ import styles from "./room-frame.module.css";
 export type RoomFrameProps = {
   /** The sidebar, open or closed, its title in the window's top left corner. */
   sidebar: ReactNode;
+  /** A row of actions at the main pane's top right; none unless a screen puts one there. */
+  actions?: ReactNode;
   /** The main pane's view, which scrolls itself and centres what it holds. */
   children: ReactNode;
 };
 
-export function RoomFrame({ sidebar, children }: RoomFrameProps) {
+export function RoomFrame({ sidebar, actions, children }: RoomFrameProps) {
   return (
     <div className={styles.frame} data-slot="room-frame">
       <div className={styles.main}>{children}</div>
+      {actions === undefined ? null : (
+        <div className={styles.actions} data-slot="room-actions">
+          {actions}
+        </div>
+      )}
       <div className={styles.left}>{sidebar}</div>
     </div>
   );

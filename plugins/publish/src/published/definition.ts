@@ -169,10 +169,9 @@ const statusOf = ({ state, keep }: Publishing): ScreenStatus => {
 };
 
 export default defineScreen({
-  render: "plugin-bar",
+  places: { "main-pane": {}, "sidebar-left": { status: statusOf } },
   state: publishState,
   changesAt,
-  status: statusOf,
   input: type({ "+": "reject" }),
   output: type({ "+": "reject" }),
   describe: {

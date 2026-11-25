@@ -1,8 +1,6 @@
 /**
- * Where a plugin's screens show. A screen meant for a tab of its own stays a tab in the project
- * view, saying where its work stands; every other screen, the coordinator's question asked with a
- * plugin's screen or one a plugin shows of its own accord for the chat or the main page, opens in
- * the plugin space.
+ * A plugin's screens shown of their own accord in the main pane, each a tab of the project view
+ * opened from its entries, and the plugin space a question's screen opens in.
  */
 import {
   Component,
@@ -10,11 +8,7 @@ import {
   type ReactElement,
   type ReactNode,
 } from "react";
-import type { ScreenStatus } from "@corbits-builder/plugin";
-import type {
-  ScreenRender,
-  ShownScreen,
-} from "@corbits-builder/schemas/project";
+import type { ShownScreen } from "@corbits-builder/schemas/project";
 import { screenWords } from "./roles.ts";
 import type { ScreenLookup } from "./screens.ts";
 import {
@@ -23,15 +17,6 @@ import {
   type ListedHostProps,
   type ScreenQuestionProps,
 } from "./screen-question.tsx";
-
-export const SLOT = {
-  "main-page": "page",
-  "inline-chat": "chat",
-  "plugin-bar": "tab",
-} as const satisfies Record<ScreenRender, "page" | "chat" | "tab">;
-
-/** A screen meant for a tab of its own, which the project view shows rather than the space. */
-export const inTab = (screen: ShownScreen) => SLOT[screen.render] === "tab";
 
 type PluginScreensRoom = {
   screens: readonly ShownScreen[];
@@ -44,7 +29,7 @@ export type PluginTab = {
   value: string;
   label: string;
   pane: ReactElement;
-  status: ScreenStatus | undefined;
+  entries: ShownScreen["entries"];
 };
 
 /** One plugin's screen that fails to draw shows nothing, and the room around it carries on. */
@@ -70,12 +55,13 @@ export function pluginTabs(room: PluginScreensRoom) {
   // In how many milliseconds the clock alone changes a drawn screen, so the room reads it again.
   let rereadIn: number | undefined;
   for (const screen of room.screens) {
-    const Listed = room.screenOf(screen)?.listed;
-    if (Listed === undefined) continue;
+    const installed = room.screenOf(screen);
+    if (installed === undefined) continue;
     const { changesIn } = screen;
     if (changesIn !== undefined)
       rereadIn = Math.min(rereadIn ?? Infinity, changesIn);
-    if (!inTab(screen)) continue;
+    if (installed.places["main-pane"] === undefined) continue;
+    const { listed: Listed } = installed;
     const key = `${screen.plugin} ${screen.action}`;
     tabs.push({
       value: `plugin-${screen.plugin}-${screen.action}`,
@@ -86,7 +72,7 @@ export function pluginTabs(room: PluginScreensRoom) {
           <Listed state={screen.state} act={room.act} host={room.supplies} />
         </Contained>
       ),
-      status: screen.status,
+      entries: screen.entries,
     });
   }
   return { tabs, rereadIn };

@@ -187,27 +187,39 @@ const PlanViewGroup = type({
   "needs?": "string[]",
   steps: PlanViewChild.array(),
 });
-export const ScreenRender = type("'main-page' | 'inline-chat' | 'plugin-bar'");
-export type ScreenRender = typeof ScreenRender.infer;
-// Where a screen shown in its own tab stands, in a word or two, which the room shows beside the plan
-// and opens the tab from. mark draws the plan's mark for a step in that state.
+// Where a screen shown on its own stands, in a word or two, which the room shows at the place that
+// declares it and opens the screen from. mark draws the plan's mark for a step in that state.
 export const ScreenStatus = type({
   "+": "reject",
   label: "string > 0",
   "mark?": "'needs_you' | 'failed' | 'done'",
 });
 export type ScreenStatus = typeof ScreenStatus.infer;
+// The places of the room a screen fills. A screen shown on its own may stand at an entry place, which
+// says where it stands and opens it.
+export const ENTRY_PLACES = ["sidebar-left", "top-right"] as const;
+export const EntryPlace = type.enumerated(...ENTRY_PLACES);
+export type EntryPlace = typeof EntryPlace.infer;
+export const ScreenPlace = type.enumerated(
+  "main-pane",
+  "prompt-box",
+  ...ENTRY_PLACES,
+);
+export type ScreenPlace = typeof ScreenPlace.infer;
 export const ShownScreen = type({
   "+": "reject",
   plugin: "string > 0",
   action: "string > 0",
-  render: ScreenRender,
   state: "unknown",
   // How many milliseconds after this read the clock alone changes the state, so the reader reads
   // it again then.
   "changesIn?": "number > 0",
-  // Where it stands, for a screen in its own tab that says so.
-  "status?": ScreenStatus,
+  // Where it stands, at each entry place that shows it.
+  entries: type({
+    "+": "reject",
+    place: EntryPlace,
+    status: ScreenStatus,
+  }).array(),
 });
 export type ShownScreen = typeof ShownScreen.infer;
 // What the person reads before agreeing to an action that removes what a plan made: what goes, and

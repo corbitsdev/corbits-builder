@@ -8,8 +8,6 @@ import type {
  * decision: one Approve for them all, or what the person types in the prompt box. Settles to one
  * line once answered.
  */
-import { useEffect, useMemo } from "react";
-import type { Offer } from "@corbits-builder/plugin";
 import { DocumentBlock } from "@corbits-builder/plugin-ui/document-block";
 import { Markdown } from "@corbits-builder/plugin-ui/markdown";
 import { ScreenActions } from "@corbits-builder/plugin-ui/screen-actions";
@@ -17,12 +15,9 @@ import {
   ScreenCard,
   ScreenSettledLine,
 } from "@corbits-builder/plugin-ui/screen-card";
+import { filedOf, type Host } from "./definition.ts";
 import type { Input, Output } from "./schema.ts";
 import styles from "./view.module.css";
-
-export type Host = {
-  documents: { list: readonly ShownDocument[] };
-};
 
 type Props = ScreenViewProps<
   typeof Input.infer,
@@ -42,7 +37,6 @@ export const text = {
       : `Review these ${String(others.length + 1)} documents`,
   approved: "already approved",
   notFiled: (kind: string) => `${kind} is not filed yet.`,
-  unfiled: "Each document is approved once it is filed.",
   noDocuments: "The documents cannot be shown here.",
   // A lone document is named by its kind; several are listed by their titles.
   settled: (kinds: readonly string[], titles: ReadonlyMap<string, string>) => {
@@ -55,52 +49,13 @@ export const text = {
 
 const NONE: readonly ShownDocument[] = [];
 
-/** The documents asked for that are filed, and the kinds asked for that are not. */
-export function filedOf(
-  list: readonly ShownDocument[],
-  kinds: readonly string[],
-) {
-  const filed = list.filter((document) => kinds.includes(document.kind));
-  const missing = kinds.filter(
-    (kind) => !filed.some((document) => document.kind === kind),
-  );
-  return { filed, missing };
-}
-
-/** What the card offers the host: approving every document asked for at the version shown, once all are filed. */
-export const offerOf = (
-  filed: readonly ShownDocument[],
-  missing: readonly string[],
-): Offer<typeof Output.infer> =>
-  missing.length > 0
-    ? { accept: { unavailable: text.unfiled } }
-    : {
-        accept: {
-          output: {
-            approved: filed.map(({ kind, artifactId, version }) => ({
-              kind,
-              artifactId,
-              version,
-            })),
-          },
-        },
-      };
-
 export function ApproveDocuments({
   prepared: { input, resources: host },
   answer,
-  offer,
   openDocument,
 }: Props) {
   const list = host?.documents.list;
-  // Kept while the documents and kinds are, so the offer follows them, not each render.
-  const { filed, missing } = useMemo(
-    () => filedOf(list ?? NONE, input.kinds),
-    [list, input.kinds],
-  );
-  useEffect(() => {
-    offer?.(offerOf(filed, missing));
-  }, [offer, filed, missing]);
+  const { filed, missing } = filedOf(list ?? NONE, input.kinds);
   if (answer !== undefined) {
     const titles = new Map(
       host?.documents.list.map((document) => [document.kind, document.title]),

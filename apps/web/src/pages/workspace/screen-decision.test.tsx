@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
+  placesOf,
   validateOutput,
-  type Decision,
   type Offer,
   type Screen,
 } from "@corbits-builder/plugin";
@@ -13,13 +13,10 @@ import {
   ScreenDecision,
   type DecisionControls,
 } from "@corbits-builder/plugin-ui/screen-actions";
-import review from "@plugins/designer/src/review/definition.ts";
-import { offerOf as reviewOffer } from "@plugins/designer/src/review/view.tsx";
+import review, {
+  offerOf as reviewOffer,
+} from "@plugins/designer/src/review/definition.ts";
 import approve from "@plugins/writer/src/approve/definition.ts";
-import {
-  filedOf,
-  offerOf as approveOffer,
-} from "@plugins/writer/src/approve/view.tsx";
 import { decisionControls, sentBack } from "./screen-question.tsx";
 
 const box: [number, number, number, number] = [0, 0, 80, 20];
@@ -29,17 +26,18 @@ const said = (text: string) => ({
 });
 const twoComments = [said("Bigger."), said("Fewer words.")];
 
-const declared = <In, Out, Data, Prepared>(
-  screen: Screen<In, Out, Data, Prepared>,
+const declared = <In, Out, Data, Prepared, Resources>(
+  screen: Screen<In, Out, Data, Prepared, Resources>,
 ) => {
-  if (screen.decision === undefined)
+  const decision = placesOf(screen)["prompt-box"]?.decision;
+  if (decision === undefined)
     throw new Error("The screen declares no decision.");
-  return screen.decision;
+  return decision;
 };
 
 const controlsOf = <Out,>(
-  decision: Decision<Out>,
-  offer: Offer<Out>,
+  decision: Parameters<typeof decisionControls<Out>>[0],
+  offer: Offer<Out> | undefined,
   drafted: boolean,
   accepted: unknown[] = [],
 ) =>
@@ -52,34 +50,50 @@ const controlsOf = <Out,>(
 const screens = [
   {
     name: "the design review",
-    controls: (drafted: boolean, accepted: unknown[]) =>
-      controlsOf(
-        declared(review),
-        reviewOffer(
-          { files: {}, version: 2, approval: { option: "design-option-1" } },
-          [],
-        ),
+    controls: (drafted: boolean, accepted: unknown[]) => {
+      const decision = declared(review);
+      return controlsOf(
+        decision,
+        decision.offer({
+          input: {},
+          data: {},
+          resources: {
+            design: {
+              files: {},
+              version: 2,
+              approval: { option: "design-option-1" },
+            },
+          },
+          draft: {},
+        }),
         drafted,
         accepted,
-      ),
+      );
+    },
   },
   {
     name: "the document approval",
     controls: (drafted: boolean, accepted: unknown[]) => {
-      const { filed, missing } = filedOf(
-        [
-          {
-            kind: "build_plan",
-            title: "Build plan",
-            artifactId: "art-plan",
-            version: 3,
-          },
-        ],
-        ["build_plan"],
-      );
+      const decision = declared(approve);
       return controlsOf(
-        declared(approve),
-        approveOffer(filed, missing),
+        decision,
+        decision.offer({
+          input: { kinds: ["build_plan"] },
+          data: { kinds: ["build_plan"] },
+          resources: {
+            documents: {
+              list: [
+                {
+                  kind: "build_plan",
+                  title: "Build plan",
+                  artifactId: "art-plan",
+                  version: 3,
+                },
+              ],
+            },
+          },
+          draft: {},
+        }),
         drafted,
         accepted,
       );

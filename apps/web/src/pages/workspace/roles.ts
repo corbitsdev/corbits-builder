@@ -7,6 +7,7 @@
 import { type } from "arktype";
 import {
   isScreen,
+  placesOf,
   isWorkflow,
   SpecialistBuilder,
   WorkflowActionBuilder,
@@ -113,7 +114,8 @@ export function installRoles({
       Object.keys(builder.actions).flatMap((action) => {
         const screen = definitionOf.get(`${folder} ${action}`);
         if (!isScreen(screen) || screen.describe.says === undefined) return [];
-        const { label, chose, reply } = screen.describe.says;
+        const { label, chose } = screen.describe.says;
+        const box = placesOf(screen)["prompt-box"];
         const words: ScreenWords = {
           label: (raw) => {
             const input = screen.input(raw);
@@ -125,8 +127,8 @@ export function installRoles({
               ? undefined
               : chose(output);
           },
-          reply,
-          decides: screen.decision !== undefined,
+          reply: box?.reply,
+          decides: box?.decision !== undefined,
         };
         return [[`${builder.handle} ${action}`, words] as const];
       }),

@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect } from "storybook/test";
 import designer from "@plugins/designer/package.json";
+import { placesOf } from "@corbits-builder/plugin";
 import definition from "@plugins/designer/src/choose/definition.ts";
 import View from "@plugins/designer/src/choose/view.tsx";
 import type { ComponentProps } from "react";
@@ -108,7 +109,7 @@ function OverTheBox(props: ComponentProps<typeof ScreenStory>) {
         <RoomDockView
           dock={{
             ...composer,
-            placeholder: definition.describe?.says?.reply ?? "",
+            placeholder: placesOf(definition)["prompt-box"]?.reply ?? "",
           }}
           ports={ports}
         />

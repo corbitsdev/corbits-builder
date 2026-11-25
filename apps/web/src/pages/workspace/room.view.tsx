@@ -46,7 +46,7 @@ import {
   type ArtifactPaneContent,
   type ArtifactPaneSlots,
 } from "./artifact-pane.tsx";
-import { InBox, useBoxPorts, type BoxPorts } from "./box-ports.tsx";
+import { ActionOnly, InBox, useBoxPorts, type BoxPorts } from "./box-ports.tsx";
 import { ScreenCard, StepCard } from "./box-cards.tsx";
 import { DocumentDecision, PackageDecision } from "./document-decision.tsx";
 import { PluginSpace } from "./plugin-space.tsx";
@@ -233,6 +233,8 @@ export type RoomContent = {
   documentPane: ArtifactPaneContent;
   /** Where each plugin tab that says so stands, beside the plan, each opening its tab. */
   tabStatus: readonly TabStatus[];
+  /** The same, for each plugin tab that says so at the top right of the room. */
+  topRight: readonly TabStatus[];
   /** The project view's pane, which takes focus as it opens. */
   paneRef: RefObject<HTMLElement | null>;
 };
@@ -251,6 +253,7 @@ export function RoomView({
   space,
   documentPane,
   tabStatus,
+  topRight,
   paneRef,
   paneParts,
   pluginSpace,
@@ -387,17 +390,20 @@ export function RoomView({
   const projectShown = projectOpen && !sheetShown;
   // A screen in the plugin space reaches the box: its forward action, placeholder and Send.
   const ports = useBoxPorts();
-  const card = waitingCard(
-    waiting,
-    sheetShown ? undefined : openSpace,
-    space?.place === "box" ? pluginSpace : null,
-  );
-  // Over the page it asks the person to accept, a document or a screen such as a mockup's review,
-  // what waits would only repeat the page: the box shows its typing row and action alone.
-  // A screen open over the page is itself what waits, so the box shows its typing row alone.
-  const decidesPage =
-    (projectShown && documentShown && decides(waiting)) ||
-    (sheetShown && waiting?.kind === "screen");
+  // Over a document while the screen waiting in the box asks to accept something, the card would
+  // only repeat the page: the box holds the screen's decision alone.
+  const actionOnly = projectShown && documentShown && decides(waiting);
+  // A screen open in the main pane is itself what waits, so the box holds no card for it.
+  const card =
+    sheetShown && waiting?.kind === "screen"
+      ? undefined
+      : waitingCard(
+          waiting,
+          openSpace,
+          space?.place === "box" ? (
+            <ActionOnly value={actionOnly}>{pluginSpace}</ActionOnly>
+          ) : null,
+        );
   // Covered, the conversation is out of sight, so the box has the chat to pull up and its pill says
   // what is running. Full screen is the room's own conversation: what the chat was pulled up over
   // is put away.
@@ -414,6 +420,9 @@ export function RoomView({
     <StageView aria-label={`Conversation for ${title}`}>
       <RoomFrame
         sidebar={<ProjectSidebarView {...sidebar} menu={projectMenu} />}
+        actions={
+          topRight.length === 0 ? undefined : <Entries entries={topRight} />
+        }
       >
         <div ref={mainRef} className={styles.main} data-slot="room-main">
           <section
@@ -425,23 +434,7 @@ export function RoomView({
               <div className={styles.top}>
                 {projectReady ? (
                   <div className={styles.controls}>
-                    {tabStatus.map(({ tab, label, mark, onOpen }) => (
-                      <UiButton
-                        key={tab}
-                        type="button"
-                        size="sm"
-                        variant="ghost"
-                        className={styles.control}
-                        aria-label={wording.conversation.tabStatus(tab, label)}
-                        title={wording.conversation.openTab(tab)}
-                        onClick={onOpen}
-                      >
-                        <span>{label}</span>
-                        {mark === undefined ? null : (
-                          <span className={styles.alert} data-mark={mark} />
-                        )}
-                      </UiButton>
-                    ))}
+                    <Entries entries={tabStatus} />
                   </div>
                 ) : null}
               </div>
@@ -484,7 +477,7 @@ export function RoomView({
               dock={projectShown && sketches > 0 ? sketchingDock(dock) : dock}
               ports={ports}
               waiting={card}
-              cardHidden={decidesPage}
+              actionOnly={actionOnly}
               chat={covered ? chat : undefined}
               chatStart={
                 covered
@@ -596,6 +589,26 @@ function sketchingDock(dock: RoomDock): RoomDock {
     : dock;
 }
 
+function Entries({ entries }: { entries: readonly TabStatus[] }) {
+  return entries.map(({ tab, label, mark, onOpen }) => (
+    <UiButton
+      key={tab}
+      type="button"
+      size="sm"
+      variant="ghost"
+      className={styles.control}
+      aria-label={wording.conversation.tabStatus(tab, label)}
+      title={wording.conversation.openTab(tab)}
+      onClick={onOpen}
+    >
+      <span>{label}</span>
+      {mark === undefined ? null : (
+        <span className={styles.alert} data-mark={mark} />
+      )}
+    </UiButton>
+  ));
+}
+
 /** Shuts the view over the conversation like a full-screen modal, in the corner people look for. */
 function BackToChat({ onClose }: { onClose: () => void }) {
   return (
@@ -632,7 +645,7 @@ type ChatStart = Pick<
 export function RoomDockView({
   dock,
   waiting,
-  cardHidden = false,
+  actionOnly = false,
   chat,
   chatStart,
   ports,
@@ -646,8 +659,8 @@ export function RoomDockView({
    * question card, a plugin's screen or an approval. Absent while nothing does.
    */
   waiting?: ReactNode;
-  /** What waits stays out of sight, its buttons still in the row, where the page shows it. */
-  cardHidden?: boolean;
+  /** The page shows what waits, so the box shows only its buttons, in the row. */
+  actionOnly?: boolean;
   chat?: ReactNode;
   chatStart?: ChatStart | undefined;
   answersShell?: AnswersShell;
@@ -724,7 +737,7 @@ export function RoomDockView({
     <RoomComposerView
       {...dock}
       waiting={waiting}
-      cardHidden={cardHidden}
+      actionOnly={actionOnly}
       chat={chat}
       chatStart={chatStart}
       ports={ports}
@@ -759,14 +772,14 @@ function RoomComposerView({
   commentsSending = false,
   onStop,
   waiting,
-  cardHidden,
+  actionOnly,
   chat,
   chatStart,
   ports: shared,
   answersShell,
 }: RoomComposer & {
   waiting: ReactNode;
-  cardHidden: boolean;
+  actionOnly: boolean;
   chat: ReactNode;
   chatStart?: ChatStart | undefined;
   ports?: BoxPorts | undefined;
@@ -964,9 +977,9 @@ function RoomComposerView({
   );
   return (
     <Composer
-      // With nothing but the card to show, the box is its typing row alone.
+      // With nothing but the decision to show, the box is its typing row alone.
       bare={
-        cardHidden &&
+        actionOnly &&
         restarts === null &&
         (comments === 0 || commentsBlocked === null)
       }
@@ -975,11 +988,9 @@ function RoomComposerView({
         waiting !== undefined ||
         (comments > 0 && commentsBlocked !== null) ? (
           <>
-            <div className={styles.card} hidden={cardHidden}>
-              <InBox ports={ports} as={waiting === undefined ? null : "card"}>
-                {waiting}
-              </InBox>
-            </div>
+            <InBox ports={ports} as={waiting === undefined ? null : "card"}>
+              {waiting}
+            </InBox>
             {/* Nearest the words it is about, after anything else that waits. */}
             {restarts === null ? null : (
               <p className={styles.restarts} role="status">

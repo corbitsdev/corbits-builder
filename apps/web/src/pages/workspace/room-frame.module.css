@@ -24,6 +24,17 @@
   min-height: 0;
 }
 
+/* Over the main pane's top right corner, above whatever the pane shows. */
+.actions {
+  position: absolute;
+  inset-block-start: var(--frame-edge);
+  inset-inline-end: var(--frame-edge);
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
 /* Over its own column, and over the page where it is a drawer. */
 .left {
   position: absolute;

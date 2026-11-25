@@ -10,10 +10,11 @@ import {
 } from "@corbits-builder/schemas/installed-workflows";
 import { Tier } from "@corbits-builder/schemas/models";
 import type {
+  EntryPlace,
   PlanStepStateName,
   ReadyPlanOffer,
   Removes,
-  ScreenRender,
+  ScreenPlace,
   ScreenStatus,
 } from "@corbits-builder/schemas/project";
 import { SpecialistInstruction } from "@corbits-builder/schemas/native-specialist";
@@ -767,8 +768,6 @@ export type Says = { doing: string; done: string; removes?: Removes };
 export type ScreenSays<In, Out> = {
   label: (input: In) => string;
   chose?: (output: Out) => string | undefined;
-  // What the prompt box asks while the screen waits, where what the person types answers it in words.
-  reply?: string;
 };
 
 /** A phrase with the thing named, or without one, where it names none. */
@@ -791,8 +790,10 @@ type FieldOf<Out, Value> = {
 // prompt box's own Send, with accepting kept behind a confirmation. accept is what accepting is
 // called. sendBack, where feedback goes back as the screen's output, names the output's field the
 // typed note goes in, the field holding the pending items, and what one and several of them are
-// called; without it, what the person types answers in their own words.
-export type Decision<Out> = {
+// called; without it, what the person types answers in their own words. offer is what accepting and
+// sending back answer now, from what the host holds alone, so the host draws accept without the view;
+// undefined while there is nothing to accept.
+export type Decision<In, Out, Prepared, Resources> = {
   accept: string;
   sendBack?: {
     note: FieldOf<Out, string>;
@@ -800,6 +801,14 @@ export type Decision<Out> = {
     one: string;
     many: string;
   };
+  // From what the host holds while the screen waits: the checked input, what was prepared from it,
+  // what the interface supplies under the manifest's host, and what the person has chosen so far.
+  offer: (held: {
+    input: In;
+    data: Prepared;
+    resources: Resources;
+    draft: Partial<Out>;
+  }) => Offer<Out> | undefined;
 };
 
 // What a screen with a decision offers now: the answer accepting gives, or why it cannot be accepted
@@ -807,6 +816,30 @@ export type Decision<Out> = {
 export type Offer<Output> = {
   accept: { output: Output } | { unavailable: string };
   sendBack?: Output;
+};
+
+// A line saying where a screen shown on its own stands, from its state, worked out in the hub;
+// undefined to show none. Pressing it opens the screen in the main pane.
+export type ScreenEntry<Prepared> = {
+  status: (state: Prepared) => ScreenStatus | undefined;
+};
+
+// What a screen needs at each place of the room it fills; the places share only the host's draft
+// and the prepared input. DEV.md says what each place draws.
+type PlaceNeeds<In, Out, Prepared, Resources> = Record<
+  EntryPlace,
+  ScreenEntry<Prepared>
+> & {
+  "main-pane": Record<string, never>;
+  "prompt-box": {
+    size: "sm" | "md";
+    reply?: string;
+    decision?: Decision<In, Out, Prepared, Resources>;
+  };
+};
+
+export type ScreenPlaces<In, Out, Prepared, Resources> = {
+  [Place in ScreenPlace]?: PlaceNeeds<In, Out, Prepared, Resources>[Place];
 };
 
 export type StepStatus = {
@@ -877,16 +910,18 @@ export type Task<In> = {
 
 export const defineTask = <In>(task: Task<In>) => task;
 
-export type Screen<In, Out, Data, Prepared> = {
-  render?: ScreenRender;
+export type Screen<In, Out, Data, Prepared, Resources = unknown> = {
+  places?: ScreenPlaces<
+    Type<In>["infer"],
+    Type<Out>["infer"],
+    Prepared,
+    Resources
+  >;
   // Run in the hub for a screen shown without a question; undefined while it should not show.
   state?: (project: ProjectRead) => Prepared | undefined;
   // When, in the hub's milliseconds since the epoch, the clock alone next changes what state
   // returns, such as a countdown's next minute; undefined while nothing it shows waits on the clock.
   changesAt?: (project: ProjectRead) => number | undefined;
-  // Where a screen rendered as a plugin-bar tab stands, from its state, worked out in the hub;
-  // undefined to show none.
-  status?: (state: Prepared) => ScreenStatus | undefined;
   // Run in the hub for each question that opens this screen, each time a person reads the plan:
   // what the view draws, from the question's input and the project as a shown screen's state reads
   // it. A screen that has it is prepared nowhere else.
@@ -924,12 +959,16 @@ export type Screen<In, Out, Data, Prepared> = {
   // The ids of the plan steps the answer cancels, each read from ProjectRead's plan; a step that is
   // done stays as it is.
   cancels?: (output: Type<Out>["infer"]) => readonly string[];
-  decision?: Decision<Type<Out>["infer"]>;
 };
 
-export const defineScreen = <In, Out, Data, Prepared>(
-  screen: Screen<In, Out, Data, Prepared>,
+export const defineScreen = <In, Out, Data, Prepared, Resources = unknown>(
+  screen: Screen<In, Out, Data, Prepared, Resources>,
 ) => screen;
+
+export const placesOf = <In, Out, Data, Prepared, Resources>(
+  screen: Screen<In, Out, Data, Prepared, Resources>,
+): ScreenPlaces<Type<In>["infer"], Type<Out>["infer"], Prepared, Resources> =>
+  screen.places ?? { "prompt-box": { size: "md" } };
 
 // A workflow action's input and how the coordinator fills it, and the record its start may keep
 // for each run, which the host stores against the run when this schema takes it.
@@ -1331,9 +1370,9 @@ function fineFields(raw: unknown, errors: ArkErrors) {
   );
 }
 
-export function validateInput<In, Out, Data, Prepared>(
+export function validateInput<In, Out, Data, Prepared, Resources>(
   handle: string,
-  screen: Screen<In, Out, Data, Prepared>,
+  screen: Screen<In, Out, Data, Prepared, Resources>,
   rawInput: unknown,
   data: Type<Data>["infer"],
   project: ProjectValues,
@@ -1353,9 +1392,9 @@ export function validateInput<In, Out, Data, Prepared>(
   return { ok: true, input, prepared: screen.prepare?.(input, data, project) };
 }
 
-export function validateOutput<In, Out, Data, Prepared>(
+export function validateOutput<In, Out, Data, Prepared, Resources>(
   handle: string,
-  screen: Screen<In, Out, Data, Prepared>,
+  screen: Screen<In, Out, Data, Prepared, Resources>,
   rawOutput: unknown,
 ): { ok: true; output: Type<Out>["infer"] } | Refused {
   const output = screen.output(rawOutput);
@@ -1392,9 +1431,9 @@ function columns(rows: Record<string, string>, indent: string) {
   );
 }
 
-export function guidanceText<In, Out, Data, Prepared>(
+export function guidanceText<In, Out, Data, Prepared, Resources>(
   handle: string,
-  screen: Screen<In, Out, Data, Prepared>,
+  screen: Screen<In, Out, Data, Prepared, Resources>,
   reads: readonly string[],
 ) {
   const { summary, when, unless, fields } = screen.describe;

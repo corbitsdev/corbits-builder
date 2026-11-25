@@ -238,6 +238,7 @@ const meta = {
     dock: composer,
     ...paneOf(),
     tabStatus: [],
+    topRight: [],
     sidebar: sidebarOf({}, []),
     paneRef: createRef(),
     waiting: null,

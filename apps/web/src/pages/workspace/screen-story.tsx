@@ -95,7 +95,7 @@ export function storyScreen<In, Out, Data, Prepared>(
   handle: string,
   declared: unknown,
   plugin: {
-    screen: Screen<In, Out, Data, Prepared>;
+    screen: Screen<In, Out, Data, Prepared, ViewResources>;
     view: ComponentType<
       ScreenViewProps<
         Type<In>["infer"],

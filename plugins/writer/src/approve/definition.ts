@@ -1,5 +1,46 @@
-import { defineScreen } from "@corbits-builder/plugin";
+import { defineScreen, type Offer } from "@corbits-builder/plugin";
+import type { ShownDocument } from "@corbits-builder/plugin-ui/screen";
 import { Input, Output } from "./schema.ts";
+
+/** What the host supplies the screen: the project's filed documents. */
+export type Host = {
+  documents: { list: readonly ShownDocument[] };
+};
+
+/** The documents asked for that are filed, and the kinds asked for that are not. */
+export function filedOf(
+  list: readonly ShownDocument[],
+  kinds: readonly string[],
+) {
+  const filed = list.filter((document) => kinds.includes(document.kind));
+  const missing = kinds.filter(
+    (kind) => !filed.some((document) => document.kind === kind),
+  );
+  return { filed, missing };
+}
+
+/** Approving every document asked for at the version shown, once all are filed. */
+export function offerOf(
+  list: readonly ShownDocument[],
+  kinds: readonly string[],
+): Offer<typeof Output.infer> {
+  const { filed, missing } = filedOf(list, kinds);
+  if (missing.length > 0)
+    return {
+      accept: { unavailable: "Each document is approved once it is filed." },
+    };
+  return {
+    accept: {
+      output: {
+        approved: filed.map(({ kind, artifactId, version }) => ({
+          kind,
+          artifactId,
+          version,
+        })),
+      },
+    },
+  };
+}
 
 export default defineScreen({
   input: Input,
@@ -12,7 +53,6 @@ export default defineScreen({
       label: (input) =>
         `Approve the ${input.kinds.map((kind) => kind.replaceAll("_", " ")).join(" and ")}`,
       chose: () => "Approved",
-      reply: "Or type what should change…",
     },
     summary:
       "Puts filed documents in front of the person to approve, each at its current version, with a way to open each. The answer is { approved: [{ kind, artifactId, version }] }, and Builder has then recorded the approval of exactly those versions; if they write back instead, what they wrote is their answer.",
@@ -35,7 +75,22 @@ export default defineScreen({
       },
     },
   },
-  decision: { accept: "Approve" },
+  places: {
+    "prompt-box": {
+      size: "md",
+      reply: "Or type what should change…",
+      decision: {
+        accept: "Approve",
+        offer: ({
+          input,
+          resources,
+        }: {
+          input: typeof Input.infer;
+          resources: Host;
+        }) => offerOf(resources.documents.list, input.kinds),
+      },
+    },
+  },
   approves: (output) =>
     output.approved.map(({ artifactId, version }) => ({ artifactId, version })),
 });

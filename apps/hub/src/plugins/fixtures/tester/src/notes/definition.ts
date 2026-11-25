@@ -2,7 +2,7 @@ import { defineScreen } from "@corbits-builder/plugin";
 import { type } from "arktype";
 
 export default defineScreen({
-  render: "plugin-bar",
+  places: { "main-pane": {} },
   state: (project) => {
     const notes = project.value("tester.notes");
     return typeof notes === "string" ? { notes } : undefined;
