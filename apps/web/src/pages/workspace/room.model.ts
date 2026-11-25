@@ -99,7 +99,6 @@ import {
 } from "./typed-yes.tsx";
 import { chosenApproach } from "./approach-choice.ts";
 import {
-  DRAFT_TAB,
   followDeliverableId,
   LIVE_TAB,
   MOCKUP_TAB,
@@ -141,7 +140,6 @@ import {
   roomSnapshotReady,
   type RoomSnapshot,
 } from "./load-room.ts";
-import { designDraftFiled, useDesignDraft } from "./design-preview.model.ts";
 import { useUserManual } from "./user-manual.model.ts";
 import { workUnitStanding } from "./work-unit-step.model.ts";
 import { conceptTab } from "./design-concept.ts";
@@ -1432,13 +1430,6 @@ export function useRoom({
     const item = paneDeliverables.find((entry) => entry.kind === id);
     if (item !== undefined) markSeen(seen, item.artifactId, item.version);
   };
-  const designDraft = useDesignDraft(
-    projectId,
-    designDraftFiled(
-      artifacts.some((item) => item.kind === "design"),
-      snapshot.inFlight,
-    ),
-  );
   const inFlight = snapshot.inFlight;
   const dispatches = shownTurns.flatMap((turn) =>
     turn.role === "assistant" && turn.parts !== undefined
@@ -1521,14 +1512,7 @@ export function useRoom({
         kind.startsWith("concept:") ? conceptTab(kind.slice(8)) : kind,
       );
     },
-    onWatch: (dispatch) => {
-      if (roleOf(dispatch.role)?.writesCode) return openProject(LIVE_TAB);
-      openProject(
-        dispatch.concept === undefined
-          ? DRAFT_TAB
-          : conceptTab(dispatch.concept),
-      );
-    },
+    onWatch: () => openProject(LIVE_TAB),
     onStop: async (stopped) => {
       try {
         await stopRun(projectId, stopped);
@@ -1543,8 +1527,7 @@ export function useRoom({
   for (const { dispatch } of unseenRuns) noteDispatch(dispatchRoom, dispatch);
   const cards = filedDispatches(dispatchRoom, dispatches, unseenRuns);
   const design = artifacts.find((item) => item.kind === "design");
-  // The design a review screen shows: the live draft while a designer works, else the newest design
-  // option, else the filed design. Only an option is approved there: the hub records the choice
+  // The design a review screen shows: the newest design option, else the filed design. Only an option is approved there: the hub records the choice
   // from the answer.
   const reviewed = options.at(-1) ?? design;
   const reviewedState =
@@ -1569,12 +1552,6 @@ export function useRoom({
     };
   };
   const reviewedDesign = (): ReviewedDesign | null => {
-    if (designDraft !== null)
-      return {
-        files: designDraft,
-        version: "draft",
-        approval: { unavailable: wording.designReview.draftNotApprovable },
-      };
     if (reviewed === undefined || reviewedFiles === null) return null;
     return {
       files: reviewedFiles,
@@ -1588,7 +1565,6 @@ export function useRoom({
       ? []
       : designConcepts(
           options,
-          inFlight,
           dispatches.flatMap(({ concept, direction }) =>
             concept === undefined || direction === undefined
               ? []
@@ -1605,25 +1581,21 @@ export function useRoom({
             : undefined,
         );
   // Filed concepts wait on the person's choice on the designer's choose screen.
-  const choosable = concepts.some((concept) => concept.chosen)
-    ? []
-    : concepts.filter((concept) => concept.option !== undefined);
+  const choosable = concepts.some((concept) => concept.chosen) ? [] : concepts;
   // Each filed concept's bundle, parsed once per version it is filed at rather than on every
   // render of the room; the key names exactly the contents parsed.
   const choosableKey = choosable
-    .map(
-      ({ option }) => `${option?.artifactId ?? ""}@${String(option?.version)}`,
-    )
+    .map(({ option }) => `${option.artifactId}@${String(option.version)}`)
     .join("\n");
   const choosableFiles = useMemo(
-    () => choosable.map((concept) => parseBundle(concept.content ?? "")),
+    () => choosable.map((concept) => parseBundle(concept.content)),
     [choosableKey],
   );
   const choosableConcepts = (): ChoosableConcept[] =>
     choosable.flatMap((concept, index) => {
       const files = choosableFiles[index];
       const filed = options.find(
-        (option) => option.artifactId === concept.option?.artifactId,
+        (option) => option.artifactId === concept.option.artifactId,
       );
       if (files === undefined || files === null || filed === undefined)
         return [];
@@ -1768,13 +1740,9 @@ export function useRoom({
     paneDeliverables.find((item) => item.kind === shownId) ?? null;
   const selectedState = selected === null ? undefined : documentState(selected);
 
-  // Until the first document is filed, drafted or there is an app, the project view has nothing
-  // to show.
+  // Until the first document is filed or there is an app, the project view has nothing to show.
   const nothingYet =
-    paneDeliverables.length === 0 &&
-    designDraft === null &&
-    concepts.length === 0 &&
-    liveApp === null;
+    paneDeliverables.length === 0 && concepts.length === 0 && liveApp === null;
   // Accepting what a screen asks closes the project view on the conversation, where the work
   // carries on; asking for changes keeps the page open until the next version is filed.
   const answerScreen = async (signalName: string, given: QuestionAnswer) => {
@@ -1979,7 +1947,6 @@ export function useRoom({
       documentPane: {
         projectId,
         projectTitle,
-        draft: designDraft,
         manual: userManual,
         concepts,
         openTab: paneTab,

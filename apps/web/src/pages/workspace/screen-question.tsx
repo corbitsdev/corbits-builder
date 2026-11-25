@@ -52,7 +52,7 @@ export type ProjectValuesStore = {
 /** The design a screen reviews, and the design option an approval of it chooses, if any. */
 export type ReviewedDesign = {
   files: DesignFiles;
-  version: number | "draft";
+  version: number;
   approval: { option: string } | { unavailable: string };
 };
 

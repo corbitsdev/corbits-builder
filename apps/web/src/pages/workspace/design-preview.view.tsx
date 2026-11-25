@@ -3,7 +3,6 @@
  * in a frame that allows scripts (hash navigation and the state switcher) but stays cross-origin,
  * so it cannot reach the workspace or the session.
  */
-import { StatusDot } from "@corbits/react-ui";
 import { MenuGroup, MenuItem, MenuLabel } from "@corbits/react-ui/ui/menu";
 import { Check, Layers, Palette, PanelsTopLeft, SunMoon } from "lucide-react";
 import {
@@ -45,17 +44,6 @@ const stateName = (state: string | null) =>
 
 const stateHash = (screen: string, state: string | null) =>
   state === null ? `#/${screen}` : `#/${screen}/${state}`;
-
-/** The unfiled draft's badge, whose dot moves only while its designer is mid-turn. */
-export const draftBadge = (working: boolean): PaneBarGroup => [
-  {
-    id: "draft",
-    label: working ? wording.design.draftInProgress : wording.design.draftIdle,
-    text: wording.design.draftBadge,
-    icon: <StatusDot label="" size="xs" tone="emphasis" live={working} />,
-    note: true,
-  },
-];
 
 /**
  * The bar's menu of the mockup's screens and the shown screen's states, once the page has listed

@@ -13,14 +13,12 @@ import {
   type PaneDocument,
 } from "./artifact-pane.tsx";
 import type { DeliverableState } from "./deliverable-block.tsx";
-import designConcept, {
-  Sketching as sketchingConcept,
-} from "./design-concepts.stories.tsx";
+import designConcept from "./design-concepts.stories.tsx";
 import { ConceptMockupView } from "./design-concepts.view.tsx";
 import liveApp from "./live-app.stories.tsx";
 import { LiveAppView } from "./live-app.view.tsx";
 import { TweakPanelView } from "./mockup-tweaks.view.tsx";
-import { sampleDesign, sampleDraft } from "./sample-design.ts";
+import { sampleDesign } from "./sample-design.ts";
 import writtenDocument, { SAMPLE_MANUAL } from "./written-document.stories.tsx";
 import { WrittenDocumentView } from "./written-document.view.tsx";
 
@@ -128,12 +126,8 @@ const meta = {
     open: true,
     onRetry: fn(),
     onAddToPrompt: fn(),
-    conceptMockup: (concept, frame) => (
-      <ConceptMockupView
-        {...designConcept.args}
-        label={concept.label}
-        {...frame}
-      />
+    conceptMockup: (_concept, frame) => (
+      <ConceptMockupView {...designConcept.args} {...frame} />
     ),
     // The bar's Add new reviewer opens the rounds' own form.
     approvalRounds: ({ shareOpen, onShareOpenChange }) => (
@@ -189,35 +183,14 @@ export const HtmlDesign: Story = {
   },
 };
 
-/** The live designer's unfiled mockup, shown on its own until a design is filed. */
-export const DesignDraft: Story = {
-  args: { documents: [], selectedId: null, draft: sampleDraft },
-};
-
 /** Each design concept the person compares is shown on its own. */
 export const Concepts: Story = {
   args: {
-    concepts: ["Paper", "Quiet"].map((label) => ({
+    concepts: ["Paper", "Quiet"].map((label, index) => ({
       label,
       content: JSON.stringify(sampleDesign),
+      option: { artifactId: `option-${String(index + 1)}`, version: 1 },
     })),
-  },
-};
-
-/** A concept whose designer has not drafted it yet is a sketch until they do. */
-export const ConceptSketching: Story = {
-  args: {
-    documents: [],
-    selectedId: null,
-    concepts: [{ label: "Sleek modern" }],
-    conceptMockup: (concept, frame) => (
-      <ConceptMockupView
-        {...designConcept.args}
-        {...sketchingConcept.args}
-        label={concept.label}
-        {...frame}
-      />
-    ),
   },
 };
 

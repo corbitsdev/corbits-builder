@@ -196,15 +196,6 @@ export async function downloadApp(projectId: string) {
   }
 }
 
-/** The live designer's unfiled mockup files, or null when no designer is writing one. */
-export async function readDesignDraft(projectId: string, concept?: string) {
-  const tenantId = await workspaceTenantId();
-  const draft = await nullWhenMissing(
-    productClient().designDraft(tenantId, projectId, concept),
-  );
-  return draft?.files ?? null;
-}
-
 export async function saveDesignTweaks(projectId: string, input: DesignTweaks) {
   const tenantId = await workspaceTenantId();
   return productClient().saveDesignTweaks(tenantId, projectId, input);

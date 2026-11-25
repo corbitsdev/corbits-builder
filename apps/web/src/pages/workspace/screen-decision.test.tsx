@@ -177,27 +177,4 @@ describe("the design review's comments", () => {
     expect(noted.output.comments).toEqual(twoComments);
     expect(noted.output.message).toBe("Try a darker blue.");
   });
-
-  test("a live draft cannot be approved, and the row says why", () => {
-    const controls = controlsOf(
-      decision,
-      reviewOffer(
-        {
-          files: {},
-          version: "draft",
-          approval: { unavailable: "The designer is still working." },
-        },
-        [],
-      ),
-      false,
-    );
-    expect(controls.onAccept).toBeNull();
-    expect(
-      renderToStaticMarkup(
-        <ScreenDecision value={controls}>
-          <ScreenActions />
-        </ScreenDecision>,
-      ),
-    ).toContain("The designer is still working.");
-  });
 });

@@ -776,23 +776,11 @@ export const wording = {
   design: {
     mockupTab: "Design mockup",
     noPlan: "This design has no written plan.",
-    draftBadge: "Draft",
-    draftInProgress:
-      "Draft in progress. The designer is still working; this preview refreshes on its own until the design is filed.",
-    draftIdle:
-      "Draft. The designer is not at work on it right now; this preview refreshes on its own until the design is filed.",
     /** One design concept as the person compares it: "Bold concept". */
     conceptTitle: (label: string) => `${label} concept`,
     /** A concept's tab, numbered in the order its designer started: "Design mockup 1 · Retro". */
     conceptTab: (number: number, label: string) =>
       `Design mockup ${number} · ${label}`,
-    conceptSketching: (label: string) =>
-      `The designer is sketching your ${label} concept…`,
-    conceptSketchingNote:
-      "Its mockup shows here once the designer has drafted it.",
-    conceptSketchingElapsed: (clock: string) => `${clock} elapsed`,
-    conceptWaiting: (label: string) =>
-      `The designer of your ${label} concept is between steps.`,
     /** The pane bar's control that shows what a design concept is going for. */
     conceptDirection: "What this design mockup is going for",
   },
@@ -894,7 +882,6 @@ export const wording = {
     openNamed: (document: string, version: number) =>
       `Open ${document} v${String(version)}`,
     /** Opens the project view on what a working specialist is making, as it makes it. */
-    watchDraft: "Watch the draft",
     watchApp: "Watch it run",
     /** Names what a working run is writing, shown as it streams in. */
     preview: "What it is writing",
@@ -1217,8 +1204,6 @@ export const wording = {
   },
   /** Why the mockup review cannot record an approval of the design it shows. */
   designReview: {
-    draftNotApprovable:
-      "The designer is still working; approve once it is filed.",
     noOption: "Only a filed design option can be approved here.",
     approved: "This design is already approved.",
   },

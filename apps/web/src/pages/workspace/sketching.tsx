@@ -1,14 +1,8 @@
 /**
- * An app taking shape, drawn as a sketch with a few short lines under it: a concept's designer
- * drafting it, or the Builder writing the first app. It moves only while that work is under way.
+ * The first app taking shape, drawn as a sketch with a few short lines under it. It moves only
+ * while the Builder is writing it.
  */
-import {
-  createContext,
-  useContext,
-  useEffect,
-  type CSSProperties,
-  type ReactNode,
-} from "react";
+import { createContext, useContext, useEffect, type ReactNode } from "react";
 import { clock, useElapsedMs } from "./elapsed.tsx";
 import styles from "./sketching.module.css";
 
@@ -35,12 +29,9 @@ export const SketchingShown = createContext<(() => () => void) | null>(null);
 
 export function Sketching({
   working,
-  style,
   children,
 }: {
   working: boolean;
-  /** The concept's own look, as the sketch's custom properties. */
-  style?: CSSProperties;
   children: ReactNode;
 }) {
   const shown = useContext(SketchingShown);
@@ -53,7 +44,6 @@ export function Sketching({
       className={styles.sketching}
       data-slot="sketching"
       data-state={working ? "working" : "still"}
-      style={style}
       role="status"
     >
       <AppSketch />

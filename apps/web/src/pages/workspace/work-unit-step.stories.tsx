@@ -64,8 +64,8 @@ export const Working: Story = {
   },
 };
 
-/** A designer at work offers to open its draft as it takes shape, beside its name. */
-export const WatchingADesigner: Story = {
+/** A designer making its first mockup shows its one working row and offers nothing to open. */
+export const DesignerMakingTheMockup: Story = {
   args: {
     status: {
       state: "working",
@@ -73,7 +73,17 @@ export const WatchingADesigner: Story = {
     },
     label: "Making a mockup",
     steps: STEPS,
-    watch: { label: "Watch the draft", open: fn() },
+    preview: { kind: "waiting" },
+  },
+};
+
+/** The first mockup is filed: the row offers to open it, as it does for a ready document. */
+export const DesignerMockupReady: Story = {
+  args: {
+    status: { state: "ready", title: "Design", version: 1, kind: "design" },
+    label: "Made the mockup",
+    steps: done,
+    onOpenDocument: fn(),
   },
 };
 

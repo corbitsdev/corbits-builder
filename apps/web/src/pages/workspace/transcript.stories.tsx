@@ -174,7 +174,7 @@ const handOffTo = (toolCallId: string, plugin: string, action: string) => ({
   input: { plugin, action, input: { instruction: "Today's orders page." } },
 });
 
-/** Two pieces of work at once: one list under the reply, each a title over one line of where it stands. */
+/** Two pieces of work at once: one list under the reply, each a title over one line of where it stands. The running app can be watched; the designer's mockup offers nothing to open until it is filed. */
 export const WorkInProgress: Story = {
   args: {
     turns: [
@@ -221,7 +221,7 @@ export const WorkInProgress: Story = {
               kind: "thinking",
               text: "Friendly: checking every screen at phone and computer sizes",
             },
-            watch: { label: "Watch the draft", open: fn() },
+            watch: undefined,
           },
   },
 };

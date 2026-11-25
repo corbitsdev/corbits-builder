@@ -16,12 +16,7 @@ import {
   fillsPane,
   type ReadVersion,
 } from "./deliverable-block.tsx";
-import type { DesignFiles } from "./design-bundle.ts";
-import {
-  draftBadge,
-  MockupFrameView,
-  type DesignPart,
-} from "./design-preview.view.tsx";
+import { type DesignPart } from "./design-preview.view.tsx";
 import {
   conceptOfTab,
   conceptTab,
@@ -36,7 +31,7 @@ import {
   writeStoredPreference,
 } from "../../stored-preference.ts";
 import { printDocument } from "./print-document.ts";
-import { DRAFT_TAB, LIVE_TAB, MANUAL_TAB, MOCKUP_TAB } from "./tab-follow.ts";
+import { LIVE_TAB, MANUAL_TAB, MOCKUP_TAB } from "./tab-follow.ts";
 import type { ApproachChoice } from "./approach-choice.ts";
 import type { PluginTab } from "./plugin-screens.tsx";
 import { splitLeadingHeading } from "./reading-selection.ts";
@@ -66,18 +61,15 @@ export type PaneDocument = {
 const TAB_PREFIX = "workspace-document";
 // No pane carries this value, so the body shows none while no tab is selected yet.
 const NO_TAB = "";
-const draftIds = panelTabIds(TAB_PREFIX, DRAFT_TAB);
 const manualIds = panelTabIds(TAB_PREFIX, MANUAL_TAB);
 // The tabs that are not filed documents: open while what they show is there.
-const isSideOnly = (id: string) =>
-  id === DRAFT_TAB || id === LIVE_TAB || id === MANUAL_TAB;
+const isSideOnly = (id: string) => id === LIVE_TAB || id === MANUAL_TAB;
 const isSideTab = (id: string) =>
   isSideOnly(id) || conceptOfTab(id) !== undefined;
 
 /** The tab that is open: a side tab while what it shows is there, else the chosen document. */
 function selectTab(input: {
   side: string | null;
-  draftShown: boolean;
   conceptShown: boolean;
   liveApp: boolean;
   manual: boolean;
@@ -85,7 +77,6 @@ function selectTab(input: {
   designPart: DesignPart;
 }): string | null {
   const { side } = input;
-  if (side === DRAFT_TAB && input.draftShown) return DRAFT_TAB;
   if (input.conceptShown) return side;
   if (side === LIVE_TAB && input.liveApp) return LIVE_TAB;
   if (side === MANUAL_TAB && input.manual) return MANUAL_TAB;
@@ -137,7 +128,6 @@ export function availableTab(
   have: {
     liveApp: boolean;
     manual: boolean;
-    draft: boolean;
     concepts: readonly string[];
     documents: readonly PaneDocument[];
   },
@@ -145,14 +135,13 @@ export function availableTab(
   if (id === null) return null;
   if (id === LIVE_TAB) return have.liveApp ? id : null;
   if (id === MANUAL_TAB) return have.manual ? id : null;
-  if (id === DRAFT_TAB) return have.draft ? id : null;
   const concept = conceptOfTab(id);
   if (concept !== undefined) return have.concepts.includes(concept) ? id : null;
   const document = id === MOCKUP_TAB ? "design" : id;
   return have.documents.some((item) => item.id === document) ? id : null;
 }
 const liveIds = panelTabIds(TAB_PREFIX, LIVE_TAB);
-// A pane whose page fills it edge to edge: the app, a mockup, a spreadsheet or the design draft.
+// A pane whose page fills it edge to edge: the app, a mockup, or a spreadsheet.
 const FILL_PANE = styles.fill;
 
 /** The app's manual as a written page: no versions to pick, its pictures where it places them. */
@@ -200,8 +189,6 @@ export type ArtifactPaneContent = {
   projectId?: string | undefined;
   /** Names the files the panes download and share. */
   projectTitle: string;
-  /** The live designer's unfiled mockup, shown in its own tab until a design is filed. */
-  draft?: DesignFiles | null;
   /** The app's user manual with its pictures, in its own tab once the coder has written it. */
   manual?: UserManual | null;
   /** The design concepts the person compares, a tab each, until one is picked. */
@@ -250,7 +237,6 @@ export type ArtifactPaneProps = ArtifactPaneContent &
 export function ArtifactPane({
   projectId,
   projectTitle,
-  draft = null,
   manual = null,
   concepts,
   openTab = null,
@@ -277,15 +263,13 @@ export function ArtifactPane({
   plugins = [],
   writtenDocument,
 }: ArtifactPaneProps) {
-  // A tab that is not a filed document: the design draft or the live app.
+  // A tab that is not a filed document: the live app.
   const [side, setSide] = useState<string | null>(null);
   const [pluginTab, setPluginTab] = useState<string | null>(null);
   const [designPart, setDesignPart] = useState<DesignPart>("mockup");
-  const [draftDevice, setDraftDevice] = useState<PreviewDevice>("desktop");
   const [conceptDevice, setConceptDevice] = useState<PreviewDevice>("desktop");
   // The document whose comparison with an earlier version is open.
   const [changesFor, setChangesFor] = useState<string | null>(null);
-  const draftShown = draft !== null;
   const firstConcept = concepts[0]?.label;
   // The tab the person was on at their last visit to this project, until it is shown again or they
   // choose another; the pane's own jumps to new work wait for that.
@@ -306,7 +290,6 @@ export function ArtifactPane({
   const restorable = availableTab(memory.id, {
     liveApp: liveApp !== null,
     manual: manual !== null,
-    draft: draftShown,
     concepts: concepts.map((concept) => concept.label),
     documents,
   });
@@ -320,13 +303,6 @@ export function ArtifactPane({
     // A document is opened through the page by resolveSelection; only the mockup's half is set here.
     if (restorable === MOCKUP_TAB) setDesignPart("mockup");
   }, [restorable]);
-  // The draft opens once when it first appears, so the person watches the mockup take shape.
-  useEffect(() => {
-    if (draftShown && !restoring) {
-      setSide(DRAFT_TAB);
-      remember(DRAFT_TAB);
-    }
-  }, [draftShown]);
   // Likewise the first concept, when concepts start.
   const conceptsStarted = firstConcept !== undefined;
   useEffect(() => {
@@ -341,7 +317,6 @@ export function ArtifactPane({
   );
   const chosenId = selectTab({
     side,
-    draftShown,
     conceptShown,
     liveApp: liveApp !== null,
     manual: manual !== null,
@@ -421,7 +396,7 @@ export function ArtifactPane({
     if (item !== undefined && pane !== null)
       printDocument(pane, item.title, item.status);
   };
-  const outputs = documents.length > 0 || draftShown || concepts.length > 0;
+  const outputs = documents.length > 0 || concepts.length > 0;
   useEffect(() => {
     if (open && shown?.unread) onSeen(shown.id);
   }, [open, shown?.id, shown?.unread]);
@@ -544,22 +519,6 @@ export function ArtifactPane({
               id={manualIds.pane}
             >
               <WrittenDocumentView {...manualPage(manual)} />
-            </PanelPane>
-          ) : null}
-          {draftShown ? (
-            <PanelPane
-              value={DRAFT_TAB}
-              className={FILL_PANE}
-              id={draftIds.pane}
-            >
-              <MockupFrameView
-                files={draft}
-                device={draftDevice}
-                onDevice={setDraftDevice}
-                fill
-                leading={[draftBadge(true)]}
-                tweakPanel={tweakPanel}
-              />
             </PanelPane>
           ) : null}
           {plugins.map((tab) => {

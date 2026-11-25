@@ -9,8 +9,6 @@ import type { ArtifactPaneProps } from "./artifact-pane.tsx";
 import documentPane, {
   AppAndManual as appAndManual,
   Concepts as conceptTabs,
-  ConceptSketching as sketchingConcept,
-  DesignDraft as designDraft,
   Loading as loadingDocument,
   ReadError as failedDocument,
 } from "./artifact-pane.stories.tsx";
@@ -615,14 +613,6 @@ export const TabStatus: Story = {
   },
 };
 
-/** The design's mockup is being drawn: its row and the mockup under it carry the writing dots. */
-export const DrawingTheDesign: Story = {
-  args: {
-    ...withDocuments,
-    ...paneOf(designDraft.args),
-  },
-};
-
 const appArgs = paneOf(appAndManual.args);
 
 /** The app is up with the hub keeping it while the project is open; the sidebar's Preview row opens it. */
@@ -765,45 +755,6 @@ export const ChatSheetOverDesign: Story = {
       project.getBoundingClientRect().height,
     );
     await expect(bar()).not.toBeVisible();
-  },
-};
-
-const makingMockups = "Making the Sleek modern mockup and 2 more";
-
-/**
- * A designer sketching a concept says so on the page, so the pill above the box does not say it
- * again: the box keeps only its handle to the chat.
- */
-export const SketchingADesign: Story = {
-  args: {
-    ...chatBehindBox,
-    ...paneOf(sketchingConcept.args),
-    dock: {
-      ...composer,
-      comments: 1,
-      onSendComments: fn(),
-      onShowComments: fn(),
-      onRemoveComments: fn(),
-      commentsBlocked: null,
-      commentsSending: false,
-      working: true,
-      status: { state: "working", label: makingMockups },
-    },
-  },
-  play: async ({ canvasElement }) => {
-    const project = canvasElement.querySelector<HTMLElement>(
-      '[data-slot="room-project"]',
-    );
-    if (!project) throw new Error("No project view");
-    await waitFor(() =>
-      expect(project.querySelector('[data-slot="sketching"]')).toBeVisible(),
-    );
-    await expect(within(project).queryByText(makingMockups)).toBeNull();
-    await expect(
-      within(project).getByRole("button", {
-        name: wording.promptBox.handle.label,
-      }),
-    ).toBeVisible();
   },
 };
 

@@ -3,11 +3,8 @@ import { useState } from "react";
 import { fn } from "storybook/test";
 import {
   DesignPreviewView,
-  draftBadge,
-  MockupFrameView,
   type DesignPreviewViewProps,
 } from "./design-preview.view.tsx";
-import type { PreviewDevice } from "./device-preview.tsx";
 import { TweakPanelView, type TweakPanelProps } from "./mockup-tweaks.view.tsx";
 import { sampleDesign, sampleDraft } from "./sample-design.ts";
 
@@ -56,25 +53,3 @@ export const NoPlanWritten: Story = {
 };
 
 export const CannotBeShown: Story = { args: { files: null } };
-
-function Draft({ working }: { working: boolean }) {
-  const [device, setDevice] = useState<PreviewDevice>("desktop");
-  return (
-    <div style={{ height: 640 }}>
-      <MockupFrameView
-        files={sampleDraft}
-        device={device}
-        onDevice={setDevice}
-        leading={[draftBadge(working)]}
-        tweakPanel={tweakPanel}
-        fill
-      />
-    </div>
-  );
-}
-
-/** The designer's unfiled draft, while the designer is mid-turn. */
-export const DraftInProgress: Story = { render: () => <Draft working /> };
-
-/** The draft while its designer is parked between turns. */
-export const DraftIdle: Story = { render: () => <Draft working={false} /> };
