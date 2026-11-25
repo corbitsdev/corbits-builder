@@ -126,6 +126,31 @@ const reducedMotion = () =>
   typeof matchMedia === "function" &&
   matchMedia("(prefers-reduced-motion: reduce)").matches;
 
+/** Skipped, as when another transition starts or the tab is hidden, the sheet has simply changed. */
+async function readyUnlessSkipped(transition: ViewTransition) {
+  try {
+    await transition.ready;
+  } catch (error) {
+    const skipped =
+      error instanceof DOMException &&
+      (error.name === "AbortError" || error.name === "InvalidStateError");
+    if (!skipped) throw error;
+  }
+}
+
+async function clearMorph(
+  transition: ViewTransition,
+  sheet: HTMLElement,
+  root: HTMLElement,
+) {
+  try {
+    await transition.finished;
+  } finally {
+    delete sheet.dataset.morph;
+    delete root.dataset.chatSheet;
+  }
+}
+
 /**
  * Grows up around the prompt box. `box` is the box itself, which never moves: the sheet reaches
  * past it by an even inset, so opening the chat changes nothing about where the person types.
@@ -282,12 +307,8 @@ export function ChatSheet({
     sheet.dataset.morph = "";
     root.dataset.chatSheet = to;
     const transition = document.startViewTransition(apply);
-    // Skipped, as when another transition starts, it has simply changed.
-    transition.ready.catch(() => undefined);
-    void transition.finished.finally(() => {
-      delete sheet.dataset.morph;
-      delete root.dataset.chatSheet;
-    });
+    void readyUnlessSkipped(transition);
+    void clearMorph(transition, sheet, root);
   };
 
   useEffect(() => stopSpring, []);
