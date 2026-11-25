@@ -185,7 +185,8 @@ export function answerLabels(question: Question, answer: Answer): string[] {
   const labels = question.options
     .filter((option) => chosen.includes(option.label))
     .map((option) => option.label);
-  return [labels, answer.own.trim(), answer.details?.trim() ?? ""]
+  const details = answer.details === undefined ? [] : [answer.details.trim()];
+  return [labels, answer.own.trim(), details]
     .flat()
     .filter((label) => label !== "");
 }

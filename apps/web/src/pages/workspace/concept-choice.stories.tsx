@@ -110,7 +110,8 @@ function OverTheBox(props: ComponentProps<typeof ScreenStory>) {
         <RoomDockView
           dock={{
             ...composer,
-            placeholder: definition.describe?.says?.reply ?? "",
+            placeholder:
+              definition.describe?.says?.reply ?? composer.placeholder,
           }}
           ports={ports}
         />
