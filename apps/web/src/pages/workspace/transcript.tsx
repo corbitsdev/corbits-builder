@@ -511,8 +511,10 @@ function CopyAction({ text }: { text: string }) {
     <MessageAction
       label={copied ? wording.message.copied : wording.message.copy}
       onClick={() => void copy()}
+      data-copied={copied ? "" : undefined}
     >
       {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
+      {copied ? wording.message.copied : wording.message.copy}
     </MessageAction>
   );
 }

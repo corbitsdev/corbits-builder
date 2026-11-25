@@ -90,6 +90,42 @@
   min-height: 2rem;
 }
 
+/* The copy action floats as a small button on the page's colour, the size of the document
+   page's file buttons. */
+.footer [data-slot="message-action"] {
+  gap: 6px;
+  height: 1.75rem;
+  width: auto;
+  padding-inline: 10px;
+  border: 1px solid var(--wb-border);
+  border-radius: var(--radius-control);
+  background: var(--wb-background);
+  box-shadow: var(--wb-shadow);
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
+.footer [data-slot="message-action"] > svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* The copy action keeps its place and shows when the pointer is over the message or focus is in
+   it, or while it says copied. Faded rather than hidden, so it stays in the tab order and for
+   screen readers; a screen with no hover has no way to reveal it, so it stays shown there. */
+@media (hover: hover) {
+  .footer [data-slot="message-actions"] {
+    opacity: 0;
+    transition: opacity var(--duration-micro) var(--ease-out);
+  }
+
+  [data-slot="message"]:hover .footer [data-slot="message-actions"],
+  [data-slot="message"]:focus-within .footer [data-slot="message-actions"],
+  .footer [data-slot="message-actions"]:has([data-copied]) {
+    opacity: 1;
+  }
+}
+
 /* The trigger's inline padding (px-1) hangs outside, so its words start under
    the speaker's name. */
 .run {
