@@ -14,7 +14,6 @@ import {
   type ReactNode,
 } from "react";
 import { wording } from "../../config.ts";
-import { DocumentView } from "@corbits-builder/plugin-ui/markdown";
 import { InlineNote, MenuItemLabel } from "../../components.jsx";
 import {
   FrameScreens,
@@ -313,9 +312,10 @@ export type DesignPreviewViewProps = {
   tweakPanel: (panel: TweakPanelProps) => ReactNode;
 };
 
-// The written plan starts after the file's front matter (its settings block) and its title.
-export const planText = (notes: string) =>
-  notes.replace(/^\s*(?:---\n[\s\S]*?\n---\n+)?\s*# [^\n]*\n+/, "");
+// The written plan as the document page reads it: without the file's front matter (its settings
+// block).
+export const planPage = (notes: string) =>
+  notes.replace(/^\s*---\n[\s\S]*?\n---\n+/, "");
 
 export function DesignPreviewView({
   files,
@@ -339,10 +339,6 @@ export function DesignPreviewView({
         tweakPanel={tweakPanel}
       />
     );
-  const notes = files["DESIGN.md"];
-  return notes === undefined ? (
-    <InlineNote>{wording.design.noPlan}</InlineNote>
-  ) : (
-    <DocumentView source={planText(notes)} />
-  );
+  // A written plan opens on the document page, so a plan reaches here only when there is none.
+  return <InlineNote>{wording.design.noPlan}</InlineNote>;
 }

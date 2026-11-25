@@ -10,7 +10,11 @@ import { CsvTable, ShimmerText } from "@corbits/react-ui";
 import { APPROVAL_PACKAGE_MEDIA_TYPE } from "./approval-package.ts";
 import { ApprovalPackagePreview } from "./approval-package-preview.tsx";
 import { DESIGN_MEDIA_TYPE, parseBundle } from "./design-bundle.ts";
-import { DesignPreviewView, type DesignPart } from "./design-preview.view.tsx";
+import {
+  DesignPreviewView,
+  planPage,
+  type DesignPart,
+} from "./design-preview.view.tsx";
 import { ComparisonView } from "./comparison-view.tsx";
 import { DevicePreview, type PreviewDevice } from "./device-preview.tsx";
 import type { RetainedVersion } from "./document-versions.ts";
@@ -22,9 +26,7 @@ import { VersionNotes } from "./version-notes.tsx";
 import { PaneBar } from "./pane-bar.tsx";
 import {
   csvFile,
-  documentFile,
   fileStem,
-  markdownFile,
   type PaneFile,
   shownFile,
   useFileGroup,
@@ -89,14 +91,45 @@ function mediaKind(
   return mediaType.startsWith("image/") ? "image" : "file";
 }
 
-/** A written document, read as a printed page rather than in the pane's own reading view. */
-const readsAsPage = (document: LoadedDeliverable) =>
-  mediaKind(document.mediaType, document.title) === "prose";
+const designPlan = (content: string) => parseBundle(content)?.["DESIGN.md"];
+
+/**
+ * A Markdown document, or a design's written plan out of its bundle, as the printed page reads it,
+ * so every written document opens on the same page. With it comes how to turn any of its versions
+ * into that text. Null for anything that opens in the pane's own view.
+ */
+function writtenPage(document: LoadedDeliverable, designPart: DesignPart) {
+  const kind = mediaKind(document.mediaType, document.title);
+  if (kind === "prose") return { document, text: (content: string) => content };
+  if (kind !== "design" || designPart !== "plan") return null;
+  const plan = designPlan(document.content);
+  if (plan === undefined) return null;
+  const text = (content: string) => planPage(designPlan(content) ?? "");
+  return {
+    document: {
+      ...document,
+      mediaType: "text/markdown",
+      content: planPage(plan),
+      before:
+        document.before === null
+          ? null
+          : { ...document.before, content: text(document.before.content) },
+      versions: document.versions.map((version) => ({
+        ...version,
+        mediaType: "text/markdown",
+      })),
+    },
+    text,
+  };
+}
 
 /** A spreadsheet or a written document's page fills its pane edge to edge, as a mockup does. */
-export const fillsPane = (state: DeliverableState | undefined) =>
+export const fillsPane = (
+  state: DeliverableState | undefined,
+  designPart: DesignPart = "mockup",
+) =>
   state?.status === "ready" &&
-  (readsAsPage(state.document) ||
+  (writtenPage(state.document, designPart) !== null ||
     mediaKind(state.document.mediaType, state.document.title) === "sheet");
 
 /** What an approval package's tab hands the approval rounds drawn in it. */
@@ -192,16 +225,22 @@ export function DeliverableBody({
   if (state.status === "error")
     return <Fault onRetry={onRetry}>{state.message}</Fault>;
   const key = `${state.document.sha256}:${String(state.document.version)}:${state.document.content}`;
-  if (readsAsPage(state.document))
+  const page = writtenPage(state.document, designPart);
+  if (page !== null)
     return (
       <Fragment key={key}>
         {writtenDocument({
           project: fileName.project,
           name: fileName.document,
-          document: state.document,
+          document: page.document,
           changesOpen,
           onToggleChanges,
-          onReadVersion,
+          onReadVersion:
+            onReadVersion &&
+            (async (version) => {
+              const read = await onReadVersion(version);
+              return { ...read, content: page.text(read.content) };
+            }),
           onViewVersion,
           requestedVersion,
           approachChoice,
@@ -311,11 +350,8 @@ function ReadyDocument({
   );
   const design =
     kind === "design" && afterText !== null ? parseBundle(afterText) : null;
-  const plan = designPart === "plan" ? design?.["DESIGN.md"] : undefined;
   const named = { name: title, version: viewing };
   const sourceFile = (): PaneFile | null => {
-    if (plan !== undefined)
-      return documentFile(markdownFile(stem, plan), named);
     if (design !== null && designPart === "mockup")
       return {
         type: ZIP_TYPE,

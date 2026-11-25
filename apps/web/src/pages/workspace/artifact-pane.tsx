@@ -432,7 +432,8 @@ export function ArtifactPane({
                 <PanelPane
                   key={view.value}
                   value={view.value}
-                  {...(view.part === "mockup" || (current && fillsPane(state))
+                  {...(view.part === "mockup" ||
+                  (current && fillsPane(state, view.part))
                     ? { className: FILL_PANE }
                     : {})}
                   id={ids.pane}

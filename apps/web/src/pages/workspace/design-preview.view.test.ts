@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
-import { planText } from "./design-preview.view.tsx";
+import { planPage } from "./design-preview.view.tsx";
 
-test("a plan opens without its front matter or title", () => {
+test("a plan opens with its title and without its front matter", () => {
   const notes = `---
 name: "Habit tracker (Warm)"
 colors:
@@ -14,6 +14,8 @@ colors:
 
 A calm ledger.
 `;
-  expect(planText(notes)).toBe("## Summary\n\nA calm ledger.\n");
-  expect(planText("# Title\n\n## Summary\n")).toBe("## Summary\n");
+  expect(planPage(notes)).toBe(
+    "# Habit tracker (Warm)\n\n## Summary\n\nA calm ledger.\n",
+  );
+  expect(planPage("# Title\n\n## Summary\n")).toBe("# Title\n\n## Summary\n");
 });

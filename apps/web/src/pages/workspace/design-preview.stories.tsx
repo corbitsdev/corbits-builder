@@ -45,9 +45,6 @@ export const Mockup: Story = {};
 
 export const MockupOnPhone: Story = { args: { device: "phone" } };
 
-/** The design's written plan, read as a document. */
-export const Plan: Story = { args: { part: "plan" } };
-
 export const NoPlanWritten: Story = {
   args: { part: "plan", files: sampleDraft },
 };
