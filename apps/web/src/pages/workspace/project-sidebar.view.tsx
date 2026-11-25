@@ -1,11 +1,10 @@
 /**
  * An open project's sidebar, as the room arranges it in the sidebar's card: the title row, the plan
  * under it, and below them, while the sidebar is open, the project's files and, at the foot, its
- * sections, or the app's own line until the room passes the sections.
+ * sections.
  */
 import { useId } from "react";
 import { wording } from "../../config.ts";
-import { AppLine, type AppLineProps } from "./app-line.tsx";
 import { FilesList, type FilesListProps } from "./files-list.tsx";
 import { PlanTimeline, type PlanTimelineProps } from "./plan-timeline.tsx";
 import {
@@ -31,10 +30,8 @@ export type ProjectSidebarViewProps = MarkWays & {
   plan: PlanTimelineProps;
   /** The project's files; absent, there is no Files group. */
   files?: FilesListProps | undefined;
-  /** The project's sections, at the foot under the files; absent, the app has its own line. */
+  /** The project's sections, at the foot under the files; absent, there are none. */
   sections?: SidebarSectionsProps | undefined;
-  /** The app's own line, where no step of the plan makes it; null where one does. */
-  appLine: AppLineProps | null;
 };
 
 export function ProjectSidebarView({
@@ -44,16 +41,12 @@ export function ProjectSidebarView({
   drawer,
   onToggleSidebar,
   onHome,
-  onSettings,
+  onPreferences,
   plan,
   files,
   sections,
-  appLine,
 }: ProjectSidebarViewProps) {
   const bottomId = `project-sidebar-${useId()}`;
-  const line = appLine === null ? null : <AppLine {...appLine} />;
-  const foot =
-    sections === undefined ? line : <SidebarSections {...sections} />;
   return (
     <SidebarShell
       label={wording.projectShell.sidebar}
@@ -69,14 +62,14 @@ export function ProjectSidebarView({
           controls={bottomId}
           onToggle={onToggleSidebar}
           onHome={onHome}
-          onSettings={onSettings}
+          onPreferences={onPreferences}
         />
       }
       top={<PlanTimeline {...plan} />}
       bottom={
         <>
           {files === undefined ? null : <FilesList {...files} />}
-          {foot}
+          {sections === undefined ? null : <SidebarSections {...sections} />}
         </>
       }
     />

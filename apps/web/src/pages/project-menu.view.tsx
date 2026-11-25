@@ -31,7 +31,6 @@ export type ProjectMenuViewProps = {
   align: "start" | "end";
   side: "bottom" | "right";
   sideOffset: number;
-  alignOffset: number;
   /** An archived project refuses every change until it is unarchived, so it offers only that. */
   archived: boolean;
   /** A shipped project offers to reopen rather than to mark it shipped. */
@@ -53,7 +52,6 @@ export function ProjectMenuView({
   align,
   side,
   sideOffset,
-  alignOffset,
   archived,
   shipped,
   onShowInfo,
@@ -82,7 +80,6 @@ export function ProjectMenuView({
           side={side}
           align={align}
           sideOffset={sideOffset}
-          alignOffset={alignOffset}
         >
           <MenuItem onSelect={onShowInfo}>Project info…</MenuItem>
           <MenuItem onSelect={onRename}>Rename</MenuItem>

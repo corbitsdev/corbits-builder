@@ -29,7 +29,7 @@ const opened = {
     drawer: false,
     onToggleSidebar: fn(),
     onHome: fn(),
-    onSettings: fn(),
+    onPreferences: fn(),
   },
 };
 

@@ -11,11 +11,10 @@ import {
 const words = wording.projectShell;
 
 /** A file that opens on its own tab. */
-const file = (id: string, name: string, newVersion = false): SidebarFile => ({
+const file = (id: string, name: string): SidebarFile => ({
   id,
   name,
   opens: id,
-  newVersion,
   files: [],
 });
 
@@ -24,7 +23,7 @@ const group = (
   id: string,
   name: string,
   files: readonly SidebarFile[],
-): SidebarFile => ({ id, name, opens: null, newVersion: false, files });
+): SidebarFile => ({ id, name, opens: null, files });
 
 const mockup = file("design_mockup", wording.design.mockupTab);
 const concept = (label: string) =>
@@ -33,7 +32,7 @@ const concept = (label: string) =>
 export const smallFiles = [
   file("problem_brief", "Brief"),
   file("constraints", "Constraints"),
-  file("product_requirements", "Requirements", true),
+  file("product_requirements", "Requirements"),
 ];
 
 /** One design and its mockup stand as plain rows beside the rest. */
@@ -42,7 +41,7 @@ export const finishedFiles = [
   file("product_requirements", "Requirements"),
   file("design", "Design"),
   mockup,
-  file("build_plan", "Build plan", true),
+  file("build_plan", "Build plan"),
   file("user_manual", "User manual"),
 ];
 
@@ -59,7 +58,7 @@ export const largeFiles = [
     concept("Market stall"),
     concept("Clean"),
   ]),
-  file("build_plan", "Build plan", true),
+  file("build_plan", "Build plan"),
   file("user_manual", "User manual"),
   file("approval_package", "Approval"),
   group("photos", "Cake photos", [
@@ -88,7 +87,6 @@ export const longNamedFiles = [
   file(
     "allergens.pdf",
     "allergen-information-for-every-cake-and-loaf-we-sell.pdf",
-    true,
   ),
 ];
 
@@ -138,14 +136,14 @@ export const NoFiles: Story = {
 };
 
 /**
- * A small project: its first files, named for what they are. A file with a version the person has
- * not opened has a quiet dot; a row opens its file and is marked while it is on the page.
+ * A small project: its first files, named for what they are. A row opens its file and is marked
+ * while it is on the page.
  */
 export const Small: Story = {
   play: async ({ args, canvasElement }) => {
     const canvas = within(canvasElement);
     const requirements = canvas.getByRole("treeitem", {
-      name: `Requirements, ${wording.documentUnread}`,
+      name: "Requirements",
     });
     await userEvent.click(requirements);
     await expect(args.onOpen).toHaveBeenCalledWith("product_requirements");
@@ -203,3 +201,17 @@ export const Large: Story = {
 
 /** Long file and folder names are cut short with an ellipsis, nested ones too. */
 export const LongNames: Story = { args: { files: longNamedFiles } };
+
+/** The icons switched off: the chevron's space and the names alone. */
+export const NoIcons: Story = {
+  args: { files: largeFiles, icons: false },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(
+      canvas.getByRole("button", { name: words.files, expanded: false }),
+    );
+    await expect(
+      canvas.getByRole("treeitem", { name: "Brief" }).querySelector("svg"),
+    ).toBeNull();
+  },
+};

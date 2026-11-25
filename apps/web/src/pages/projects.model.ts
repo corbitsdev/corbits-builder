@@ -310,9 +310,9 @@ export function useProjects({
         drawer: sidebar.drawer,
         onToggleSidebar: sidebar.toggle,
         onHome: leaveStart,
-        onSettings: () => {
+        onPreferences: () => {
           leaveStart();
-          onOpenSettings();
+          onOpenSettings("preferences");
         },
       },
       idea,

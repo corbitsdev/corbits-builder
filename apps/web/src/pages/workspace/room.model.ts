@@ -1947,7 +1947,7 @@ export function useRoom({
         documentShown:
           projectOpen &&
           paneDeliverables.some((item) => item.kind === shownTab),
-        onProjectOpenChange: setProjectOpen,
+        onCloseProject: () => setProjectOpen(false),
       },
       conversation: {
         thread: {

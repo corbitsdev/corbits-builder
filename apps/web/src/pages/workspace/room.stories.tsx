@@ -47,7 +47,8 @@ import thread, {
 } from "./transcript.stories.tsx";
 
 // Holds what the room asks its host to keep: the words being typed, whether the project view is
-// open, the document it reads, the tab it shows and whether the sidebar is out.
+// open, the document it reads, the tab it shows, the step opened from the plan and whether the
+// sidebar is out.
 function Room(args: RoomViewProps) {
   const { dock, documentPane: pane, sidebar } = args;
   const [text, setText] = useState(dock.kind === "composer" ? dock.text : "");
@@ -56,6 +57,7 @@ function Room(args: RoomViewProps) {
   const [openTab, setOpenTab] = useState(pane.openTab ?? null);
   const [shown, setShown] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(sidebar.open);
+  const [step, setStep] = useState<string | null>(null);
   const open = (tab: string) => {
     setOpenTab({ value: tab });
     setProjectOpen(true);
@@ -68,7 +70,7 @@ function Room(args: RoomViewProps) {
         layout={{
           ...args.layout,
           projectOpen,
-          onProjectOpenChange: setProjectOpen,
+          onCloseProject: () => setProjectOpen(false),
         }}
         dock={
           dock.kind === "composer"
@@ -79,17 +81,27 @@ function Room(args: RoomViewProps) {
           ...sidebar,
           open: sidebarOpen,
           onToggleSidebar: () => setSidebarOpen(!sidebarOpen),
-          plan: { ...sidebar.plan, shown: onScreen },
-          appLine:
-            sidebar.appLine === null
-              ? null
+          plan: {
+            ...sidebar.plan,
+            selected: onScreen === null ? null : step,
+            onOpenStep: (id, tab) => {
+              setStep(id);
+              open(tab);
+            },
+          },
+          files:
+            sidebar.files === undefined
+              ? undefined
+              : { files: sidebar.files.files, shown: onScreen, onOpen: open },
+          sections:
+            sidebar.sections === undefined
+              ? undefined
               : {
-                  ...sidebar.appLine,
-                  open: onScreen === LIVE_TAB,
-                  onOpen: () => {
-                    open(LIVE_TAB);
-                    sidebar.appLine?.onOpen();
-                  },
+                  sections: sidebar.sections.sections.map((section) => ({
+                    ...section,
+                    selected: section.id === onScreen,
+                  })),
+                  onOpen: open,
                 },
         }}
         documentPane={{
@@ -131,17 +143,36 @@ function sidebarOf(
     drawer: false,
     onToggleSidebar: fn(),
     onHome: fn(),
-    onSettings: fn(),
+    onPreferences: fn(),
     plan: {
       plan: outline.plan,
-      app: outline.app,
-      shown: null,
+      selected: null,
       waitsOn: null,
       onOpenStep: fn(),
     },
-    appLine: outline.plan.some((row) => row.app)
-      ? null
-      : { app: outline.app, open: false, onOpen: fn() },
+    files: {
+      files: (pane.documents ?? []).map((document) => ({
+        id: document.id,
+        name: document.title,
+        opens: document.id,
+        files: [],
+      })),
+      shown: null,
+      onOpen: fn(),
+    },
+    sections:
+      outline.app === "not_built"
+        ? undefined
+        : {
+            sections: [
+              {
+                id: LIVE_TAB,
+                label: wording.projectShell.preview,
+                selected: false,
+              },
+            ],
+            onOpen: fn(),
+          },
   };
 }
 
@@ -184,11 +215,11 @@ const layout: RoomViewProps["layout"] = {
   projectReady: false,
   projectOpen: false,
   documentShown: false,
-  onProjectOpenChange: fn(),
+  onCloseProject: fn(),
 };
 
 // The room once the first documents are filed: the conversation still fills the room, and the
-// project control opens them over it.
+// sidebar's files open them over it.
 const withDocuments = {
   layout: { ...layout, projectReady: true },
   ...paneOf(),
@@ -519,7 +550,7 @@ export const ArchivedRestoring: Story = {
   },
 };
 
-/** Documents are filed; the conversation fills the room and the project control opens them. */
+/** Documents are filed; the conversation fills the room and the sidebar's files open them. */
 export const WithDocument: Story = { args: withDocuments };
 
 /** The project view open over the room, the prompt box still at its foot. */
@@ -646,10 +677,10 @@ export const SidebarClosedProjectOpen: Story = {
 };
 
 /**
- * Open project brings the project view over the conversation, and what the person had half typed
- * stays in the box.
+ * A file opened from the sidebar brings the project view over the conversation, and what the
+ * person had half typed stays in the box.
  */
-export const OpenProjectKeepsMessage: Story = {
+export const OpenFileKeepsMessage: Story = {
   args: {
     ...withDocuments,
     dock: { ...composer, text: "Also take orders by" },
@@ -657,7 +688,7 @@ export const OpenProjectKeepsMessage: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(
-      canvas.getByRole("button", { name: wording.conversation.openProject }),
+      canvas.getByRole("treeitem", { name: "Problem brief" }),
     );
     await expect(
       canvasElement.querySelector('[data-slot="room-project"]'),

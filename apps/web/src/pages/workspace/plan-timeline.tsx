@@ -1,8 +1,8 @@
 /**
- * The project's plan as the coordinator saved it: each step a stop on a timeline, opening what it
- * made once it is made. It is a tree of one level with a single tab stop, after the WAI-ARIA tree
- * view pattern: the arrows move between steps, Home and End jump, a letter finds the next step
- * starting with it, and Enter or Space opens what a step made.
+ * The project's plan as the coordinator saved it: each step a stop on a timeline, one waiting on the
+ * person opening what it made. It is a tree of one level with a single tab stop, after the WAI-ARIA
+ * tree view pattern: the arrows move between steps, Home and End jump, a letter finds the next step
+ * starting with it, and Enter or Space opens what a waiting step made.
  */
 import {
   useEffect,
@@ -43,8 +43,6 @@ export type SidebarRow = {
   id: string;
   name: string;
   state: SidebarStepState;
-  /** It makes the project's app: once built it opens the app and says how it runs. */
-  app: boolean;
   /** The tab of what it made, which the row opens; null while there is nothing to show. */
   opens: string | null;
   /** When the step started, so a running one counts up from it; null before it has. */
@@ -55,26 +53,17 @@ export type SidebarRow = {
   steps: readonly SidebarStep[];
 };
 
-/** How the project's app stands, as the step that makes it says. */
-export type SidebarAppState =
-  | "not_built"
-  | "starting"
-  | "running"
-  | "stopped"
-  | "failed";
-
 export type PlanTimelineProps = {
   plan: readonly SidebarRow[];
-  app: SidebarAppState;
-  /** The tab opened from the plan, whose step is marked; null while none is. */
-  shown: string | null;
+  /** The step opened from the plan, which is marked; null while none is. */
+  selected: string | null;
   /**
    * The document opened from what waits in the prompt box, while it still waits: its step says it
    * waits on the person. Null while nothing was opened that way.
    */
   waitsOn: string | null;
-  /** Opens what a step made, on its tab. */
-  onOpenStep: (tab: string) => void;
+  /** Opens what a step waiting on the person made, on its tab. */
+  onOpenStep: (step: string, tab: string) => void;
 };
 
 /** What every step takes to hold the tree's one tab stop. */
@@ -84,14 +73,22 @@ type StepItemProps = Required<
 
 export function PlanTimeline({
   plan,
-  app,
-  shown,
+  selected,
   waitsOn,
   onOpenStep,
 }: PlanTimelineProps) {
   const headingId = `plan-${useId()}`;
-  const opener = ({ opens }: SidebarRow) =>
-    opens === null ? null : () => onOpenStep(opens);
+  // A stopped step waits on the person to try again, as does one whose document what waits in the
+  // prompt box opened.
+  const waitsOnYou = (row: SidebarRow) =>
+    row.state === "needs_you" ||
+    row.state === "failed" ||
+    (row.opens !== null && row.opens === waitsOn);
+  const opener = (row: SidebarRow) => {
+    const { opens } = row;
+    if (opens === null || !waitsOnYou(row)) return null;
+    return () => onOpenStep(row.id, opens);
+  };
   const items = useRef(new Map<string, HTMLElement>());
   const [focused, setFocused] = useState<string | null>(null);
   // Tab enters at the step last focused, else the first.
@@ -107,12 +104,8 @@ export function PlanTimeline({
   // the plan is taller than the room it has, that step stays in sight as it changes and as the
   // room grows or shrinks, rather than the first steps.
   const here =
-    plan.find(
-      (row) =>
-        row.state === "running" ||
-        row.state === "needs_you" ||
-        (row.opens !== null && row.opens === waitsOn),
-    ) ?? plan.findLast((row) => row.state === "done");
+    plan.find((row) => row.state === "running" || waitsOnYou(row)) ??
+    plan.findLast((row) => row.state === "done");
   const hereId = here?.id ?? null;
   useEffect(() => {
     const step = hereId === null ? undefined : items.current.get(hereId);
@@ -205,9 +198,8 @@ export function PlanTimeline({
           <PlanRow
             key={row.id}
             row={row}
-            app={row.app ? app : null}
-            current={row.opens !== null && row.opens === shown}
-            waits={row.opens !== null && row.opens === waitsOn}
+            current={row.id === selected}
+            waits={waitsOnYou(row)}
             onOpen={opener(row)}
             {...itemProps(row.id)}
           />
@@ -219,44 +211,36 @@ export function PlanTimeline({
 
 /**
  * One step of the plan, as a stop on a timeline: a circle on the line that joins the steps, and the
- * step's name beside it. Only the step at work, one that waits on the person, one that was skipped
- * and the app's own step have a line under the name: how long it has run, that it waits, that it
- * was skipped, or how the app runs. A step whose work stopped is not shown as an error: it waits on
+ * step's name beside it. Only the step at work, one that waits on the person and one that was
+ * skipped have a line under the name: how long it has run, that it waits, or that it was skipped. A step whose work stopped is not shown as an error: it waits on
  * the person to try again, so it is drawn as one that waits, and only its name for a screen reader
- * says it stopped. The one whose document is on the page is shaded. What a run last did is often a
- * tool's own words, so it is kept to the row's tooltip. Once a step has made something it opens it.
+ * says it stopped. The one opened from the plan is shaded. What a run last did is often a tool's
+ * own words, so it is kept to the row's tooltip.
  */
 function PlanRow({
   row,
-  app,
   current,
   waits,
   onOpen,
   ...item
 }: {
   row: SidebarRow;
-  /** How the app stands, on the row that makes it; null on every other. */
-  app: SidebarAppState | null;
-  /** What it made is on the page. */
+  /** It was opened from the plan. */
   current: boolean;
-  /** What waits in the prompt box opened what it made, so it waits on the person too. */
   waits: boolean;
-  /** Opens what it made; null while there is nothing to show. */
+  /** Opens what it made; null unless it waits on the person and has something to show. */
   onOpen: (() => void) | null;
 } & StepItemProps) {
   const stopped = row.state === "failed";
-  const state = waits || stopped ? "needs_you" : row.state;
+  const state = waits ? "needs_you" : row.state;
   const next = row.steps.find(
     (step) => step.state === "to_do" && step.declined !== true,
   );
   const pauses = state === "to_do" && next?.askFirst === true;
-  const live = state === "done" && app !== null && app !== "not_built";
-  const doing = live ? words.appNow[app] : null;
   const said = [
     row.name,
     ...(stopped ? [words.stepState.failed] : []),
     state === "declined" ? words.skipped : words.stepState[state],
-    ...(doing === null ? [] : [doing]),
     ...(pauses ? [words.pausesFirst] : []),
   ].join(", ");
   const line =
@@ -272,11 +256,7 @@ function PlanRow({
       </span>
     ) : state === "declined" ? (
       <span className={styles.doing}>{words.stepNow.skipped}</span>
-    ) : doing === null ? null : (
-      <span className={styles.doing} aria-live="polite">
-        {doing}
-      </span>
-    );
+    ) : null;
   return (
     <li
       role="treeitem"

@@ -22,9 +22,9 @@
   margin: 0;
   padding: var(--space-2) var(--space-2) 0;
   color: var(--wb-foreground);
-  font-size: var(--text-xs);
-  font-weight: 600;
-  line-height: var(--text-xs--line-height);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  line-height: var(--text-sm--line-height);
 }
 
 .tree {
@@ -69,22 +69,36 @@
   }
 }
 
-/* The arrow's column stands where a step has its circle, so every name starts in one line, and
-   what a row holds stands one column further in. */
+/* A compact row from the card's own edge: the chevron's space, then the icon and the name, at
+   normal weight. Hover and the file on the page take a faint fill, not a tinted block. */
 .file:focus-visible {
   outline: none;
 }
 
 .row {
-  grid-template-columns: 14px minmax(0, 1fr) auto;
+  display: flex;
   align-items: center;
+  gap: 6px;
+  height: var(--sidebar-row-height);
+  box-sizing: border-box;
+  padding-inline-end: var(--space-2);
+  border-radius: var(--radius-sm);
   color: var(--wb-foreground);
+  font-size: var(--text-sm);
+  line-height: var(--text-sm--line-height);
   cursor: default;
 }
 
-.file[aria-current] > .row {
-  background: var(--wb-selected);
-  font-weight: 500;
+.row[data-opens] {
+  cursor: pointer;
+}
+
+.row[data-opens]:hover {
+  background: color-mix(in oklab, var(--wb-foreground) 5%, transparent);
+}
+
+.file[aria-current] > .row[data-opens] {
+  background: color-mix(in oklab, var(--wb-foreground) 9%, transparent);
 }
 
 .file:focus-visible > .row {
@@ -94,15 +108,21 @@
 
 .arrowBox {
   display: grid;
+  flex: none;
   place-items: center;
-  height: 1lh;
+  width: 14px;
+  height: 14px;
   cursor: pointer;
 }
 
-/* A newer version than the person has opened: a quiet dot, not a call to act. */
-.unseen {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--wb-muted-foreground);
+.arrowBox > .arrow {
+  width: 14px;
+  height: 14px;
+}
+
+.icon {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  color: var(--wb-muted-foreground);
 }

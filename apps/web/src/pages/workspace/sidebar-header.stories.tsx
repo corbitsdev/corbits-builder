@@ -15,7 +15,7 @@ const meta = {
     controls: "sidebar-bottom",
     onToggle: fn(),
     onHome: fn(),
-    onSettings: fn(),
+    onPreferences: fn(),
   },
   render: (args) => (
     <div
@@ -50,7 +50,7 @@ export const NameMenu: Story = {
       <ProjectMenuView
         trigger={trigger}
         align="start"
-        side="right"
+        side="bottom"
         {...placement}
         archived={false}
         shipped={false}
@@ -83,7 +83,7 @@ export const MarkMenu: Story = {
     await userEvent.keyboard("{Enter}");
     const menu = within(document.body);
     await expect(
-      menu.getByRole("menuitem", { name: words.settings }),
+      menu.getByRole("menuitem", { name: wording.settings.tab.preferences }),
     ).toBeVisible();
     await userEvent.click(
       menu.getByRole("menuitem", { name: words.backToProjects }),

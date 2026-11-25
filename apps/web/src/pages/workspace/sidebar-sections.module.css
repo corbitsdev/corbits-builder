@@ -1,17 +1,20 @@
-/* The sections stand at the foot of what holds them, whatever scrolls above. */
+/* The sections stand at the foot of what holds them, whatever scrolls above, ruled off from it. */
 .sections {
   flex: none;
   margin: 0;
-  padding: 0;
+  padding: var(--space-2) 0 0;
+  border-block-start: 1px solid var(--wb-border);
   list-style: none;
 }
 
-/* A row's name starts where a step's or a file's does, past the column their marks stand in. */
+/* A row starts at the files' left edge and stands as tall as theirs, so the files and the sections
+   read as one column. */
 .row {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   width: 100%;
-  padding-inline-start: calc(var(--space-2) + 14px + var(--space-2));
+  height: var(--sidebar-row-height);
+  padding-block: 0;
   border: 0;
   background: transparent;
   color: var(--wb-foreground);

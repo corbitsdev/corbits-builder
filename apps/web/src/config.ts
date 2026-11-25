@@ -288,7 +288,6 @@ export const wording = {
     app: "App",
     user_manual: "User manual",
   } as Record<string, string>,
-  documentUnread: "new version",
   documentRetryFailed: "The project could not be read. Try again.",
   tips: {
     label: "Tips",
@@ -495,21 +494,8 @@ export const wording = {
     /** Read after a step's name, and shown on its pause mark. */
     pausesFirst: "pauses for you before it starts",
     skipped: "skipped",
-    /** How the project's app stands, as the line under the plan says it. */
-    appState: {
-      starting: "App starting",
-      running: "App running",
-      stopped: "App stopped",
-      failed: "App failed to start",
-    },
-    /** How the app stands, under its row once it is built. */
-    appNow: {
-      starting: "Starting",
-      running: "Running",
-      stopped: "Stopped",
-      failed: "Didn't start",
-    },
-    openApp: "Open app",
+    /** The row at the sidebar's foot that opens the running app. */
+    preview: "Preview",
     /** The group of the project's files, under the plan. */
     files: "Files",
     /** The mark at the sidebar's top opens a menu that leaves the page. */
@@ -591,9 +577,6 @@ export const wording = {
     /** Puts the project view away, back to the conversation under it. */
     backToChat: "Back to chat",
     backToChatHint: "Back to chat (Esc)",
-    /** Opens everything the project has, its documents, design and preview, over the conversation. */
-    openProject: "Project",
-    openProjectHint: "Open the project's documents, design and preview",
     /** A plugin tab's status in the room's top bar, for a screen reader, which otherwise hears only it. */
     tabStatus: (tab: string, status: string) => `${tab}: ${status}`,
     openTab: (tab: string) => `Open ${tab}`,

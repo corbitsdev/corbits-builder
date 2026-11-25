@@ -89,7 +89,7 @@ describe("the plan", () => {
 
   test("a step that makes nothing is a row of its own, opening nothing", () => {
     const [look] = projectOutline(coordinatorPlan).plan;
-    expect(look).toMatchObject({ opens: null, app: false });
+    expect(look).toMatchObject({ opens: null });
   });
 
   test("each step row carries its own settings for its menu", () => {
@@ -154,13 +154,10 @@ describe("the plan", () => {
     expect(outlinePlan([step], [filed("notes")])[0]!.opens).toBe("notes");
   });
 
-  test("the step that makes the app stands for it, and opens it once it can be shown", () => {
+  test("the step that makes the app opens it once it can be shown", () => {
     const step = planStep("build", "running", { makes: ["app"] });
-    expect(outlinePlan([step])[0]).toMatchObject({ app: true, opens: null });
-    expect(outlinePlan([step], [], true)[0]).toMatchObject({
-      app: true,
-      opens: LIVE_TAB,
-    });
+    expect(outlinePlan([step])[0]!.opens).toBeNull();
+    expect(outlinePlan([step], [], true)[0]!.opens).toBe(LIVE_TAB);
   });
 
   test("each step opens what it made among the project view.s documents", () => {

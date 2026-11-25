@@ -3,21 +3,26 @@
  * open, and how the hub runs the app, run through the project's outline into the sidebar's props.
  * A file or the app opens through the room.
  */
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { PlanView } from "@corbits-builder/schemas/project";
 import type { MenuProject, ProjectMenuHost } from "../project-menu.model.ts";
+import type { SettingsTab } from "../settings/settings.view.tsx";
 import type { PaneDocument } from "./artifact-pane.tsx";
+import { wording } from "../../config.ts";
 import { ROOM_NARROW_QUERY, useSidebar } from "../../sidebar-setting.ts";
 import { liveAppQuery } from "./live-app.model.ts";
-import type { AppLineProps } from "./app-line.tsx";
-import type { PlanTimelineProps } from "./plan-timeline.tsx";
-import { projectOutline, type Outline } from "./project-outline.ts";
+import type { FilesListProps } from "./files-list.tsx";
+import { projectOutline, type OutlineAppState } from "./project-outline.ts";
 import type { ProjectSidebarViewProps } from "./project-sidebar.view.tsx";
+import type { SidebarSectionsProps } from "./sidebar-sections.tsx";
 import { LIVE_TAB } from "./tab-follow.ts";
+
+const words = wording.projectShell;
 
 /** Where the sidebar leads outside the room. */
 export type SidebarWays = {
-  onOpenSettings: () => void;
+  onOpenSettings: (tab?: SettingsTab) => void;
   onNewProject: () => void;
 };
 
@@ -62,6 +67,8 @@ export function useProjectSidebar(input: ProjectSidebarInput): {
     app: { shown: input.appShown, state: app.data?.state },
   });
   const open = leaving(input.onOpen);
+  // The step opened from the plan, apart from the file on the page, so neither marks the other.
+  const [step, setStep] = useState<string | null>(null);
   return {
     sidebar: {
       project: input.title,
@@ -69,9 +76,18 @@ export function useProjectSidebar(input: ProjectSidebarInput): {
       drawer: frame.drawer,
       onToggleSidebar: frame.toggle,
       onHome: input.onNewProject,
-      onSettings: () => input.onOpenSettings(),
-      plan: planProps(outline, input, open),
-      appLine: appLineProps(outline, input.shown, open),
+      onPreferences: () => input.onOpenSettings("preferences"),
+      plan: {
+        plan: outline.plan,
+        selected: input.shown === null ? null : step,
+        waitsOn: input.waitsOn,
+        onOpenStep: (id, tab) => {
+          setStep(id);
+          open(tab);
+        },
+      },
+      files: filesProps(input, open),
+      sections: sectionsProps(outline.app, input.shown, open),
     },
     projectMenu:
       input.project === undefined
@@ -86,31 +102,38 @@ export function useProjectSidebar(input: ProjectSidebarInput): {
   };
 }
 
-/** The plan as its timeline shows it, each step opening what it made. */
-function planProps(
-  outline: Outline,
+/** The filed documents, each opening on its own tab. */
+function filesProps(
   input: ProjectSidebarInput,
   open: (tab: string) => void,
-): PlanTimelineProps {
+): FilesListProps {
   return {
-    plan: outline.plan,
-    app: outline.app,
+    files: input.documents.map((document) => ({
+      id: document.id,
+      name: document.title,
+      opens: document.id,
+      files: [],
+    })),
     shown: input.shown,
-    waitsOn: input.waitsOn,
-    onOpenStep: open,
+    onOpen: open,
   };
 }
 
-/** The app's own line, which only stands where no step of the plan makes the app. */
-function appLineProps(
-  outline: Outline,
+/** The sections at the foot: the app's preview, once there is an app. */
+function sectionsProps(
+  app: OutlineAppState,
   shown: string | null,
   open: (tab: string) => void,
-): AppLineProps | null {
-  if (outline.plan.some((row) => row.app)) return null;
+): SidebarSectionsProps | undefined {
+  if (app === "not_built") return undefined;
   return {
-    app: outline.app,
-    open: shown === LIVE_TAB,
-    onOpen: () => open(LIVE_TAB),
+    sections: [
+      {
+        id: LIVE_TAB,
+        label: words.preview,
+        selected: shown === LIVE_TAB,
+      },
+    ],
+    onOpen: open,
   };
 }

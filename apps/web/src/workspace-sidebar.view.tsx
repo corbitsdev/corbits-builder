@@ -30,7 +30,8 @@ export type WorkspaceSidebarViewProps = {
   onNewProject: () => void;
   onConnectModel: () => void;
   onOpenProject: (projectId: string) => void;
-  onSettings: () => void;
+  /** Opens Settings on its Preferences tab, from the mark's menu. */
+  onPreferences: () => void;
 };
 
 export function WorkspaceSidebarView({
@@ -44,7 +45,7 @@ export function WorkspaceSidebarView({
   onNewProject,
   onConnectModel,
   onOpenProject,
-  onSettings,
+  onPreferences,
 }: WorkspaceSidebarViewProps) {
   const bottomId = `workspace-sidebar-${useId()}`;
   return (
@@ -61,7 +62,7 @@ export function WorkspaceSidebarView({
           controls={bottomId}
           onToggle={onToggleSidebar}
           onHome={onNewProject}
-          onSettings={onSettings}
+          onPreferences={onPreferences}
         />
       }
       bottom={
@@ -88,7 +89,7 @@ function WorkspaceRows({
   onOpenProject,
 }: Omit<
   WorkspaceSidebarViewProps,
-  "name" | "open" | "drawer" | "onToggleSidebar" | "onSettings"
+  "name" | "open" | "drawer" | "onToggleSidebar" | "onPreferences"
 >) {
   return (
     <>

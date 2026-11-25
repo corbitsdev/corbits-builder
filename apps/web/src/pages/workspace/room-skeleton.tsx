@@ -87,7 +87,7 @@ export function RoomSkeleton({
                     controls={bottomId}
                     onToggle={sidebar.onToggleSidebar}
                     onHome={sidebar.onHome}
-                    onSettings={sidebar.onSettings}
+                    onPreferences={sidebar.onPreferences}
                   />
                 }
                 top={
@@ -107,12 +107,10 @@ export function RoomSkeleton({
                 {...sidebar}
                 plan={{
                   plan: [],
-                  app: "not_built",
-                  shown: null,
+                  selected: null,
                   waitsOn: null,
                   onOpenStep: nothing,
                 }}
-                appLine={null}
               />
             )
           }

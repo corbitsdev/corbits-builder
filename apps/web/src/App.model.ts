@@ -590,6 +590,10 @@ export function useApp(): AppScreen {
           sidebar.leave();
           openSettings();
         },
+        onPreferences: () => {
+          sidebar.leave();
+          openSettings("preferences");
+        },
       },
       hub: { state: offline ? "notAnswering" : "answering" },
       setupFault: error,

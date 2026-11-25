@@ -91,13 +91,7 @@ export function useProjectMenu({
 }: ProjectMenuHost): {
   view: Omit<
     ProjectMenuViewProps,
-    | "trigger"
-    | "align"
-    | "side"
-    | "sideOffset"
-    | "alignOffset"
-    | "infoDialog"
-    | "exportDialog"
+    "trigger" | "align" | "side" | "sideOffset" | "infoDialog" | "exportDialog"
   >;
   /** What the project info dialog needs while it is open. */
   infoDialog: ProjectInfoDialogProps | null;

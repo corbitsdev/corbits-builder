@@ -29,8 +29,8 @@
   isolation: isolate;
 }
 
-/* Above the turns, the project control at the end: no bar of its own, no hairline, only the page
-   with a button in its corner. Without a control, there is nothing. */
+/* Above the turns, the plugin tabs' controls at the end: no bar of its own, no hairline, only the
+   page with buttons in its corner. Without a control, there is nothing. */
 .top {
   display: flex;
   flex-shrink: 0;
@@ -80,13 +80,6 @@
 
 .alert[data-mark="needs_you"] {
   background: var(--wb-proceed);
-}
-
-/* On a phone the project control keeps only its icon; its name stays its accessible name. */
-@media (max-width: 480px) {
-  .label {
-    display: none;
-  }
 }
 
 .conversation {

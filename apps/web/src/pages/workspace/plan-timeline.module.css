@@ -8,9 +8,9 @@
   margin: 0;
   padding: var(--space-2) var(--space-2) 0;
   color: var(--wb-foreground);
-  font-size: var(--text-xs);
-  font-weight: 600;
-  line-height: var(--text-xs--line-height);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  line-height: var(--text-sm--line-height);
 }
 
 /* No plan yet: one quiet line where the steps will be. */
@@ -18,8 +18,8 @@
   margin: 0;
   padding: 0 var(--space-2);
   color: var(--wb-muted-foreground);
-  font-size: var(--text-xs);
-  line-height: var(--text-xs--line-height);
+  font-size: var(--text-sm);
+  line-height: var(--text-sm--line-height);
 }
 
 .tree {
@@ -55,12 +55,12 @@
 
 .step:not(:first-child)::before {
   top: 0;
-  height: calc(6px + 0.5lh);
+  height: calc(var(--row-inset) + 0.5lh);
   background: var(--line-in);
 }
 
 .step:not(:last-child)::after {
-  top: calc(6px + 0.5lh);
+  top: calc(var(--row-inset) + 0.5lh);
   bottom: 0;
   background: var(--line);
 }
@@ -150,6 +150,8 @@
 
 .doing {
   display: flex;
+  font-size: var(--text-xs);
+  line-height: var(--text-xs--line-height);
   gap: 5px;
   overflow: hidden;
   color: var(--wb-muted-foreground);

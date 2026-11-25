@@ -39,7 +39,7 @@ export function StageWorkspace(props: StageWorkspaceProps) {
           drawer: sidebar.drawer,
           onToggleSidebar: sidebar.toggle,
           onHome: props.onNewProject,
-          onSettings: () => props.onOpenSettings(),
+          onPreferences: () => props.onOpenSettings("preferences"),
         }}
       />
     );
@@ -78,7 +78,7 @@ function ReadyRoom(props: ReadyRoomProps) {
                 <ProjectMenu
                   {...projectMenu}
                   trigger={trigger}
-                  side="right"
+                  side="bottom"
                   {...placement}
                   align="start"
                 />

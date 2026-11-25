@@ -1,7 +1,7 @@
 /**
- * The project's files under a heading that folds them, as a design tool lists its layers: a row
- * that holds others has an arrow that folds it, and what it holds stands one step in. Where the
- * list is taller than its room it scrolls inside itself. It is a tree with a single tab stop, after the
+ * The project's files under a heading that folds them, as a compact file tree: a folder leads with a
+ * chevron that folds it, a file leaves that space empty so names line up, and what a folder holds
+ * stands 1rem in. Where the list is taller than its room it scrolls inside itself. It is a tree with a single tab stop, after the
  * WAI-ARIA tree view pattern: up and down move between rows, right and left open and fold a row that
  * holds others and step into and out of it, Home and End jump, a letter finds the next row starting
  * with it, and Enter or Space opens a file or folds a folder. Folding only changes the look, so it is
@@ -14,7 +14,7 @@ import {
   type ComponentProps,
   type KeyboardEvent,
 } from "react";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, File, Folder } from "lucide-react";
 import { wording } from "../../config.ts";
 import rowStyles from "./sidebar-row.module.css";
 import styles from "./files-list.module.css";
@@ -30,8 +30,6 @@ export type SidebarFile = {
   name: string;
   /** The tab the row opens; null for a folder, which only holds its files. */
   opens: string | null;
-  /** A version the person has not opened yet. */
-  newVersion: boolean;
   files: readonly SidebarFile[];
 };
 
@@ -40,6 +38,8 @@ export type FilesListProps = {
   /** The tab opened from the files, whose row is marked; null while none is. */
   shown: string | null;
   onOpen: (tab: string) => void;
+  /** A small folder or file icon before each name. */
+  icons?: boolean | undefined;
 };
 
 /** A row as the keys move through it: only the rows a fold does not hide. */
@@ -70,12 +70,17 @@ const countFiles = (files: readonly SidebarFile[]): number =>
     0,
   );
 
-// Each step in is the width of a row's arrow and the gap after it, so a row's arrow stands under
-// the text of the row that holds it.
+// Each level stands 1rem further in than the row that holds it.
 const indent = (level: number) =>
-  `calc(var(--space-2) + ${String(level - 1)} * (14px + var(--space-2)))`;
+  `calc(var(--space-2) + ${String(level - 1)}rem)`;
 
-export function FilesList({ files, shown, onOpen }: FilesListProps) {
+export function FilesList({
+  files,
+  shown,
+  onOpen,
+  // The product owner first asked for no icons and may turn them off again here.
+  icons = true,
+}: FilesListProps) {
   const treeId = `files-${useId()}`;
   const [open, setOpen] = useState(() => countFiles(files) <= MANY_FILES);
   const [folded, setFolded] = useState<ReadonlySet<string>>(new Set());
@@ -208,6 +213,7 @@ export function FilesList({ files, shown, onOpen }: FilesListProps) {
             level={1}
             folded={folded}
             shown={shown}
+            icons={icons}
             activate={activate}
             onFold={fold}
             itemProps={itemProps}
@@ -219,14 +225,14 @@ export function FilesList({ files, shown, onOpen }: FilesListProps) {
 }
 
 /**
- * One file, and what it holds one step in. The one on the page is shaded as a selected row is; a
- * newer version than the person has opened leaves a quiet dot at the row's end.
+ * One file, and what it holds one level in. The one on the page has a faint fill.
  */
 function FileItem({
   file,
   level,
   folded,
   shown,
+  icons,
   activate,
   onFold,
   itemProps,
@@ -235,6 +241,7 @@ function FileItem({
   level: number;
   folded: ReadonlySet<string>;
   shown: string | null;
+  icons: boolean;
   activate: (file: SidebarFile) => (() => void) | null;
   onFold: (key: string) => void;
   itemProps: (key: string) => ItemProps;
@@ -243,15 +250,14 @@ function FileItem({
   const holds = file.files.length > 0;
   const expanded = holds && !folded.has(key);
   const onActivate = activate(file);
+  const Icon = holds ? Folder : File;
   return (
     <li
       role="treeitem"
       aria-level={level}
       aria-expanded={holds ? expanded : undefined}
       // Named for itself alone, not for the files it holds.
-      aria-label={
-        file.newVersion ? `${file.name}, ${wording.documentUnread}` : file.name
-      }
+      aria-label={file.name}
       aria-current={
         file.opens !== null && file.opens === shown ? "page" : undefined
       }
@@ -259,7 +265,7 @@ function FileItem({
       {...itemProps(key)}
     >
       <span
-        className={`${rowStyles.row} ${styles.row}`}
+        className={styles.row}
         data-opens={onActivate === null ? undefined : ""}
         style={{ paddingInlineStart: indent(level) }}
         title={file.name}
@@ -280,8 +286,8 @@ function FileItem({
             <ChevronRight className={styles.arrow} aria-hidden="true" />
           ) : null}
         </span>
+        {icons ? <Icon className={styles.icon} aria-hidden="true" /> : null}
         <span className={rowStyles.name}>{file.name}</span>
-        {file.newVersion ? <span className={styles.unseen} /> : null}
       </span>
       {expanded ? (
         <ul role="group" className={styles.tree}>
@@ -292,6 +298,7 @@ function FileItem({
               level={level + 1}
               folded={folded}
               shown={shown}
+              icons={icons}
               activate={activate}
               onFold={onFold}
               itemProps={itemProps}

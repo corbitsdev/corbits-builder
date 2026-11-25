@@ -1,12 +1,11 @@
 /**
- * The sidebar's title row: the mark, whose menu leads back to the projects or to Settings, the name,
+ * The sidebar's title row: the mark, whose menu leads back to the projects or to Preferences, the name,
  * which opens a menu of its own where there is one, and the toggle that opens and closes the
  * sidebar, from anywhere with the shortcut too.
  */
 import {
   useEffect,
   useEffectEvent,
-  useLayoutEffect,
   useRef,
   useState,
   type ReactElement,
@@ -35,8 +34,8 @@ const shortcut = mac
   ? { key: "Meta+Backslash", words: words.shortcut.mac }
   : { key: "Control+Backslash", words: words.shortcut.other };
 
-/** Where a header menu opens, from its trigger: to the right of it and up from its top. */
-export type MenuPlacement = { sideOffset: number; alignOffset: number };
+/** Where a header menu opens, from its trigger: below it, by this much. */
+export type MenuPlacement = { sideOffset: number };
 
 /** A menu opened from the name, given the button that opens it and where it opens. */
 export type TitleMenu = (
@@ -45,15 +44,12 @@ export type TitleMenu = (
 ) => ReactNode;
 
 const MENU_GAP = 8;
-const NEAR: MenuPlacement = { sideOffset: MENU_GAP, alignOffset: 0 };
-const samePlace = (a: MenuPlacement, b: MenuPlacement) =>
-  a.sideOffset === b.sideOffset && a.alignOffset === b.alignOffset;
 
 /** Where the mark's menu leads, in a project and outside one. */
 export type MarkWays = {
   /** Back to the projects, on the home page. */
   onHome: () => void;
-  onSettings: () => void;
+  onPreferences: () => void;
 };
 
 export type SidebarHeaderProps = MarkWays & {
@@ -77,7 +73,7 @@ export function SidebarHeader({
   controls,
   onToggle,
   onHome,
-  onSettings,
+  onPreferences,
 }: SidebarHeaderProps) {
   const [byKey, setByKey] = useState(false);
   const toggleByKey = useEffectEvent(() => {
@@ -94,68 +90,59 @@ export function SidebarHeader({
     return () => document.removeEventListener("keydown", onKey);
   }, []);
   const Icon = open ? PanelLeftClose : PanelLeftOpen;
-  // The menus open beside the card, over the page, their tops level with this row, so the title,
-  // the toggle and the plan stay in sight. A menu anchors to its trigger, so each is placed by how
-  // far its trigger stands from this row's right edge, which is the card's, and its top.
+  // Each menu drops from under its own button, so the pointer has nowhere to travel, and both
+  // tops sit level under this row though the buttons differ in height. A menu positions itself
+  // from the button that opens it, so as either is pressed, its distance from the row's foot
+  // becomes the one placement both menus read.
   const headRef = useRef<HTMLDivElement>(null);
-  const markRef = useRef<HTMLButtonElement>(null);
-  const nameRef = useRef<HTMLButtonElement>(null);
-  const [beside, setBeside] = useState({ mark: NEAR, name: NEAR });
-  useLayoutEffect(() => {
-    const head = headRef.current?.getBoundingClientRect();
-    if (head === undefined) return;
-    const from = (trigger: HTMLElement | null): MenuPlacement => {
-      if (trigger === null) return NEAR;
-      const at = trigger.getBoundingClientRect();
-      return {
-        sideOffset: Math.round(head.right - at.right + MENU_GAP),
-        alignOffset: Math.round(head.top - at.top),
-      };
-    };
-    const next = { mark: from(markRef.current), name: from(nameRef.current) };
-    setBeside((last) =>
-      samePlace(last.mark, next.mark) && samePlace(last.name, next.name)
-        ? last
-        : next,
-    );
+  const [placement, setPlacement] = useState<MenuPlacement>({
+    sideOffset: MENU_GAP,
   });
+  const placeFrom = (target: EventTarget) => {
+    const trigger = target instanceof Element ? target.closest("button") : null;
+    const row = headRef.current?.getBoundingClientRect();
+    if (trigger === null || row === undefined) return;
+    const at = trigger.getBoundingClientRect();
+    setPlacement({
+      sideOffset: Math.round(row.bottom - at.bottom + MENU_GAP),
+    });
+  };
   return (
     <div
       ref={headRef}
       className={styles.head}
       data-open={open ? "" : undefined}
       data-instant={byKey ? "" : undefined}
+      onPointerDownCapture={(event) => placeFrom(event.target)}
+      onKeyDownCapture={(event) => placeFrom(event.target)}
     >
       <Menu>
         <MenuTrigger asChild>
-          <button
-            ref={markRef}
-            type="button"
-            className={styles.mark}
-            aria-label={words.menu}
-          >
+          <button type="button" className={styles.mark} aria-label={words.menu}>
             <Mark size={28} />
           </button>
         </MenuTrigger>
         <MenuContent
           className={menuStyles.menu}
-          side="right"
+          side="bottom"
           align="start"
-          {...beside.mark}
+          {...placement}
         >
           <MenuItem onSelect={onHome}>{words.backToProjects}</MenuItem>
           <MenuSeparator />
-          <MenuItem onSelect={onSettings}>{words.settings}</MenuItem>
+          <MenuItem onSelect={onPreferences}>
+            {wording.settings.tab.preferences}
+          </MenuItem>
         </MenuContent>
       </Menu>
       {titleMenu === undefined ? (
         <span className={styles.project}>{title}</span>
       ) : (
         titleMenu(
-          <button ref={nameRef} type="button" className={styles.project}>
+          <button type="button" className={styles.project}>
             {title}
           </button>,
-          beside.name,
+          placement,
         )
       )}
       <button

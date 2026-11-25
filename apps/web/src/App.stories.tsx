@@ -34,6 +34,7 @@ const meta = {
       onConnectModel: fn(),
       onOpenProject: fn(),
       onSettings: fn(),
+      onPreferences: fn(),
     },
     hub: { state: "answering" },
     setupFault: null,

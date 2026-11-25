@@ -1,7 +1,7 @@
 /**
  * The project room as it looks: the conversation with the coordinator across the page, the dock
  * beneath it (the composer, or a banner saying why there is none), the project view that opens
- * over it from a card or the project control and closes back to the conversation, and the plugin
+ * over it from a card or the sidebar and closes back to the conversation, and the plugin
  * space beside them both, where every plugin screen opens.
  */
 import {
@@ -13,14 +13,7 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
-import {
-  FolderOpen,
-  MessageSquare,
-  Plus,
-  Sparkles,
-  TriangleAlert,
-  X,
-} from "lucide-react";
+import { MessageSquare, Plus, Sparkles, TriangleAlert, X } from "lucide-react";
 import {
   Attachment,
   type AttachmentItem,
@@ -220,7 +213,7 @@ export type RoomContent = {
     projectOpen: boolean;
     /** The project view shows a written document, open on its page. */
     documentShown: boolean;
-    onProjectOpenChange: (open: boolean) => void;
+    onCloseProject: () => void;
   };
   conversation: {
     thread: RoomThreadContent;
@@ -265,11 +258,14 @@ export function RoomView({
   chat,
   projectMenu,
 }: RoomViewProps) {
-  const { projectReady, projectOpen, documentShown, onProjectOpenChange } =
-    layout;
+  const {
+    projectReady,
+    projectOpen,
+    documentShown,
+    onCloseProject: closeProject,
+  } = layout;
   const conversationRef = useRef<HTMLElement>(null);
   const shell = useShellReply(conversationRef);
-  const closeProject = () => onProjectOpenChange(false);
   const mainRef = useRef<HTMLDivElement>(null);
   // The box floats over the foot of the project view and of a screen over the conversation, so
   // each keeps what it must reach clear of it by the box's height, which grows as the person writes.
@@ -479,20 +475,6 @@ export function RoomView({
                         )}
                       </UiButton>
                     ))}
-                    <UiButton
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      className={styles.control}
-                      aria-label={wording.conversation.openProject}
-                      title={wording.conversation.openProjectHint}
-                      onClick={() => onProjectOpenChange(true)}
-                    >
-                      <FolderOpen size={16} aria-hidden="true" />
-                      <span className={styles.label}>
-                        {wording.conversation.openProject}
-                      </span>
-                    </UiButton>
                   </div>
                 ) : null}
               </div>

@@ -35,8 +35,6 @@ export type OutlineRow = {
   id: string;
   name: string;
   state: OutlineStepState;
-  /** It makes the project's app, so it stands for the app's own line. */
-  app: boolean;
   /** The tab of what it made, once the project has it; null while there is nothing to show. */
   opens: string | null;
   /** When the step started, so a running one can say how long it has run; null before it has. */
@@ -131,7 +129,6 @@ export function outlinePlan(
       id: step.id,
       name: step.title,
       state: stepState(step),
-      app: made.includes("app"),
       opens: makes === null ? null : makes === "app" ? LIVE_TAB : makes,
       startedAt: step.startedAt ?? null,
       summary: step.summary ?? null,

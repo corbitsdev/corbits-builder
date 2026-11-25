@@ -15,41 +15,17 @@ import {
 } from "./project-sidebar.view.tsx";
 import type { SidebarSectionsProps } from "./sidebar-sections.tsx";
 import { preview, publish } from "./sidebar-sections.stories.tsx";
-import { LIVE_TAB } from "./tab-follow.ts";
 import { wording } from "../../config.ts";
 
 const words = wording.projectShell;
 
-/**
- * What is on the page and the part it was opened from, which alone marks it: a step, a file, a
- * section, or the app from its own line.
- */
-type OnPage = {
-  tab: string;
-  from: "plan" | "files" | "sections" | "app";
-} | null;
-
-const onPageOf = ({
-  plan,
-  files,
-  sections,
-}: ProjectSidebarViewProps): OnPage => {
-  const section = sections?.sections.find((each) => each.selected);
-  if (section !== undefined) return { tab: section.id, from: "sections" };
-  if (files !== undefined && files.shown !== null)
-    return { tab: files.shown, from: "files" };
-  return plan.shown === null ? null : { tab: plan.shown, from: "plan" };
-};
-
-// Holds what the page would: what is on the page and whether the sidebar is out, so a story can
-// be clicked through.
+// Holds what the page would: what is on the page, the step opened from the plan and whether the
+// sidebar is out, so a story can be clicked through.
 function Clickable(args: ProjectSidebarViewProps) {
-  const [onPage, setOnPage] = useState(() => onPageOf(args));
+  const { plan, files, sections } = args;
+  const [shown, setShown] = useState(files?.shown ?? null);
+  const [step, setStep] = useState(plan.selected);
   const [open, setOpen] = useState(args.open);
-  const from = (part: "plan" | "files" | "sections") =>
-    onPage !== null && onPage.from === part ? onPage.tab : null;
-  const appOpen = onPage?.tab === LIVE_TAB;
-  const { plan, files, sections, appLine } = args;
   return (
     <ProjectSidebarView
       {...args}
@@ -60,10 +36,11 @@ function Clickable(args: ProjectSidebarViewProps) {
       }}
       plan={{
         ...plan,
-        shown: from("plan"),
-        onOpenStep: (tab) => {
-          setOnPage({ tab, from: "plan" });
-          plan.onOpenStep(tab);
+        selected: step,
+        onOpenStep: (id, tab) => {
+          setStep(id);
+          setShown(tab);
+          plan.onOpenStep(id, tab);
         },
       }}
       files={
@@ -71,9 +48,9 @@ function Clickable(args: ProjectSidebarViewProps) {
           ? undefined
           : {
               ...files,
-              shown: from("files"),
+              shown,
               onOpen: (tab) => {
-                setOnPage({ tab, from: "files" });
+                setShown(tab);
                 files.onOpen(tab);
               },
             }
@@ -84,23 +61,11 @@ function Clickable(args: ProjectSidebarViewProps) {
           : {
               sections: sections.sections.map((each) => ({
                 ...each,
-                selected: each.id === from("sections"),
+                selected: each.id === shown,
               })),
               onOpen: (id) => {
-                setOnPage({ tab: id, from: "sections" });
+                setShown(id);
                 sections.onOpen(id);
-              },
-            }
-      }
-      appLine={
-        appLine === null
-          ? null
-          : {
-              ...appLine,
-              open: appOpen,
-              onOpen: () => {
-                setOnPage({ tab: LIVE_TAB, from: "app" });
-                appLine.onOpen();
               },
             }
       }
@@ -126,11 +91,9 @@ function Shell({ children }: { children: ReactNode }) {
 
 const plan = (
   steps: ProjectSidebarViewProps["plan"]["plan"],
-  app: ProjectSidebarViewProps["plan"]["app"] = "not_built",
 ): ProjectSidebarViewProps["plan"] => ({
   plan: steps,
-  app,
-  shown: null,
+  selected: null,
   waitsOn: null,
   onOpenStep: fn(),
 });
@@ -144,10 +107,9 @@ const meta = {
     open: true,
     drawer: false,
     plan: plan(planning),
-    appLine: null,
     onToggleSidebar: fn(),
     onHome: fn(),
-    onSettings: fn(),
+    onPreferences: fn(),
   },
   render: (args) => (
     <Shell>
@@ -163,7 +125,7 @@ type Story = StoryObj<typeof meta>;
 export const Planning: Story = {};
 
 const buildingArgs = {
-  plan: plan(building, "running"),
+  plan: plan(building),
 } satisfies Partial<ProjectSidebarViewProps>;
 
 /** While building: the app is built and up, and its manual is being written. */
@@ -172,14 +134,6 @@ export const Building: Story = { args: buildingArgs };
 export const BuildingDark: Story = {
   args: buildingArgs,
   globals: { mode: "dark" },
-};
-
-/** Without a step that makes it, as when the app came before the plan, the app keeps its own line. */
-export const AppWithoutPlan: Story = {
-  args: {
-    plan: plan([], "running"),
-    appLine: { app: "running", open: false, onOpen: fn() },
-  },
 };
 
 /** The files as the room would pass them, the given one opened from them. */
@@ -214,15 +168,15 @@ export const FilesSmall: Story = {
 };
 
 const finishedArgs = {
-  ...buildingArgs,
+  plan: { ...plan(building), waitsOn: "build_plan" },
   files: listed(finishedFiles, "build_plan"),
   sections: foot(preview("Running"), publish("Live")),
 } satisfies Partial<ProjectSidebarViewProps>;
 
 /**
- * A finished project. The plan, the files and the sections each mark only what was opened from
- * them: the build plan opened from the files leaves its step in the plan unmarked, the step opened
- * next takes the mark from the file, and a section opened after takes it from the step.
+ * A finished project, its build plan waiting on the person. The plan and the files mark apart: the
+ * build plan opened from the files leaves its step unmarked, and the step opened from the plan
+ * stays marked as another file opens.
  */
 export const FilesFinished: Story = {
   args: finishedArgs,
@@ -234,11 +188,11 @@ export const FilesFinished: Story = {
     await expect(step).not.toHaveAttribute("aria-current");
     await userEvent.click(step);
     await expect(step).toHaveAttribute("aria-current", "page");
+    const brief = canvas.getByRole("treeitem", { name: "Brief" });
+    await userEvent.click(brief);
+    await expect(brief).toHaveAttribute("aria-current", "page");
     await expect(file).not.toHaveAttribute("aria-current");
-    const preview = canvas.getByRole("button", { name: /^Preview/ });
-    await userEvent.click(preview);
-    await expect(preview).toHaveAttribute("aria-current", "page");
-    await expect(step).not.toHaveAttribute("aria-current");
+    await expect(step).toHaveAttribute("aria-current", "page");
   },
 };
 
@@ -282,25 +236,22 @@ export const FilesLongNames: Story = {
  */
 export const LongPlan: Story = {
   args: {
-    plan: plan(
-      [
-        row("brief", "Write the brief", "done"),
-        row("constraints", "List the constraints", "done"),
-        row("approaches", "Compare approaches", "done"),
-        row("requirements", "Write the requirements", "done"),
-        row("research", "Research other bakeries", "declined"),
-        row("design", "Design the screens", "done"),
-        row("review", "Review the design", "done"),
-        row("build", "Build the app", "running", {}, ran(312)),
-        row("orders", "Add online cake orders"),
-        row("allergies", "Flag allergies on every order"),
-        row("ready", "Tell customers when a cake is ready"),
-        row("test", "Test the app with the counter staff"),
-        row("manual", "Write the user manual"),
-        row("launch", "Launch for the Saturday market"),
-      ],
-      "running",
-    ),
+    plan: plan([
+      row("brief", "Write the brief", "done"),
+      row("constraints", "List the constraints", "done"),
+      row("approaches", "Compare approaches", "done"),
+      row("requirements", "Write the requirements", "done"),
+      row("research", "Research other bakeries", "declined"),
+      row("design", "Design the screens", "done"),
+      row("review", "Review the design", "done"),
+      row("build", "Build the app", "running", {}, ran(312)),
+      row("orders", "Add online cake orders"),
+      row("allergies", "Flag allergies on every order"),
+      row("ready", "Tell customers when a cake is ready"),
+      row("test", "Test the app with the counter staff"),
+      row("manual", "Write the user manual"),
+      row("launch", "Launch for the Saturday market"),
+    ]),
   },
 };
 
@@ -322,14 +273,17 @@ export const ClosedDark: Story = {
   globals: { mode: "dark" },
 };
 
-/** A step that has made something opens it, closed as well as open. */
-export const ClosedOpensWhatAStepMade: Story = {
-  args: { ...buildingArgs, open: false },
+/** A step waiting on the person opens what it made, closed as well as open. */
+export const ClosedOpensWhatWaitsOnYou: Story = {
+  args: { ...finishedArgs, open: false },
   play: async ({ args, canvasElement }) => {
     await userEvent.click(
-      within(canvasElement).getByRole("treeitem", { name: /^Design the look/ }),
+      within(canvasElement).getByRole("treeitem", { name: /^Plan the build/ }),
     );
-    await expect(args.plan.onOpenStep).toHaveBeenCalledWith("design");
+    await expect(args.plan.onOpenStep).toHaveBeenCalledWith(
+      "build_plan",
+      "build_plan",
+    );
   },
 };
 

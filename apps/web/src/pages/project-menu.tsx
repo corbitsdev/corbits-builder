@@ -28,7 +28,6 @@ type ProjectMenuProps = ProjectMenuHost & {
   side?: "bottom" | "right";
   /** How far it opens from the trigger, along that side and across it. */
   sideOffset?: number;
-  alignOffset?: number;
 };
 
 export function ProjectMenu({
@@ -36,7 +35,6 @@ export function ProjectMenu({
   align = "end",
   side = "bottom",
   sideOffset = 4,
-  alignOffset = 0,
   ...host
 }: ProjectMenuProps) {
   const { view, infoDialog, exportDialog } = useProjectMenu(host);
@@ -47,7 +45,6 @@ export function ProjectMenu({
       align={align}
       side={side}
       sideOffset={sideOffset}
-      alignOffset={alignOffset}
       infoDialog={
         infoDialog === null ? null : <ProjectInfoDialog {...infoDialog} />
       }

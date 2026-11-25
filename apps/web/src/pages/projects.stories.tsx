@@ -34,7 +34,7 @@ const meta = {
       drawer: false,
       onToggleSidebar: fn(),
       onHome: fn(),
-      onSettings: fn(),
+      onPreferences: fn(),
     },
     idea: "",
     onIdeaChange: fn(),

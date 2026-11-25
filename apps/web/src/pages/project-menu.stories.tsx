@@ -53,7 +53,6 @@ const meta = {
     align: "start",
     side: "bottom",
     sideOffset: 4,
-    alignOffset: 0,
     archived: false,
     shipped: false,
     onShowInfo: fn(),

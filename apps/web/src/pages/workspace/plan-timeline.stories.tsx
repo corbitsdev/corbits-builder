@@ -42,7 +42,6 @@ export const row = (
   id,
   name,
   state,
-  app: false,
   opens: null,
   startedAt: null,
   summary: null,
@@ -72,7 +71,7 @@ export const planning = [
   row("requirements", "Write the requirements", "to_do", { askFirst: true }),
   row("research", "Research other bakeries", "to_do", { declined: false }),
   row("design", "Design the look"),
-  row("build", "Build the app", "to_do", {}, { app: true }),
+  row("build", "Build the app", "to_do"),
 ];
 
 export const building = [
@@ -87,7 +86,7 @@ export const building = [
   row("looks", "Choose how many looks", "done"),
   row("design", "Design the look", "done", {}, made("design")),
   row("build_plan", "Plan the build", "done", {}, made("build_plan")),
-  row("build", "Build the app", "done", {}, { app: true, opens: LIVE_TAB }),
+  row("build", "Build the app", "done", {}, { opens: LIVE_TAB }),
   row(
     "manual",
     "Write the user manual",
@@ -121,16 +120,16 @@ const coordinatorPlan = [
   }),
 ];
 
-// Holds what the page would: the tab opened from the plan, so a story can be clicked through.
+// Holds what the page would: the step opened from the plan, so a story can be clicked through.
 function Clickable(args: PlanTimelineProps) {
-  const [shown, setShown] = useState(args.shown);
+  const [selected, setSelected] = useState(args.selected);
   return (
     <PlanTimeline
       {...args}
-      shown={shown}
-      onOpenStep={(tab) => {
-        setShown(tab);
-        args.onOpenStep(tab);
+      selected={selected}
+      onOpenStep={(step, tab) => {
+        setSelected(step);
+        args.onOpenStep(step, tab);
       }}
     />
   );
@@ -141,8 +140,7 @@ const meta = {
   component: PlanTimeline,
   args: {
     plan: planning,
-    app: "not_built",
-    shown: null,
+    selected: null,
     waitsOn: null,
     onOpenStep: fn(),
   },
@@ -174,7 +172,6 @@ export const PlanningDark: Story = { globals: { mode: "dark" } };
 
 const buildingArgs = {
   plan: building,
-  app: "running",
 } satisfies Partial<PlanTimelineProps>;
 
 /** While building: the app is built and up, and its manual is being written. */
@@ -186,11 +183,11 @@ export const BuildingDark: Story = {
 };
 
 /**
- * The build plan opened from the approval waiting in the prompt box: its step is shaded as the one
- * on the page, and says it waits on the person until they answer.
+ * The build plan opened from the approval waiting in the prompt box: its step says it waits on the
+ * person until they answer, and is shaded once opened from the plan.
  */
 export const DocumentWaitsOnYou: Story = {
-  args: { ...buildingArgs, shown: "build_plan", waitsOn: "build_plan" },
+  args: { ...buildingArgs, selected: "build_plan", waitsOn: "build_plan" },
   play: async ({ canvasElement }) => {
     const step = within(canvasElement).getByRole("treeitem", {
       name: /^Plan the build/,
@@ -207,15 +204,6 @@ export const DocumentWaitsOnYouDark: Story = {
   ...DocumentWaitsOnYou,
   globals: { mode: "dark" },
 };
-
-/** The app's step says how the app runs: starting, stopped, or that it could not start. */
-export const AppStarting: Story = {
-  args: { ...buildingArgs, app: "starting" },
-};
-
-export const AppStopped: Story = { args: { ...buildingArgs, app: "stopped" } };
-
-export const AppFailed: Story = { args: { ...buildingArgs, app: "failed" } };
 
 /**
  * No plan, as in a new project or one asked for something too small to plan: the plan makes up
@@ -256,10 +244,10 @@ export const CoordinatorPlanDark: Story = {
 };
 
 /** Two ready-made plans' steps, one after the other: the step waiting on the person is shaded. */
-export const Publishing: Story = { args: { plan: publishing, app: "running" } };
+export const Publishing: Story = { args: { plan: publishing } };
 
 export const PublishingDark: Story = {
-  args: { plan: publishing, app: "running" },
+  args: { plan: publishing },
   globals: { mode: "dark" },
 };
 
@@ -416,33 +404,29 @@ export const StepsBeforeTheyStart: Story = {
 };
 
 /**
- * A step that has made something opens it, and is marked while it is on the page; the step that
- * built the app opens the app. A step with nothing to show is only where the work stands, and
- * pressing it does nothing.
+ * Only a step waiting on the person opens what it made, and is marked once opened. Every other
+ * step, done or at work, is only where the work stands, and pressing it does nothing.
  */
-export const OpensWhatARowMade: Story = {
-  args: buildingArgs,
+export const OpensWhatWaitsOnYou: Story = {
+  args: { ...buildingArgs, waitsOn: "build_plan" },
   play: async ({ args, canvasElement }) => {
     const canvas = within(canvasElement);
-    const requirements = canvas.getByRole("treeitem", {
-      name: /^Write the requirements/,
-    });
-    await userEvent.click(requirements);
-    await expect(args.onOpenStep).toHaveBeenCalledWith("product_requirements");
-    await expect(requirements).toHaveAttribute("aria-current", "page");
+    await userEvent.click(
+      canvas.getByRole("treeitem", { name: /^Write the requirements/ }),
+    );
+    await userEvent.click(
+      canvas.getByRole("treeitem", { name: /^Build the app/ }),
+    );
     await userEvent.click(
       canvas.getByRole("treeitem", { name: /^Write the user manual/ }),
     );
-    await userEvent.click(
-      canvas.getByRole("treeitem", { name: /^Choose how many looks/ }),
+    await expect(args.onOpenStep).not.toHaveBeenCalled();
+    const waiting = canvas.getByRole("treeitem", { name: /^Plan the build/ });
+    await userEvent.click(waiting);
+    await expect(args.onOpenStep).toHaveBeenCalledWith(
+      "build_plan",
+      "build_plan",
     );
-    await expect(args.onOpenStep).toHaveBeenCalledTimes(1);
-    const app = canvas.getByRole("treeitem", { name: /^Build the app/ });
-    await expect(app).toHaveAccessibleName(
-      `Build the app, ${words.stepState.done}, ${words.appNow.running}`,
-    );
-    await userEvent.click(app);
-    await expect(args.onOpenStep).toHaveBeenLastCalledWith(LIVE_TAB);
-    await expect(app).toHaveAttribute("aria-current", "page");
+    await expect(waiting).toHaveAttribute("aria-current", "page");
   },
 };

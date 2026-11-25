@@ -31,7 +31,10 @@ export type AppViewProps = {
   /** A project's room is on the page, and its own sidebar stands where the workspace's would. */
   roomOpen: boolean;
   /** The sidebar outside a project, all but its marked row, which the shell keeps. */
-  sidebar: Omit<WorkspaceSidebarViewProps, "current">;
+  sidebar: Omit<WorkspaceSidebarViewProps, "current"> & {
+    /** The Settings link in the new project page's corner. */
+    onSettings: () => void;
+  };
   hub: HubHealth;
   /** Why setting up the workspace did not finish. */
   setupFault: string | null;
