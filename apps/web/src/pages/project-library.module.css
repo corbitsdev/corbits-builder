@@ -1,22 +1,110 @@
-/* The Projects page: filter chips over a grid of cards. */
+/* The Projects page: the title, a row of controls under it, then a grid of cards. */
 
 .page {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   min-width: 0;
-  gap: var(--space-4);
+  gap: var(--space-6);
   align-content: start;
 }
 
-.filters {
+/* The title, the controls and the cards line up on one left edge; the library's header adds an
+   inset meant for a page without a gutter. */
+.header {
+  padding-inline: 0;
+  padding-bottom: 0;
+}
+
+/* Filters at the start, the layout toggle and New project at the end; at narrow widths the two
+   at the end wrap together under the filters, still at the end. */
+.toolbar {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-2);
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-inline-start: auto;
+}
+
+/* One segmented control: a muted track, with the pressed item lifted out of it. The track's
+   corners are one step rounder than an item's less the padding, so the curves are concentric. */
+.track {
+  --track-inset: 3px;
+
+  display: inline-flex;
+  flex-wrap: wrap;
+  max-width: 100%;
+  padding: var(--track-inset);
+  border-radius: var(--radius-lg);
+  background: var(--wb-muted);
+}
+
+.filter,
+.viewButton {
+  height: 30px;
+  border: 0;
+  border-radius: calc(var(--radius-lg) - var(--track-inset));
+  background: transparent;
+  box-shadow: none;
+  color: var(--wb-muted-foreground);
+  font-size: var(--wb-text-control);
+  font-weight: 400;
 }
 
 .filter {
-  height: calc(var(--spacing) * 9);
+  gap: 6px;
+  padding: 0 var(--space-3);
+}
+
+.viewButton {
+  width: 32px;
+}
+
+.filter:hover,
+.viewButton:hover {
+  background: transparent;
+  color: var(--wb-foreground);
+}
+
+.filter[aria-pressed="true"],
+.viewButton[aria-pressed="true"] {
+  background: var(--wb-background);
+  box-shadow: var(--wb-shadow);
+  color: var(--wb-foreground);
+  font-weight: 500;
+}
+
+.count {
+  color: var(--wb-muted-foreground);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A stage with nothing in it can still be pressed, to show that it's empty, but is dimmed. */
+.empty:not([aria-pressed="true"]),
+.empty:not([aria-pressed="true"]) .count {
+  color: color-mix(in oklab, var(--wb-muted-foreground) 60%, var(--wb-muted));
+}
+
+.empty:not([aria-pressed="true"]):hover {
+  color: var(--wb-foreground);
+}
+
+/* The workspace's action blue, not the library's orange primary. */
+.newProject {
+  height: 36px;
   border-radius: var(--radius-control);
+  background: var(--wb-action);
+  color: var(--wb-action-foreground);
+}
+
+.newProject:hover {
+  background: color-mix(in oklab, var(--wb-action) 85%, var(--wb-foreground));
 }
 
 .note {
@@ -96,11 +184,6 @@
   position: absolute;
   right: var(--space-2);
   bottom: var(--space-3);
-}
-
-.view {
-  display: inline-flex;
-  gap: var(--space-1);
 }
 
 /* As a list: one line per project, a small swatch of its cover at the start,

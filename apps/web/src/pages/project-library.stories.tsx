@@ -158,6 +158,14 @@ export const LongTitles: Story = {
   },
 };
 
+/** Stages with nothing in them are dimmed in the filters, and can still be pressed. */
+export const EmptyStages: Story = {
+  args: {
+    counts: { idea: 2, building: 2, shipped: 0, archived: 0 },
+    projects: [bakery, tracker, invoices, recipes],
+  },
+};
+
 export const FilteredToBuilding: Story = {
   args: { filter: "building", projects: [bakery, invoices] },
 };

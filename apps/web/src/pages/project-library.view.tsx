@@ -11,6 +11,7 @@ import {
   LibraryPageHeader,
   type BadgeTone,
 } from "@corbits/react-ui";
+import { clsx } from "clsx";
 import { Ellipsis, LayoutGrid, List, Plus } from "lucide-react";
 import {
   useEffect,
@@ -136,10 +137,11 @@ function ViewToggle({
 }) {
   const text = wording.library.view;
   return (
-    <div className={styles.view} role="group" aria-label={text.label}>
+    <div className={styles.track} role="group" aria-label={text.label}>
       <Button
-        variant={mode === "grid" ? "outline" : "ghost"}
+        variant="ghost"
         size="icon"
+        className={styles.viewButton}
         aria-pressed={mode === "grid"}
         aria-label={text.grid}
         onClick={() => onChange("grid")}
@@ -147,8 +149,9 @@ function ViewToggle({
         <LayoutGrid aria-hidden="true" />
       </Button>
       <Button
-        variant={mode === "rows" ? "outline" : "ghost"}
+        variant="ghost"
         size="icon"
+        className={styles.viewButton}
         aria-pressed={mode === "rows"}
         aria-label={text.rows}
         onClick={() => onChange("rows")}
@@ -265,6 +268,16 @@ export function ProjectLibraryView({
     next?.focus();
   }, [focusAfterChange]);
 
+  const newProject = (
+    <Button
+      variant="primary"
+      className={styles.newProject}
+      onClick={onNewProject}
+    >
+      <Plus aria-hidden="true" />
+      {wording.shell.newProject}
+    </Button>
+  );
   // With nothing under All, either there are no projects or every one is archived.
   const allArchived = counts.archived > 0;
   let body: ReactNode;
@@ -315,11 +328,13 @@ export function ProjectLibraryView({
   return (
     <section className={styles.page} ref={section}>
       <LibraryPageHeader
+        className={styles.header}
         title={wording.library.title}
         subtitle={wording.library.subtitle}
-      >
+      />
+      <div className={styles.toolbar}>
         <div
-          className={styles.filters}
+          className={styles.track}
           data-filters=""
           role="group"
           aria-label={wording.library.filterLabel}
@@ -334,21 +349,26 @@ export function ProjectLibraryView({
           {FILTERS.map((item) => (
             <FilterChip
               key={item}
-              className={styles.filter}
+              className={clsx(
+                styles.filter,
+                status === "ready" && counts[item] === 0 && styles.empty,
+              )}
               selected={filter === item}
-              {...(status === "ready" ? { count: counts[item] } : {})}
               onClick={() => onFilterChange(item)}
             >
               {wording.library.filter[item]}
+              {/* The chip's own count turns brand orange when pressed. */}
+              {status === "ready" ? (
+                <span className={styles.count}>{counts[item]}</span>
+              ) : null}
             </FilterChip>
           ))}
         </div>
-        <ViewToggle mode={layout} onChange={onLayoutChange} />
-        <Button variant="primary" onClick={onNewProject}>
-          <Plus aria-hidden="true" />
-          {wording.shell.newProject}
-        </Button>
-      </LibraryPageHeader>
+        <div className={styles.actions}>
+          <ViewToggle mode={layout} onChange={onLayoutChange} />
+          {newProject}
+        </div>
+      </div>
       {body}
     </section>
   );
