@@ -93,6 +93,11 @@ describe("what the status line says", () => {
     expect(roomStatus(rooms.answering)).toBeNull();
   });
 
+  test("no line shows while the box asks something, whatever else is going on", () => {
+    expect(roomStatus(rooms.appRunningAsking)).toBeNull();
+    expect(roomStatus(rooms.writingAsking)).toBeNull();
+  });
+
   test("a first version is ready without its number", () => {
     expect(roomStatus(rooms.firstVersion)?.label).toBe("Build plan is ready");
   });

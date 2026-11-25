@@ -1,8 +1,8 @@
 /**
  * The one line above the prompt box saying what is happening, and its one button. Rules are checked
  * in order and the first that fits wins: work going on comes first, then what failed and wants
- * another try, then what is new to look at, then the running app. Plain data in, plain data out, so
- * each rule is tested without a hub.
+ * another try, then what is new to look at, then the running app. None is checked while the box
+ * asks the person something. Plain data in, plain data out, so each rule is tested without a hub.
  */
 import type { PlanView } from "@corbits-builder/schemas/project";
 import { wording } from "../../config.ts";
@@ -32,10 +32,7 @@ export type RoomStatusFacts = {
   }[];
   /** How the project's app stands while the project is open; null while there is none to run. */
   app: "running" | "starting" | "failed" | "stopped" | "not_built" | null;
-  /**
-   * The box waits on the person: a question, a screen or an approval. A document's writer may still
-   * need that answer, and a screen asking for a document's approval opens it itself.
-   */
+  /** The box waits on the person: a question, a screen or an approval. */
   asking: boolean;
   /** The project fills the window, so its documents and app are already in reach. */
   projectOpen: boolean;
@@ -125,10 +122,8 @@ export const rules: readonly { name: string; rule: Rule }[] = [
     },
   },
   {
-    // A version is not ready to read while the box still asks the person something.
     name: "a version the person has not opened",
-    rule: ({ documents, asking }) => {
-      if (asking) return undefined;
+    rule: ({ documents }) => {
       const unseen = documents.findLast((document) => !document.seen);
       if (unseen === undefined) return undefined;
       return {
@@ -164,6 +159,8 @@ export const rules: readonly { name: string; rule: Rule }[] = [
 
 /** The line and its button from the first rule that fits; null while none does. */
 export function roomStatus(facts: RoomStatusFacts): RoomStatus | null {
+  // The box's question is the person's next step; a line above it would pull the eye away.
+  if (facts.asking) return null;
   for (const { rule } of rules) {
     const status = rule(facts);
     if (status === undefined) continue;

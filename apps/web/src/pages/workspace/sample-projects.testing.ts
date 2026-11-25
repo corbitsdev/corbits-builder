@@ -259,6 +259,14 @@ export const statusRooms = {
     app: "running",
     projectOpen: true,
   },
+  /** The app running while the box asks to publish it. */
+  appRunningAsking: { ...quietFacts, app: "running", asking: true },
+  /** A specialist at work while the box asks the person something it needs. */
+  writingAsking: {
+    ...quietFacts,
+    working: [{ runId: "run-writer", doing: "Writing the problem brief" }],
+    asking: true,
+  },
   /** The app could not start. */
   appFailed: { ...quietFacts, app: "failed" },
   /** The app is still starting, which says nothing on its own. */
