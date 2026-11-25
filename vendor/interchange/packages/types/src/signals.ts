@@ -80,7 +80,9 @@ export function deliveredAnswer(given: GivenQuestionAnswer): QuestionAnswer {
   return {
     answers: Object.fromEntries(
       Object.entries(answers).map(([id, picked]) => {
-        const added = details[id]?.trim() ?? "";
+        const added = Object.hasOwn(details, id)
+          ? (details[id]?.trim() ?? "")
+          : "";
         return [id, added === "" ? picked : [...picked, added]];
       }),
     ),
