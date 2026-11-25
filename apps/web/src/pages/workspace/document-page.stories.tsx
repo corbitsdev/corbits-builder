@@ -153,7 +153,7 @@ const meta = {
   // The written document's stories read the same document.
   excludeStories: ["PROBLEM_BRIEF"],
   // The ground the room lays a written page on, from the person's preference.
-  parameters: { layout: "fullscreen", ground: "grey" },
+  parameters: { layout: "fullscreen", ground: "white" },
   args: {
     title: "Problem brief",
     files,
@@ -179,8 +179,8 @@ type Story = StoryObj<typeof meta>;
 /** A filed document with two commented passages, their notes level with them in the margin. */
 export const Filed: Story = {};
 
-/** The same document on the plain white ground, with no sheet. */
-export const WhiteGround: Story = { parameters: { ground: "white" } };
+/** The same document on the grey ground, raised on it as a sheet. */
+export const GreyGround: Story = { parameters: { ground: "grey" } };
 
 /** A passage in each state its comment can be in: saved, and selected while it is written. */
 export const PassageStates: Story = { args: { passages: STATES } };

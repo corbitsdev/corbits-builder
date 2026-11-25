@@ -213,7 +213,7 @@ const layout: RoomViewProps["layout"] = {
   projectReady: false,
   projectOpen: false,
   documentShown: false,
-  documentGround: "grey",
+  documentGround: "white",
   onCloseProject: fn(),
 };
 

@@ -642,7 +642,7 @@ export function useRoom({
   const stakeholderApprovals =
     usePreference("experimental_approvals") === "yes" ? "on" : "off";
   const documentGround =
-    usePreference("document_ground") === "white" ? "white" : "grey";
+    usePreference("document_ground") === "grey" ? "grey" : "white";
   const seen = useSeenVersions();
   const [approvalBusy, setApprovalBusy] = useState(false);
   const [approvalError, setApprovalError] = useState<string | null>(null);

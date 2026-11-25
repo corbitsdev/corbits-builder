@@ -127,10 +127,10 @@ export const PREFERENCES: readonly PreferenceEntry[] = [
     group: "conversation",
     topic: "Document ground",
     options: [
-      { id: "grey", label: "Grey", guidance: "" },
       { id: "white", label: "White", guidance: "" },
+      { id: "grey", label: "Grey", guidance: "" },
     ],
-    default: "grey",
+    default: "white",
     // Read by the interface only.
   },
   {
