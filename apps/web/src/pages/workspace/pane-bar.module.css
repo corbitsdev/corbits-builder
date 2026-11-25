@@ -10,7 +10,7 @@
   margin-top: auto;
   padding: 3px;
   border: 1px solid var(--wb-border);
-  border-radius: 999px;
+  border-radius: var(--radius-panel);
   background: var(--wb-background);
 }
 
@@ -52,7 +52,7 @@
 /* One class, not two: the app-wide disabled button colour has to win over the muted one here,
    while hover and the pressed state still win over it. */
 .action {
-  border-radius: 999px;
+  border-radius: var(--radius-control);
   color: var(--wb-muted-foreground);
   font-variant-numeric: tabular-nums;
 }
@@ -115,7 +115,7 @@
   width: 1.25rem;
   height: 2.5rem;
   border: 1px solid var(--wb-border);
-  border-radius: 999px;
+  border-radius: var(--radius-control);
   background: var(--wb-background);
   color: var(--wb-muted-foreground);
   opacity: 0.8;
