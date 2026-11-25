@@ -300,7 +300,7 @@
 }
 
 /* Over a written page it stands just beyond the page's top right corner, so it reads as closing
-   the page. The page is 768px at the pane's middle, as the document lays it; where the pane leaves
+   the page, at the size of the page's own Download and Share. The page is 768px at the pane's middle, as the document lays it; where the pane leaves
    no room beside it, the button keeps to the corner. */
 .page:has(
     > [data-slot="artifact-pane"]
@@ -308,11 +308,26 @@
       [data-slot="document-page"]
   )
   > .close {
+  --close-size: 1.75rem;
+
   right: auto;
   left: min(
     50% + min(768px, 100% - 2 * var(--space-4)) / 2 + var(--space-3),
-    100% - 36px - var(--space-4)
+    100% - var(--close-size) - var(--space-4)
   );
+  width: var(--close-size);
+  height: var(--close-size);
+}
+
+.page:has(
+    > [data-slot="artifact-pane"]
+      [data-slot="panel-pane"][data-state="active"]
+      [data-slot="document-page"]
+  )
+  > .close
+  > svg {
+  width: 14px;
+  height: 14px;
 }
 
 /* Where the written page lays its contents beside it, the button is level with the page's title, as
@@ -324,7 +339,7 @@
         [data-slot="document-page"]
     )
     > .close {
-    top: calc(var(--document-title-centre) - 18px);
+    top: calc(var(--document-title-centre) - var(--close-size) / 2);
   }
 }
 
