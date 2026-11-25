@@ -110,6 +110,7 @@
   /* The written page's title, and the controls beside it, are laid from these: the 28px contents
      toggle, Download, Share and close button are centred on the title's line. */
   --document-page-inset: 14px;
+  --document-page-gutter: 64px;
   --document-title-top: 60px;
   --document-title-line: 1.875rem;
   --document-title-centre: calc(

@@ -328,6 +328,21 @@
   height: var(--close-size);
 }
 
+/* On the white ground no sheet edge shows, so the button goes just past the text instead, inside
+   the page's side padding. */
+.page[data-ground="white"]:has(
+    > [data-slot="artifact-pane"]
+      [data-slot="panel-pane"][data-state="active"]
+      [data-slot="document-page"]
+  )
+  > .close {
+  left: min(
+    50% + min(768px, 100% - 2 * var(--space-4)) / 2 -
+      var(--document-page-gutter) + var(--space-3),
+    100% - var(--close-size) - var(--space-4)
+  );
+}
+
 .page:has(
     > [data-slot="artifact-pane"]
       [data-slot="panel-pane"][data-state="active"]

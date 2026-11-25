@@ -97,8 +97,8 @@
 .sheet {
   box-sizing: border-box;
   width: var(--page-width);
-  padding: calc(var(--document-title-top) - var(--document-page-inset)) 64px
-    120px;
+  padding: calc(var(--document-title-top) - var(--document-page-inset))
+    var(--document-page-gutter) 120px;
   color: var(--wb-foreground);
 }
 
