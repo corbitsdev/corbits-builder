@@ -95,16 +95,9 @@
   color: var(--wb-foreground);
 }
 
-/* The workspace's action blue, not the library's orange primary. */
 .newProject {
   height: 36px;
   border-radius: var(--radius-control);
-  background: var(--wb-action);
-  color: var(--wb-action-foreground);
-}
-
-.newProject:hover {
-  background: color-mix(in oklab, var(--wb-action) 85%, var(--wb-foreground));
 }
 
 .note {

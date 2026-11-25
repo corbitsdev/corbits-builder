@@ -142,14 +142,11 @@
   outline: none;
 }
 
-/* Dark, like every primary action, with the page colour for its arrow. */
 .save {
   flex: none;
   width: 24px;
   height: 24px;
   border-radius: 9999px;
-  background: var(--wb-foreground);
-  color: var(--wb-background);
 }
 
 .save[aria-busy="true"] {
