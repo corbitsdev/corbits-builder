@@ -210,6 +210,8 @@ export type RoomContent = {
     projectOpen: boolean;
     /** What a written page lies on: grey, raised as a sheet, or plain white. */
     documentGround: "grey" | "white";
+    /** The page open is the document the person opened from what waits in the box. */
+    waitedOnShown: boolean;
     onCloseProject: () => void;
   };
   conversation: {
@@ -265,6 +267,7 @@ export function RoomView({
     projectReady,
     projectOpen,
     documentGround,
+    waitedOnShown,
     onCloseProject: closeProject,
   } = layout;
   const conversationRef = useRef<HTMLElement>(null);
@@ -410,11 +413,12 @@ export function RoomView({
     sheetShown ? undefined : openSpace,
     space?.place === "box" ? pluginSpace : null,
   );
-  // With the project view open, a card asking the person to accept something would cover what they
-  // opened, so the box keeps only its typing row and action.
-  // A screen open over the page is itself what waits, so the box shows its typing row alone.
+  // The card folds to the typing row and action only over the document it asks the person to
+  // accept, where it would repeat the page. Over a mockup or another document the person would see
+  // Approve without knowing what it approves, so the card shows. A screen open over the page already
+  // shows the question, so the card folds then too.
   const decidesPage =
-    (projectShown && decides(waiting)) ||
+    (projectShown && waitedOnShown && decides(waiting)) ||
     (sheetShown && waiting?.kind === "screen");
   // Covered, the conversation is out of sight, so the box has the chat to pull up and its pill says
   // what is running. Full screen is the room's own conversation: what the chat was pulled up over

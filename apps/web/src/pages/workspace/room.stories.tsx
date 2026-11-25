@@ -215,6 +215,7 @@ const layout: RoomViewProps["layout"] = {
   projectReady: false,
   projectOpen: false,
   documentGround: "white",
+  waitedOnShown: false,
   onCloseProject: fn(),
 };
 
@@ -1159,7 +1160,7 @@ export const ApproveOverDocument: Story = {
   args: {
     ...withDocuments,
     ...ApproveInBox.args,
-    layout: { ...withDocuments.layout, projectOpen: true },
+    layout: { ...withDocuments.layout, projectOpen: true, waitedOnShown: true },
   },
   play: async ({ canvasElement }) => {
     const box = canvasElement.querySelector<HTMLElement>(
@@ -1172,6 +1173,34 @@ export const ApproveOverDocument: Story = {
     await expect(
       box.querySelector('[data-slot="composer-panel"]'),
     ).toHaveAttribute("hidden");
+    await expect(
+      within(box).getByRole("button", { name: "Approve" }),
+    ).toBeVisible();
+  },
+};
+
+/**
+ * Over a page other than the one it asks to approve, the card shows in the box, so the person can
+ * read what Approve agrees to.
+ */
+export const ApproveOverOtherPage: Story = {
+  args: {
+    ...withDocuments,
+    ...ApproveInBox.args,
+    layout: { ...withDocuments.layout, projectOpen: true },
+  },
+  play: async ({ canvasElement }) => {
+    const box = canvasElement.querySelector<HTMLElement>(
+      '[data-slot="room-dock"] [data-slot="composer"]',
+    );
+    if (box === null) throw new Error("No prompt box over the page");
+    await expect(
+      box.querySelector('[data-slot="composer-panel"]'),
+    ).not.toHaveAttribute("hidden");
+    // The card fades in as it comes into the box.
+    await waitFor(() =>
+      expect(within(box).getByText("Review the build plan")).toBeVisible(),
+    );
     await expect(
       within(box).getByRole("button", { name: "Approve" }),
     ).toBeVisible();
