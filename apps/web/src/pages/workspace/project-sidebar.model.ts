@@ -8,7 +8,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { PlanView } from "@corbits-builder/schemas/project";
 import type { MenuProject, ProjectMenuHost } from "../project-menu.model.ts";
 import type { SettingsTab } from "../settings/settings.view.tsx";
-import type { PaneDocument } from "./artifact-pane.tsx";
+import { fileRows, type PaneDocument } from "./artifact-pane.tsx";
 import { wording } from "../../config.ts";
 import { ROOM_NARROW_QUERY, useSidebar } from "../../sidebar-setting.ts";
 import { liveAppQuery } from "./live-app.model.ts";
@@ -107,16 +107,7 @@ function filesProps(
   input: ProjectSidebarInput,
   open: (tab: string) => void,
 ): FilesListProps {
-  return {
-    files: input.documents.map((document) => ({
-      id: document.id,
-      name: document.title,
-      opens: document.id,
-      files: [],
-    })),
-    shown: input.shown,
-    onOpen: open,
-  };
+  return { files: fileRows(input.documents), shown: input.shown, onOpen: open };
 }
 
 /** The sections at the foot: the app's preview, once there is an app. */

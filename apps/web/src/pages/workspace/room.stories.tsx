@@ -5,7 +5,7 @@ import { wording } from "../../config.ts";
 import { AppView } from "../../App.view.tsx";
 import app from "../../App.stories.tsx";
 import type { PlanView } from "@corbits-builder/schemas/project";
-import type { ArtifactPaneProps } from "./artifact-pane.tsx";
+import { fileRows, type ArtifactPaneProps } from "./artifact-pane.tsx";
 import documentPane, {
   AppAndManual as appAndManual,
   Concepts as conceptTabs,
@@ -149,12 +149,7 @@ function sidebarOf(
       onOpenStep: fn(),
     },
     files: {
-      files: (pane.documents ?? []).map((document) => ({
-        id: document.id,
-        name: document.title,
-        opens: document.id,
-        files: [],
-      })),
+      files: fileRows(pane.documents ?? []),
       shown: null,
       onOpen: fn(),
     },

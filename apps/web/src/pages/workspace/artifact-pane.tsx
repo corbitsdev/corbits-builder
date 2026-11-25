@@ -17,6 +17,7 @@ import {
   type ReadVersion,
 } from "./deliverable-block.tsx";
 import { type DesignPart } from "./design-preview.view.tsx";
+import type { SidebarFile } from "./files-list.tsx";
 import {
   conceptOfTab,
   conceptTab,
@@ -167,6 +168,21 @@ function documentViews(
     { value: item.id, label, part: "plan" },
     { value: MOCKUP_TAB, label: wording.design.mockupTab, part: "mockup" },
   ];
+}
+
+/** The filed documents as Files rows, one for each pane, so a design gets a row for its mockup. */
+export function fileRows(documents: readonly PaneDocument[]): SidebarFile[] {
+  return documents.flatMap((document) =>
+    documentViews(document).map((view) => ({
+      id: view.value,
+      name:
+        view.part === undefined
+          ? document.title
+          : wording.projectShell.designFile[view.part](document.title),
+      opens: view.value,
+      files: [],
+    })),
+  );
 }
 
 /** The parts of the pane that read the hub for themselves, which whoever draws the pane fills. */

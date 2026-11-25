@@ -500,6 +500,11 @@ export const wording = {
     preview: "Preview",
     /** The group of the project's files, under the plan. */
     files: "Files",
+    /** A filed design's two rows in Files, named after the design: "Friendly design plan". */
+    designFile: {
+      plan: (design: string) => `${design} design plan`,
+      mockup: (design: string) => `${design} design mockup`,
+    },
     /** The mark at the sidebar's top opens a menu that leaves the page. */
     menu: "Menu",
     backToProjects: "Back to projects",
