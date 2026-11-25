@@ -12,7 +12,17 @@ import {
   type BadgeTone,
 } from "@corbits/react-ui";
 import { clsx } from "clsx";
-import { Ellipsis, LayoutGrid, List, Plus } from "lucide-react";
+import {
+  Archive,
+  Ellipsis,
+  FolderPlus,
+  Hammer,
+  LayoutGrid,
+  Lightbulb,
+  List,
+  Plus,
+  Rocket,
+} from "lucide-react";
 import {
   useEffect,
   useRef,
@@ -77,6 +87,33 @@ const STAGE_TONE: Record<LibraryFilter, BadgeTone> = {
   shipped: "success",
   archived: "neutral",
 };
+const STAGE_ICON: Record<LibraryFilter, ReactNode> = {
+  idea: <Lightbulb />,
+  building: <Hammer />,
+  shipped: <Rocket />,
+  archived: <Archive />,
+};
+
+/**
+ * Where an empty stage points next: a new project, or the stage a project comes to it from (null
+ * is All). Shipped points at the projects in Building, the ones that get shipped.
+ */
+function nextFromEmpty(
+  filter: LibraryFilter,
+  counts: Readonly<Record<LibraryFilter, number>>,
+): LibraryFilter | null | "new" {
+  switch (filter) {
+    case "idea":
+      return "new";
+    case "building":
+      return counts.idea > 0 ? "idea" : "new";
+    case "shipped":
+      return counts.building > 0 ? "building" : null;
+    case "archived":
+      return null;
+  }
+}
+
 const COVER_TOKENS = [
   "--chart-1",
   "--chart-2",
@@ -278,6 +315,37 @@ export function ProjectLibraryView({
       {wording.shell.newProject}
     </Button>
   );
+  const show = (next: LibraryFilter | null) => (
+    <Button
+      variant="outline"
+      className={styles.show}
+      onClick={() => {
+        // The button goes with the empty stage, so focus moves to the filter it presses.
+        section.current
+          ?.querySelectorAll<HTMLElement>("[data-filters] button")
+          [next === null ? 0 : FILTERS.indexOf(next) + 1]?.focus();
+        onFilterChange(next);
+      }}
+    >
+      {next === null ? wording.library.show.all : wording.library.show[next]}
+    </Button>
+  );
+  const empty = (
+    icon: ReactNode,
+    title: string,
+    lead: string,
+    actions: ReactNode,
+  ) => (
+    <div className={styles.emptyPanel}>
+      <EmptyState
+        icon={icon}
+        title={title}
+        description={lead}
+        action={<div className={styles.emptyActions}>{actions}</div>}
+      />
+    </div>
+  );
+
   // With nothing under All, either there are no projects or every one is archived.
   const allArchived = counts.archived > 0;
   let body: ReactNode;
@@ -287,35 +355,7 @@ export function ProjectLibraryView({
         {status === "failed" ? wording.library.failed : wording.library.loading}
       </p>
     );
-  else if (projects.length === 0)
-    body =
-      filter === null ? (
-        <EmptyState
-          title={
-            allArchived
-              ? wording.library.allArchivedTitle
-              : wording.library.emptyTitle
-          }
-          description={
-            allArchived
-              ? wording.library.allArchivedLead
-              : wording.library.emptyLead
-          }
-          action={
-            <Button variant="primary" onClick={onNewProject}>
-              {wording.shell.newProject}
-            </Button>
-          }
-        />
-      ) : (
-        <EmptyState
-          title={wording.library.emptyFilterTitle(
-            wording.library.filter[filter],
-          )}
-          description={wording.library.emptyFilterLead}
-        />
-      );
-  else
+  else if (projects.length > 0)
     body = (
       <ProjectCards
         projects={projects}
@@ -325,6 +365,32 @@ export function ProjectLibraryView({
         menu={menu}
       />
     );
+  else if (filter === null)
+    body = allArchived
+      ? empty(
+          STAGE_ICON.archived,
+          wording.library.allArchivedTitle,
+          wording.library.allArchivedLead,
+          <>
+            {show("archived")}
+            {newProject}
+          </>,
+        )
+      : empty(
+          <FolderPlus />,
+          wording.library.emptyTitle,
+          wording.library.emptyLead,
+          newProject,
+        );
+  else {
+    const next = nextFromEmpty(filter, counts);
+    body = empty(
+      STAGE_ICON[filter],
+      wording.library.emptyFilter[filter].title,
+      wording.library.emptyFilter[filter].lead,
+      next === "new" ? newProject : show(next),
+    );
+  }
   return (
     <section className={styles.page} ref={section}>
       <LibraryPageHeader

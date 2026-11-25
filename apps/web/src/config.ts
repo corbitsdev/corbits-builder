@@ -533,11 +533,39 @@ export const wording = {
     },
     loading: "Reading your projects…",
     emptyTitle: "No projects yet",
-    emptyLead: "Start one from New project; it shows here from then on.",
+    emptyLead: "Describe what you want made and it starts here as an idea.",
     allArchivedTitle: "Every project is archived",
     allArchivedLead: "Restore one from Archived, or start a new project.",
-    emptyFilterTitle: (filter: string) => `No ${filter.toLowerCase()} projects`,
-    emptyFilterLead: "Pick another filter, or All.",
+    /** A stage with nothing in it: what it holds, and how a project gets there. */
+    emptyFilter: {
+      idea: {
+        title: "No ideas waiting",
+        lead: "Every new project starts here as an idea, until work on it begins.",
+      },
+      building: {
+        title: "Nothing being built",
+        lead: "An idea moves here once its first build starts.",
+      },
+      shipped: {
+        title: "Nothing shipped yet",
+        lead: "When a project is done, choose Mark as shipped from its menu and it moves here.",
+      },
+      archived: {
+        title: "Nothing archived",
+        lead: "Archive a project from its menu to put it away. It waits here until you restore it.",
+      },
+    } satisfies Record<
+      "idea" | "building" | "shipped" | "archived",
+      { title: string; lead: string }
+    >,
+    /** The way out of an empty stage, to the projects to look at next. */
+    show: {
+      all: "Show all projects",
+      idea: "Show ideas",
+      building: "Show projects being built",
+      shipped: "Show shipped",
+      archived: "Show archived",
+    },
     failed: "Your projects could not be read.",
     actionFailed: "That change to the project did not go through.",
     nameRequired: "A project needs a name.",
