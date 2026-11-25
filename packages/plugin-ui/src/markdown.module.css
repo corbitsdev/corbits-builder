@@ -160,10 +160,6 @@
   margin: 2em 0;
 }
 
-.prose ::selection {
-  background: color-mix(in srgb, var(--wb-primary) 26%, transparent);
-}
-
 /* A picture in a document (#737): the PRD for people's screens, captioned. */
 .prose .figure {
   margin: 1rem 0 1.25rem;

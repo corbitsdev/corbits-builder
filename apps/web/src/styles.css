@@ -186,6 +186,13 @@ body {
   }
 }
 
+/* Selected text keeps the colour the person's system gives it; the library tints it the brand
+   orange in its fields. */
+::selection {
+  background-color: Highlight;
+  color: HighlightText;
+}
+
 /* Clickable controls show a hand. UA styles leave `button` at default, and the
    design-system Button ships no cursor either — so every primary, ghost, crumb,
    disclosure, and role=button tile used to look inert on hover. */
