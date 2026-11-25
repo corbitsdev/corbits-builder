@@ -287,7 +287,7 @@ export const PlanStaysPut: Story = {
     const canvas = within(canvasElement);
     const before = canvas.getByRole("tree").getBoundingClientRect();
     await userEvent.click(
-      canvas.getByRole("button", { name: "Bakery orders", expanded: false }),
+      canvas.getByRole("button", { name: "Open the sidebar" }),
     );
     const after = canvas.getByRole("tree").getBoundingClientRect();
     await expect(after.top).toBe(before.top);
@@ -310,7 +310,7 @@ export const DrawerPutAway: Story = {
     await userEvent.keyboard("{Escape}");
     await expect(args.onToggleSidebar).toHaveBeenCalledTimes(1);
     const toggle = within(canvasElement).getByRole("button", {
-      name: "Bakery orders",
+      name: "Open the sidebar",
       expanded: false,
     });
     await userEvent.click(toggle);

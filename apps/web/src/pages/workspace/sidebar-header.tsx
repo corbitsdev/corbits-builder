@@ -107,6 +107,7 @@ export function SidebarHeader({
       sideOffset: Math.round(row.bottom - at.bottom + MENU_GAP),
     });
   };
+  const toggleWords = open ? words.closeSidebar : words.openSidebar;
   return (
     <div
       ref={headRef}
@@ -148,11 +149,11 @@ export function SidebarHeader({
       <button
         type="button"
         className={styles.toggle}
-        aria-label={title}
+        aria-label={toggleWords}
         aria-expanded={open}
         aria-controls={controls}
         aria-keyshortcuts={shortcut.key}
-        title={`${open ? words.closeSidebar : words.openSidebar} (${shortcut.words})`}
+        title={`${toggleWords} (${shortcut.words})`}
         onClick={() => {
           setByKey(false);
           onToggle();
