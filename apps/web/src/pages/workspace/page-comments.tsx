@@ -7,6 +7,7 @@ import {
   useEffect,
   useEffectEvent,
   useState,
+  type ClipboardEvent,
   type KeyboardEvent,
   type ReactNode,
   type RefObject,
@@ -65,6 +66,19 @@ function passageOf(text: HTMLElement, range: Range): Passage | null {
   const start =
     rangeText(before).length + words.length - words.trimStart().length;
   return { quote, occurrence: occurrenceAt(text.textContent, quote, start) };
+}
+
+// The browser's selection is cleared once a passage is taken, and the card's field has focus, so
+// Cmd+C with nothing selected in the field copies the passage the card is about.
+function copyPassage(event: ClipboardEvent<HTMLElement>, quote: string) {
+  const field = event.target;
+  if (
+    field instanceof HTMLTextAreaElement &&
+    field.selectionStart !== field.selectionEnd
+  )
+    return;
+  event.clipboardData.setData("text/plain", quote);
+  event.preventDefault();
 }
 
 export function usePageComments(
@@ -161,6 +175,7 @@ export function usePageComments(
         // A new comment starts with nothing written.
         comment={draft === undefined ? "" : draft.comment}
         paired
+        onCopy={(event) => copyPassage(event, quote)}
         onSave={(comment) => {
           onSave({ id: draft?.id ?? null, quote, occurrence, comment });
           setWriting(null);

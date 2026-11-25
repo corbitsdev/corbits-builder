@@ -9,6 +9,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  type ClipboardEvent,
   type ReactNode,
 } from "react";
 import { flushSync } from "react-dom";
@@ -91,6 +92,8 @@ export type CommentCardProps = {
   onCancel?: () => void;
   onEdit?: () => void;
   onDelete?: () => void;
+  /** The person copies from the card or from its field. */
+  onCopy?: (event: ClipboardEvent<HTMLElement>) => void;
 };
 
 export function CommentCard({
@@ -103,6 +106,7 @@ export function CommentCard({
   onCancel,
   onEdit,
   onDelete,
+  onCopy,
 }: CommentCardProps) {
   const cardRef = useRef<HTMLElement>(null);
   const wasWriting = useRef(state === "writing");
@@ -129,6 +133,7 @@ export function CommentCard({
       data-entering={entering ? "" : undefined}
       data-paired={paired ? "" : undefined}
       tabIndex={-1}
+      onCopy={onCopy}
     >
       {state === "writing" ? (
         <CommentField
