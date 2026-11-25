@@ -170,9 +170,6 @@ export type BoxWaiting =
   | {
       kind: "screen";
       title: string;
-      /** Turns the screen down, or sets it aside for now where it answers nothing. */
-      onNotNow?: (() => void) | undefined;
-      disabled: boolean;
       /** It asks the person to accept what it is about, such as a document to approve. */
       decides: boolean;
     };
@@ -304,8 +301,8 @@ export function RoomView({
   });
   // Only a screen its plugin draws for the page has a space; any other is in the box. Over the
   // conversation it takes the whole page, the box beneath it, since a mockup or a set of designs
-  // needs the width. Over the project view it waits for Open in the box. Answering it, or Not now
-  // in the box, puts it away; so does closing it, which leaves it waiting in the box to open again.
+  // needs the width. Over the project view it waits for Open in the box. Answering it puts it away;
+  // so does closing it, which leaves it waiting in the box to open again.
   const side = space?.place === "page" ? space : null;
   const [sheetOpen, setSheetOpen] = useState(false);
   const [closedKey, setClosedKey] = useState<string | null>(null);
@@ -565,14 +562,7 @@ function waitingCard(
       );
     case "screen":
       if (screen !== null) return screen;
-      return (
-        <ScreenCard
-          title={waiting.title}
-          onOpen={openSpace}
-          onNotNow={waiting.onNotNow}
-          disabled={waiting.disabled}
-        />
-      );
+      return <ScreenCard title={waiting.title} onOpen={openSpace} />;
     default:
       return waiting satisfies never;
   }

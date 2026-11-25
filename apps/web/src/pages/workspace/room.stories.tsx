@@ -858,20 +858,16 @@ const chooseScreen = storyScreen(
   { screen: choose, view: ChooseView, data: undefined },
 );
 
-const screenNotNow = fn();
-
 /**
  * A screen its plugin draws for the page waits: it takes the whole page over the conversation at
- * once, with no Close, and the box floating over its foot names it with Not now, the screen's
- * forward action where Send is.
+ * once, with no Close, and the box floating over its foot holds the screen's forward action where
+ * Send is.
  */
 export const ScreenWaiting: Story = {
   args: {
     waiting: {
       kind: "screen",
       title: "Choose a design",
-      onNotNow: screenNotNow,
-      disabled: false,
       decides: false,
     },
     space: { key: "screen:story", title: "Choose a design", place: "page" },
@@ -933,7 +929,7 @@ async function closeScreen(canvasElement: HTMLElement) {
 
 /**
  * Closed like a full-screen modal, the screen goes back to the conversation and waits in the box,
- * where Open brings it back, and Not now sets it aside.
+ * where Open brings it back.
  */
 export const ScreenClosesToBox: Story = {
   ...ScreenWaiting,
@@ -974,8 +970,6 @@ export const ScreenInBox: Story = {
     waiting: {
       kind: "screen",
       title: "How many looks to compare",
-      onNotNow: undefined,
-      disabled: false,
       decides: false,
     },
     space: {
@@ -1028,8 +1022,6 @@ export const ApproveInBox: Story = {
     waiting: {
       kind: "screen",
       title: "Approve the documents",
-      onNotNow: undefined,
-      disabled: false,
       decides: true,
     },
     space: {
@@ -1148,47 +1140,6 @@ export const ChatSheetOverApproval: Story = {
         window.innerHeight,
       ),
     );
-  },
-};
-
-/** Not now turns the screen down from the box, without opening it. */
-export const ScreenNotNow: Story = {
-  ...ScreenWaiting,
-  play: async ({ canvasElement }) => {
-    screenNotNow.mockClear();
-    await closeScreen(canvasElement);
-    await userEvent.click(
-      within(canvasElement).getByRole("button", {
-        name: wording.promptBox.waiting.notNow,
-      }),
-    );
-    await expect(screenNotNow).toHaveBeenCalledOnce();
-  },
-};
-
-/** A plugin's own screen answers nothing, but Not now still sets it aside for now. */
-export const ScreenOfItsOwn: Story = {
-  args: {
-    ...ScreenWaiting.args,
-    waiting: {
-      kind: "screen",
-      title: "Choose a design",
-      onNotNow: fn(),
-      disabled: false,
-      decides: false,
-    },
-  },
-  play: async ({ canvasElement, args }) => {
-    await closeScreen(canvasElement);
-    await userEvent.click(
-      within(canvasElement).getByRole("button", {
-        name: wording.promptBox.waiting.notNow,
-      }),
-    );
-    const waiting = args.waiting;
-    await expect(
-      waiting?.kind === "screen" ? waiting.onNotNow : undefined,
-    ).toHaveBeenCalled();
   },
 };
 

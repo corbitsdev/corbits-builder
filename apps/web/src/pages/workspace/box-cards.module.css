@@ -28,15 +28,6 @@
   line-height: 20px;
 }
 
-/* Quiet beside the ask: the pill shape of the row's buttons, the muted ink of a way out. */
-.notNow {
-  flex: none;
-  height: 32px;
-  padding-inline: 14px;
-  border-radius: 9999px;
-  color: var(--wb-muted-foreground);
-}
-
 /* The pill shape of the row's buttons; a way to the screen, not the step forward. */
 .open {
   flex: none;

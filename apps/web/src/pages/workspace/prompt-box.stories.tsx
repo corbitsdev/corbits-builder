@@ -23,9 +23,7 @@ const waits = {
     />
   ),
   step: () => <StepCard title="Build the app" busy={false} onGoAhead={fn()} />,
-  screen: () => (
-    <ScreenCard title="Approve documents" onOpen={fn()} onNotNow={fn()} />
-  ),
+  screen: () => <ScreenCard title="Approve documents" onOpen={fn()} />,
   tool: () => (
     <DocumentDecision
       place="box"

@@ -144,11 +144,6 @@ const at = (iso: string | undefined) =>
 export function usePromptBox(room: PromptBoxRoom): PromptBox {
   const { projectId, openQuestion, screenOf } = room;
   const [goingAhead, setGoingAhead] = useState<string | null>(null);
-  // Screens a plugin shows of its own accord answer nothing, so Not now sets them aside here until
-  // the room is next loaded, and whatever waits behind them comes forward.
-  const [setAside, setSetAside] = useState<ReadonlySet<string>>(new Set());
-  const screenKey = (screen: { plugin: string; action: string }) =>
-    `${screen.plugin} ${screen.action}`;
   // The app the hub keeps running while the project is open, as its presence read last saw it.
   const app = useQuery<LiveApp>({
     queryKey: keys.liveApp.of(projectId),
@@ -172,11 +167,7 @@ export function usePromptBox(room: PromptBoxRoom): PromptBox {
       : undefined;
   const listed = room.archived
     ? []
-    : room.screens.filter(
-        (screen) =>
-          screenOf(screen)?.listed !== undefined &&
-          !setAside.has(screenKey(screen)),
-      );
+    : room.screens.filter((screen) => screenOf(screen)?.listed !== undefined);
   const waiting = waitingOn({
     question:
       openQuestion === undefined
@@ -257,18 +248,6 @@ export function usePromptBox(room: PromptBoxRoom): PromptBox {
         return {
           kind: "screen",
           title: card.title,
-          // A screen that answers the coordinator takes words as its answer, so Not now is one;
-          // one a plugin shows of its own accord is set aside for now. One that asks to accept
-          // something has no Not now: typing what should change is the way past it.
-          onNotNow: decides
-            ? undefined
-            : card.from === "question"
-              ? () =>
-                  void room.onAnswer(card.signalName, {
-                    reply: wording.promptBox.waiting.notNow,
-                  })
-              : () => setSetAside((was) => new Set([...was, screenKey(card)])),
-          disabled: room.sending || room.archived,
           decides,
         };
       case "warning":
