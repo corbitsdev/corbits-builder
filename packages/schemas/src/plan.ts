@@ -28,12 +28,12 @@ export type PlanStepStateName = typeof PlanStepStateName.infer;
 // How a step waits for the person's go-ahead. of names the document kinds they approve, or "design"
 // for the design they choose. "required" always waits for the person's own answer; "optional" waits
 // only while they decide approvals rather than leaving them to Builder.
-export const Approval = type({
+export const PlanStepApproval = type({
   "+": "reject",
   of: type("string > 0").array().atLeastLength(1),
   when: "'required' | 'optional'",
 });
-export type Approval = typeof Approval.infer;
+export type PlanStepApproval = typeof PlanStepApproval.infer;
 
 // ---- Action steps ----
 
@@ -48,7 +48,7 @@ const PlanStepBody = type({
   "cancelled?": PlanMark,
   // Set by the ready-made plan or the coordinator that wrote the step: the person may decline it.
   "optional?": "boolean",
-  "approval?": Approval,
+  "approval?": PlanStepApproval,
   // What the step suggests having first; passed on as advice when it starts without it.
   "requires?": type("string > 0").array(),
   // Stays set until the person restores the step.

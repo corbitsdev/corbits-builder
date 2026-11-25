@@ -5,7 +5,7 @@ import type {
   Fact,
   ProjectRead,
   RunRead,
-  StepStatus,
+  PlanStepRead,
 } from "@corbits-builder/plugin";
 import type { Catalog } from "@corbits-builder/plugin-host/catalog";
 import { readyPlanOffers } from "@corbits-builder/plugin-host/plan";
@@ -36,11 +36,11 @@ const statusOf = (
     title: string;
     plugin: string;
     action: string;
-    state: StepStatus["state"];
+    state: PlanStepRead["state"];
     summary?: string;
   },
   plan: string | undefined,
-): StepStatus => ({
+): PlanStepRead => ({
   id: step.id,
   title: step.title,
   plugin: step.plugin,

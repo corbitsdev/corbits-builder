@@ -16,7 +16,7 @@ import type {
   ScreenStatus,
 } from "@corbits-builder/schemas/project";
 import {
-  Approval,
+  PlanStepApproval,
   type PlanStepStateName,
   type PlanViewChild,
   type PlanViewGroup,
@@ -656,7 +656,7 @@ export const ReadyPlanStepBuilder = type({
   action: "string > 0",
   requires: Facts,
   "optional?": "boolean",
-  "approval?": Approval,
+  "approval?": PlanStepApproval,
   "title?": "string > 0",
   "input?": "Record<string, unknown>",
 });
@@ -796,7 +796,8 @@ export type Offer<Output> = {
   sendBack?: Output;
 };
 
-export type StepStatus = Pick<
+// A plan step as a screen reads it: where it stands, without its input or the person's marks.
+export type PlanStepRead = Pick<
   PlanViewChild,
   "id" | "title" | "plugin" | "action" | "state"
 > & {
@@ -819,7 +820,7 @@ export type ProjectRead = {
   // A project value as stored, null while the project has none.
   value(name: string): unknown;
   facts: ReadonlySet<Fact>;
-  plan: readonly StepStatus[];
+  plan: readonly PlanStepRead[];
   // Each ready-made plan the project's plan holds, with where its steps stand together and whether
   // nothing in it is left to do.
   planned: readonly {

@@ -47,7 +47,7 @@ import {
   toWriteStep,
 } from "@corbits-builder/plan";
 import {
-  Approval,
+  PlanStepApproval,
   type PlanChildWrite,
   type PlanGroupWrite,
   type PlanStepWrite,
@@ -384,7 +384,7 @@ export const makersIn = (catalog: Catalog) => (fact: Fact) =>
   makersOf(catalog, fact).map(({ name }) => name);
 
 /** What gates a plan step: the approval it waits for and the facts it suggests having first. */
-type Gate = { requires?: readonly Fact[]; approval?: Approval };
+type Gate = { requires?: readonly Fact[]; approval?: PlanStepApproval };
 
 /**
  * What a plan step's gate asks that the project lacks. Its approval holds the step back: one
@@ -1064,7 +1064,7 @@ const PlanChildInput = type({
   input: "Record<string, unknown>",
   "askFirst?": "boolean",
   "optional?": "boolean",
-  "approval?": Approval,
+  "approval?": PlanStepApproval,
 });
 type PlanChildInput = typeof PlanChildInput.infer;
 export const Plan = type({

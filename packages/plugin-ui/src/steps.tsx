@@ -5,7 +5,7 @@
  */
 import type { ReactNode } from "react";
 import type {
-  Approval,
+  PlanStepApproval,
   PlanStepStateName,
 } from "@corbits-builder/schemas/plan";
 import styles from "./steps.module.css";
@@ -27,7 +27,7 @@ export type StepFields = {
   /** The person may decline it. */
   optional?: boolean | undefined;
   /** The documents it waits for the person to approve before it starts, always or only if they asked. */
-  approval?: Approval | undefined;
+  approval?: PlanStepApproval | undefined;
   /** When the step started, as a timestamp. */
   startedAt?: string | undefined;
 };
