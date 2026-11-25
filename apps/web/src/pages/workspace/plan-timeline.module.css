@@ -1,0 +1,180 @@
+.plan {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.head {
+  margin: 0;
+  padding: var(--space-2) var(--space-2) 0;
+  color: var(--wb-foreground);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  line-height: var(--text-xs--line-height);
+}
+
+/* No plan yet: one quiet line where the steps will be. */
+.empty {
+  margin: 0;
+  padding: 0 var(--space-2);
+  color: var(--wb-muted-foreground);
+  font-size: var(--text-xs);
+  line-height: var(--text-xs--line-height);
+}
+
+.tree {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* A step is a stop on the timeline: its circle in a column of its own, joined to its neighbours by
+   a thin line, and its name beside it. Each row draws its own half of the line either side of its
+   circle, since the next row's ground covers anything drawn past its edge. The line is darker
+   after a done step and light after the one at work. */
+.step {
+  --line: var(--wb-border);
+  --line-in: var(--wb-border);
+
+  position: relative;
+  grid-template-columns: 14px minmax(0, 1fr);
+  align-items: start;
+  /* The ground of whatever holds the plan, so the line stops at each circle. */
+  background: var(--ground, var(--card));
+  color: var(--wb-muted-foreground);
+  cursor: default;
+}
+
+.step:not(:first-child)::before,
+.step:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  left: calc(var(--space-2) + 6.5px);
+  width: 1px;
+}
+
+.step:not(:first-child)::before {
+  top: 0;
+  height: calc(6px + 0.5lh);
+  background: var(--line-in);
+}
+
+.step:not(:last-child)::after {
+  top: calc(6px + 0.5lh);
+  bottom: 0;
+  background: var(--line);
+}
+
+.step[data-state="done"] {
+  --line: var(--wb-muted-foreground);
+
+  color: var(--wb-foreground);
+}
+
+.step[data-state="done"] + .step {
+  --line-in: var(--wb-muted-foreground);
+}
+
+.step[data-state="running"] {
+  color: var(--wb-foreground);
+  font-weight: 600;
+}
+
+.step[data-state="needs_you"] {
+  color: var(--wb-foreground);
+  font-weight: 500;
+}
+
+.step[data-state="failed"] {
+  color: var(--destructive);
+}
+
+/* Over the line, on the row's own ground, so the line runs between circles, not through them. */
+.circle {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  height: 1lh;
+  background: inherit;
+}
+
+.circle::before {
+  content: "";
+  box-sizing: border-box;
+  width: 8px;
+  height: 8px;
+  border: 1.5px solid var(--wb-muted-foreground);
+  border-radius: 50%;
+}
+
+.step[data-state="done"] .circle::before {
+  border-color: var(--wb-foreground);
+  background: var(--wb-foreground);
+}
+
+/* Skipped: the outline struck through, so it never reads as a step still to do. */
+.step[data-state="declined"] .circle::before {
+  background: linear-gradient(
+    135deg,
+    transparent 40%,
+    var(--wb-muted-foreground) 40% 60%,
+    transparent 60%
+  );
+}
+
+/* In progress, at work or waiting on the person: half filled. */
+.step:is([data-state="running"], [data-state="needs_you"]) .circle::before {
+  border-color: var(--wb-foreground);
+  background: linear-gradient(
+    to right,
+    var(--wb-foreground) 50%,
+    transparent 50%
+  );
+}
+
+.step[data-state="failed"] .circle::before {
+  border-color: var(--destructive);
+  background: var(--destructive);
+}
+
+/* The open card is near the muted grey, so the step whose document is on the page takes the
+   selection's tint, so the person sees where in the plan they are reading. */
+.step[aria-current] {
+  background: var(--wb-selected);
+  font-weight: 500;
+}
+
+.step:focus-visible {
+  outline: 2px solid var(--wb-action);
+  outline-offset: -2px;
+}
+
+.text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.doing {
+  display: flex;
+  gap: 5px;
+  overflow: hidden;
+  color: var(--wb-muted-foreground);
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* What waits on the person is said in the text's own colour: the line, not the mark, tells them. */
+.doing[data-tone="you"] {
+  color: var(--wb-foreground);
+}
+
+/* How long the step at work has run, in figures of one width so the line holds still as it
+   counts. */
+.clock {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}

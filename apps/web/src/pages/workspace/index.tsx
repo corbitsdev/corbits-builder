@@ -74,11 +74,12 @@ function ReadyRoom(props: ReadyRoomProps) {
         projectMenu={
           projectMenu === null
             ? undefined
-            : (trigger) => (
+            : (trigger, placement) => (
                 <ProjectMenu
                   {...projectMenu}
                   trigger={trigger}
                   side="right"
+                  {...placement}
                   align="start"
                 />
               )

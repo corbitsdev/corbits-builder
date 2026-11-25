@@ -1,0 +1,118 @@
+/* The app's line stands level with Plan: the same height, size and colour. It reads as a status,
+   its dot first, and an arrow at its end says the line opens the app. */
+.app {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  height: 2.25rem;
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--wb-muted-foreground);
+  font: inherit;
+  font-size: var(--text-sm);
+  line-height: var(--text-sm--line-height);
+  text-align: start;
+  cursor: pointer;
+  transition:
+    background-color var(--duration-micro) var(--ease-out),
+    color var(--duration-micro) var(--ease-out);
+}
+
+.app:hover {
+  background: var(--wb-muted);
+  color: var(--wb-foreground);
+}
+
+.app:focus-visible {
+  outline: 2px solid var(--wb-action);
+  outline-offset: -2px;
+}
+
+/* Up, or could not start: the line reads as plainly as a step that wants a look. */
+.app:is([data-state="running"], [data-state="failed"], [data-current]) {
+  color: var(--wb-foreground);
+}
+
+.app[data-current] {
+  font-weight: 500;
+}
+
+.name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A dot sits in a 14px box, so every mark lines up in one column. */
+.dot {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+}
+
+.appDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--wb-muted-foreground);
+}
+
+.appDot[data-state="running"] {
+  background: var(--wb-proceed);
+}
+
+.appDot[data-state="failed"] {
+  background: var(--destructive);
+}
+
+/* Builder is working on it: one arc goes round a faint ring, a turn every 900ms. */
+.working {
+  width: 12px;
+  height: 12px;
+  overflow: visible;
+  fill: none;
+  stroke: var(--wb-muted-foreground);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  animation: global(spin) 900ms linear infinite;
+}
+
+.working [data-part="track"] {
+  opacity: 0.25;
+}
+
+.working [data-part="arc"] {
+  stroke: var(--wb-foreground);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .working {
+    animation: none;
+  }
+}
+
+.go {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  color: var(--wb-muted-foreground);
+  opacity: 0;
+  transition: opacity var(--duration-micro) var(--ease-out);
+}
+
+.app:is(:hover, :focus-visible) .go {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .go {
+    opacity: 1;
+  }
+}

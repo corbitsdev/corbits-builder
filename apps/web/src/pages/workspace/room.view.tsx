@@ -10,7 +10,6 @@ import {
   useLayoutEffect,
   useRef,
   useState,
-  type ReactElement,
   type ReactNode,
   type RefObject,
 } from "react";
@@ -90,7 +89,7 @@ export type RoomSlots = {
    */
   chat?: ReactNode;
   /** The project's own menu, opened from its name in the sidebar; absent, the name is just shown. */
-  projectMenu?: ((trigger: ReactElement) => ReactNode) | undefined;
+  projectMenu?: ProjectSidebarViewProps["menu"];
 };
 
 /** The box the person writes to the coordinator in. */

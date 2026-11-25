@@ -16,15 +16,13 @@ import {
   PromptInputToolbar,
   ShimmerText,
 } from "@corbits/react-ui";
-import { useEffect, useRef } from "react";
+import { useEffect, useId, useRef } from "react";
 import { Composer } from "../../composer.tsx";
 import { Fault } from "../../components.jsx";
 import { wording } from "../../config.ts";
-import {
-  ProjectSidebarView,
-  SidebarFrame,
-  type MarkWays,
-} from "./project-sidebar.view.tsx";
+import { ProjectSidebarView } from "./project-sidebar.view.tsx";
+import { SidebarHeader, type MarkWays } from "./sidebar-header.tsx";
+import { SidebarShell } from "./sidebar-shell.tsx";
 import { RoomFrame } from "./room-frame.tsx";
 import styles from "./room-skeleton.module.css";
 import { StageView } from "./stage-view.tsx";
@@ -60,6 +58,7 @@ export function RoomSkeleton({
   draft?: { value: string; onValueChange: (value: string) => void } | undefined;
 }) {
   const said = status ?? wording.message.projectLoading(title);
+  const bottomId = `room-skeleton-sidebar-${useId()}`;
   const boxRef = useRef<HTMLTextAreaElement>(null);
   // A project just started was being typed about a moment ago, so the cursor stays in the box.
   const takesCursor = draft !== undefined && opening !== undefined;
@@ -75,14 +74,23 @@ export function RoomSkeleton({
         <RoomFrame
           sidebar={
             opening === undefined ? (
-              <SidebarFrame
-                title={title}
+              <SidebarShell
+                label={wording.projectShell.sidebar}
                 open={sidebar.open}
                 drawer={sidebar.drawer}
-                onToggleSidebar={sidebar.onToggleSidebar}
-                onHome={sidebar.onHome}
-                onSettings={sidebar.onSettings}
-                plan={
+                bottomId={bottomId}
+                onPutAway={sidebar.onToggleSidebar}
+                header={
+                  <SidebarHeader
+                    title={title}
+                    open={sidebar.open}
+                    controls={bottomId}
+                    onToggle={sidebar.onToggleSidebar}
+                    onHome={sidebar.onHome}
+                    onSettings={sidebar.onSettings}
+                  />
+                }
+                top={
                   <ul className={styles.plan} aria-hidden="true">
                     {PLAN_ROWS.map((width, index) => (
                       <li key={index} className={styles.step}>
@@ -97,12 +105,14 @@ export function RoomSkeleton({
               <ProjectSidebarView
                 project={title}
                 {...sidebar}
-                plan={[]}
-                app="not_built"
-                appOpen={false}
-                shown={null}
-                onOpenApp={nothing}
-                onOpenStep={nothing}
+                plan={{
+                  plan: [],
+                  app: "not_built",
+                  shown: null,
+                  waitsOn: null,
+                  onOpenStep: nothing,
+                }}
+                appLine={null}
               />
             )
           }

@@ -1,0 +1,39 @@
+/* The sections stand at the foot of what holds them, whatever scrolls above. */
+.sections {
+  flex: none;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* A row's name starts where a step's or a file's does, past the column their marks stand in. */
+.row {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  width: 100%;
+  padding-inline-start: calc(var(--space-2) + 14px + var(--space-2));
+  border: 0;
+  background: transparent;
+  color: var(--wb-foreground);
+  font-family: inherit;
+  text-align: start;
+}
+
+.row[aria-current] {
+  background: var(--wb-selected);
+  font-weight: 500;
+}
+
+.row:focus-visible {
+  outline: 2px solid var(--wb-action);
+  outline-offset: -2px;
+}
+
+.status {
+  color: var(--wb-muted-foreground);
+  font-weight: 400;
+}
+
+.status[data-tone="destructive"] {
+  color: var(--destructive);
+}

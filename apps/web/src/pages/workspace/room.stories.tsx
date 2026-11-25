@@ -78,13 +78,19 @@ function Room(args: RoomViewProps) {
         sidebar={{
           ...sidebar,
           open: sidebarOpen,
-          appOpen: onScreen === LIVE_TAB,
-          shown: onScreen,
           onToggleSidebar: () => setSidebarOpen(!sidebarOpen),
-          onOpenApp: () => {
-            open(LIVE_TAB);
-            sidebar.onOpenApp();
-          },
+          plan: { ...sidebar.plan, shown: onScreen },
+          appLine:
+            sidebar.appLine === null
+              ? null
+              : {
+                  ...sidebar.appLine,
+                  open: onScreen === LIVE_TAB,
+                  onOpen: () => {
+                    open(LIVE_TAB);
+                    sidebar.appLine?.onOpen();
+                  },
+                },
         }}
         documentPane={{
           ...pane,
@@ -123,15 +129,19 @@ function sidebarOf(
     project: "Bakery orders",
     open: true,
     drawer: false,
-    plan: outline.plan,
-    app: outline.app,
-    appOpen: false,
-    shown: null,
     onToggleSidebar: fn(),
     onHome: fn(),
     onSettings: fn(),
-    onOpenApp: fn(),
-    onOpenStep: fn(),
+    plan: {
+      plan: outline.plan,
+      app: outline.app,
+      shown: null,
+      waitsOn: null,
+      onOpenStep: fn(),
+    },
+    appLine: outline.plan.some((row) => row.app)
+      ? null
+      : { app: outline.app, open: false, onOpen: fn() },
   };
 }
 

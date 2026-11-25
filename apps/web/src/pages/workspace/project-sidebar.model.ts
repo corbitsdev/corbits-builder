@@ -9,7 +9,9 @@ import type { MenuProject, ProjectMenuHost } from "../project-menu.model.ts";
 import type { PaneDocument } from "./artifact-pane.tsx";
 import { ROOM_NARROW_QUERY, useSidebar } from "../../sidebar-setting.ts";
 import { liveAppQuery } from "./live-app.model.ts";
-import { projectOutline } from "./project-outline.ts";
+import type { AppLineProps } from "./app-line.tsx";
+import type { PlanTimelineProps } from "./plan-timeline.tsx";
+import { projectOutline, type Outline } from "./project-outline.ts";
 import type { ProjectSidebarViewProps } from "./project-sidebar.view.tsx";
 import { LIVE_TAB } from "./tab-follow.ts";
 
@@ -44,7 +46,7 @@ export function useProjectSidebar(input: ProjectSidebarInput): {
   /** The project's own menu, opened from its name; null until the project list has it. */
   projectMenu: ProjectMenuHost | null;
 } {
-  const { projectId, shown } = input;
+  const { projectId } = input;
   const frame = useSidebar(ROOM_NARROW_QUERY);
   // Opening something from a drawer puts the drawer away, so the page is seen.
   const leaving =
@@ -59,21 +61,17 @@ export function useProjectSidebar(input: ProjectSidebarInput): {
     documents: input.documents,
     app: { shown: input.appShown, state: app.data?.state },
   });
+  const open = leaving(input.onOpen);
   return {
     sidebar: {
       project: input.title,
       open: frame.open,
       drawer: frame.drawer,
-      plan: outline.plan,
-      app: outline.app,
-      appOpen: shown === LIVE_TAB,
-      shown,
-      waitsOn: input.waitsOn,
       onToggleSidebar: frame.toggle,
       onHome: input.onNewProject,
       onSettings: () => input.onOpenSettings(),
-      onOpenApp: leaving(() => input.onOpen(LIVE_TAB)),
-      onOpenStep: leaving(input.onOpen),
+      plan: planProps(outline, input, open),
+      appLine: appLineProps(outline, input.shown, open),
     },
     projectMenu:
       input.project === undefined
@@ -85,5 +83,34 @@ export function useProjectSidebar(input: ProjectSidebarInput): {
             // Archived or deleted, the project is no longer one to work in, so the person goes home.
             onGone: input.onNewProject,
           },
+  };
+}
+
+/** The plan as its timeline shows it, each step opening what it made. */
+function planProps(
+  outline: Outline,
+  input: ProjectSidebarInput,
+  open: (tab: string) => void,
+): PlanTimelineProps {
+  return {
+    plan: outline.plan,
+    app: outline.app,
+    shown: input.shown,
+    waitsOn: input.waitsOn,
+    onOpenStep: open,
+  };
+}
+
+/** The app's own line, which only stands where no step of the plan makes the app. */
+function appLineProps(
+  outline: Outline,
+  shown: string | null,
+  open: (tab: string) => void,
+): AppLineProps | null {
+  if (outline.plan.some((row) => row.app)) return null;
+  return {
+    app: outline.app,
+    open: shown === LIVE_TAB,
+    onOpen: () => open(LIVE_TAB),
   };
 }

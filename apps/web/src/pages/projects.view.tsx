@@ -20,7 +20,7 @@ import { useShellReply } from "../flourish.tsx";
 import { Composer } from "../composer.tsx";
 import { HOME_COMPOSER_PLACEHOLDER } from "./home-view.ts";
 import { RoomSkeleton } from "./workspace/room-skeleton.tsx";
-import type { MarkWays } from "./workspace/project-sidebar.view.tsx";
+import type { MarkWays } from "./workspace/sidebar-header.tsx";
 import { ProjectCards, type LibraryProject } from "./project-library.view.tsx";
 import styles from "./projects.module.css";
 

@@ -1,0 +1,29 @@
+/* A row of the sidebar, at the links' size and rhythm, wherever the sidebar lists something: the
+   plan's steps and the project's files. Each list sets its own columns. One that opens something
+   says so under the pointer. */
+.row {
+  display: grid;
+  column-gap: var(--space-2);
+  min-height: 1.75rem;
+  box-sizing: border-box;
+  padding: 6px var(--space-2);
+  border-radius: var(--radius-md);
+  font-size: var(--text-xs);
+  line-height: var(--text-xs--line-height);
+}
+
+.row[data-opens] {
+  cursor: pointer;
+}
+
+.row[data-opens]:hover {
+  background: var(--wb-muted);
+}
+
+.name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

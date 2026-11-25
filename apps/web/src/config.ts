@@ -511,6 +511,8 @@ export const wording = {
       failed: "Didn't start",
     },
     openApp: "Open app",
+    /** The group of the project's files, under the plan. */
+    files: "Files",
     /** The mark at the sidebar's top opens a menu that leaves the page. */
     menu: "Menu",
     backToProjects: "Back to projects",

@@ -1,15 +1,16 @@
 /**
  * The sidebar outside a project, on the projects, not on the new project page or Settings, which
- * stand alone: the project sidebar's frame, holding only what starts or resumes work. A new
+ * stand alone: the sidebar's card and title row, holding only what starts or resumes work. A new
  * project, connecting a model while none is, and the projects last worked on, to go straight back
  * to one.
  */
 import { Plus, Unplug } from "lucide-react";
 import { SidebarItem } from "@corbits/react-ui";
 import type { LucideIcon } from "lucide-react";
-import type { ReactNode } from "react";
+import { useId, type ReactNode } from "react";
 import { wording } from "./config.ts";
-import { SidebarFrame } from "./pages/workspace/project-sidebar.view.tsx";
+import { SidebarHeader } from "./pages/workspace/sidebar-header.tsx";
+import { SidebarShell } from "./pages/workspace/sidebar-shell.tsx";
 import styles from "./workspace-sidebar.module.css";
 
 export type WorkspaceSidebarViewProps = {
@@ -45,16 +46,52 @@ export function WorkspaceSidebarView({
   onOpenProject,
   onSettings,
 }: WorkspaceSidebarViewProps) {
+  const bottomId = `workspace-sidebar-${useId()}`;
   return (
-    <SidebarFrame
+    <SidebarShell
       label={wording.shell.sidebar}
-      title={name}
       open={open}
       drawer={drawer}
-      onToggleSidebar={onToggleSidebar}
-      onHome={onNewProject}
-      onSettings={onSettings}
-    >
+      bottomId={bottomId}
+      onPutAway={onToggleSidebar}
+      header={
+        <SidebarHeader
+          title={name}
+          open={open}
+          controls={bottomId}
+          onToggle={onToggleSidebar}
+          onHome={onNewProject}
+          onSettings={onSettings}
+        />
+      }
+      bottom={
+        <WorkspaceRows
+          current={current}
+          needsProvider={needsProvider}
+          recent={recent}
+          onNewProject={onNewProject}
+          onConnectModel={onConnectModel}
+          onOpenProject={onOpenProject}
+        />
+      }
+    />
+  );
+}
+
+/** What starts or resumes work: a new project, connecting a model, and the projects last worked on. */
+function WorkspaceRows({
+  current,
+  needsProvider,
+  recent,
+  onNewProject,
+  onConnectModel,
+  onOpenProject,
+}: Omit<
+  WorkspaceSidebarViewProps,
+  "name" | "open" | "drawer" | "onToggleSidebar" | "onSettings"
+>) {
+  return (
+    <>
       <ul className={styles.rows}>
         <Row
           icon={Plus}
@@ -88,7 +125,7 @@ export function WorkspaceSidebarView({
           </ul>
         </section>
       )}
-    </SidebarFrame>
+    </>
   );
 }
 

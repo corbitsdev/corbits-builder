@@ -1,0 +1,141 @@
+.sidebar {
+  --width: var(--rail-width);
+  /* Closing is the system answering, so it is quicker than opening. */
+  --speed: var(--duration-standard);
+  --inset: var(--frame-edge, var(--space-2));
+  /* flex keeps the top in the closed card under the header; none leaves the closed card the header
+     alone. */
+  --top-when-closed: flex;
+  /* Behind the collapsed top: var(--wb-background) fills the header alone, var(--card) the card. */
+  --closed-ground: var(--wb-background);
+  /* The open card's top keeps at least this much of the room under the header, when it needs it. */
+  --top-share: 40%;
+
+  position: relative;
+  display: flex;
+  flex: none;
+  width: 0;
+  height: 100%;
+  color: var(--wb-foreground);
+  transition: width var(--speed) var(--ease-out);
+}
+
+.sidebar[data-open] {
+  --speed: var(--duration-large);
+}
+
+/* Beside the page, open, it takes its card's room from what stands beside it; as a drawer it
+   takes none. */
+.sidebar[data-open]:not([data-drawer]) {
+  width: calc(var(--width) + var(--inset));
+}
+
+.sidebar[data-drawer] {
+  z-index: 5;
+}
+
+/* The card holds the header and the top, open or closed; open, it grows to the window's height
+   around them, so neither moves. */
+.card {
+  position: absolute;
+  inset-block-start: var(--inset);
+  inset-inline-start: var(--inset);
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  width: var(--width);
+  height: auto;
+  --ground: var(--card);
+
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  background: var(--ground);
+  interpolate-size: allow-keywords;
+  transition:
+    height var(--speed) var(--ease-out),
+    background-color var(--speed) var(--ease-out),
+    box-shadow var(--speed) var(--ease-out);
+}
+
+.sidebar:not([data-open]) .card {
+  --ground: var(--closed-ground);
+}
+
+.sidebar[data-open] .card {
+  height: calc(100% - 2 * var(--inset));
+}
+
+/* Over the page as a drawer it is lifted clear of the text beneath, as the room's floating cards
+   are. */
+.sidebar[data-drawer][data-open] .card {
+  box-shadow:
+    var(--wb-pane-shadow),
+    0 8px 24px rgb(0 0 0 / 0.16);
+}
+
+/* Opened or closed from the keyboard, as the header marks, it moves at once. */
+.sidebar:has([data-instant]),
+.sidebar:has([data-instant]) .card {
+  transition: none;
+}
+
+/* Under the header, the top and the bottom share what is left of the card. Each is as tall as what
+   it holds; when both are more than fits, the top keeps its share and the bottom the rest, and when
+   one holds little the other takes the room it leaves. Each scrolls inside itself, without a bar
+   that would narrow its rows. */
+.sections {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.top,
+.bottom {
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+:is(.top, .bottom)::-webkit-scrollbar {
+  display: none;
+}
+
+/* The top gives way first, but never below its share, nor below what it holds. */
+@supports (min-height: calc-size(max-content, size)) {
+  .sidebar[data-open] .top {
+    flex-shrink: 1000;
+    min-height: calc-size(max-content, min(size, var(--top-share)));
+  }
+}
+
+.top {
+  padding: 0 var(--space-2) var(--space-2);
+}
+
+/* Closed, the top is at most a screenful under the header. */
+.sidebar:not([data-open]) .top {
+  display: var(--top-when-closed);
+  max-height: min(24rem, 100dvh - 6rem);
+}
+
+/* A drawer closed is its header alone, so it covers as little of the page as it can. */
+.sidebar[data-drawer]:not([data-open]) .top {
+  display: none;
+}
+
+/* The bottom, only while open. */
+.bottom {
+  gap: var(--space-2);
+  padding: 0 var(--space-2) var(--space-3);
+  animation: global(fade-in) var(--speed) var(--ease-out);
+}
+
+.sidebar:not([data-open]) .bottom,
+.bottom:empty {
+  display: none;
+}
