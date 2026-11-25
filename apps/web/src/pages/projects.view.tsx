@@ -270,26 +270,34 @@ export function ProjectsView({
           </Banner>
         )}
         {folder === null ? null : <FolderBanner {...folder} busy={busy} />}
-        {recent.length === 0 ? null : (
-          <section className={styles.recent} aria-labelledby="recent-title">
+        {/* With every project archived nothing is recent, but All projects is still the way to them. */}
+        {recent.length === 0 && onOpenLibrary === undefined ? null : (
+          <section
+            className={styles.recent}
+            aria-labelledby={recent.length === 0 ? undefined : "recent-title"}
+          >
             <div className={styles.recentHead}>
-              <h2 id="recent-title" className={styles.recentTitle}>
-                {wording.shell.recentProjects}
-              </h2>
+              {recent.length === 0 ? null : (
+                <h2 id="recent-title" className={styles.recentTitle}>
+                  {wording.shell.recentProjects}
+                </h2>
+              )}
               {onOpenLibrary === undefined ? null : (
                 <Button variant="link" onClick={onOpenLibrary}>
                   {wording.shell.allProjects}
                 </Button>
               )}
             </div>
-            <ProjectCards
-              className={styles.recentCards}
-              projects={recent}
-              layout="grid"
-              stages={false}
-              onOpen={onOpenProject}
-              onCoverNear={onCoverNear}
-            />
+            {recent.length === 0 ? null : (
+              <ProjectCards
+                className={styles.recentCards}
+                projects={recent}
+                layout="grid"
+                stages={false}
+                onOpen={onOpenProject}
+                onCoverNear={onCoverNear}
+              />
+            )}
           </section>
         )}
       </section>

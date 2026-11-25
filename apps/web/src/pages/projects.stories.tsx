@@ -143,7 +143,23 @@ export const RecentIsEverything: Story = {
 };
 
 /** A new workspace has no projects yet, so the prompt stands alone. */
-export const NoRecentProjects: Story = { args: { recent: [] } };
+export const NoRecentProjects: Story = {
+  args: { recent: [] },
+  render: (args) => <Page {...args} onOpenLibrary={undefined} />,
+};
+
+/** With every project archived nothing is recent, and All projects still leads to them. */
+export const EveryProjectArchived: Story = {
+  args: { recent: [] },
+  play: async ({ args, canvasElement }) => {
+    await userEvent.click(
+      within(canvasElement).getByRole("button", {
+        name: wording.shell.allProjects,
+      }),
+    );
+    await expect(args.onOpenLibrary).toHaveBeenCalled();
+  },
+};
 
 export const WithIdea: Story = { args: { idea: IDEA } };
 
