@@ -104,16 +104,24 @@ function writtenPage(document: LoadedDeliverable, designPart: DesignPart) {
   if (kind !== "design" || designPart !== "plan") return null;
   const plan = designPlan(document.content);
   if (plan === undefined) return null;
-  const text = (content: string) => planPage(designPlan(content) ?? "");
+  const text = (content: string, version: number) => {
+    const each = designPlan(content);
+    // Thrown, it is the version's read error, which the page's notes show.
+    if (each === undefined) throw new Error(wording.versions.noPlan(version));
+    return planPage(each);
+  };
+  const beforePlan =
+    document.before === null ? undefined : designPlan(document.before.content);
   return {
     document: {
       ...document,
       mediaType: "text/markdown",
       content: planPage(plan),
+      // An earlier version with no plan is not offered to compare with.
       before:
-        document.before === null
+        document.before === null || beforePlan === undefined
           ? null
-          : { ...document.before, content: text(document.before.content) },
+          : { ...document.before, content: planPage(beforePlan) },
       versions: document.versions.map((version) => ({
         ...version,
         mediaType: "text/markdown",
@@ -239,7 +247,7 @@ export function DeliverableBody({
             onReadVersion &&
             (async (version) => {
               const read = await onReadVersion(version);
-              return { ...read, content: page.text(read.content) };
+              return { ...read, content: page.text(read.content, version) };
             }),
           onViewVersion,
           requestedVersion,

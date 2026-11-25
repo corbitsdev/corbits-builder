@@ -1155,6 +1155,8 @@ export const wording = {
     readingForComparison: (version: number) =>
       `Reading v${String(version)} for comparison…`,
     historyUnavailable: (reason: string) => `History unavailable: ${reason}`,
+    /** A design version whose bundle carries no written plan, read from the plan's page. */
+    noPlan: (version: number) => `v${String(version)} has no design plan.`,
   },
   preview: {
     actions: "Preview controls",
