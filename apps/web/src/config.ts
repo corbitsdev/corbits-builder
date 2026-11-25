@@ -1160,10 +1160,8 @@ export const wording = {
     backKeys: { label: "Previous question", keys: ["←"] },
     nextKeys: { label: "Next question", keys: ["Enter", "→"] },
     sendKeys: { label: "Send your answers", keys: ["Enter"] },
-    /** The prompt box under a question nothing is picked for yet: the person's own words answer it. */
-    composerPlaceholder: "Or type your own answer…",
-    /** The same, under a question that takes only its options: words sent now are a reply instead. */
-    replyInstead: "Or reply in your own words…",
+    /** The prompt box under a question nothing is picked for yet: words sent now are a reply. */
+    composerPlaceholder: "Or reply in your own words…",
     /** The prompt box once an option is picked: words sent now go with it. */
     addDetails: (picked: string) => `Add details for ${picked}…`,
     /** The tag on the option the coordinator recommends. */

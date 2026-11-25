@@ -41,8 +41,8 @@ type Asked = PromptQuestion["asked"];
 type Question = Asked["questions"][number];
 
 /**
- * The options picked, by label, plus the person's own words; typing those is the "Something else"
- * answer. Details are words sent from the prompt box after a pick, and go with it.
+ * The options picked, by label, plus the person's own words, which answer a question with nothing
+ * to pick. Details are words sent from the prompt box after a pick, and go with it.
  */
 type Answer = {
   readonly chosen: readonly string[];
@@ -74,8 +74,8 @@ const progressFor =
       : undefined;
   };
 
-// Nothing starts picked: the recommendation shows as a tag, and the person's own words in the box
-// answer until they pick.
+// Nothing starts picked: the recommendation shows as a tag, and words sent from the box are a
+// reply until the person picks.
 const startingProgress = (questions: readonly Question[]): Progress => ({
   step: 0,
   answers: questions.map(() => ({ chosen: [], own: "" })),
@@ -196,9 +196,9 @@ export function sentAnswer(
 }
 
 /**
- * Words sent from the prompt box as this question's answer: details beside a pick, else the
- * person's own answer where the question takes one; undefined where it takes neither, which
- * leaves them to the conversation as a reply.
+ * Words sent from the prompt box as this question's answer: details beside a pick, or the answer
+ * itself where there is nothing to pick. Undefined leaves them to the conversation as a reply, so
+ * a person can write back to the coordinator before answering.
  */
 export function withWords(
   question: Question,
@@ -207,8 +207,7 @@ export function withWords(
 ): Answer | undefined {
   if (chosenOf(question, answer).length > 0)
     return { ...answer, details: words };
-  if (question.custom || question.options.length === 0)
-    return { chosen: [], own: words };
+  if (question.options.length === 0) return { chosen: [], own: words };
   return undefined;
 }
 
@@ -220,7 +219,7 @@ function boxPlaceholder(
   if (question.options.length === 0) return text.typed;
   if (picked.length > 0)
     return text.addDetails(picked.map(shownLabel).join(", "));
-  return question.custom ? undefined : text.replyInstead;
+  return undefined;
 }
 
 /**

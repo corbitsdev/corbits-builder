@@ -393,13 +393,22 @@ describe("words sent from the prompt box", () => {
     });
   });
 
-  test("with nothing picked they are the person's own answer where the question takes one", () => {
+  test("with nothing picked they are left to the conversation as a reply", () => {
     expect(
-      withWords(firstVersion!, { chosen: [], own: "" }, "Share lists"),
-    ).toEqual({ chosen: [], own: "Share lists" });
-    // A question with options and no own answer leaves the words to the conversation.
+      withWords(firstVersion!, { chosen: [], own: "" }, "Explain the options"),
+    ).toBeUndefined();
     expect(
       withWords(devices!, { chosen: [], own: "" }, "On a tablet"),
     ).toBeUndefined();
+  });
+
+  test("on a question with nothing to pick they are the answer", () => {
+    expect(
+      withWords(
+        { ...devices!, options: [] },
+        { chosen: [], own: "" },
+        "On a tablet",
+      ),
+    ).toEqual({ chosen: [], own: "On a tablet" });
   });
 });
