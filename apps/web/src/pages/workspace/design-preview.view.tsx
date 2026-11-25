@@ -325,6 +325,10 @@ export type DesignPreviewViewProps = {
   tweakPanel: (panel: TweakPanelProps) => ReactNode;
 };
 
+// The written plan starts after the file's front matter (its settings block) and its title.
+export const planText = (notes: string) =>
+  notes.replace(/^\s*(?:---\n[\s\S]*?\n---\n+)?\s*# [^\n]*\n+/, "");
+
 export function DesignPreviewView({
   files,
   part,
@@ -351,6 +355,6 @@ export function DesignPreviewView({
   return notes === undefined ? (
     <InlineNote>{wording.design.noPlan}</InlineNote>
   ) : (
-    <DocumentView source={notes.replace(/^\s*# [^\n]*\n+/, "")} />
+    <DocumentView source={planText(notes)} />
   );
 }
