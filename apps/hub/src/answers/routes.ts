@@ -2,7 +2,7 @@ import { type } from "arktype";
 import type { Hono } from "hono";
 import { describeRoute, resolver } from "hono-openapi";
 import type { TenantEnv } from "@intx/hub-api";
-import { QuestionAnswer } from "@intx/types/signals";
+import { GivenQuestionAnswer } from "@intx/types/signals";
 import { ProjectError } from "../projects/errors.ts";
 import { body } from "../http/route-parts.ts";
 import type { Answer } from "./answer.ts";
@@ -10,7 +10,7 @@ import type { Answer } from "./answer.ts";
 const AnswerPost = type({
   "+": "reject",
   signalName: "string > 0",
-  answer: QuestionAnswer,
+  answer: GivenQuestionAnswer,
 });
 
 export function mountAnswerRoutes(app: Hono<TenantEnv>, answer: Answer) {
@@ -20,7 +20,7 @@ export function mountAnswerRoutes(app: Hono<TenantEnv>, answer: Answer) {
       tags: ["Artifacts"],
       operationId: "answerQuestion",
       description:
-        "The signed-in person answers the question the project's coordinator is waiting on, by its signal name: a question card's answers, a screen's output, or a reply they typed instead. For a screen's output the hub checks it against the screen's output schema and saves the project values the screen writes from it where they changed. It records what it approves: a document's approval at the version shown, or the design option chosen as the design, each only among the facts the question allows. It also sets the project preferences the screen sets from it, such as leaving approvals to Builder. Then it delivers the answer to the run through Interchange's signal route as the person. A reply is delivered as it is.",
+        "The signed-in person answers the question the project's coordinator is waiting on, by its signal name: a question card's answers with any details the person added to one, which the run receives as the last of that question's answers, a screen's output, or a reply they typed instead. For a screen's output the hub checks it against the screen's output schema and saves the project values the screen writes from it where they changed. It records what it approves: a document's approval at the version shown, or the design option chosen as the design, each only among the facts the question allows. It also sets the project preferences the screen sets from it, such as leaving approvals to Builder. Then it delivers the answer to the run through Interchange's signal route as the person. A reply is delivered as it is.",
       security: [{ sessionCookie: [] }, { deviceBearer: [] }],
       requestBody: {
         required: true,

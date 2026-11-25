@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { type } from "arktype";
 import { hasCode } from "@intx/types/has-code";
+import { isRecord } from "../lib/json.ts";
 import type { ToolCall, ToolResult, ToolRunner } from "@intx/types/runtime";
 import {
   type ApprovedPackages,
@@ -21,12 +22,12 @@ const SHELL_REFUSES =
 export const packageInstallDefinitions = [
   {
     name: PACKAGE_INSTALL_TOOL,
-    description: `Install npm packages with bun add ${WHERE}. The person approves each install first, so install a package the approved build plan names with ${PLANNED_INSTALL_TOOL} instead. When an install is declined, build without those packages. ${SHELL_REFUSES}`,
+    description: `Install npm packages with bun add ${WHERE}. Depending on the person's settings, an install may wait for their approval; a package the approved build plan names installs without waiting through ${PLANNED_INSTALL_TOOL}. When an install is declined, build without those packages. ${SHELL_REFUSES}`,
     inputSchema,
   },
   {
     name: PLANNED_INSTALL_TOOL,
-    description: `Install npm packages the approved build plan names with bun add ${WHERE}, without waiting for the person. A package the plan names without a version installs as given; one it pins installs at that version, so give it bare or at that version. Any other package, or another version, is not installed and waits for the person through ${PACKAGE_INSTALL_TOOL}.`,
+    description: `Install npm packages the approved build plan names with bun add ${WHERE}, without waiting for the person. A package the plan names without a version installs as given; one it pins installs at that version, so give it bare or at that version. Any other package, or another version, is not installed; install it with ${PACKAGE_INSTALL_TOOL}.`,
     inputSchema,
   },
 ];
@@ -45,12 +46,33 @@ export const Manifest = type({
 });
 const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
 
+async function readPackageJson(path: string): Promise<unknown> {
+  try {
+    return JSON.parse(await readFile(path, "utf8"));
+  } catch (error) {
+    if (
+      (hasCode(error) && error.code === "ENOENT") ||
+      error instanceof SyntaxError
+    )
+      return undefined;
+    throw error;
+  }
+}
+
+export async function readManifest(path: string) {
+  const manifest = Manifest(await readPackageJson(path));
+  return manifest instanceof type.errors ? undefined : manifest;
+}
+
 export const DEPENDENCY_FIELDS = [
   "dependencies",
   "devDependencies",
   "optionalDependencies",
   "peerDependencies",
 ] as const;
+const INSTALLED_FIELDS = new Set<string>(DEPENDENCY_FIELDS);
+// Bun resolves the specs in these fields too, so the source check reads them as well.
+const SOURCE_FIELDS = [...DEPENDENCY_FIELDS, "overrides", "resolutions"];
 const Lockfile = type({ "workspaces?": type({ "[string]": Manifest }) });
 
 /** The packages bun.lock records as installed for some package of the workspace. */
@@ -88,11 +110,61 @@ export function createPackageGate(
     isError: true,
   });
 
+  const readWorkspaceDependencies = async () => {
+    const registryPackages = new Set<string>();
+    const outsideRegistry = new Set<string>();
+    // Bun.Glob matches nothing for a brace pattern whose branches hold a "/", so one per layout.
+    const manifestPaths = await Promise.all(
+      ["package.json", "*/package.json", "packages/*/package.json"].map(
+        (pattern) =>
+          Array.fromAsync(
+            new Bun.Glob(pattern).scan({ cwd: workspace, onlyFiles: true }),
+          ),
+      ),
+    );
+    // Read unvalidated: Bun installs from a package.json that the Manifest type would reject.
+    const packageJsons = await Promise.all(
+      manifestPaths
+        .flat()
+        .map((path) => readPackageJson(join(workspace, path))),
+    );
+    const specs = packageJsons.filter(isRecord).flatMap((packageJson) =>
+      SOURCE_FIELDS.flatMap((field) => {
+        const entries = packageJson[field];
+        return isRecord(entries)
+          ? Object.entries(entries).map(([name, spec]) => ({
+              field,
+              name,
+              spec,
+            }))
+          : [];
+      }),
+    );
+    for (const { field, name, spec } of specs) {
+      if (typeof spec !== "string" || spec.startsWith("workspace:")) continue;
+      // An installed name could otherwise point at any alias, git repository, URL or file.
+      if (/[:/]/.test(spec)) outsideRegistry.add(`${name}@${spec}`);
+      else if (INSTALLED_FIELDS.has(field)) registryPackages.add(name);
+    }
+    return { registryPackages, outsideRegistry };
+  };
+  const refuseOutsideRegistry = (call: ToolCall, specs: Set<string>) =>
+    refuse(call, {
+      code: "package_source_refused",
+      packages: [...specs],
+      summary:
+        "Dependencies come from the npm registry by version; these do not.",
+    });
+
   const install = async (
     call: ToolCall,
     input: PackageInstallInput,
     signal: AbortSignal,
   ): Promise<ToolResult> => {
+    // bun add resolves every package.json, not only the packages it is given.
+    const { outsideRegistry } = await readWorkspaceDependencies();
+    if (outsideRegistry.size)
+      return refuseOutsideRegistry(call, outsideRegistry);
     const result = await executor.run(
       {
         id: call.id,
@@ -110,7 +182,10 @@ export function createPackageGate(
     handles: (name: string) =>
       name === PACKAGE_INSTALL_TOOL || name === PLANNED_INSTALL_TOOL,
     /** Refuses a command line that fetches packages around the gate. */
-    async refuseShell(call: ToolCall): Promise<ToolResult | undefined> {
+    async refuseShell(
+      call: ToolCall,
+      signal: AbortSignal,
+    ): Promise<ToolResult | undefined> {
       const command = call.arguments["command"];
       if (typeof command !== "string") return undefined;
       if (FETCHING_COMMAND.test(command))
@@ -120,56 +195,21 @@ export function createPackageGate(
             "Install packages with install_packages, not the shell, then run what they install with bun run, or with app_status when it keeps running.",
         });
       if (!BARE_INSTALL.test(command)) return undefined;
-      const names = new Set<string>();
-      const unregistered = new Set<string>();
-      // Bun.Glob matches nothing for a brace pattern whose branches hold a "/", so one per layout.
-      const manifests = (
-        await Promise.all(
-          ["package.json", "*/package.json", "packages/*/package.json"].map(
-            (pattern) =>
-              Array.fromAsync(
-                new Bun.Glob(pattern).scan({ cwd: workspace, onlyFiles: true }),
-              ),
-          ),
-        )
-      ).flat();
-      for (const path of manifests) {
-        let parsed: unknown;
-        try {
-          parsed = JSON.parse(await readFile(join(workspace, path), "utf8"));
-        } catch (error) {
-          if (
-            (hasCode(error) && error.code === "ENOENT") ||
-            error instanceof SyntaxError
-          )
-            continue;
-          throw error;
-        }
-        const manifest = Manifest(parsed);
-        if (manifest instanceof type.errors) continue;
-        for (const field of DEPENDENCY_FIELDS)
-          for (const [name, spec] of Object.entries(manifest[field] ?? {}))
-            if (spec.startsWith("workspace:")) continue;
-            // An installed name could otherwise point at any alias, git repository, URL or file.
-            else if (/[:/]/.test(spec)) unregistered.add(`${name}@${spec}`);
-            else names.add(name);
-      }
-      if (unregistered.size)
-        return refuse(call, {
-          code: "package_source_refused",
-          packages: [...unregistered],
-          summary:
-            "Dependencies come from the npm registry by version; these do not.",
-        });
+      const { registryPackages, outsideRegistry } =
+        await readWorkspaceDependencies();
+      if (outsideRegistry.size)
+        return refuseOutsideRegistry(call, outsideRegistry);
       const installed = await installedPackages(workspace);
-      const added = [...names].filter((name) => !installed.has(name));
-      return added.length
-        ? refuse(call, {
-            code: "package_install_refused",
-            packages: added,
-            summary: "Add these packages with install_packages.",
-          })
-        : undefined;
+      const notYetInstalled = [...registryPackages].filter(
+        (name) => !installed.has(name),
+      );
+      if (!notYetInstalled.length) return undefined;
+      if ((await approved(signal)).installsFreely) return undefined;
+      return refuse(call, {
+        code: "package_install_refused",
+        packages: notYetInstalled,
+        summary: "Add these packages with install_packages.",
+      });
     },
     async run(call: ToolCall, signal: AbortSignal): Promise<ToolResult> {
       const input = PackageInstallInput(call.arguments);
@@ -189,7 +229,7 @@ export function createPackageGate(
         return refuse(call, {
           code: "package_not_planned",
           packages: asks,
-          summary: `No approved document names these at this version, so nothing was installed. ${PACKAGE_INSTALL_TOOL} asks the person for them.`,
+          summary: `No approved document names these at this version, so nothing was installed. Install them with ${PACKAGE_INSTALL_TOOL}.`,
         });
       const allowedBy = [
         ...new Set(
@@ -210,7 +250,7 @@ export function createPackageGate(
       // After the output, which a failed install opens with its exit code.
       const allowed = `${covered.join(", ")}: allowed by the approved ${allowedBy}, without asking the person.`;
       const left = asks.length
-        ? `\nNot installed: ${asks.join(", ")}, which the approved ${allowedBy} does not name at that version; ${PACKAGE_INSTALL_TOOL} asks the person for them.`
+        ? `\nNot installed: ${asks.join(", ")}, which the approved ${allowedBy} does not name at that version; install them with ${PACKAGE_INSTALL_TOOL}.`
         : "";
       return { ...result, content: `${result.content}\n\n${allowed}${left}` };
     },

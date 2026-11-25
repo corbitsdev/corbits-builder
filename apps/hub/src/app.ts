@@ -646,6 +646,7 @@ export async function createHubRuntime(
         handle.db,
         assetService,
         coordinatorTokens.authenticateProject,
+        sidecarRouter,
       ),
     );
     app.route(

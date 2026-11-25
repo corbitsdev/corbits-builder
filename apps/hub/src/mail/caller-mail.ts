@@ -1,6 +1,6 @@
 import type { Context } from "hono";
 import type { TenantEnv } from "@intx/hub-api";
-import type { QuestionAnswer } from "@intx/types/signals";
+import type { GivenQuestionAnswer } from "@intx/types/signals";
 import { ProjectError } from "../projects/errors.ts";
 import { readJson } from "../lib/json.ts";
 
@@ -79,7 +79,7 @@ export async function answerQuestionAsCaller(
   nativeFetch: ((request: Request) => Promise<Response>) | undefined,
   run: { tenantId: string; runId: string },
   signalName: string,
-  answer: QuestionAnswer,
+  answer: GivenQuestionAnswer,
 ): Promise<void> {
   await postAsCaller(
     c,

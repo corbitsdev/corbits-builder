@@ -4,6 +4,7 @@ import {
   deliveredText,
   maxTurnText,
   coordinatorQuestions,
+  deliveredAnswer,
 } from "./conversation.ts";
 
 const asked = (signalName: string, question: unknown, stepId = "ask") => ({
@@ -139,4 +140,19 @@ test("a 200,000-space run inside a line stays while the line's trailing blanks g
 test("a turn clipped at its limit never keeps half of an emoji", () => {
   const text = `${"a".repeat(maxTurnText - 1)}😀 more`;
   expect(clippedTurnText(text)).toBe("a".repeat(maxTurnText - 1));
+});
+
+test("a run receives each question's details after its picks, and never a blank or inherited one", () => {
+  expect(
+    deliveredAnswer({
+      answers: { who: ["Teachers"], when: ["Mornings"], toString: ["Yes"] },
+      details: { who: "  two per class ", when: "   " },
+    }),
+  ).toEqual({
+    answers: {
+      who: ["Teachers", "two per class"],
+      when: ["Mornings"],
+      toString: ["Yes"],
+    },
+  });
 });

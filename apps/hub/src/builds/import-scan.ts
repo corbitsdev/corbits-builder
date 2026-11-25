@@ -1,9 +1,12 @@
 import { readFile } from "node:fs/promises";
 import { builtinModules } from "node:module";
 import { dirname, join, relative, resolve } from "node:path";
-import { type } from "arktype";
 import { hasCode } from "@intx/types/has-code";
-import { DEPENDENCY_FIELDS, Manifest } from "./package-install.ts";
+import {
+  DEPENDENCY_FIELDS,
+  type Manifest,
+  readManifest,
+} from "./package-install.ts";
 
 const LOADERS: Record<string, "ts" | "tsx" | "js" | "jsx"> = {
   ts: "ts",
@@ -25,22 +28,6 @@ const packageOf = (specifier: string) => {
   const root = scope.startsWith("@") ? `${scope}/${name}` : scope;
   return BUILTINS.has(root) ? undefined : root;
 };
-
-async function manifest(path: string) {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(await readFile(path, "utf8"));
-  } catch (error) {
-    if (
-      (hasCode(error) && error.code === "ENOENT") ||
-      error instanceof SyntaxError
-    )
-      return undefined;
-    throw error;
-  }
-  const found = Manifest(parsed);
-  return found instanceof type.errors ? undefined : found;
-}
 
 const declared = (found: typeof Manifest.infer | undefined) => [
   ...(found?.name ? [found.name] : []),
@@ -70,18 +57,28 @@ export async function undeclaredImports(workspace: string, path: string) {
     // A file that does not parse yet, or was deleted mid-turn, has no imports to check; check-app says why.
     return undefined;
   }
-  let directory = dirname(file);
-  let own = await manifest(join(directory, "package.json"));
-  while (!own && directory !== workspace && directory !== dirname(directory)) {
-    directory = dirname(directory);
-    own = await manifest(join(directory, "package.json"));
+  let packageDirectory = dirname(file);
+  let nearestManifest = await readManifest(
+    join(packageDirectory, "package.json"),
+  );
+  while (
+    !nearestManifest &&
+    packageDirectory !== workspace &&
+    packageDirectory !== dirname(packageDirectory)
+  ) {
+    packageDirectory = dirname(packageDirectory);
+    nearestManifest = await readManifest(
+      join(packageDirectory, "package.json"),
+    );
   }
-  const known = new Set([
-    ...declared(own),
-    ...declared(await manifest(join(workspace, "package.json"))),
+  // Without a package.json the project is not an npm one, so nothing is installed for it.
+  if (!nearestManifest) return undefined;
+  const declaredNames = new Set([
+    ...declared(nearestManifest),
+    ...declared(await readManifest(join(workspace, "package.json"))),
   ]);
   const packages = [
     ...new Set(imported.flatMap((specifier) => packageOf(specifier) ?? [])),
-  ].filter((name) => !known.has(name));
-  return { directory: relative(workspace, directory), packages };
+  ].filter((name) => !declaredNames.has(name));
+  return { directory: relative(workspace, packageDirectory), packages };
 }

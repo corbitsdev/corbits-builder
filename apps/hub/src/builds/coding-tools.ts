@@ -107,7 +107,7 @@ export function createCodingTools(options: {
           if (gate?.handles(call.name)) return gate.run(call, signal);
           return (
             (COMMAND_TOOLS.has(call.name)
-              ? await gate?.refuseShell(call)
+              ? await gate?.refuseShell(call, signal)
               : undefined) ?? options.executor.run(call, signal)
           );
         },
