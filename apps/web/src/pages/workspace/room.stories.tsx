@@ -455,9 +455,7 @@ export const EarlierDocumentCaution: Story = {
     dock: {
       ...composer,
       text: "Change the problem brief: we also take orders by email.",
-      restarts: wording.earlierDocument.restarts(
-        wording.earlierDocument.work["design"] ?? "",
-      ),
+      restarts: wording.earlierDocument.restarts("the design"),
     },
   },
 };

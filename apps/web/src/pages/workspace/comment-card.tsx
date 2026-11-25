@@ -65,7 +65,18 @@ function leave(card: HTMLElement | null, then: (() => void) | undefined) {
     fade.cancel();
     card.inert = false;
   };
-  fade.finished.then(settle, settle);
+  void settleAfter(fade, settle);
+}
+
+/** A fade cut short still leaves the card to its parent, as one that ran out does. */
+async function settleAfter(fade: Animation, settle: () => void) {
+  try {
+    await fade.finished;
+  } catch (error) {
+    if (!(error instanceof DOMException && error.name === "AbortError"))
+      throw error;
+  }
+  settle();
 }
 
 export type CommentCardProps = {

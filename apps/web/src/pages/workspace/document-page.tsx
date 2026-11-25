@@ -159,8 +159,9 @@ function passageFinder(
   const nodes: { node: Text; start: number }[] = [];
   let text = "";
   for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
-    nodes.push({ node: node as Text, start: text.length });
-    text += node.textContent ?? "";
+    const run = node as Text;
+    nodes.push({ node: run, start: text.length });
+    text += run.data;
   }
   return (passage) => {
     const at = passageStart(text, passage);
@@ -314,7 +315,8 @@ export function DocumentPage({
     const margin =
       headings[0] === undefined
         ? 0
-        : parseFloat(getComputedStyle(headings[0]).scrollMarginTop) || 0;
+        : // Unlike scroll padding, a computed scroll margin is always a length.
+          parseFloat(getComputedStyle(headings[0]).scrollMarginTop);
     // A document that fits in the view has no end to reach; it is read from its top.
     const atEnd =
       view.scrollHeight > view.clientHeight + 2 &&
@@ -357,11 +359,18 @@ export function DocumentPage({
     const column = marginColumn.current;
     if (paper === null) return;
     headingsRef.current = readSections(paper);
-    const headings = headingsRef.current.map((heading) => ({
-      id: heading.id,
-      title: heading.textContent ?? "",
-      top: heading.getBoundingClientRect().top,
-    }));
+    // An element's text is never null; only the DOM's type allows it.
+    const headings = headingsRef.current.flatMap((heading) =>
+      heading.textContent === null
+        ? []
+        : [
+            {
+              id: heading.id,
+              title: heading.textContent,
+              top: heading.getBoundingClientRect().top,
+            },
+          ],
+    );
     setSections((was) =>
       same(was, headings, (a, b) => a.id === b.id && a.title === b.title)
         ? was

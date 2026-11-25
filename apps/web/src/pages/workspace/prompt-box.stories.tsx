@@ -336,9 +336,7 @@ export const ChangingEarlierDocument: Story = {
     dock: {
       ...composer,
       text: "Change the audience to freelancers",
-      restarts: wording.earlierDocument.restarts(
-        wording.earlierDocument.work["design"] ?? "",
-      ),
+      restarts: wording.earlierDocument.restarts("the design"),
     },
   },
 };
