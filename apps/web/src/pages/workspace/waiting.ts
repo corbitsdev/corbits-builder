@@ -117,9 +117,13 @@ export function waitingOn(room: WaitingRoom): Waiting[] {
   return [...asking, ...approvals, ...steps, ...screens, ...warning];
 }
 
+export type WaitingCard = Exclude<Waiting, { kind: "warning" }>;
+
 /** The one card the prompt box holds: the first thing waiting that is not the send warning. */
-export function boxCard(waiting: readonly Waiting[]): Waiting | null {
-  return waiting.find((item) => item.kind !== "warning") ?? null;
+export function boxCard(waiting: readonly Waiting[]): WaitingCard | null {
+  return (
+    waiting.find((item): item is WaitingCard => item.kind !== "warning") ?? null
+  );
 }
 
 /** The plugin space's screens, the one it shows first. */

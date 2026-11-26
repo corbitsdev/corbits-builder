@@ -258,8 +258,6 @@ export function usePromptBox(room: PromptBoxRoom): PromptBox {
           title: card.title,
           decides,
         };
-      case "warning":
-        return null;
       default:
         return card satisfies never;
     }
@@ -276,14 +274,11 @@ export function usePromptBox(room: PromptBoxRoom): PromptBox {
         );
   // A plugin draws a screen for the page or for the conversation. One for the page opens beside the
   // room; any other is answered in the box, so it waits there until it is the box's card.
-  const place: "page" | "box" =
+  const forPage =
     first?.from === "question"
       ? questionScreen !== undefined && screenOf(questionScreen)?.page === true
-        ? "page"
-        : "box"
-      : shown !== undefined && SLOT[shown.render] === "page"
-        ? "page"
-        : "box";
+      : shown !== undefined && SLOT[shown.render] === "page";
+  const place = forPage ? "page" : "box";
   const held =
     first !== undefined && place === "box" && card?.key !== first.key;
   function screenInSpace(): SpaceScreenProps | null {
