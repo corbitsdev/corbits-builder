@@ -11,6 +11,7 @@ import { Button } from "@corbits/react-ui";
 import {
   PromptAction,
   ScreenActions,
+  ScreenRow,
   usePromptPlaceholder,
   usePromptSend,
 } from "@corbits-builder/plugin-ui/screen-actions";
@@ -120,6 +121,9 @@ function Choose({
   );
   // With the prompt box beneath the page, the forward action stands where Send does.
   const toBox = useContext(PromptAction);
+  // The bar also says why a pick failed to send, even with the forward action in the box.
+  const row = useContext(ScreenRow);
+  const failed = row !== null && row.fault !== null && row.fault !== undefined;
 
   const choose = (concept: Concept, option: string, details?: string) =>
     submit({
@@ -214,8 +218,8 @@ function Choose({
         />
       </div>
       {/* With the forward action in the prompt box, the bar stands only to say why a pick can't
-          be used, so no empty strip is left under the concepts. */}
-      {toBox === null || note !== undefined ? (
+          be used or wasn't sent, so no empty strip is left under the concepts. */}
+      {toBox === null || note !== undefined || failed ? (
         <div className={styles.bar}>
           <ScreenActions note={note}>
             {toBox === null ? forward : null}
