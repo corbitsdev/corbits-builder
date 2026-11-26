@@ -538,13 +538,15 @@ export function DocumentPage({
   // took hold of, so the words move with the finger rather than with the knob above or below them.
   const resizeFrom = (side: "start" | "end", event: PointerEvent) => {
     const column = pageColumn.current;
-    const paper = sheet.current;
+    // Passages are counted in the document's text, not its title, so a handle can't reach the title.
+    const prose =
+      sheet.current?.querySelector<HTMLElement>('[data-slot="prose"]') ?? null;
     const range = ends === null ? undefined : ranges.current.get(ends.id);
     if (
       ends === null ||
       onResize === undefined ||
       column === null ||
-      paper === null ||
+      prose === null ||
       range === undefined
     )
       return;
@@ -561,7 +563,7 @@ export function DocumentPage({
     column.dataset.resizing = "";
     const move = (moved: globalThis.PointerEvent) => {
       const caret = caretAt(moved.clientX, moved.clientY - lift);
-      if (caret === null || !paper.contains(caret.node)) return;
+      if (caret === null || !prose.contains(caret.node)) return;
       const next = document.createRange();
       next.setStart(held.node, held.offset);
       if (next.comparePoint(caret.node, caret.offset) < 0)
