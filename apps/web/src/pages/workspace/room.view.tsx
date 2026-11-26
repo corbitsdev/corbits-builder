@@ -282,8 +282,8 @@ export function RoomView({
     const box = dockRef.current;
     if (main === null || box === null) return;
     // The pill or handle standing above the box, which a view that fills the pane ends above too,
-    // so nothing of it shows beneath them. Found on every render, as it comes and goes.
-    const grip = box.querySelector<HTMLElement>('[data-slot="chat-grip"]');
+    // so nothing of it shows beneath them.
+    let grip: HTMLElement | null = null;
     // The box at rest: while the chat is pulled up over the view, the view keeps the foot it had.
     const measure = () => {
       if (
@@ -299,12 +299,31 @@ export function RoomView({
         `${String(Math.ceil(box.offsetHeight + reach))}px`,
       );
     };
-    measure();
     const observer = new ResizeObserver(measure);
     observer.observe(box);
-    if (grip !== null) observer.observe(grip);
-    return () => observer.disconnect();
-  });
+    // The grip comes and goes, and the sheet opens and closes, without the box resizing, so those
+    // changes look for the grip again and measure.
+    const follow = () => {
+      const found = box.querySelector<HTMLElement>('[data-slot="chat-grip"]');
+      if (found !== grip) {
+        if (grip !== null) observer.unobserve(grip);
+        if (found !== null) observer.observe(found);
+        grip = found;
+      }
+      measure();
+    };
+    follow();
+    const changes = new MutationObserver(follow);
+    changes.observe(box, {
+      childList: true,
+      subtree: true,
+      attributeFilter: ["data-state"],
+    });
+    return () => {
+      observer.disconnect();
+      changes.disconnect();
+    };
+  }, []);
   // Only a screen its plugin draws for the page has a space; any other is in the box. Over the
   // conversation it takes the whole page, the box beneath it, since a mockup or a set of designs
   // needs the width. Over the project view it waits for Open in the box. Answering it puts it away;
