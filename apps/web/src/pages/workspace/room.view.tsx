@@ -451,7 +451,10 @@ export function RoomView({
   // what is running. Full screen is the room's own conversation: what the chat was pulled up over
   // is put away.
   const covered = projectOpen || sheetShown;
-  const fullScreen = sheetShown ? closeSheet : closeProject;
+  const fullScreen = () => {
+    if (sheetShown) closeSheet();
+    closeProject();
+  };
   // The screen the box lists is the one that hands its action to the box; any other keeps its own.
   const spaceScreen =
     side === null ? null : (
