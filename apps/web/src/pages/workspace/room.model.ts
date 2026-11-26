@@ -11,7 +11,6 @@ import type { AnswerOutcome } from "./question-outcome.tsx";
  * its room and starts its coordinator; `useRoom` works on the loaded snapshot.
  */
 import { wording } from "../../config.ts";
-import { composerKey, useUnsent } from "../../unsent.ts";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   queryOptions,
@@ -21,12 +20,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import {
-  type AttachmentItem,
-  type AttachmentRejection,
-  type ConversationPart,
-  useAttachments,
-} from "@corbits/react-ui";
+import type { ConversationPart } from "@corbits/react-ui";
 import {
   heldOnApproval,
   projectActivityQuery,
@@ -42,8 +36,8 @@ import {
   partsDispatches,
   runDispatch,
   type DispatchRoom,
-  type RunEnd,
   type Sighting,
+  type RunEnd,
 } from "./dispatch-card.tsx";
 import { earlierDocumentRole, restartedWork } from "./earlier-document.ts";
 import { ProductApiError, type ProjectArtifact } from "@corbits-builder/client";
@@ -52,9 +46,9 @@ import {
   type InFlightRun,
 } from "@corbits-builder/schemas/artifact";
 import { toast } from "sonner";
-import { sendMessage } from "../../api/conversation.ts";
 import { inTab, pluginTabs, type SpaceScreenProps } from "./plugin-screens.tsx";
 import { useCommentDrafts, usePromptBox } from "./prompt-box.model.ts";
+import { acceptedMaterialsQuery, useComposer } from "./composer.model.ts";
 import { subscribeWorkflowRun } from "../../api/run-stream.ts";
 import {
   runStepsQuery,
@@ -67,9 +61,7 @@ import {
 import { stopRun } from "../../api/activity.ts";
 import { refusalBody } from "../../api/transport.ts";
 import {
-  acceptedMaterials,
   approveDocument,
-  attachMaterials,
   readArtifact,
   readProjectValues,
   runPluginAction,
@@ -120,17 +112,12 @@ import {
   type LiveRun,
 } from "./live-run.ts";
 import { createRoomReloader } from "./room-reload.ts";
-import {
-  latestTurnAt,
-  SENDING,
-  withPendingSends,
-  type SentMessage,
-} from "./pending-sends.ts";
+import { withPendingSends } from "./pending-sends.ts";
 import { decideApproval, openDecisions } from "../../api/decisions.ts";
 import type { PaneDocument } from "./artifact-pane.tsx";
 import type { DeliverableState } from "./deliverable-block.tsx";
 import { formatPassageQuote, type PassageQuote } from "./passage-quote.ts";
-import { humanFault, humanFaultWithCode, responseCode } from "./human-fault.ts";
+import { humanFault, humanFaultWithCode } from "./human-fault.ts";
 import { suggestedReplies } from "./suggested-replies.ts";
 import { visibleChatText } from "./visible-chat.ts";
 import {
@@ -173,10 +160,10 @@ import type {
   ShownDocument,
 } from "./screen-question.tsx";
 import type { RoomSession } from "./room-session.ts";
+import { useSessionMemory, withEntries } from "./session-memory.ts";
 import { inShort } from "@corbits-builder/schemas/in-short";
 import { roleOf, screenWords } from "./roles.ts";
 import { screensFor, selectionNames } from "./screens.ts";
-import { useSessionMemory, withEntries } from "./session-memory.ts";
 
 // The stream says when the room moved. This read covers what it cannot see,
 // such as a coordinator run replaced while its old stream stays quiet.
@@ -194,15 +181,6 @@ const BIND_POLL_MS = 1_000;
 const BIND_WAIT_MS = 15_000;
 // After a run closes, the mirror's commit can trail its last frame.
 const SETTLE_RELOAD_MS = [1_000, 3_000, 7_000, 15_000];
-
-function acceptedMaterialsQuery(projectId: string) {
-  return queryOptions({
-    queryKey: keys.acceptedMaterials.of(projectId),
-    retry: false,
-    refetchOnWindowFocus: false,
-    queryFn: () => acceptedMaterials(projectId),
-  });
-}
 
 // Only an active project has a coordinator whose decisions can be open. The one room read never
 // shown from an earlier visit, saved or in memory: a card answered since would be offered again,
@@ -255,23 +233,6 @@ function askedOf(waits: readonly Wait[] | undefined): Map<string, string> {
       );
   }
   return asked;
-}
-
-function openingDraft(
-  projectId: string,
-  openingMessage: string | undefined,
-): SentMessage[] {
-  const text = openingMessage?.trim();
-  if (text === undefined || text.length === 0) return [];
-  return [
-    {
-      id: `opening:${projectId}`,
-      author: "me",
-      body: text,
-      at: new Date(0).toISOString(),
-      after: Number.NEGATIVE_INFINITY,
-    },
-  ];
 }
 
 // Every material shares one kind, but each file is its own tab, so the pane names it by its artifact.
@@ -346,25 +307,6 @@ function shownDocument(
   return summary === undefined ? item : { ...item, summary };
 }
 
-function rejectionText(
-  rejection: AttachmentRejection<File>,
-  limits: { maxFiles: number; maxFileBytes: number },
-): string {
-  if (rejection.reason === "too-many")
-    return wording.attach.tooMany(limits.maxFiles);
-  if (rejection.reason === "too-large")
-    return wording.attach.tooLarge(rejection.file.name, limits.maxFileBytes);
-  return wording.attach.duplicate(rejection.file.name);
-}
-
-async function attachFaultText(cause: unknown): Promise<string> {
-  const code = await responseCode(cause);
-  return (
-    (code === undefined ? undefined : wording.attach.fault[code]) ??
-    humanFault(cause, wording.attach.notSent)
-  );
-}
-
 const MODEL_CHOICE_REFUSALS: ReadonlySet<string> = new Set([
   "model_provider_missing",
   "model_profile_required",
@@ -425,6 +367,10 @@ type LoadedRoom = {
 
 export type ReadyRoomProps = StageWorkspaceProps & LoadedRoom;
 
+/**
+ * Reads the project and its room, and starts its coordinator, while the room shows its loading
+ * or fault state; the room is ready only with a loaded snapshot.
+ */
 const NO_STEPS: ReadonlyMap<number, readonly ConversationPart[]> = new Map();
 const NO_RUNS: ReadonlyMap<string, InFlightRun> = new Map();
 const NO_SIGHTINGS: ReadonlyMap<string, Sighting> = new Map();
@@ -434,10 +380,6 @@ const sameParts = (
   next: readonly ConversationPart[],
 ) => kept.length === next.length && kept.every((part, at) => part === next[at]);
 
-/**
- * Reads the project and its room, and starts its coordinator, while the room shows its loading
- * or fault state; the room is ready only with a loaded snapshot.
- */
 export function useRoomGate({
   projectId,
   listedArchived,
@@ -652,33 +594,13 @@ export function useRoom({
   // The tab the project view shows, which the sidebar marks while the view is open.
   const [shownTab, setShownTab] = useState<string | null>(null);
   const documentPaneRef = useRef<HTMLElement>(null);
-  const composerRef = useRef<HTMLTextAreaElement>(null);
   // The runs the person stopped here, which read as stopped before they have wound down.
   const [stoppedHere, setStoppedHere] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
   // The project view open over the conversation.
   const [projectOpen, setProjectOpen] = useState(false);
-  const [sent, setSent] = useState<SentMessage[]>(() =>
-    openingDraft(projectId, openingMessage),
-  );
-  const [value, setValue] = useUnsent(composerKey(projectId));
-  const [sending, setSending] = useState(false);
-  const [sendFailed, setSendFailed] = useState(false);
-  const [sendFault, setSendFault] = useState<string | null>(null);
-  // When this session last sent the coordinator a message, until a run ends after it or it fails.
-  const [awaitingSince, setAwaitingSince] = useState<number | null>(null);
   const [enablingAi, setEnablingAi] = useState(false);
-  const accepted = useQuery(acceptedMaterialsQuery(projectId));
-  const limits = accepted.data;
-  const [files, setFiles] = useState<readonly AttachmentItem[]>([]);
-  const [attachFault, setAttachFault] = useState<string | null>(null);
-  const intake = useAttachments({
-    attachments: files,
-    ...(limits === undefined
-      ? {}
-      : { maxFiles: limits.maxFiles, maxFileBytes: limits.maxFileBytes }),
-  });
   const liveRunRef = useRef<LiveRun>(emptyLiveRun);
   // The stream folds each event against the latest committed reply, read once the render commits.
   const committedAt = latestAssistantAt(mirror);
@@ -726,7 +648,14 @@ export function useRoom({
       reloadRef.current = () => {};
     };
   }, [projectId, queryClient, status]);
-  const notSent = "That message was not sent.";
+  const composer = useComposer({
+    projectId,
+    openingMessage,
+    mirror,
+    onChanged,
+    reload: () => reloadRef.current(),
+  });
+  const { sending, setSending } = composer;
   const { questions, openQuestion, answer, outcomes } = useQuestions({
     projectId,
     runId,
@@ -764,25 +693,7 @@ export function useRoom({
     setDocumentChoice(null);
     setPaneTab(null);
     setProjectOpen(false);
-    setSent(openingDraft(projectId, openingMessage));
-    setSendFailed(false);
-    setSendFault(null);
-    setAwaitingSince(null);
-    setFiles([]);
-    setAttachFault(null);
     setStoppedHere(new Set());
-  }, [projectId, openingMessage]);
-
-  // A project just started could be typed into while it opened, and the box that was typed in
-  // is gone; the cursor carries on in this one, after the words.
-  useEffect(() => {
-    if (openingMessage === undefined) return;
-    const active = document.activeElement;
-    if (active !== null && active !== document.body) return;
-    const box = composerRef.current;
-    if (box === null) return;
-    box.focus();
-    box.setSelectionRange(box.value.length, box.value.length);
   }, [projectId, openingMessage]);
 
   // The durable mirror is the committed transcript. The stream fills the gap
@@ -856,14 +767,13 @@ export function useRoom({
       );
     if (!failure || reportedFailure.current !== null) return;
     reportedFailure.current = failure.seq;
-    setSendFailed(true);
     const detail = failure.body["message"];
     const visible = typeof detail === "string" ? visibleChatText(detail) : "";
     const message =
       visible.length > 0
         ? humanFault(new Error(visible), wording.message.coordinatorStopped)
         : wording.message.coordinatorStopped;
-    setSendFault(message);
+    composer.fail(message);
     toast.error(message);
   }, [events, mirror]);
 
@@ -878,7 +788,7 @@ export function useRoom({
       coordinatorSteps.steps,
       mirror.flatMap((turn) => (turn.role === "assistant" ? [turn.at] : [])),
     );
-    return withPendingSends(mirror, sent).map((turn) => {
+    return withPendingSends(mirror, composer.sent).map((turn) => {
       if (turn.parts !== undefined || turn.role !== "assistant") return turn;
       const steps = stepsByAt.get(turn.at) ?? saved.get(turn.at);
       return steps === undefined
@@ -888,7 +798,7 @@ export function useRoom({
             parts: [...steps, { kind: "text" as const, text: turn.text }],
           };
     });
-  }, [mirror, sent, coordinatorSteps.steps, stepsByAt]);
+  }, [mirror, composer.sent, coordinatorSteps.steps, stepsByAt]);
   // What each of the coordinator's calls returned, saved or as this session watched it.
   const coordinatorResults = new Map([
     ...savedResults(coordinatorSteps.steps),
@@ -958,7 +868,7 @@ export function useRoom({
   // the mirror is not a send. Passing it pins the old message and the reserve
   // grows without a bound.
   const sentId =
-    sent.length === 0
+    composer.sent.length === 0
       ? undefined
       : turns.reduce<string | undefined>((found, turn, index) => {
           return turn.role === "person" ? turnItemId(turn, index) : found;
@@ -984,130 +894,6 @@ export function useRoom({
     return documents[key];
   };
 
-  const mail = async (text: string) =>
-    (await sendMessage(projectId, text)).message;
-  const deliverMail = async (
-    body: string,
-    clearComposer = false,
-    post: (text: string) => Promise<ChatMessage> = mail,
-  ): Promise<boolean> => {
-    const text = body.trim();
-    if (text.length === 0 || sending) return false;
-    setSending(true);
-    setSendFailed(false);
-    setSendFault(null);
-    setAwaitingSince(Date.now());
-    // The person's words show the moment they send; the receipt replaces this stand-in.
-    const pending: SentMessage = {
-      id: `${SENDING}${String(Date.now())}`,
-      author: "me",
-      body: text,
-      at: new Date().toISOString(),
-      after: latestTurnAt(mirror),
-    };
-    setSent((previous) => [...previous, pending]);
-    if (clearComposer) setValue("");
-    try {
-      const message = await post(text);
-      setSent((previous) =>
-        previous.map((item) =>
-          item === pending ? { ...pending, ...message } : item,
-        ),
-      );
-      reloadRef.current();
-      onChanged();
-      return true;
-    } catch (cause) {
-      setAwaitingSince(null);
-      setSent((previous) => previous.filter((item) => item !== pending));
-      if (clearComposer)
-        setValue((current) => (current === "" ? text : current));
-      const message = await humanFaultWithCode(cause, notSent);
-      setSendFailed(true);
-      setSendFault(message);
-      toast.error(message);
-      return false;
-    } finally {
-      setSending(false);
-    }
-  };
-
-  const addFiles = (picked: ArrayLike<File>) => {
-    if (limits === undefined) return;
-    const { accepted: taken, rejected } = intake.add(picked);
-    let total = files.reduce((sum, item) => sum + item.size, 0);
-    const fitting = taken.filter((item) => {
-      if (total + item.size > limits.maxTotalBytes) return false;
-      total += item.size;
-      return true;
-    });
-    const refused = rejected[0];
-    if (refused !== undefined) setAttachFault(rejectionText(refused, limits));
-    else if (fitting.length < taken.length)
-      setAttachFault(wording.attach.tooLargeTotal(limits.maxTotalBytes));
-    else setAttachFault(null);
-    setFiles((current) => [...current, ...fitting]);
-  };
-
-  const deliverFiles = async (): Promise<boolean> => {
-    if (sending) return false;
-    const text = value.trim();
-    const attached = files;
-    setSending(true);
-    setSendFailed(false);
-    setSendFault(null);
-    setAwaitingSince(Date.now());
-    setAttachFault(null);
-    const pending: SentMessage = {
-      id: `${SENDING}${String(Date.now())}`,
-      author: "me",
-      body: text,
-      at: new Date().toISOString(),
-      after: latestTurnAt(mirror),
-      files: attached.map((item) => ({
-        kind: "file" as const,
-        name: item.name,
-        mediaType: item.mediaType,
-      })),
-    };
-    setSent((previous) => [...previous, pending]);
-    setValue("");
-    setFiles([]);
-    try {
-      await attachMaterials(
-        projectId,
-        attached.flatMap((item) =>
-          item.file === undefined ? [] : [item.file],
-        ),
-        text.length === 0 ? undefined : text,
-      );
-      // Without words the hub mails its own note naming the files, which the mirror shows.
-      if (text.length === 0)
-        setSent((previous) => previous.filter((item) => item !== pending));
-      reloadRef.current();
-      onChanged();
-      return true;
-    } catch (cause) {
-      setAwaitingSince(null);
-      setSent((previous) => previous.filter((item) => item !== pending));
-      setValue((current) => (current === "" ? text : current));
-      setFiles(attached);
-      setAttachFault(await attachFaultText(cause));
-      return false;
-    } finally {
-      setSending(false);
-    }
-  };
-
-  const addToComposer = (text: string) => {
-    setValue((current) =>
-      current.trim().length === 0 ? text : `${current.trimEnd()}\n\n${text}`,
-    );
-    composerRef.current?.focus();
-  };
-  const addToPrompt = (passage: PassageQuote) =>
-    addToComposer(formatPassageQuote(passage));
-
   // A park created moments after `inference.done` can already stand on the hub before the next
   // room reload lands; read once on demand when the cached list shows no open ask.
   const readPendingApprovals = async (): Promise<
@@ -1126,6 +912,8 @@ export function useRoom({
       return pendingApprovals;
     }
   };
+  const addToPrompt = (passage: PassageQuote) =>
+    composer.add(formatPassageQuote(passage));
   const chooseDocument = (id: string) =>
     setDocumentChoice({ id, filedCount: filed.length });
   // The person approves the document they read; the next room read shows it approved. Approved,
@@ -1237,7 +1025,7 @@ export function useRoom({
         choice: "no",
         message: deliveredText(text),
       });
-      if (saved === "settled") return mail(text);
+      if (saved === "settled") return composer.post(text);
       if (typeof saved === "object") {
         // The composer reports the fault; the card keeps no second copy of it.
         setApprovalError(null);
@@ -1261,9 +1049,9 @@ export function useRoom({
     );
     return chooseApproachWithOpenApproval({
       openApprovalId: currentOpen?.approvalId,
-      deliver: () => deliverMail(message),
+      deliver: () => composer.mail(message),
       decline: (approvalId) =>
-        deliverMail(message, false, declineWith(approvalId)),
+        composer.mail(message, false, declineWith(approvalId)),
       notSent: wording.approaches.notSent,
     });
   };
@@ -1274,7 +1062,7 @@ export function useRoom({
       const sent = await answer(openQuestion.signalName, {
         reply: body.trim(),
       });
-      if (sent && clearComposer) setValue("");
+      if (sent && clearComposer) composer.setText("");
       return sent;
     }
     const currentApprovals = await readPendingApprovals();
@@ -1284,9 +1072,9 @@ export function useRoom({
     return deliverWithOpenApproval({
       openApprovalId: currentOpen?.approvalId,
       decide: onDecideApproval,
-      deliver: () => deliverMail(body, clearComposer),
+      deliver: () => composer.mail(body, clearComposer),
       decline: (approvalId) =>
-        deliverMail(body, clearComposer, declineWith(approvalId)),
+        composer.mail(body, clearComposer, declineWith(approvalId)),
     });
   };
   const sendFiles = async () => {
@@ -1298,33 +1086,30 @@ export function useRoom({
     return deliverWithOpenApproval({
       openApprovalId: currentOpen?.approvalId,
       decide: onDecideApproval,
-      deliver: deliverFiles,
+      deliver: composer.sendFiles,
     });
   };
-  const sendNow = () => void deliver(value, true);
-  const restoreToComposer = (message: string) =>
-    setValue((current) => (current.trim().length === 0 ? message : current));
   const undoTypedYes = async (message: string) => {
-    if (!(await deliver(message))) restoreToComposer(message);
+    if (!(await deliver(message))) composer.restore(message);
   };
   const typedYes = useTypedYes({
     pending: pendingApprovals?.map((approval) => approval.approvalId),
     onApprove: (approvalId) =>
       void onDecideApproval({ approvalId, choice: "yes" }),
     onUndo: (message) => void undoTypedYes(message),
-    onDropped: restoreToComposer,
+    onDropped: composer.restore,
   });
   const send = () => {
-    if (files.length > 0) return void sendFiles();
-    if (typedYes.hold(value)) return setValue("");
-    sendNow();
+    if (composer.box.attachments.files.length > 0) return void sendFiles();
+    if (typedYes.hold(composer.text)) return composer.setText("");
+    void deliver(composer.text, true);
   };
   // Words that name a document work already builds from say, as they are typed, what sending
   // restarts; Send still sends at once. Without a read of who is at work there is nothing to say.
   const restarting =
-    rolesAtWork === undefined || value.trim() === ""
+    rolesAtWork === undefined || composer.text.trim() === ""
       ? undefined
-      : earlierDocumentRole(value, artifacts, rolesAtWork);
+      : earlierDocumentRole(composer.text, artifacts, rolesAtWork);
   // The composer is disabled while the decline saves, so the cursor goes there once it can take it.
   const [changesAsked, setChangesAsked] = useState(false);
   const requestChanges = () => {
@@ -1336,7 +1121,7 @@ export function useRoom({
   useEffect(() => {
     if (!changesAsked || composerDisabled) return;
     setChangesAsked(false);
-    composerRef.current?.focus();
+    composer.inputRef.current?.focus();
   }, [changesAsked, composerDisabled]);
 
   // A project that has talked before is between coordinators (an upgrade, a reopen): its thread
@@ -1379,14 +1164,19 @@ export function useRoom({
     (waits !== undefined &&
       waitingOnPerson(waits, openApprovalIds, runId, liveRun.running));
   const awaiting =
-    awaitingReply(awaitingSince, turns.at(-1)?.role, liveRun.endedAt, parked) &&
+    awaitingReply(
+      composer.awaitingSince,
+      turns.at(-1)?.role,
+      liveRun.endedAt,
+      parked,
+    ) &&
     !archived &&
     startFault === null &&
     modelNeeded === null;
   // The mark stays for the whole turn: between model calls and during long tool work the live
   // reply shows nothing moving.
   const thinking =
-    !sendFailed && (sending || awaiting || (working && !held) || between);
+    !composer.failed && (sending || awaiting || (working && !held) || between);
   // Each concept's option is its own tab beside the others, never an ordinary document.
   const options = artifacts.filter((item) => item.kind === DESIGN_OPTION);
   const paneDeliverables = documentsForPane(
@@ -1616,7 +1406,7 @@ export function useRoom({
         openDocument(id);
       },
     },
-    reply: { drafted: value.trim().length > 0 },
+    reply: { drafted: composer.text.trim().length > 0 },
     tenants:
       runTenantId === undefined || workspaceRead.data === undefined
         ? null
@@ -1738,7 +1528,7 @@ export function useRoom({
     mail: (message, clearBox) =>
       screenDecides
         ? deliver(message, clearBox)
-        : deliverMail(message, clearBox),
+        : composer.mail(message, clearBox),
   });
   // Accepting what a screen asks closes the project view on the conversation, where the work
   // carries on; asking for changes keeps the page open until the next version is filed.
@@ -1779,7 +1569,7 @@ export function useRoom({
     dispatches: [...dispatches, ...unseenRuns.map(({ dispatch }) => dispatch)],
     dispatchRoom,
     failed: snapshot.failed,
-    lastSentAt: lastSentAt(awaitingSince, turns),
+    lastSentAt: lastSentAt(composer.awaitingSince, turns),
     documents: paneDeliverables,
     seen,
     hasApp: liveApp !== null,
@@ -1812,8 +1602,7 @@ export function useRoom({
     }
     return {
       kind: "composer",
-      text: value,
-      onTextChange: setValue,
+      ...composer.box,
       onSend: send,
       placeholder: composerPlaceholder({
         approvalOpen: openApproval !== undefined,
@@ -1828,24 +1617,11 @@ export function useRoom({
         facts: promptBox.facts,
         nothingFiled: nothingYet,
       }),
-      inputRef: composerRef,
       working: promptBox.working,
       busy: sending || approvalBusy,
       disabled: composerWaits,
       needsProvider: providerMissing,
       onEnableAi: () => setEnablingAi(true),
-      attachments: {
-        files,
-        accept:
-          limits === undefined || limits.mimeTypes.length === 0
-            ? null
-            : limits.mimeTypes.join(","),
-        fault: attachFault,
-        onAdd: addFiles,
-        onRemove: (id) =>
-          setFiles((current) => current.filter((held) => held.id !== id)),
-      },
-      sendFault: sendFailed && sendFault ? sendFault : null,
       restarts: promptBox.restarts,
       status: promptBox.status,
       onStop: promptBox.onStop,
@@ -1854,7 +1630,7 @@ export function useRoom({
       // Words typed or comments beside a screen asking to approve something ask for changes instead.
       sendLabel:
         promptBox.decides &&
-        (value.trim() !== "" || (commentDrafts.box?.count ?? 0) > 0)
+        (composer.text.trim() !== "" || (commentDrafts.box?.count ?? 0) > 0)
           ? wording.promptBox.waiting.makeChanges
           : null,
       ...(commentDrafts.box === null
