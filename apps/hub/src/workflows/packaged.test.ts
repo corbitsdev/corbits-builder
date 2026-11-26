@@ -203,7 +203,7 @@ test("built packages contain importable production workflow metadata and definit
     for (const metadata of manifest) {
       const extracted = join(directory, metadata.assetName);
       await mkdir(extracted);
-      if (metadata.files) {
+      if (metadata.format === "source") {
         for (const [path, text] of Object.entries(metadata.files))
           await Bun.write(join(extracted, "package", path), text);
       } else {

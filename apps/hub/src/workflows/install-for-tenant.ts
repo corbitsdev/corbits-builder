@@ -119,7 +119,7 @@ async function buildAndRead(key: string, inference: Inference) {
     );
     return await Promise.all(
       manifest.map(async (item) => {
-        if (item.files) return item;
+        if (item.format === "source") return item;
         return {
           ...item,
           bytes: new Uint8Array(
@@ -494,7 +494,7 @@ export async function installForTenant(
   }[] = [];
   for (const item of built) {
     const pin = item.packageName + "@" + item.version;
-    if (item.files) {
+    if (item.format === "source") {
       // A version already stored keeps its commit, so a commit is made only when the version changes.
       const kept = Object.values(existing?.packages ?? {}).find(
         (stored) =>

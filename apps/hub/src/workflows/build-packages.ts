@@ -109,6 +109,7 @@ export async function buildWorkflowPackages(
     // the coordinator's are; the bundle has no dependencies, so its two files are the whole package.
     if (name === "coordinator") {
       manifest.push({
+        format: "source" as const,
         assetName: "sb-coordinator-source",
         packageName,
         version,
@@ -134,6 +135,7 @@ export async function buildWorkflowPackages(
       if ((await tar.exited) !== 0)
         throw new Error("workflow_package_archive_failed");
       manifest.push({
+        format: "tarball" as const,
         assetName: "sb-" + name + "-packages",
         filename,
         packageName,
