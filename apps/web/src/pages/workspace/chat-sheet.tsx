@@ -176,9 +176,9 @@ export function ChatSheet({
     height.current = next;
     const history = historyRef.current;
     if (history === null) return;
-    history.style.height = `${String(next)}px`;
     // The fade stops short of the newest line, which is the one a short pull is for, unless that
-    // line is itself only partly in: then it comes in faded rather than cut.
+    // line is itself only partly in: then it comes in faded rather than cut. Measured before the new
+    // height is set, so no frame forces a layout; the fade trails the height by one frame.
     const newestTop =
       messagesRef.current?.lastElementChild?.getBoundingClientRect().top ?? 0;
     const room = newestTop - history.getBoundingClientRect().top;
@@ -186,6 +186,7 @@ export function ChatSheet({
       0,
       Math.min(FADE_PX, overflow(history), room > 0 ? room : FADE_PX),
     );
+    history.style.height = `${String(next)}px`;
     history.style.setProperty("--fade", `${String(fade)}px`);
     // The edge comes in as the sheet leaves the box and goes as it comes back, so the sheet never
     // sits empty around the box, nor lingers faintly through the spring's last few pixels. A pill
@@ -199,10 +200,8 @@ export function ChatSheet({
   };
 
   /** Past the conversation's height the sheet gives less and less, rather than stopping dead. */
-  const resist = (next: number) => {
-    const top = openHeight();
-    return next > top ? top + Math.sqrt(next - top) * 4 : Math.max(0, next);
-  };
+  const resist = (next: number, top = openHeight()) =>
+    next > top ? top + Math.sqrt(next - top) * 4 : Math.max(0, next);
 
   const stopSpring = () => {
     if (spring.current !== null) cancelAnimationFrame(spring.current);
@@ -224,7 +223,8 @@ export function ChatSheet({
     let v = velocity;
     let last = performance.now();
     const step = (now: number) => {
-      const target = to === "open" ? openHeight() : 0;
+      const top = openHeight();
+      const target = to === "open" ? top : 0;
       const dt = Math.min(64, now - last) / 1000;
       last = now;
       // In small fixed steps: one long step after a slow frame would overshoot and ring.
@@ -237,7 +237,7 @@ export function ChatSheet({
         next += v * (dt / steps);
       }
       if (Math.abs(next - target) < 0.5 && Math.abs(v) < 20) return settle(to);
-      paint(resist(next));
+      paint(resist(next, top));
       spring.current = requestAnimationFrame(step);
     };
     spring.current = requestAnimationFrame(step);
