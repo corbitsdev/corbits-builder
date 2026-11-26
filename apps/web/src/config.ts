@@ -585,20 +585,6 @@ export const wording = {
     } as Record<string, string | undefined>,
   },
   workspace: {
-    menu: (name: string) => `Workspace: ${name}`,
-    listLabel: "Workspaces",
-    create: "Create workspace…",
-    createTitle: "Create a workspace",
-    createLead:
-      "A workspace keeps its own projects and its own model keys. Nothing from this one carries over.",
-    nameLabel: "Name",
-    namePlaceholder: "Acme product team",
-    createAction: "Create workspace",
-    creating: "Creating…",
-    createdTitle: (name: string) => `${name} is ready`,
-    createdLead:
-      "It starts empty. Connect a model next so its coordinator can run, then start its first project.",
-    openAction: "Open it and connect a model",
     setupFailed: "The workspace could not be set up.",
     setupIncomplete: "Setup did not finish",
   },

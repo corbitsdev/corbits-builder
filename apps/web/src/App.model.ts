@@ -51,7 +51,7 @@ import {
   writeProjectUrl,
 } from "./routes.ts";
 import { useSidebar } from "./sidebar-setting.ts";
-import { workspacesQuery } from "./workspace-menu.model.ts";
+import { workspacesQuery } from "./queries/workspaces.ts";
 import { singleFlight } from "./single-flight.ts";
 import type {
   AppViewProps,
