@@ -25,7 +25,6 @@ const filed = (id: string, title: string, version: number): PaneDocument => ({
   title,
   status: wording.documentStatus.drafted(version),
   unread: true,
-  removable: false,
 });
 const ready = filed("problem_brief", "Problem brief", 2);
 const document: DeliverableState = {

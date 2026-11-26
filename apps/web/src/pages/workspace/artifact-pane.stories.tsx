@@ -27,7 +27,6 @@ const brief: PaneDocument = {
   title: "Problem brief",
   status: wording.documentStatus.approved(2),
   unread: false,
-  removable: false,
 };
 
 // Filed since the person last looked; opening it marks it seen.
@@ -36,7 +35,6 @@ const requirements: PaneDocument = {
   title: "Product requirements",
   status: wording.documentStatus.drafted(1),
   unread: true,
-  removable: false,
 };
 
 const plan: PaneDocument = {
@@ -44,7 +42,6 @@ const plan: PaneDocument = {
   title: "Build plan",
   status: wording.documentStatus.drafted(1),
   unread: false,
-  removable: false,
 };
 
 const approvalPackage: PaneDocument = {
@@ -52,7 +49,6 @@ const approvalPackage: PaneDocument = {
   title: "Approval package",
   status: wording.documentStatus.drafted(1),
   unread: false,
-  removable: false,
 };
 
 const BRIEF_V1 = `# Problem brief

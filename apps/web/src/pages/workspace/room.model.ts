@@ -314,7 +314,6 @@ export function paneDocument(
         ? wording.documentStatus.drafted(item.version)
         : wording.documentStatus.approved(item.version),
     unread: seen[item.artifactId] !== item.version,
-    removable: item.kind.startsWith(MATERIAL_TAB),
     ...(isDocumentKind(item.kind)
       ? {
           approval: {

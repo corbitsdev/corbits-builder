@@ -19,7 +19,6 @@ function filed(id: string, title: string): PaneDocument {
     title,
     status: wording.documentStatus.drafted(1),
     unread: true,
-    removable: false,
   };
 }
 

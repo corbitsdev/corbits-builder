@@ -1368,7 +1368,6 @@ const filedDesign = paneOf({
       title: "Crisp",
       status: wording.documentStatus.drafted(1),
       unread: false,
-      removable: false,
     },
   ],
   selectedId: "design",

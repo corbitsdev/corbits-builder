@@ -49,8 +49,6 @@ export type PaneDocument = {
   status: string;
   /** Its current version is one this viewer has not opened. */
   unread: boolean;
-  /** An attached file, which the person can take back. */
-  removable: boolean;
   /** A document the person can approve as they read it, with the version approved and when. */
   approval?: {
     approvedVersion: number | undefined;

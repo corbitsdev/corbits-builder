@@ -1135,14 +1135,6 @@ export const wording = {
     passageNote: (quote: string) =>
       `Comment on “${quote.length > 40 ? `${quote.slice(0, 40).trimEnd()}…` : quote}”`,
   },
-  removeAttachment: {
-    confirm: "Yes, remove it",
-    done: (name: string, told: boolean) =>
-      told
-        ? `${name} is removed; the coordinator has been told.`
-        : `${name} is removed.`,
-    failed: "The attachment could not be removed.",
-  },
   versions: {
     menu: (version: number) => `Version ${String(version)}, pick a version`,
     comparePrevious: "Compare with previous",
