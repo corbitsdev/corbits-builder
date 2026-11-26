@@ -495,20 +495,6 @@ export async function installForTenant(
   for (const item of built) {
     const pin = item.packageName + "@" + item.version;
     if (item.format === "source") {
-      // A version already stored keeps its commit, so a commit is made only when the version changes.
-      const kept = Object.values(existing?.packages ?? {}).find(
-        (stored) =>
-          stored.pin === pin && stored.source.package.format === "source",
-      );
-      if (kept) {
-        published.push({
-          assetId: kept.source.assetId,
-          entry: item.entry,
-          pin,
-          package: kept.source.package,
-        });
-        continue;
-      }
       const assetId = await registryAsset(
         ports,
         actor,
