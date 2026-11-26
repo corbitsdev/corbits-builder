@@ -29,38 +29,36 @@ RUN bun run --cwd apps/web build
 # What a sidecar's coder and designer run beside Bun: bubblewrap and socat for the sandbox
 # (@anthropic-ai/sandbox-runtime on Linux), unzip for the Chrome headless shell the sidecar
 # fetches, the libraries and font that shell loads, ps for the hub's sidecar lookup, and git for
-# the hub reading each run's committed conversation. apt, libapt-pkg7.0 and zlib1g carry Debian
-# security fixes the Bun image does not ship yet; drop them once BUN_IMAGE includes them.
+# the hub reading each run's committed conversation.
 FROM ${BUN_IMAGE} AS runtime
+ARG RUNTIME_CACHE_ID
 RUN apt-get update \
+ && apt-get upgrade -y --no-install-recommends \
  && apt-get install -y --no-install-recommends \
-      apt=3.0.4 \
-      libapt-pkg7.0=3.0.4 \
-      zlib1g=1:1.3.dfsg+really1.3.1-1+deb13u1 \
-      bubblewrap=0.12.0-1~deb13u1 \
-      git=1:2.47.3-0+deb13u1 \
-      socat=1.8.0.3-1+deb13u1 \
-      unzip=6.0-29+deb13u1 \
-      procps=2:4.0.4-9 \
-      fonts-liberation=1:2.1.5-3 \
-      libasound2t64=1.2.14-1+deb13u1 \
-      libatk-bridge2.0-0t64=2.56.2-1+deb13u2 \
-      libatk1.0-0t64=2.56.2-1+deb13u2 \
-      libatspi2.0-0t64=2.56.2-1+deb13u2 \
-      libdbus-1-3=1.16.2-2 \
-      libexpat1=2.9.0-1~deb13u1 \
-      libgbm1=25.0.7-2+deb13u1 \
-      libglib2.0-0t64=2.84.4-3~deb13u5 \
-      libnspr4=2:4.36-1 \
-      libnss3=2:3.110-1+deb13u4 \
-      libx11-6=2:1.8.12-1 \
-      libxcb1=1.17.0-2+b1 \
-      libxcomposite1=1:0.4.6-1 \
-      libxdamage1=1:1.1.6-1+b2 \
-      libxext6=2:1.3.4-1+b3 \
-      libxfixes3=1:6.0.0-2+b4 \
-      libxkbcommon0=1.7.0-2 \
-      libxrandr2=2:1.5.4-1+b3 \
+      bubblewrap \
+      git \
+      socat \
+      unzip \
+      procps \
+      fonts-liberation \
+      libasound2t64 \
+      libatk-bridge2.0-0t64 \
+      libatk1.0-0t64 \
+      libatspi2.0-0t64 \
+      libdbus-1-3 \
+      libexpat1 \
+      libgbm1 \
+      libglib2.0-0t64 \
+      libnspr4 \
+      libnss3 \
+      libx11-6 \
+      libxcb1 \
+      libxcomposite1 \
+      libxdamage1 \
+      libxext6 \
+      libxfixes3 \
+      libxkbcommon0 \
+      libxrandr2 \
  && rm -rf /var/lib/apt/lists/*
 
 # Docker sidecars load the hub's inference adapters at the paths the hub resolves them to,
