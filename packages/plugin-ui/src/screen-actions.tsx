@@ -189,7 +189,10 @@ export function ScreenActions({
             aria-label={question}
             data-slot="screen-confirm"
             onKeyDown={(event) => {
-              if (event.key === "Escape") press("keep");
+              if (event.key !== "Escape") return;
+              // Marked as used, so the room behind the screen stays open.
+              event.preventDefault();
+              press("keep");
             }}
           >
             <span className={styles.ask}>{question}</span>
