@@ -48,7 +48,8 @@ const newDraftId = () =>
 
 /**
  * The page's comments: this document's drafts, and saving one. A new comment names the version
- * read; an edit keeps the document and version its passage was quoted from.
+ * read; an edit keeps the document and version its passage was quoted from, unless it moves the
+ * passage.
  */
 export function pageComments(
   comments: DocumentComments,
@@ -60,18 +61,22 @@ export function pageComments(
     drafts,
     onSave: ({ id, quote, occurrence, comment }) => {
       const was = drafts.find((draft) => draft.id === id);
+      const quoted = {
+        title: reading.title,
+        version: reading.version,
+        quote,
+        occurrence,
+      };
+      // A passage moved while editing is quoted again from the version on show.
+      const moved =
+        was !== undefined &&
+        (was.quote !== quote || was.occurrence !== occurrence);
       comments.onSave(
         was === undefined
-          ? {
-              id: newId(),
-              document: comments.document,
-              title: reading.title,
-              version: reading.version,
-              quote,
-              occurrence,
-              comment,
-            }
-          : { ...was, comment },
+          ? { id: newId(), document: comments.document, ...quoted, comment }
+          : moved
+            ? { ...was, ...quoted, comment }
+            : { ...was, comment },
       );
     },
     onDelete: comments.onDelete,

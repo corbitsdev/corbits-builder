@@ -169,4 +169,27 @@ describe("a written document's comments", () => {
     });
     expect(saved).toEqual([{ ...briefPhone, comment: "Texts too." }]);
   });
+
+  test("an edit whose passage was resized quotes it from the version read", () => {
+    const saved: CommentDraft[] = [];
+    pageComments(comments(saved), {
+      title: "Problem brief",
+      version: 3,
+    }).onSave({
+      id: briefPhone.id,
+      quote: "by phone on Saturdays",
+      occurrence: 1,
+      comment: "Texts too.",
+    });
+    expect(saved).toEqual([
+      {
+        ...briefPhone,
+        title: "Problem brief",
+        version: 3,
+        quote: "by phone on Saturdays",
+        occurrence: 1,
+        comment: "Texts too.",
+      },
+    ]);
+  });
 });
