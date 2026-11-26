@@ -609,16 +609,6 @@ export function useRoom({
     () => screensFor(selection.data ?? {}),
     [selection.data],
   );
-  // What the open screen's decision sends back when the person presses Send, given what they typed.
-  const stagedSend = useRef<
-    ((message: string | undefined) => Promise<boolean>) | null
-  >(null);
-  // The items that send carries, such as "2 comments", which Send sends with nothing typed.
-  const [stagedItems, setStagedItems] = useState<string | null>(null);
-  const stagedReply =
-    stagedItems === null
-      ? undefined
-      : wording.questions.sendBackReply(stagedItems);
   // The coder's filed app source is the resume point for a later coder, not a document to read.
   const artifacts = snapshot.artifacts
     .filter((item) => item.kind !== "app")
@@ -1335,15 +1325,7 @@ export function useRoom({
     onUndo: (message) => void undoTypedYes(message),
     onDropped: restoreToComposer,
   });
-  const sendStaged = async (
-    staged: (message: string | undefined) => Promise<boolean>,
-  ) => {
-    if (sending) return;
-    const message = value.trim();
-    if (await staged(message.length === 0 ? undefined : message)) setValue("");
-  };
   const send = () => {
-    if (stagedSend.current !== null) return void sendStaged(stagedSend.current);
     if (files.length > 0) return void sendFiles();
     if (typedYes.hold(value)) return setValue("");
     sendNow();
@@ -1634,13 +1616,7 @@ export function useRoom({
         openDocument(id);
       },
     },
-    reply: {
-      drafted: value.trim().length > 0,
-      stage: (staged) => {
-        stagedSend.current = staged?.send ?? null;
-        setStagedItems(staged?.pending ?? null);
-      },
-    },
+    reply: { drafted: value.trim().length > 0 },
     tenants:
       runTenantId === undefined || workspaceRead.data === undefined
         ? null
@@ -1825,13 +1801,12 @@ export function useRoom({
         approvalOpen: openApproval !== undefined,
         questionsOpen: openQuestion !== undefined,
         screenReply:
-          stagedReply ??
-          (openQuestion !== undefined && showsScreen(openQuestion)
+          openQuestion !== undefined && showsScreen(openQuestion)
             ? screenWords(
                 openQuestion.asked.plugin,
                 openQuestion.asked.action ?? "",
               )?.reply
-            : undefined),
+            : undefined,
         facts: promptBox.facts,
         nothingFiled: nothingYet,
       }),
@@ -1860,12 +1835,10 @@ export function useRoom({
       onReply: (reply) => void deliver(reply),
       // Words typed or comments beside a screen asking to approve something ask for changes instead.
       sendLabel:
-        stagedItems !== null
-          ? wording.questions.sendBack(stagedItems)
-          : promptBox.decides &&
-              (value.trim() !== "" || (commentDrafts.box?.count ?? 0) > 0)
-            ? wording.promptBox.waiting.makeChanges
-            : null,
+        promptBox.decides &&
+        (value.trim() !== "" || (commentDrafts.box?.count ?? 0) > 0)
+          ? wording.promptBox.waiting.makeChanges
+          : null,
       ...(commentDrafts.box === null
         ? {}
         : {

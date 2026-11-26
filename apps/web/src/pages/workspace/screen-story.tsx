@@ -85,7 +85,7 @@ export const storySupplies: HostSupplies = {
       approval: { option: "design-option-2" },
     },
   ],
-  reply: { drafted: false, stage: () => undefined },
+  reply: { drafted: false },
   tenants: { project: "tenant-project", workspace: "tenant-workspace" },
   asked: () => undefined,
 };

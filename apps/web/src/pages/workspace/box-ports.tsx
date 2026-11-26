@@ -11,7 +11,7 @@ import {
   PromptAction,
   PromptPlaceholder,
   PromptSend,
-  type PromptTake,
+  type PromptOffer,
 } from "@corbits-builder/plugin-ui/screen-actions";
 
 export type BoxPorts = {
@@ -21,28 +21,30 @@ export type BoxPorts = {
   /** What the screen asks the words to be, while it says. */
   placeholder: string | undefined;
   setPlaceholder: (placeholder: string | undefined) => void;
-  /** What takes the words Send sends, while a screen offers to. */
-  take: PromptTake | undefined;
-  setTake: (take: PromptTake | undefined) => void;
+  /** The offer a screen in the box made for Send, if any. */
+  offer: PromptOffer | undefined;
+  setOffer: (offer: PromptOffer | undefined) => void;
 };
 
 export function useBoxPorts(): BoxPorts {
   const [actionsAt, setActionsAt] = useState<HTMLDivElement | null>(null);
   const [placeholder, setPlaceholder] = useState<string>();
-  const [take, setTakeState] = useState<PromptTake>();
-  // A function held in state is set through an updater, or React would call it.
-  const setTake = useCallback(
-    (next: PromptTake | undefined) => setTakeState(() => next),
-    [],
-  );
+  const [offer, setOffer] = useState<PromptOffer>();
   const toRow = useCallback(
     (buttons: ReactNode) =>
       actionsAt === null ? null : createPortal(buttons, actionsAt),
     [actionsAt],
   );
   return useMemo(
-    () => ({ setActionsAt, toRow, placeholder, setPlaceholder, take, setTake }),
-    [toRow, placeholder, take, setTake],
+    () => ({
+      setActionsAt,
+      toRow,
+      placeholder,
+      setPlaceholder,
+      offer,
+      setOffer,
+    }),
+    [toRow, placeholder, offer],
   );
 }
 
@@ -61,7 +63,7 @@ export function InBox({
     <ActionsSlot value={on ? ports.toRow : null}>
       <PromptAction value={as === "space" ? ports.toRow : null}>
         <PromptPlaceholder value={on ? ports.setPlaceholder : null}>
-          <PromptSend value={on ? ports.setTake : null}>{children}</PromptSend>
+          <PromptSend value={on ? ports.setOffer : null}>{children}</PromptSend>
         </PromptPlaceholder>
       </PromptAction>
     </ActionsSlot>

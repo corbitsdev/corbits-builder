@@ -30,7 +30,10 @@ import {
   PromptAction,
   ScreenDecision,
   ScreenRow,
+  usePromptPlaceholder,
+  usePromptSend,
   type DecisionControls,
+  type PromptTake,
 } from "@corbits-builder/plugin-ui/screen-actions";
 import { SettledFrame } from "@corbits-builder/plugin-ui/screen-card";
 import { wording } from "../../config.ts";
@@ -83,7 +86,7 @@ export type HostSupplies = {
   documents: { list: readonly ShownDocument[]; open(kind: string): void };
   /** The filed design concepts the person has yet to choose between, in the order they were asked about. */
   designConcepts: readonly ChoosableConcept[];
-  /** The room's prompt box, which a screen's decision sends back through; the host's own, no view's. */
+  /** The room's prompt box, as a screen's decision sees it. Only the host reads it, never a view. */
   reply: ReplyBox;
   /** The project's and its workspace's tenants, where a credential is saved; null until both are read. */
   tenants: Tenants | null;
@@ -106,20 +109,36 @@ export type ViewResources = {
   tenants: Tenants;
 };
 
-/** What the prompt box sends in place of the person's words while a screen has feedback staged. */
-export type Staged = {
-  /** Sends the feedback with what was typed, if anything; whether it reached the hub. */
-  send: (message: string | undefined) => Promise<boolean>;
-  /** The items it carries, such as "2 comments", which Send sends with nothing typed; null while none. */
-  pending: string | null;
-};
-
-/** The room's prompt box as a screen's decision reads and stages it. */
+/** The room's prompt box, as a screen's decision sees it. */
 export type ReplyBox = {
   /** The box holds more than whitespace. */
   drafted: boolean;
-  stage(staged: Staged | null): void;
 };
+
+/**
+ * Send in the prompt box while a decision has feedback pending. It sends the feedback, with any
+ * typed words as a note, and its label names the feedback. With no words and no feedback there's
+ * nothing to send.
+ */
+function sendBackOffer(
+  staging: boolean,
+  pending: string | null,
+  sendBack: { current: (message: string | undefined) => Promise<boolean> },
+): {
+  take: PromptTake | undefined;
+  label: string | null;
+  placeholder: string | undefined;
+} {
+  if (!staging) return { take: undefined, label: null, placeholder: undefined };
+  return {
+    take: (words) =>
+      words === "" && pending === null
+        ? false
+        : sendBack.current(words === "" ? undefined : words),
+    label: pending === null ? null : text.sendBack(pending),
+    placeholder: pending === null ? undefined : text.sendBackReply(pending),
+  };
+}
 
 /** A filed design concept, and the design option choosing it approves, if any. */
 export type ChoosableConcept = {
@@ -280,18 +299,12 @@ export function screenHost<In, Out, Data, Prepared>(
       !settled &&
       decision?.sendBack !== undefined &&
       offer?.sendBack !== undefined;
-    // The room hands a new prompt box and this render a new answer each time; staging follows what is pending.
-    const box = useRef(host.reply);
-    box.current = host.reply;
     const sendBack = useRef<(message: string | undefined) => Promise<boolean>>(
       () => Promise.resolve(false),
     );
-    useEffect(() => {
-      if (!staging) return;
-      const reply = box.current;
-      reply.stage({ send: (message) => sendBack.current(message), pending });
-      return () => reply.stage(null);
-    }, [staging, pending]);
+    const back = sendBackOffer(staging, pending, sendBack);
+    usePromptSend(back.take, back.label);
+    usePromptPlaceholder(back.placeholder);
 
     useEffect(() => {
       if (settled) return;

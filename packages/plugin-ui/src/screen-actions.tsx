@@ -69,7 +69,8 @@ export const PromptPlaceholder = createContext<
 export function usePromptPlaceholder(placeholder: string | undefined) {
   const set = useContext(PromptPlaceholder);
   useEffect(() => {
-    if (set === null) return;
+    // A screen with no placeholder leaves the box to anything else in it that has one.
+    if (set === null || placeholder === undefined) return;
     set(placeholder);
     return () => set(undefined);
   }, [set, placeholder]);
@@ -84,19 +85,32 @@ export const PromptAction = createContext<
   ((action: ReactNode) => ReactNode) | null
 >(null);
 
-/** Takes the words the person sends from the prompt box; whether the screen took them. */
-export type PromptTake = (words: string) => boolean;
+/**
+ * Takes the words sent from the prompt box, which may be empty. Returns whether the screen took
+ * them, or a promise of whether they went, so the box can hold them until then.
+ */
+export type PromptTake = (words: string) => boolean | Promise<boolean>;
+
+/** A screen's claim on Send in the prompt box. */
+export type PromptOffer = {
+  take: PromptTake;
+  /** Send's label with nothing typed, such as "Send feedback · 2 comments"; null when Send sends only words. */
+  label: string | null;
+};
 
 /**
  * Where the host hands a screen in the prompt box what the person sends from it, so words typed
  * after a pick go with the pick rather than replacing it. Null where the screen is not in the box.
  */
 export const PromptSend = createContext<
-  ((take: PromptTake | undefined) => void) | null
+  ((offer: PromptOffer | undefined) => void) | null
 >(null);
 
 /** Takes what the prompt box sends while this screen is in it and `take` is given. */
-export function usePromptSend(take: PromptTake | undefined) {
+export function usePromptSend(
+  take: PromptTake | undefined,
+  label: string | null = null,
+) {
   const set = useContext(PromptSend);
   // The host keeps one taker for as long as the screen offers one; it reads the screen's latest.
   const latest = useRef(take);
@@ -106,9 +120,9 @@ export function usePromptSend(take: PromptTake | undefined) {
   const offered = take !== undefined;
   useEffect(() => {
     if (set === null || !offered) return;
-    set((words) => latest.current?.(words) ?? false);
+    set({ take: (words) => latest.current?.(words) ?? false, label });
     return () => set(undefined);
-  }, [set, offered]);
+  }, [set, offered, label]);
 }
 
 export const decisionText = {

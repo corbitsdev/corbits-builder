@@ -917,15 +917,31 @@ function RoomComposerView({
     onSendComments !== undefined &&
     commentsBlocked === null &&
     !commentsSending;
+  // Send names what a screen in the box sends, or else gets the room's label.
+  const label = ports.offer?.label ?? sendLabel;
+  // A screen in the box takes the words along with its pick, so the pick isn't lost. When the
+  // screen sends them later, the words stay in the box until they've gone.
+  const toScreen = (words: string) => {
+    const took = ports.offer?.take(words) ?? false;
+    if (took === true) onTextChange("");
+    else if (took !== false)
+      void took.then((went) => {
+        if (went) onTextChange("");
+      });
+    return took !== false;
+  };
   const send = () => {
     // With nothing typed, Send is the comments' own send.
     if (!typed && commentsReady) return onSendComments();
     if (files.length === 0 && answersShell?.(text) === true)
       return onTextChange("");
-    // A screen in the box takes the words with what is picked in it, so the pick is not lost.
     const words = text.trim();
-    if (files.length === 0 && words !== "" && ports.take?.(words) === true)
-      return onTextChange("");
+    if (
+      files.length === 0 &&
+      (words !== "" || (ports.offer?.label ?? null) !== null) &&
+      toScreen(words)
+    )
+      return;
     // Words typed beside the comments go out with them, as one message.
     if (files.length === 0 && commentsReady) return onSendComments(words);
     onSend();
@@ -944,7 +960,7 @@ function RoomComposerView({
             onValueChange={onTextChange}
             onSubmit={send}
             // While a message is on its way only Send waits: the box and its words stay as they are.
-            canSubmit={!busy && (typed || sendLabel !== null || commentsReady)}
+            canSubmit={!busy && (typed || label !== null || commentsReady)}
             status={stopping ? "streaming" : "ready"}
             disabled={disabled || needsProvider}
           >
@@ -1034,7 +1050,7 @@ function RoomComposerView({
                   busy
                 )
                   return;
-                if (ports.take?.("") === true) event.preventDefault();
+                if (toScreen("")) event.preventDefault();
               }}
               // A picture on the clipboard attaches like a chosen file, while attaching is
               // offered at all; text, and anything else, pastes as the browser would.
@@ -1075,14 +1091,14 @@ function RoomComposerView({
                   <div
                     ref={ports.setActionsAt}
                     data-slot="composer-actions"
-                    hidden={typed || (commentsReady && sendLabel !== null)}
+                    hidden={typed || (commentsReady && label !== null)}
                   />
                   {/* Where Send carries something of its own, it says so on itself, a pill
                       with its words before the arrow. */}
                   <PromptInputSubmit
                     {...(stopping ? { onStop } : {})}
-                    aria-label={sendLabel ?? undefined}
-                    data-label={sendLabel ?? undefined}
+                    aria-label={label ?? undefined}
+                    data-label={label ?? undefined}
                     aria-busy={busy || undefined}
                   />
                 </>
