@@ -322,7 +322,12 @@ export function RoomView({
       measure();
     };
     follow();
-    const changes = new MutationObserver(follow);
+    // Words streaming into the chat's history move neither the grip nor the box, so those changes
+    // measure nothing.
+    const changes = new MutationObserver((records) => {
+      if (records.every((record) => inHistory(record.target))) return;
+      follow();
+    });
     changes.observe(box, {
       childList: true,
       subtree: true,
@@ -1187,3 +1192,7 @@ function RoomComposerView({
     </Composer>
   );
 }
+
+const inHistory = (node: Node) =>
+  node instanceof Element &&
+  node.closest('[data-slot="chat-history"]') !== null;
