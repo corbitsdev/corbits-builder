@@ -7,6 +7,7 @@
 import {
   useCallback,
   useEffect,
+  useEffectEvent,
   useLayoutEffect,
   useRef,
   useState,
@@ -404,18 +405,22 @@ export function RoomView({
   }, [projectOpen]);
   // Escape puts the space away first; a menu inside the view closes on Escape before that, and
   // marks the key as used.
+  const putAway = useEffectEvent(() => {
+    // An open chat sheet takes the key to put itself back, whichever listener hears it first;
+    // the space or the view closes on the next one.
+    const chat =
+      mainRef.current?.querySelector(
+        '[data-slot="chat-sheet"]:not([data-state="closed"])',
+      ) ?? null;
+    if (chat !== null) return;
+    if (sheetShown) closeSheet();
+    else closeProject();
+  });
   useEffect(() => {
     if (!projectOpen && !sheetShown) return;
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.defaultPrevented) return;
-      if (sheetShown) return closeSheet();
-      // An open chat sheet takes the key to put itself back, whichever listener hears it first;
-      // the view closes on the next one.
-      const sheet =
-        mainRef.current?.querySelector(
-          '[data-slot="chat-sheet"]:not([data-state="closed"])',
-        ) ?? null;
-      if (sheet === null) closeProject();
+      putAway();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
