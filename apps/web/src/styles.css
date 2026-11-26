@@ -151,6 +151,9 @@ body {
   --wb-frame: #000000;
   --wb-action: #6aa0f0;
   --wb-proceed: #5cb573;
+  /* White on these lighter fills is under 3:1 contrast, so the labels are black. */
+  --wb-action-foreground: #000000;
+  --wb-proceed-foreground: #000000;
   --wb-pane-shadow: 0 0 0 1px color-mix(in srgb, #e4d5bc 12%, transparent);
 }
 
