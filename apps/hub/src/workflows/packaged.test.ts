@@ -186,7 +186,7 @@ test("production entries expose concrete native workflows without callback crede
   ).not.toMatch(/prepareOwnerContext|finish_task/);
 });
 
-test("built npm tarballs contain importable production workflow metadata and definitions", async () => {
+test("built packages contain importable production workflow metadata and definitions", async () => {
   const { mkdtemp, rm, mkdir } = await import("node:fs/promises");
   const { tmpdir } = await import("node:os");
   const { join } = await import("node:path");
@@ -203,14 +203,19 @@ test("built npm tarballs contain importable production workflow metadata and def
     for (const metadata of manifest) {
       const extracted = join(directory, metadata.assetName);
       await mkdir(extracted);
-      const child = Bun.spawn(
-        ["tar", "-xzf", join(directory, metadata.file), "-C", extracted],
-        {
-          stdout: "ignore",
-          stderr: "pipe",
-        },
-      );
-      expect(await child.exited).toBe(0);
+      if (metadata.files) {
+        for (const [path, text] of Object.entries(metadata.files))
+          await Bun.write(join(extracted, "package", path), text);
+      } else {
+        const child = Bun.spawn(
+          ["tar", "-xzf", join(directory, metadata.file), "-C", extracted],
+          {
+            stdout: "ignore",
+            stderr: "pipe",
+          },
+        );
+        expect(await child.exited).toBe(0);
+      }
       const pkg = await Bun.file(
         join(extracted, "package", "package.json"),
       ).json();
