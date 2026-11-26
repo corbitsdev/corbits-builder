@@ -8,6 +8,7 @@ import { ChevronRight, MessageSquare } from "lucide-react";
 import {
   useCallback,
   useEffect,
+  useEffectEvent,
   useId,
   useLayoutEffect,
   useRef,
@@ -480,15 +481,17 @@ export function DocumentPage({
   );
 
   // The body's words change as it is written or another version is read, and its lines move as
-  // the page or the pane changes size; either moves the passages.
+  // the page or the pane changes size; either moves the passages. Dragging a handle changes the
+  // passages but not the page, so the observers keep their subscription through a drag.
+  const remeasure = useEffectEvent(measure);
   useEffect(() => {
     const paper = sheet.current;
     const view = scroller.current;
     if (paper === null || view === null) return;
-    const resized = new ResizeObserver(() => measure());
+    const resized = new ResizeObserver(() => remeasure());
     resized.observe(paper);
     resized.observe(view);
-    const rewritten = new MutationObserver(() => measure());
+    const rewritten = new MutationObserver(() => remeasure());
     rewritten.observe(paper, {
       childList: true,
       characterData: true,
@@ -499,7 +502,7 @@ export function DocumentPage({
       rewritten.disconnect();
       paint(paper, []);
     };
-  }, [measure]);
+  }, []);
 
   // A passage pointed at from its margin item is tinted; one being written is tinted already.
   useEffect(() => {

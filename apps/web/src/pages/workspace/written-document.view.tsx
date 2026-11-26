@@ -6,7 +6,7 @@
  */
 import type { ApproachesMeta } from "@corbits-builder/schemas/approaches";
 import { DocumentView } from "@corbits-builder/plugin-ui/markdown";
-import { useRef } from "react";
+import { useMemo, useRef } from "react";
 import { ApproachesComparison } from "./approaches-comparison.tsx";
 import { ComparisonView } from "./comparison-view.tsx";
 import { DocumentPage } from "./document-page.tsx";
@@ -70,6 +70,20 @@ export function WrittenDocumentView({
     body.kind === "text" ? comments : undefined,
     textRef,
   );
+  const source = body.kind === "text" ? body.source : null;
+  const images = body.kind === "text" ? body.images : undefined;
+  // Dragging a handle re-renders the page on every move, but the text is unchanged, so it is not
+  // parsed again.
+  const prose = useMemo(
+    () =>
+      source === null ? null : (
+        <DocumentView
+          source={source}
+          {...(images === undefined ? {} : { images })}
+        />
+      ),
+    [source, images],
+  );
   const text =
     body.kind === "reading" ? null : body.kind === "comparison" ? (
       <ComparisonView
@@ -90,10 +104,7 @@ export function WrittenDocumentView({
           />
         )}
         <div ref={textRef} {...page.select}>
-          <DocumentView
-            source={body.source}
-            {...(body.images === undefined ? {} : { images: body.images })}
-          />
+          {prose}
         </div>
       </>
     );
