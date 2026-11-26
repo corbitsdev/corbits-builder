@@ -225,7 +225,7 @@ export function usePageComments(
     select: {
       // A selection made from the keyboard is taken once the keys that made it are let go.
       onKeyUp: (event) => {
-        if (event.shiftKey || event.key === "Shift") take();
+        if (event.key === "Shift") take();
       },
     },
   };
