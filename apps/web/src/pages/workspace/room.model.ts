@@ -687,15 +687,6 @@ export function useRoom({
       ? openedFromScreen.id
       : null;
 
-  useEffect(() => {
-    setApprovalBusy(false);
-    setApprovalError(null);
-    setDocumentChoice(null);
-    setPaneTab(null);
-    setProjectOpen(false);
-    setStoppedHere(new Set());
-  }, [projectId, openingMessage]);
-
   // The durable mirror is the committed transcript. The stream fills the gap
   // while a message run is producing it, and says when to read the room
   // again. A dropped stream reads the room too: the coordinator run it named
@@ -755,9 +746,6 @@ export function useRoom({
 
   // A dead run is not a quiet colleague. Say so once, and stop the thinking
   // mark, when the person is still waiting on a reply that will not come.
-  useEffect(() => {
-    reportedFailure.current = null;
-  }, [projectId]);
   useEffect(() => {
     if (!events || mirror.some((turn) => turn.role === "assistant")) return;
     const failure = [...events]

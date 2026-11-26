@@ -104,15 +104,6 @@ export function useComposer({
   });
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  useEffect(() => {
-    setSent(openingDraft(projectId, openingMessage));
-    setFailed(false);
-    setFault(null);
-    setAwaitingSince(null);
-    setFiles([]);
-    setAttachFault(null);
-  }, [projectId, openingMessage]);
-
   // A project just started could be typed into while it opened, and the box that was typed in
   // is gone; the cursor carries on in this one, after the words.
   useEffect(() => {
