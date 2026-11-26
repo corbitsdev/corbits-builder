@@ -8,7 +8,6 @@
   "builder": {
     "handle": "build-web-app",
     "runs": "plan",
-    "name": "Web app",
     "groups": [
       "build",
       "plan"

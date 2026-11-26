@@ -686,11 +686,6 @@ export const ReadyPlanBuilder = Common.merge({
   // What the person reads, in plain words, before the plan first does its work for the project:
   // where that work goes and the one thing they should know first.
   "firstRun?": "string > 0",
-  // What the plan makes, in a few words, as the project's list names it: "Published on Cloudflare".
-  "name?": "string > 0",
-  // What the plan's end is, where that is no document or app, so the list can show it as well as
-  // name it: "published" for the app put where people open it.
-  "outcome?": "'published'",
 });
 export type ReadyPlanBuilder = typeof ReadyPlanBuilder.infer;
 

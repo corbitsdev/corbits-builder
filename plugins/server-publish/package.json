@@ -12,8 +12,6 @@
   "builder": {
     "handle": "publish-to-server",
     "runs": "plan",
-    "name": "Published on your server",
-    "outcome": "published",
     "groups": [
       "publish",
       "plan"

@@ -620,43 +620,6 @@ test("a step says what it makes, as its action's returns name it for its input",
   ).toEqual(["app"]);
 });
 
-test("a ready-made plan's group carries what the plan makes and its outcome, as its manifest says", () => {
-  const [group] = planState(
-    CATALOG,
-    [
-      {
-        id: "publish",
-        title: "Cloudflare: a secure (https) web address of its own.",
-        plan: "publish-to-cloudflare",
-        steps: [
-          {
-            id: "live",
-            title: "Confirm the saved version is the one live",
-            plugin: "cloudflare",
-            action: "live",
-            input: {},
-            askFirst: false,
-          },
-        ],
-      },
-    ],
-    {
-      facts: new Set(),
-      personFacts: new Set(),
-      asksApprovals: true,
-      checks: [],
-      runs: [],
-      questions: [],
-    },
-  );
-  expect(group && "name" in group ? group.name : undefined).toBe(
-    "Published on Cloudflare",
-  );
-  expect(group && "outcome" in group ? group.outcome : undefined).toBe(
-    "published",
-  );
-});
-
 test("taking the plan's group out stops the project following it", async () => {
   const following = project([]);
   await following.plan({ operation: "add", plan: "build-web-app" });

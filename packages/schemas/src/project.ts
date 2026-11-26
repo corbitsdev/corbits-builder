@@ -179,10 +179,6 @@ const PlanViewGroup = type({
   id: PlanStepId,
   title: text,
   "plan?": readyPlan,
-  // What the ready-made plan it was added as makes, in a few words, when its manifest says.
-  "name?": "string > 0",
-  // What that plan's end is, where that is no document or app, when its manifest says.
-  "outcome?": "'published'",
   state: PlanStepStateName,
   "needs?": "string[]",
   steps: PlanViewChild.array(),

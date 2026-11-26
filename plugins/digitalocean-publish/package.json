@@ -12,8 +12,6 @@
   "builder": {
     "handle": "publish-to-digitalocean",
     "runs": "plan",
-    "name": "Published on DigitalOcean",
-    "outcome": "published",
     "groups": [
       "publish",
       "plan"

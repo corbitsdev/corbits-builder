@@ -9,7 +9,6 @@
     "handle": "build-web-app",
     "default": true,
     "runs": "plan",
-    "name": "Web app",
     "groups": [
       "build",
       "plan"
