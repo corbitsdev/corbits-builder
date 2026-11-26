@@ -15,6 +15,7 @@ import { liveAppQuery } from "./live-app.model.ts";
 import type { FilesListProps } from "./files-list.tsx";
 import { projectOutline, type OutlineAppState } from "./project-outline.ts";
 import type { ProjectSidebarViewProps } from "./project-sidebar.view.tsx";
+import type { RoomSession } from "./room-session.ts";
 import type { SidebarSectionsProps } from "./sidebar-sections.tsx";
 import { LIVE_TAB, MANUAL_TAB } from "./tab-follow.ts";
 
@@ -27,7 +28,6 @@ export type SidebarWays = {
 };
 
 export type ProjectSidebarInput = SidebarWays & {
-  projectId: string;
   title: string;
   /** The project as its menu reads it; absent until the project list has it. */
   project: MenuProject | undefined;
@@ -40,20 +40,19 @@ export type ProjectSidebarInput = SidebarWays & {
   appShown: boolean;
   /** The hub has the app's user manual, so the project view can show it. */
   manualShown: boolean;
-  /** The tab on the page; null while the chat fills the room. */
-  shown: string | null;
   /** The document opened from what waits in the prompt box, while it still waits; else null. */
   waitsOn: string | null;
-  /** Opens the project view on a tab. */
-  onOpen: (tab: string) => void;
 };
 
-export function useProjectSidebar(input: ProjectSidebarInput): {
+export function useProjectSidebar(
+  session: RoomSession,
+  input: ProjectSidebarInput,
+): {
   sidebar: ProjectSidebarViewProps;
   /** The project's own menu, opened from its name; null until the project list has it. */
   projectMenu: ProjectMenuHost | null;
 } {
-  const { projectId } = input;
+  const { projectId } = session;
   const frame = useSidebar(ROOM_NARROW_QUERY);
   // Opening something from a drawer puts the drawer away, so the page is seen.
   const leaving =
@@ -68,7 +67,7 @@ export function useProjectSidebar(input: ProjectSidebarInput): {
     documents: input.documents,
     app: { shown: input.appShown, state: app.data?.state },
   });
-  const open = leaving(input.onOpen);
+  const open = leaving(session.openTab);
   // The step opened from the plan, apart from the file on the page, so neither marks the other.
   const [step, setStep] = useState<string | null>(null);
   return {
@@ -81,15 +80,20 @@ export function useProjectSidebar(input: ProjectSidebarInput): {
       onPreferences: () => input.onOpenSettings("preferences"),
       plan: {
         plan: outline.plan,
-        selected: input.shown === null ? null : step,
+        selected: session.shown === null ? null : step,
         waitsOn: input.waitsOn,
         onOpenStep: (id, tab) => {
           setStep(id);
           open(tab);
         },
       },
-      files: filesProps(input, open),
-      sections: sectionsProps(outline.app, input, open),
+      files: filesProps(input.documents, session.shown, open),
+      sections: sectionsProps(
+        outline.app,
+        session.shown,
+        input.manualShown,
+        open,
+      ),
     },
     projectMenu:
       input.project === undefined
@@ -106,16 +110,22 @@ export function useProjectSidebar(input: ProjectSidebarInput): {
 
 /** The filed documents, each opening on its own tab. */
 function filesProps(
-  input: ProjectSidebarInput,
+  documents: ProjectSidebarInput["documents"],
+  shown: string | null,
   open: (tab: string) => void,
 ): FilesListProps {
-  return { files: fileRows(input.documents), shown: input.shown, onOpen: open };
+  return {
+    files: fileRows(documents),
+    shown,
+    onOpen: open,
+  };
 }
 
 /** The sections at the foot: the app's preview once there is an app, and its user manual. */
 function sectionsProps(
   app: OutlineAppState,
-  { shown, manualShown }: ProjectSidebarInput,
+  shown: string | null,
+  manualShown: boolean,
   open: (tab: string) => void,
 ): SidebarSectionsProps | undefined {
   if (app === "not_built") return undefined;

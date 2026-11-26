@@ -172,6 +172,7 @@ import type {
   ReviewedDesign,
   ShownDocument,
 } from "./screen-question.tsx";
+import type { RoomSession } from "./room-session.ts";
 import { inShort } from "@corbits-builder/schemas/in-short";
 import { roleOf, screenWords } from "./roles.ts";
 import { screensFor, selectionNames } from "./screens.ts";
@@ -1288,25 +1289,6 @@ export function useRoom({
         deliverMail(body, clearComposer, declineWith(approvalId)),
     });
   };
-  // Comments go as an ordinary message, so they wait while a question or approval would take it,
-  // unless the question asks to accept something, which they answer by asking for changes.
-  const commentDrafts = useCommentDrafts({
-    projectId,
-    archived,
-    question: openQuestion !== undefined && !screenDecides,
-    approval: openApproval !== undefined,
-    sending: sending || approvalBusy,
-    approvalOpenNow: async () =>
-      (await readPendingApprovals())?.some(
-        (approval) => approval.packages === undefined,
-      ) ?? false,
-    mail: (message, clearBox) =>
-      screenDecides
-        ? deliver(message, clearBox)
-        : deliverMail(message, clearBox),
-    shown: projectOpen ? shownTab : null,
-    open: openDocument,
-  });
   const sendFiles = async () => {
     if (sending) return false;
     const currentApprovals = await readPendingApprovals();
@@ -1733,6 +1715,31 @@ export function useRoom({
   // Until the first document is filed or there is an app, the project view has nothing to show.
   const nothingYet =
     paneDeliverables.length === 0 && concepts.length === 0 && liveApp === null;
+  const projectShown = projectOpen && !nothingYet;
+  const session: RoomSession = {
+    projectId,
+    archived,
+    projectOpen: projectShown,
+    shown: projectShown ? shownTab : null,
+    openTab: openProject,
+    send: (message) => void deliver(message),
+    reload: () => reloadRef.current(),
+  };
+  // Comments go as an ordinary message, so they wait while a question or approval would take it,
+  // unless the question asks to accept something, which they answer by asking for changes.
+  const commentDrafts = useCommentDrafts(session, {
+    question: openQuestion !== undefined && !screenDecides,
+    approval: openApproval !== undefined,
+    sending: sending || approvalBusy,
+    approvalOpenNow: async () =>
+      (await readPendingApprovals())?.some(
+        (approval) => approval.packages === undefined,
+      ) ?? false,
+    mail: (message, clearBox) =>
+      screenDecides
+        ? deliver(message, clearBox)
+        : deliverMail(message, clearBox),
+  });
   // Accepting what a screen asks closes the project view on the conversation, where the work
   // carries on; asking for changes keeps the page open until the next version is filed.
   const answerScreen = async (signalName: string, given: QuestionAnswer) => {
@@ -1744,9 +1751,7 @@ export function useRoom({
     if (sent && accepted) setProjectOpen(false);
     return sent;
   };
-  const promptBox = usePromptBox({
-    projectId,
-    archived,
+  const promptBox = usePromptBox(session, {
     openQuestion,
     onAnswer: answerScreen,
     sending,
@@ -1778,11 +1783,6 @@ export function useRoom({
     documents: paneDeliverables,
     seen,
     hasApp: liveApp !== null,
-    projectOpen: projectOpen && !nothingYet,
-    onOpenDocument: openDocument,
-    onOpenApp: () => openProject(LIVE_TAB),
-    onSend: (message) => void deliver(message),
-    reload: () => reloadRef.current(),
   });
   const dock = (): RoomDock => {
     if (archived)
@@ -1872,8 +1872,7 @@ export function useRoom({
   const paneDocuments = paneDeliverables.map((item) =>
     paneDocument(item, seen),
   );
-  const { sidebar, projectMenu } = useProjectSidebar({
-    projectId,
+  const { sidebar, projectMenu } = useProjectSidebar(session, {
     title: projectTitle,
     project: menuProject,
     onProjectChanged: onChanged,
@@ -1884,9 +1883,7 @@ export function useRoom({
     documents: paneDocuments,
     appShown: liveApp !== null,
     manualShown: userManual !== null,
-    shown: projectOpen && !nothingYet ? shownTab : null,
     waitsOn,
-    onOpen: openProject,
   });
   const emptyConversation = () => {
     if (archived) return "archived";
@@ -1899,7 +1896,7 @@ export function useRoom({
       layout: {
         projectReady: !nothingYet,
         // The view cannot be open once it has nothing to show, or the prompt box is placed in it unseen.
-        projectOpen: projectOpen && !nothingYet,
+        projectOpen: projectShown,
         documentGround,
         waitedOnShown:
           projectOpen &&

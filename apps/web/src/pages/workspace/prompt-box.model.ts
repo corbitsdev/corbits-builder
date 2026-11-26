@@ -61,11 +61,11 @@ import {
   waitingOn,
   type WaitingScreenSource,
 } from "./waiting.ts";
+import type { RoomSession } from "./room-session.ts";
+import { LIVE_TAB } from "./tab-follow.ts";
 
 /** What the room already knows and does, which the box, the pill and the space are made from. */
 export type PromptBoxRoom = {
-  projectId: string;
-  archived: boolean;
   /** The coordinator's open question, if any. */
   openQuestion: ConversationQuestion | undefined;
   onAnswer: (signalName: string, answer: QuestionAnswer) => Promise<boolean>;
@@ -106,13 +106,6 @@ export type PromptBoxRoom = {
   seen: SeenVersions;
   /** The project has an app to run. */
   hasApp: boolean;
-  /** The project fills the window. */
-  projectOpen: boolean;
-  onOpenDocument: (id: string) => void;
-  onOpenApp: () => void;
-  /** Sends a message as the person, such as asking to try again. */
-  onSend: (message: string) => void;
-  reload: () => void;
 };
 
 export type PromptBox = {
@@ -149,8 +142,12 @@ export type PromptBox = {
 const at = (iso: string | undefined) =>
   iso === undefined ? Number.NaN : Date.parse(iso);
 
-export function usePromptBox(room: PromptBoxRoom): PromptBox {
-  const { projectId, openQuestion, screenOf } = room;
+export function usePromptBox(
+  session: RoomSession,
+  room: PromptBoxRoom,
+): PromptBox {
+  const { projectId } = session;
+  const { openQuestion, screenOf } = room;
   const [goingAhead, setGoingAhead] = useState<string | null>(null);
   // The app the hub keeps running while the project is open, as its presence read last saw it.
   const app = useQuery<LiveApp>({
@@ -173,7 +170,7 @@ export function usePromptBox(room: PromptBoxRoom): PromptBox {
     openQuestion !== undefined && showsScreen(openQuestion)
       ? openQuestion.asked
       : undefined;
-  const listed = room.archived
+  const listed = session.archived
     ? []
     : room.screens.filter((screen) => screenOf(screen)?.listed !== undefined);
   const waiting = waitingOn({
@@ -201,7 +198,7 @@ export function usePromptBox(room: PromptBoxRoom): PromptBox {
     setGoingAhead(stepId);
     try {
       await goAheadPlanStep(projectId, stepId);
-      room.reload();
+      session.reload();
     } catch (cause) {
       toast.error(humanFault(cause, wording.conversation.plan.notChanged));
     } finally {
@@ -223,7 +220,7 @@ export function usePromptBox(room: PromptBoxRoom): PromptBox {
           : {
               kind: "question",
               question: openQuestion,
-              disabled: room.sending || room.archived,
+              disabled: room.sending || session.archived,
               onAnswer: (answer) =>
                 room.onAnswer(openQuestion.signalName, answer),
             };
@@ -235,7 +232,7 @@ export function usePromptBox(room: PromptBoxRoom): PromptBox {
         return {
           kind: "approval",
           approval,
-          disabled: room.approvalBusy || room.archived,
+          disabled: room.approvalBusy || session.archived,
           error: room.approvalError,
           typedYes: room.typedYes,
           onDecide: (choice) => {
@@ -293,7 +290,7 @@ export function usePromptBox(room: PromptBoxRoom): PromptBox {
           input: openQuestion.asked.input,
           projectValues: room.projectValues,
           answer: undefined,
-          disabled: room.sending || room.archived,
+          disabled: room.sending || session.archived,
           onAnswer: (answer) => room.onAnswer(openQuestion.signalName, answer),
           supplies: room.supplies,
         },
@@ -346,9 +343,9 @@ export function usePromptBox(room: PromptBoxRoom): PromptBox {
       })),
     app: room.hasApp ? (app?.state ?? null) : null,
     asking: card !== null,
-    projectOpen: room.projectOpen,
+    projectOpen: session.projectOpen,
   };
-  const line = room.archived ? null : roomStatus(facts);
+  const line = session.archived ? null : roomStatus(facts);
   const status: StatusPillContent | null =
     line === null
       ? null
@@ -363,9 +360,9 @@ export function usePromptBox(room: PromptBoxRoom): PromptBox {
                   const action = line.action;
                   if (action === null) return;
                   if (action.kind === "openDocument")
-                    room.onOpenDocument(action.id);
-                  else if (action.kind === "openApp") room.onOpenApp();
-                  else room.onSend(action.message);
+                    session.openTab(action.id);
+                  else if (action.kind === "openApp") session.openTab(LIVE_TAB);
+                  else session.send(action.message);
                 },
               }),
         };
@@ -399,8 +396,6 @@ export function usePromptBox(room: PromptBoxRoom): PromptBox {
 
 /** What the room knows that the comment drafts and their sending need. */
 export type CommentsRoom = {
-  projectId: string;
-  archived: boolean;
   /** The coordinator's question is open, so a message would answer it. */
   question: boolean;
   /** An approval is open, so a message would decline it. */
@@ -414,10 +409,6 @@ export type CommentsRoom = {
    * words in it, the box is cleared once it went.
    */
   mail: (message: string, clearBox: boolean) => Promise<boolean>;
-  /** The document on screen, if one is. */
-  shown: string | null;
-  /** Opens a document by the room's key for it. */
-  open: (document: string) => void;
 };
 
 /** The comment token in the prompt box: how many wait, sending, showing and removing them. */
@@ -438,11 +429,14 @@ export type BoxComments = {
  * The person's comment drafts on the project's documents, kept in this tab beside the unsent
  * message, and the box's row that sends them all as one message.
  */
-export function useCommentDrafts(room: CommentsRoom): {
+export function useCommentDrafts(
+  session: RoomSession,
+  room: CommentsRoom,
+): {
   comments: ProjectComments | undefined;
   box: BoxComments | null;
 } {
-  const [stored, setStored] = useUnsent(draftsKey(room.projectId));
+  const [stored, setStored] = useUnsent(draftsKey(session.projectId));
   const drafts = useMemo(() => readDrafts(stored), [stored]);
   const [going, setGoing] = useState(false);
   const change = useCallback(
@@ -484,7 +478,7 @@ export function useCommentDrafts(room: CommentsRoom): {
     });
   };
 
-  if (room.archived) return { comments: undefined, box: null };
+  if (session.archived) return { comments: undefined, box: null };
   const words = wording.promptBox;
   return {
     comments: {
@@ -506,8 +500,8 @@ export function useCommentDrafts(room: CommentsRoom): {
             sending: send.state === "sending",
             onSend: (typed) => void sendAll(typed),
             onShow: () => {
-              const document = commentedDocument(drafts, room.shown);
-              if (document !== undefined) room.open(document);
+              const document = commentedDocument(drafts, session.shown);
+              if (document !== undefined) session.openTab(document);
             },
             onRemove: removeAll,
           },
