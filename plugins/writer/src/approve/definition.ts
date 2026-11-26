@@ -12,7 +12,7 @@ export default defineScreen({
       label: (input) =>
         `Approve the ${input.kinds.map((kind) => kind.replaceAll("_", " ")).join(" and ")}`,
       chose: () => "Approved",
-      reply: "Or type what should change…",
+      reply: "Say what to change, or comment on the document…",
     },
     summary:
       "Puts filed documents in front of the person to approve, each at its current version, with a way to open each. The answer is { approved: [{ kind, artifactId, version }] }, and Builder has then recorded the approval of exactly those versions; if they write back instead, what they wrote is their answer.",
