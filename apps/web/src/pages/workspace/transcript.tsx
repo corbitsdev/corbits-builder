@@ -674,9 +674,19 @@ export function RoomThread({
     results,
   );
   const { specialists } = thread;
+  // Several places read a unit's standing on every streamed word, so each render works it out once
+  // per unit.
+  const standings = new Map<string, WorkUnitStanding>();
+  const standingOf = (unit: WorkUnit) => {
+    const known = standings.get(unit.key);
+    if (known !== undefined) return known;
+    const row = standing(unit);
+    standings.set(unit.key, row);
+    return row;
+  };
   // Work still running always shows, in the list under the reply; done, it shows only when asked for.
   const showsUnit = (unit: WorkUnit) =>
-    shows.specialists || inProgress(standing(unit).status);
+    shows.specialists || inProgress(standingOf(unit).status);
   const items = thread.items.filter(
     (item) => item.kind !== "unit" || showsUnit(item.unit),
   );
@@ -706,7 +716,7 @@ export function RoomThread({
     </Activity>
   );
   // Each specialist is its own row and its own item.
-  const specialistRow = (unit: WorkUnit, row = standing(unit)) => {
+  const specialistRow = (unit: WorkUnit, row = standingOf(unit)) => {
     return (
       <ConversationItem key={unit.key} itemId={workItemId(unit)}>
         <WorkUnitStepView
@@ -726,7 +736,7 @@ export function RoomThread({
   const specialistRows = (units: readonly WorkUnit[]) => {
     const rows = units
       .filter(showsUnit)
-      .map((unit) => ({ unit, row: standing(unit) }));
+      .map((unit) => ({ unit, row: standingOf(unit) }));
     const running = rows.filter(({ row }) => inProgress(row.status));
     return (
       <>
