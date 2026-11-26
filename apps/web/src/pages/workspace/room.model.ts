@@ -1270,7 +1270,6 @@ export function useRoom({
         kind.startsWith("concept:") ? conceptTab(kind.slice(8)) : kind,
       );
     },
-    onWatch: () => openProject(LIVE_TAB),
     onStop: async (stopped) => {
       try {
         await stopRun(projectId, stopped);

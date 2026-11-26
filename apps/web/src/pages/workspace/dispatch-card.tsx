@@ -192,8 +192,6 @@ export type DispatchRoom = {
   /** Each filed document's own `## In short` section, by kind, once its body has loaded. */
   readonly summaries?: ReadonlyMap<string, string>;
   readonly onOpenDocument?: (kind: string) => void;
-  /** Opens the project view on what a working designer or coder is making. */
-  readonly onWatch?: (dispatch: Dispatch) => void;
   /** Stops a working specialist's run as the person. */
   readonly onStop?: (runId: string) => Promise<void>;
   /** What each run held on an open approval asked the person, by run id. */

@@ -5,20 +5,12 @@
 import type { PartTool } from "@corbits/react-ui";
 import { isDocumentKind } from "@corbits-builder/schemas/artifact";
 import { wording } from "../../config.ts";
-import {
-  dispatchStatus,
-  type Dispatch,
-  type DispatchRoom,
-} from "./dispatch-card.tsx";
+import { dispatchStatus, type DispatchRoom } from "./dispatch-card.tsx";
 import type { RowPreview, WorkUnitStanding } from "./work-unit-step.view.tsx";
-import { roleLabel, roleOf } from "./roles.ts";
+import { roleLabel } from "./roles.ts";
 import { workPhrase, type WorkUnit } from "./work-unit.ts";
 
 const text = wording.dispatch;
-
-// The role whose work shows as it happens: the running app of one that writes code.
-const watchOf = (dispatch: Dispatch) =>
-  roleOf(dispatch.role)?.writesCode ? text.watchApp : undefined;
 
 // A run that finished returned from every call it made, though its stream closed before saying so.
 // A call with no result in a run that was stopped or failed never returned: it stopped with its run.
@@ -62,10 +54,9 @@ export function workUnitStanding(
     (dispatch.runId === undefined
       ? undefined
       : room.steps?.get(dispatch.runId)) ?? [];
-  const { onWatch, onStop, onOpenDocument } = room;
+  const { onStop, onOpenDocument } = room;
   const { runId } = dispatch;
   const role = roleLabel(dispatch.role);
-  const watchLabel = watchOf(dispatch);
   return {
     unitKey: unit.key,
     status,
@@ -88,10 +79,6 @@ export function workUnitStanding(
           }
         : undefined,
     onOpenDocument,
-    watch:
-      onWatch === undefined || watchLabel === undefined
-        ? undefined
-        : { label: watchLabel, open: () => onWatch(dispatch) },
     stop:
       onStop === undefined ||
       runId === undefined ||

@@ -934,8 +934,6 @@ export const wording = {
     open: "Open",
     openNamed: (document: string, version: number) =>
       `Open ${document} v${String(version)}`,
-    /** Opens the project view on what a working specialist is making, as it makes it. */
-    watchApp: "Watch it run",
     /** Names what a working run is writing, shown as it streams in. */
     preview: "What it is writing",
     /** A working run's model is thinking and has written nothing yet. */

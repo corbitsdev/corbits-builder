@@ -138,7 +138,6 @@ describe("conversation transcript", () => {
                 onOpen: () => {},
               },
               onOpenDocument: row.onOpenDocument,
-              watch: row.watch,
               stop: row.stop,
             };
           }}

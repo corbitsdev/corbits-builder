@@ -74,8 +74,6 @@ export type WorkUnitStanding = {
   document: DocumentBlockProps | undefined;
   /** Opens the document the work filed; absent where nothing can open it. */
   onOpenDocument: ((kind: string) => void) | undefined;
-  /** Opens what the work makes as it makes it, offered while it runs; absent where nothing shows it. */
-  watch: { label: string; open: () => void } | undefined;
   /** Stops the work once the person confirms it, offered only while it works. */
   stop: { ask: string; confirm: () => Promise<void> } | undefined;
 };
@@ -177,28 +175,14 @@ function StopAction({ stop }: { stop: NonNullable<WorkUnitStanding["stop"]> }) {
   );
 }
 
-/** Beside the row: watch the work while it runs, or open what it filed when no document block does. */
+/** Beside the row: open what it filed when no document block does. */
 function RowAction({
   status,
-  watch,
   onOpen,
 }: {
   status: DispatchStatus;
-  watch: WorkUnitStanding["watch"];
   onOpen: WorkUnitStanding["onOpenDocument"];
 }) {
-  if (inProgress(status) && watch !== undefined)
-    return (
-      <Button
-        type="button"
-        variant="link"
-        size="sm"
-        className={styles.action}
-        onClick={watch.open}
-      >
-        {watch.label}
-      </Button>
-    );
   if (status.state === "ready" && onOpen !== undefined)
     return (
       <Button
@@ -342,7 +326,6 @@ export function WorkUnitStepView({
   report,
   document,
   onOpenDocument,
-  watch,
   stop,
   run,
 }: WorkUnitStepViewProps) {
@@ -407,7 +390,6 @@ export function WorkUnitStepView({
         )}
         <RowAction
           status={status}
-          watch={watch}
           onOpen={document === undefined ? onOpenDocument : undefined}
         />
         {stop === undefined ? null : <StopAction stop={stop} />}

@@ -206,7 +206,6 @@ export const WorkInProgress: Story = {
             label: "Building the order screen",
             steps: [],
             preview: undefined,
-            watch: { label: "Watch it run", open: fn() },
           }
         : {
             ...workUnit.args,
