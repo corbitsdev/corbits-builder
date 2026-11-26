@@ -49,6 +49,7 @@ import {
 } from "./artifact-pane.tsx";
 import { InBox, useBoxPorts, type BoxPorts } from "./box-ports.tsx";
 import { ScreenCard, StepCard } from "./box-cards.tsx";
+import { submit } from "./box-submit.ts";
 import { DocumentDecision, PackageDecision } from "./document-decision.tsx";
 import { PluginSpace } from "./plugin-space.tsx";
 import { QuestionsCard } from "./questions-card.tsx";
@@ -922,20 +923,17 @@ function RoomComposerView({
     return took !== false;
   };
   const send = () => {
-    // With nothing typed, Send is the comments' own send.
-    if (!typed && commentsReady) return onSendComments();
-    if (files.length === 0 && answersShell?.(text) === true)
-      return onTextChange("");
-    const words = text.trim();
-    if (
-      files.length === 0 &&
-      (words !== "" || (ports.offer?.label ?? null) !== null) &&
-      toScreen(words)
-    )
-      return;
-    // Words typed beside the comments go out with them, as one message.
-    if (files.length === 0 && commentsReady) return onSendComments(words);
-    onSend();
+    const sent = submit(text, {
+      files: files.length > 0,
+      comments: commentsReady ? onSendComments : null,
+      shell: answersShell,
+      screen:
+        ports.offer === undefined
+          ? undefined
+          : { take: toScreen, label: ports.offer.label },
+      message: onSend,
+    });
+    if (sent === "shell") onTextChange("");
   };
   const stopping = working && onStop !== undefined && !typed;
   const box = (
