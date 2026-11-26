@@ -440,13 +440,14 @@ export function RoomView({
     sheetShown ? undefined : openSpace,
     space?.place === "box" ? pluginSpace : null,
   );
-  // The card folds to the typing row and action only over the document it asks the person to
-  // accept, where it would repeat the page. Over a mockup or another document the person would see
-  // Approve without knowing what it approves, so the card shows. A screen open over the page already
-  // shows the question, so the card folds then too.
+  // Over the document it asks the person to accept, the card folds to its title above the typing
+  // row and action, since the rest would repeat the page. Over a mockup or another document the
+  // person would see Approve without knowing what it approves, so the card shows. A screen open over
+  // the page already shows the question, so the card folds to the typing row alone then.
+  const askOverPage =
+    projectShown && waitedOnShown && decides(waiting) ? waiting.title : null;
   const decidesPage =
-    (projectShown && waitedOnShown && decides(waiting)) ||
-    (sheetShown && waiting?.kind === "screen");
+    askOverPage !== null || (sheetShown && waiting?.kind === "screen");
   // Covered, the conversation is out of sight, so the box has the chat to pull up and its pill says
   // what is running. Full screen is the room's own conversation: what the chat was pulled up over
   // is put away.
@@ -538,6 +539,7 @@ export function RoomView({
               ports={ports}
               waiting={card}
               cardHidden={decidesPage}
+              cardAsk={askOverPage}
               chat={covered ? chat : undefined}
               chatStart={
                 covered
@@ -734,7 +736,9 @@ function openingFrom(
   };
 }
 
-const decides = (waiting: BoxWaiting | null) =>
+const decides = (
+  waiting: BoxWaiting | null,
+): waiting is Extract<BoxWaiting, { kind: "screen" }> =>
   waiting?.kind === "screen" && waiting.decides;
 
 /** Takes a shell request typed into the composer, so it is answered rather than sent. */
@@ -754,6 +758,7 @@ export function RoomDockView({
   dock,
   waiting,
   cardHidden = false,
+  cardAsk = null,
   chat,
   chatStart,
   ports,
@@ -769,6 +774,8 @@ export function RoomDockView({
   waiting?: ReactNode;
   /** What waits stays out of sight, its buttons still in the row, where the page shows it. */
   cardHidden?: boolean;
+  /** The title of a hidden card, shown above the words so Approve says what it agrees to. */
+  cardAsk?: string | null;
   chat?: ReactNode;
   chatStart?: ChatStart | undefined;
   answersShell?: AnswersShell;
@@ -846,6 +853,7 @@ export function RoomDockView({
       {...dock}
       waiting={waiting}
       cardHidden={cardHidden}
+      cardAsk={cardAsk}
       chat={chat}
       chatStart={chatStart}
       ports={ports}
@@ -881,6 +889,7 @@ function RoomComposerView({
   onStop,
   waiting,
   cardHidden,
+  cardAsk,
   chat,
   chatStart,
   ports: shared,
@@ -888,6 +897,7 @@ function RoomComposerView({
 }: RoomComposer & {
   waiting: ReactNode;
   cardHidden: boolean;
+  cardAsk: string | null;
   chat: ReactNode;
   chatStart?: ChatStart | undefined;
   ports?: BoxPorts | undefined;
@@ -1088,6 +1098,7 @@ function RoomComposerView({
       // With nothing but the card to show, the box is its typing row alone.
       bare={
         cardHidden &&
+        cardAsk === null &&
         restarts === null &&
         (comments === 0 || commentsBlocked === null)
       }
@@ -1101,6 +1112,11 @@ function RoomComposerView({
                 {waiting}
               </InBox>
             </div>
+            {cardHidden && cardAsk !== null ? (
+              <p className={styles.cardAsk} data-slot="card-ask">
+                {cardAsk}
+              </p>
+            ) : null}
             {/* Nearest the words it is about, after anything else that waits. */}
             {restarts === null ? null : (
               <p className={styles.restarts} role="status">

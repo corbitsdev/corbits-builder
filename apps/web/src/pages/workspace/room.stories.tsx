@@ -1184,13 +1184,18 @@ export const ScreenInBoxLoading: Story = {
 };
 
 /**
- * Over the document it asks to approve, the box stands open at once with Approve where Send is, and
- * nothing above the words repeats the page.
+ * Over the document it asks to approve, the box shows only the card's title above the words, with
+ * Approve where Send is. The card's summary and document chip would repeat the page.
  */
 export const ApproveOverDocument: Story = {
   args: {
     ...withDocuments,
     ...ApproveInBox.args,
+    waiting: {
+      kind: "screen",
+      title: "Approve the build plan",
+      decides: true,
+    },
     layout: { ...withDocuments.layout, projectOpen: true, waitedOnShown: true },
   },
   play: async ({ canvasElement }) => {
@@ -1201,9 +1206,10 @@ export const ApproveOverDocument: Story = {
     await expect(
       within(box).getByRole("textbox", { name: "Message" }),
     ).toBeVisible();
+    await expect(box.querySelector('[data-slot="card-ask"]')).toBeVisible();
     await expect(
-      box.querySelector('[data-slot="composer-panel"]'),
-    ).toHaveAttribute("hidden");
+      box.querySelector('[data-slot="approve-documents"]'),
+    ).not.toBeVisible();
     await expect(
       within(box).getByRole("button", { name: "Approve" }),
     ).toBeVisible();
