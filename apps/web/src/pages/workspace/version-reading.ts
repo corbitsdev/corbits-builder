@@ -35,6 +35,11 @@ export function useVersionReading({
   const [readError, setReadError] = useState<string | null>(null);
   const readRef = useRef(onReadVersion);
   readRef.current = onReadVersion;
+  // Read after the await: the person may have opened or closed the comparison meanwhile.
+  const changesRef = useRef(changesOpen);
+  changesRef.current = changesOpen;
+  // Only the latest version asked for is used; a slower read of an earlier pick is dropped.
+  const latestAsk = useRef(0);
 
   const readFor = (version: number): ReadVersion | null => {
     if (cache[version] !== undefined) return cache[version] ?? null;
@@ -66,15 +71,18 @@ export function useVersionReading({
 
   // Reads a version the room has not loaded, then acts on it; a failed read is the document's error line.
   const withVersion = async (version: number, use: () => void) => {
+    latestAsk.current += 1;
+    const ask = latestAsk.current;
     setPendingVersion(version);
     setReadError(null);
     try {
       await fetchVersion(version);
-      use();
+      if (ask === latestAsk.current) use();
     } catch (cause) {
-      setReadError(cause instanceof Error ? cause.message : String(cause));
+      if (ask === latestAsk.current)
+        setReadError(cause instanceof Error ? cause.message : String(cause));
     } finally {
-      setPendingVersion(null);
+      if (ask === latestAsk.current) setPendingVersion(null);
     }
   };
 
@@ -83,6 +91,8 @@ export function useVersionReading({
     onViewVersion?.();
     setReadError(null);
     if (textFor(version) !== null) {
+      latestAsk.current += 1;
+      setPendingVersion(null);
       setViewing(version);
       return;
     }
@@ -104,7 +114,7 @@ export function useVersionReading({
     if (predecessor === null) return;
     void withVersion(predecessor, () => {
       setBaseline(predecessor);
-      if (!changesOpen) onToggleChanges();
+      if (!changesRef.current) onToggleChanges();
     });
   };
 
