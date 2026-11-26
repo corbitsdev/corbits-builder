@@ -4,6 +4,8 @@ import {
   dispatchLive,
   dispatchStatus,
   dispatchesOf,
+  noteDispatches,
+  type Dispatch,
   type DispatchRoom,
   type RunEnd,
 } from "./dispatch-card.tsx";
@@ -93,4 +95,47 @@ test("a run that ended on a block reads as blocked with its reason, not as stopp
   expect(dispatchLive(coder, ended({ status: "cancelled", blocked }))).toBe(
     false,
   );
+});
+
+// A writer whose call names no document is known by the one document that moved since it was seen.
+const writer: Dispatch = {
+  key: "call-write",
+  call: "call-write",
+  tool: "execute",
+  role: "writer",
+  runId: "run-w",
+  pending: false,
+};
+
+const requirements = {
+  artifactId: "33333333-3333-4333-8333-333333333333",
+  kind: "product_requirements",
+  title: "Echo Requirements",
+  version: 1,
+  sha256: "0".repeat(64),
+  filedAt: new Date(5).toISOString(),
+};
+
+test("a document filed after a hand-off was first seen is its result, and a later sighting changes nothing", () => {
+  const seen = noteDispatches(new Map(), [], [writer]);
+  expect(noteDispatches(seen, [requirements], [writer])).toBe(seen);
+  const room: DispatchRoom = {
+    artifacts: [requirements],
+    inFlight: [],
+    failed: [],
+    seen,
+    ended: new Map([["run-w", { status: "completed" }]]),
+  };
+  expect(dispatchStatus(writer, room).state).toBe("ready");
+});
+
+test("a hand-off not noted yet counts as seen now, so what was filed before it is not its result", () => {
+  const room: DispatchRoom = {
+    artifacts: [requirements],
+    inFlight: [],
+    failed: [],
+    seen: new Map(),
+    ended: new Map([["run-w", { status: "completed" }]]),
+  };
+  expect(dispatchStatus(writer, room).state).not.toBe("ready");
 });

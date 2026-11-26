@@ -7,7 +7,6 @@ import { isDocumentKind } from "@corbits-builder/schemas/artifact";
 import { wording } from "../../config.ts";
 import {
   dispatchStatus,
-  noteDispatch,
   type Dispatch,
   type DispatchRoom,
 } from "./dispatch-card.tsx";
@@ -52,7 +51,6 @@ export function workUnitStanding(
   room: DispatchRoom,
 ): WorkUnitStanding {
   const { dispatch } = unit;
-  noteDispatch(room, dispatch);
   const status = dispatchStatus(dispatch, room);
   const done = status.state === "ready" || status.state === "finished";
   const ended =

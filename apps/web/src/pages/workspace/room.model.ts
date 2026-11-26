@@ -38,11 +38,12 @@ import {
 import {
   dispatchLive,
   filedDispatches,
-  noteDispatch,
+  noteDispatches,
   partsDispatches,
   runDispatch,
   type DispatchRoom,
   type RunEnd,
+  type Sighting,
 } from "./dispatch-card.tsx";
 import { earlierDocumentRole, restartedWork } from "./earlier-document.ts";
 import { ProductApiError, type ProjectArtifact } from "@corbits-builder/client";
@@ -174,6 +175,7 @@ import type {
 import { inShort } from "@corbits-builder/schemas/in-short";
 import { roleOf, screenWords } from "./roles.ts";
 import { screensFor, selectionNames } from "./screens.ts";
+import { useSessionMemory, withEntries } from "./session-memory.ts";
 
 // The stream says when the room moved. This read covers what it cannot see,
 // such as a coordinator run replaced while its old stream stays quiet.
@@ -422,6 +424,15 @@ type LoadedRoom = {
 
 export type ReadyRoomProps = StageWorkspaceProps & LoadedRoom;
 
+const NO_STEPS: ReadonlyMap<number, readonly ConversationPart[]> = new Map();
+const NO_RUNS: ReadonlyMap<string, InFlightRun> = new Map();
+const NO_SIGHTINGS: ReadonlyMap<string, Sighting> = new Map();
+// A live run hands its steps over again on each render, as new arrays of the same parts.
+const sameParts = (
+  kept: readonly ConversationPart[],
+  next: readonly ConversationPart[],
+) => kept.length === next.length && kept.every((part, at) => part === next[at]);
+
 /**
  * Reads the project and its room, and starts its coordinator, while the room shows its loading
  * or fault state; the room is ready only with a loaded snapshot.
@@ -641,12 +652,6 @@ export function useRoom({
   const [shownTab, setShownTab] = useState<string | null>(null);
   const documentPaneRef = useRef<HTMLElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
-  // Each committed reply's thinking and tool work, as this session watched it.
-  const stepsByAt = useRef(new Map<number, readonly ConversationPart[]>());
-  // When this session first saw each hand-off, so the document it files reads as its result.
-  const dispatchSeen = useRef<DispatchRoom["seen"]>(new Map());
-  // Every specialist run this session saw, so its card keeps its result after the run ends.
-  const runCards = useRef(new Map<string, InFlightRun>());
   // The runs the person stopped here, which read as stopped before they have wound down.
   const [stoppedHere, setStoppedHere] = useState<ReadonlySet<string>>(
     () => new Set(),
@@ -674,8 +679,12 @@ export function useRoom({
       : { maxFiles: limits.maxFiles, maxFileBytes: limits.maxFileBytes }),
   });
   const liveRunRef = useRef<LiveRun>(emptyLiveRun);
-  const committedAtRef = useRef<number | null>(null);
-  committedAtRef.current = latestAssistantAt(mirror);
+  // The stream folds each event against the latest committed reply, read once the render commits.
+  const committedAt = latestAssistantAt(mirror);
+  const committedAtRef = useRef(committedAt);
+  useEffect(() => {
+    committedAtRef.current = committedAt;
+  }, [committedAt]);
   const reportedFailure = useRef<number | null>(null);
   const rolesAtWork = useRolesAtWork(projectId);
   const [gateDone, setGateDone] = useState(0);
@@ -760,9 +769,6 @@ export function useRoom({
     setAwaitingSince(null);
     setFiles([]);
     setAttachFault(null);
-    stepsByAt.current.clear();
-    dispatchSeen.current.clear();
-    runCards.current.clear();
     setStoppedHere(new Set());
   }, [projectId, openingMessage]);
 
@@ -860,8 +866,10 @@ export function useRoom({
     toast.error(message);
   }, [events, mirror]);
 
-  for (const [at, parts] of committedSteps(liveRun, mirror))
-    stepsByAt.current.set(at, parts);
+  // Each committed reply's thinking and tool work, as this session watched it.
+  const stepsByAt = useSessionMemory(NO_STEPS, (known) =>
+    withEntries(known, committedSteps(liveRun, mirror), sameParts),
+  );
   // What this session watched the coordinator do wins; a reply from before it has its saved calls.
   const coordinatorSteps = useSavedRunSteps(runTenantId, runId);
   const turns = useMemo(() => {
@@ -871,7 +879,7 @@ export function useRoom({
     );
     return withPendingSends(mirror, sent).map((turn) => {
       if (turn.parts !== undefined || turn.role !== "assistant") return turn;
-      const steps = stepsByAt.current.get(turn.at) ?? saved.get(turn.at);
+      const steps = stepsByAt.get(turn.at) ?? saved.get(turn.at);
       return steps === undefined
         ? turn
         : {
@@ -879,8 +887,7 @@ export function useRoom({
             parts: [...steps, { kind: "text" as const, text: turn.text }],
           };
     });
-    // The steps map only grows as the live run commits, which re-renders with a new mirror.
-  }, [mirror, sent, coordinatorSteps.steps]);
+  }, [mirror, sent, coordinatorSteps.steps, stepsByAt]);
   // What each of the coordinator's calls returned, saved or as this session watched it.
   const coordinatorResults = new Map([
     ...savedResults(coordinatorSteps.steps),
@@ -1414,10 +1421,16 @@ export function useRoom({
       ? partsDispatches(turn.parts, coordinatorResults)
       : [],
   );
-  // A run with no hand-off in this session's view, such as after a reload, still gets its card.
-  for (const run of inFlight)
-    if (!runCards.current.has(run.runId)) runCards.current.set(run.runId, run);
-  const unseenRuns = [...runCards.current.values()]
+  // Every specialist run this session saw, so its card keeps its result after the run ends. A run
+  // with no hand-off in this session's view, such as after a reload, still gets its card.
+  const runCards = useSessionMemory(NO_RUNS, (known) =>
+    withEntries(
+      known,
+      inFlight.map((run) => [run.runId, run] as const),
+      () => true,
+    ),
+  );
+  const unseenRuns = [...runCards.values()]
     .filter(
       (run) =>
         !dispatches.some((dispatch) =>
@@ -1430,6 +1443,13 @@ export function useRoom({
       at: Date.parse(run.startedAt),
       dispatch: runDispatch(run),
     }));
+  // When this session first saw each hand-off, so the document it files reads as its result.
+  const dispatchSeen = useSessionMemory(NO_SIGHTINGS, (known) =>
+    noteDispatches(known, snapshot.artifacts, [
+      ...dispatches,
+      ...unseenRuns.map(({ dispatch }) => dispatch),
+    ]),
+  );
   // Every card with a run streams its steps and what it is producing from the moment the call that
   // started it returns, rather than once the room's next read lists it at work, and a step it takes
   // reads the room again so its state moves with it.
@@ -1467,7 +1487,7 @@ export function useRoom({
     artifacts: snapshot.artifacts,
     inFlight,
     failed: snapshot.failed,
-    seen: dispatchSeen.current,
+    seen: dispatchSeen,
     summaries: new Map(
       shownDocuments.flatMap(({ kind, summary }): [string, string][] =>
         summary === undefined ? [] : [[kind, summary]],
@@ -1501,8 +1521,6 @@ export function useRoom({
       }
     },
   };
-  for (const dispatch of dispatches) noteDispatch(dispatchRoom, dispatch);
-  for (const { dispatch } of unseenRuns) noteDispatch(dispatchRoom, dispatch);
   const cards = filedDispatches(dispatchRoom, dispatches, unseenRuns);
   const design = artifacts.find((item) => item.kind === "design");
   // The design a review screen shows: the newest design option, else the filed design. Only an option is approved there: the hub records the choice

@@ -15,6 +15,7 @@ import {
 import { wording } from "../../config.ts";
 import type { CallResult } from "./live-run.ts";
 import type { RunPreview } from "./run-preview.ts";
+import { withEntries } from "./session-memory.ts";
 import { actionRole, roleOf, startingActions } from "./roles.ts";
 import type { PlacedDispatch } from "./transcript.tsx";
 
@@ -181,13 +182,7 @@ export type DispatchRoom = {
   readonly inFlight: readonly InFlightRun[];
   readonly failed: readonly FailedRun[];
   /** What this session saw when each hand-off first appeared, by its key. */
-  readonly seen: Map<
-    string,
-    {
-      readonly at: number;
-      readonly versions: ReadonlyMap<string, number>;
-    }
-  >;
+  readonly seen: ReadonlyMap<string, Sighting>;
   /** What each streamed run is producing right now, by run id. */
   readonly previews?: ReadonlyMap<string, RunPreview>;
   /** Each call a streamed run made while the room watched it, in order, by run id. */
@@ -250,15 +245,34 @@ export type DispatchStatus =
   /** It reported something it could not get past, in its own words or Builder's. */
   | { readonly state: "blocked"; readonly reason: string };
 
-/** Records the first sighting of a hand-off, so a document filed later reads as its result. */
-export function noteDispatch(room: DispatchRoom, dispatch: Dispatch): void {
-  if (room.seen.has(dispatch.key)) return;
-  room.seen.set(dispatch.key, {
-    at: Date.now(),
-    versions: new Map(
-      room.artifacts.map((item) => [identity(item), item.version]),
-    ),
-  });
+/** When a hand-off was first seen, and each filed thing's version then. */
+export type Sighting = {
+  readonly at: number;
+  readonly versions: ReadonlyMap<string, number>;
+};
+
+const sightingNow = (artifacts: readonly ProjectArtifact[]): Sighting => ({
+  at: Date.now(),
+  versions: new Map(artifacts.map((item) => [identity(item), item.version])),
+});
+
+/**
+ * `seen` with the first sighting of each hand-off not in it yet, so a document filed later reads as
+ * its result. The same map when every hand-off is already in it.
+ */
+export function noteDispatches(
+  seen: ReadonlyMap<string, Sighting>,
+  artifacts: readonly ProjectArtifact[],
+  dispatches: readonly Dispatch[],
+): ReadonlyMap<string, Sighting> {
+  const fresh = dispatches.filter((dispatch) => !seen.has(dispatch.key));
+  if (fresh.length === 0) return seen;
+  const now = sightingNow(artifacts);
+  return withEntries(
+    seen,
+    fresh.map((dispatch) => [dispatch.key, now] as const),
+    () => true,
+  );
 }
 
 const identity = (item: ProjectArtifact) =>
@@ -298,9 +312,10 @@ export function dispatchStatus(
     if (filed !== undefined && !atWork) return readyOf(filed);
   }
   if (dispatch.pending) return { state: "starting" };
-  const seen = room.seen.get(dispatch.key);
+  // One the room has not noted yet is seen for the first time now, so nothing filed is its result yet.
+  const seen = room.seen.get(dispatch.key) ?? sightingNow(room.artifacts);
   const moved = room.artifacts.filter(
-    (item) => item.version > (seen?.versions.get(identity(item)) ?? 0),
+    (item) => item.version > (seen.versions.get(identity(item)) ?? 0),
   );
   // A writer named by no call is known by the one document that moved since it was seen.
   const writes =
@@ -319,8 +334,7 @@ export function dispatchStatus(
     dispatch.runId === undefined ? undefined : room.ended?.get(dispatch.runId);
   if (ended?.blocked !== undefined)
     return { state: "blocked", reason: ended.blocked.reason };
-  const after = (iso: string) =>
-    seen === undefined || Date.parse(iso) >= seen.at - 60_000;
+  const after = (iso: string) => Date.parse(iso) >= seen.at - 60_000;
   const failure = room.failed.find((run) =>
     dispatch.runId === undefined
       ? run.role === dispatch.role && after(run.endedAt)
@@ -360,7 +374,6 @@ export function dispatchStatus(
 
 /** The hand-off's run is still starting, at work or held on an approval, so its work is current. */
 export function dispatchLive(dispatch: Dispatch, room: DispatchRoom): boolean {
-  noteDispatch(room, dispatch);
   const { state } = dispatchStatus(dispatch, room);
   return state === "starting" || state === "working" || state === "approval";
 }
