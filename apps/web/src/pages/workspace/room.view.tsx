@@ -57,6 +57,13 @@ import { TypedYesCountdown, type TypedYes } from "./typed-yes.tsx";
 import { pastedFiles } from "./pasted-files.ts";
 import { ChatSheet, type ChatSheetProps } from "./chat-sheet.tsx";
 import {
+  choiceOnGone,
+  choiceOnTab,
+  coverOf,
+  NO_CHOICE,
+  type SpaceChoice,
+} from "./overlay.ts";
+import {
   ProjectSidebarView,
   type ProjectSidebarViewProps,
 } from "./project-sidebar.view.tsx";
@@ -330,48 +337,34 @@ export function RoomView({
   // needs the width. Over the project view it waits for Open in the box. Answering it puts it away;
   // so does closing it, which leaves it waiting in the box to open again.
   const side = space?.place === "page" ? space : null;
-  const [sheetOpen, setSheetOpen] = useState(false);
-  const [closedKey, setClosedKey] = useState<string | null>(null);
+  const [choice, setChoice] = useState<SpaceChoice>(NO_CHOICE);
   const [paneShown, setPaneShown] = useState<string | null>(null);
-  // While it waits, the screen stands in for the tab it shows more of, so the person never has
-  // the tab on the page and the screen to open beside it.
-  const showsPane =
-    side !== null &&
-    projectOpen &&
-    side.shows !== null &&
-    side.shows === paneShown;
-  const sheetShown =
-    side !== null &&
-    (sheetOpen ||
-      ((!projectOpen || showsPane) && closedKey !== (space?.key ?? null)));
-  // Opening that tab again brings the screen back after it was closed. Opening any other tab from
-  // the sidebar puts away a screen opened from the box, or the tab would open behind it.
+  // Pulled up over a view, the chat puts itself back on Escape before the view closes.
+  const [chatUp, setChatUp] = useState(false);
+  const cover = coverOf({ projectOpen, space: side, choice, paneShown });
   const opening = (tab: string) => {
-    if (side === null) return;
-    if (tab === side.shows) setClosedKey(null);
-    else setSheetOpen(false);
+    if (side !== null) setChoice((current) => choiceOnTab(current, side, tab));
   };
   const headingRef = useRef<HTMLHeadingElement>(null);
   const inputRef = dock.kind === "composer" ? dock.inputRef : null;
   const openSpace = () => {
-    setClosedKey(null);
-    if (!sheetOpen) setSheetOpen(true);
+    if (choice.kind !== "opened") setChoice({ kind: "opened" });
     else headingRef.current?.focus();
   };
   // Closing takes away the control that had the cursor, so it goes back to the box.
   const refocusBox = useRef(false);
   // Closed over the tab it stands in for, it goes back to the conversation, as it does from there.
   const closeSheet = () => {
-    setSheetOpen(false);
-    setClosedKey(space?.key ?? null);
-    if (showsPane) closeProject();
+    if (side !== null) setChoice({ kind: "closed", key: side.key });
+    if (cover.kind === "space" && cover.over === "tab") closeProject();
     refocusBox.current = true;
   };
   // A space the person opened from the box takes focus to its heading; one that comes of its own
   // accord leaves the cursor where it is.
+  const opened = choice.kind === "opened";
   useEffect(() => {
-    if (sheetOpen) headingRef.current?.focus();
-  }, [sheetOpen]);
+    if (opened) headingRef.current?.focus();
+  }, [opened]);
   // Once a screen is submitted the next takes its place, or the space closes; either way the
   // person carries on in the prompt box, with what they had typed still there.
   const spaceKey = space?.key ?? null;
@@ -380,7 +373,7 @@ export function RoomView({
     const before = shownKey.current;
     shownKey.current = spaceKey;
     if (before === null || before === spaceKey) return;
-    if (spaceKey === null) setSheetOpen(false);
+    if (spaceKey === null) setChoice(choiceOnGone);
     const active = document.activeElement;
     const lost =
       active === null ||
@@ -403,36 +396,31 @@ export function RoomView({
       if (opener instanceof HTMLElement) opener.focus();
     };
   }, [projectOpen]);
-  // Escape puts the space away first; a menu inside the view closes on Escape before that, and
-  // marks the key as used.
+  // Escape puts away what covers the conversation, the space before the view. A menu inside the
+  // view closes on Escape first and marks the key as used; a chat pulled up puts itself back first.
   const putAway = useEffectEvent(() => {
-    // An open chat sheet takes the key to put itself back, whichever listener hears it first;
-    // the space or the view closes on the next one.
-    const chat =
-      mainRef.current?.querySelector(
-        '[data-slot="chat-sheet"]:not([data-state="closed"])',
-      ) ?? null;
-    if (chat !== null) return;
-    if (sheetShown) closeSheet();
+    if (chatUp) return;
+    if (cover.kind === "space") closeSheet();
     else closeProject();
   });
+  const covered = cover.kind !== "chat";
   useEffect(() => {
-    if (!projectOpen && !sheetShown) return;
+    if (!covered) return;
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.defaultPrevented) return;
       putAway();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [projectOpen, sheetShown]);
+  }, [covered]);
   // How many sketches at work are on the project's page.
   const [sketches, setSketches] = useState(0);
   const showSketch = useCallback(() => {
     setSketches((count) => count + 1);
     return () => setSketches((count) => count - 1);
   }, []);
-  // The project view is in sight unless the plugin sheet covers it too.
-  const projectShown = projectOpen && !sheetShown;
+  const projectShown = cover.kind === "project";
+  const sheetShown = cover.kind === "space";
   // A screen in the plugin space reaches the box: its forward action, placeholder and Send.
   const ports = useBoxPorts();
   const card = waitingCard(
@@ -451,7 +439,6 @@ export function RoomView({
   // Covered, the conversation is out of sight, so the box has the chat to pull up and its pill says
   // what is running. Full screen is the room's own conversation: what the chat was pulled up over
   // is put away.
-  const covered = projectOpen || sheetShown;
   const fullScreen = () => {
     if (sheetShown) closeSheet();
     closeProject();
@@ -543,8 +530,12 @@ export function RoomView({
               chat={covered ? chat : undefined}
               chatStart={
                 covered
-                  ? { saysWork: true, onFullScreen: fullScreen }
-                  : undefined
+                  ? {
+                      saysWork: true,
+                      onFullScreen: fullScreen,
+                      onUpChange: setChatUp,
+                    }
+                  : { onUpChange: setChatUp }
               }
               answersShell={shell.answers}
             />
@@ -747,7 +738,7 @@ type AnswersShell = (text: string) => boolean;
 /** Where the chat sheet starts, before the person moves it. */
 type ChatStart = Pick<
   ChatSheetProps,
-  "defaultState" | "defaultPull" | "onFullScreen" | "saysWork"
+  "defaultState" | "defaultPull" | "onFullScreen" | "saysWork" | "onUpChange"
 >;
 
 /**

@@ -108,6 +108,8 @@ export type ChatSheetProps = {
    * carries on typing; absent, it goes to the pill or handle that opens the chat again.
    */
   putBackTo?: RefObject<HTMLElement | null> | undefined;
+  /** Told when the chat is pulled up or put back, so the view under it leaves Escape to the chat. */
+  onUpChange?: ((up: boolean) => void) | undefined;
 };
 
 const reducedMotion = () =>
@@ -131,6 +133,7 @@ export function ChatSheet({
   defaultState = "closed",
   defaultPull,
   putBackTo,
+  onUpChange,
   box,
 }: ChatSheetProps & { box: ReactNode }) {
   const historyId = useId();
@@ -150,6 +153,9 @@ export function ChatSheet({
 
   const shown = state !== "closed" || moving;
   const hasChat = children !== undefined && children !== null;
+  useEffect(() => {
+    onUpChange?.(shown);
+  }, [onUpChange, shown]);
 
   // Pinned to the box, the history overflows upward, which scrollHeight does not count; how far
   // its header starts above or below its top edge says how tall it wants to be.
