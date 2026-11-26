@@ -14,7 +14,6 @@ import {
   useState,
   type ComponentType,
   type ReactNode,
-  type Ref,
 } from "react";
 import { Info, MapPin } from "lucide-react";
 import type { Offer } from "@corbits-builder/plugin";
@@ -30,8 +29,6 @@ type Device = "desktop" | "phone";
 type Place = { screen: string; state: string | null };
 type Tagged = typeof At.infer;
 type Said = typeof Comment.infer;
-
-export type FrameHandle = { go(place: Place): void };
 
 /** Where in the tagged element the click fell, and the element's own short name, if it has one. */
 export type Spot = {
@@ -63,7 +60,6 @@ export type FrameProps = {
   onTag(at: Tagged, spot: Spot): void;
   pins?: readonly FramePin[];
   onPin?(pin: number): void;
-  ref?: Ref<FrameHandle>;
   /** The design pane's floating bar around a frame that fills the page, and a panel over it. */
   bar?:
     | {
@@ -337,7 +333,6 @@ function Review({
 }) {
   const Frame = host.mockupFrame;
   const Card = host.commentCard;
-  const frame = useRef<FrameHandle>(null);
   const [device, setDevice] = useState<Device>("desktop");
   const [tagging, setTagging] = useState(false);
   const [shown, setShown] = useState<Place | null>(null);
@@ -412,9 +407,6 @@ function Review({
     if (state.selected === pin && state.writing === null)
       return dispatch({ kind: "close" });
     dispatch({ kind: "select", pin });
-    const at = state.pins[pin - 1]?.comment.at;
-    if (at?.screen !== undefined && !onPlace(at, shown))
-      frame.current?.go({ screen: at.screen, state: at.state ?? null });
   };
   const writingPin = state.pins.length + 1;
   const chosen =
@@ -502,7 +494,6 @@ function Review({
       aria-label={text.title}
     >
       <Frame
-        ref={frame}
         files={design.files}
         device={device}
         tagging={tagging}
