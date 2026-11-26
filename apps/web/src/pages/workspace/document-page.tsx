@@ -536,6 +536,9 @@ export function DocumentPage({
 
   // A handle drags its end of the passage to the text under the pointer, measured from the line it
   // took hold of, so the words move with the finger rather than with the knob above or below them.
+  // The drag in progress; aborting it removes its window listeners.
+  const drag = useRef<AbortController>(null);
+  useEffect(() => () => drag.current?.abort(), []);
   const resizeFrom = (side: "start" | "end", event: PointerEvent) => {
     const column = pageColumn.current;
     // Passages are counted in the document's text, not its title, so a handle can't reach the title.
@@ -561,7 +564,9 @@ export function DocumentPage({
       event.clientY -
       (column.getBoundingClientRect().top + line.y + line.height / 2);
     column.dataset.resizing = "";
+    const pointer = event.pointerId;
     const move = (moved: globalThis.PointerEvent) => {
+      if (moved.pointerId !== pointer) return;
       const caret = caretAt(moved.clientX, moved.clientY - lift);
       if (caret === null || !prose.contains(caret.node)) return;
       const next = document.createRange();
@@ -571,15 +576,18 @@ export function DocumentPage({
       else next.setEnd(caret.node, caret.offset);
       if (!next.collapsed) onResize(id, next);
     };
-    const stop = () => {
+    const stop = (ended: globalThis.PointerEvent) => {
+      if (ended.pointerId !== pointer) return;
       delete column.dataset.resizing;
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", stop);
-      window.removeEventListener("pointercancel", stop);
+      listening.abort();
     };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", stop);
-    window.addEventListener("pointercancel", stop);
+    drag.current?.abort();
+    const listening = new AbortController();
+    drag.current = listening;
+    const { signal } = listening;
+    window.addEventListener("pointermove", move, { signal });
+    window.addEventListener("pointerup", stop, { signal });
+    window.addEventListener("pointercancel", stop, { signal });
   };
 
   const narrow = margin !== undefined && !roomy;

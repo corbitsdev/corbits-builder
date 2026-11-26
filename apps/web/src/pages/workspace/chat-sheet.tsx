@@ -245,7 +245,13 @@ export function ChatSheet({
     glide(to);
   };
 
-  useEffect(() => stopSpring, []);
+  // The pull in progress; aborting it removes its window listeners.
+  const pull = useRef<AbortController>(null);
+  const stopAll = () => {
+    pull.current?.abort();
+    stopSpring();
+  };
+  useEffect(() => stopAll, []);
 
   // With no chat to hold, such as once the room's own conversation is back in sight, it is put away.
   useLayoutEffect(() => {
@@ -355,9 +361,7 @@ export function ChatSheet({
     };
     const end = (next: globalThis.PointerEvent) => {
       if (next.pointerId !== pointer) return;
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", end);
-      window.removeEventListener("pointercancel", end);
+      listening.abort();
       setHeld(false);
       if (!moved) return;
       // Held still before letting go, the pull has no speed left to hand on.
@@ -374,9 +378,13 @@ export function ChatSheet({
       refocus.current = opens ? "handle" : "grip";
       glide(opens ? "open" : "closed", velocity * 1000);
     };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", end);
-    window.addEventListener("pointercancel", end);
+    pull.current?.abort();
+    const listening = new AbortController();
+    pull.current = listening;
+    const { signal } = listening;
+    window.addEventListener("pointermove", move, { signal });
+    window.addEventListener("pointerup", end, { signal });
+    window.addEventListener("pointercancel", end, { signal });
   };
 
   const press = (event: MouseEvent<HTMLButtonElement>) => {
