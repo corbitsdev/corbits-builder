@@ -1,21 +1,11 @@
 /**
- * The composer's placeholder, from project status rather than the next-step
- * sentence. An open approval keeps its own line.
+ * The composer's placeholder, read from the room's facts about the project, which the status line
+ * reads too. An open approval has a line of its own.
  */
-import type {
-  ProjectStatus,
-  ProjectWorker,
-} from "@corbits-builder/schemas/project-status";
 import { wording } from "../../config.ts";
+import type { RoomStatusFacts } from "./room-status.ts";
 
 const copy = wording.composer;
-
-/** Work is under way: the box asks for a reply and never names who is doing the work. */
-function underWay(working: readonly ProjectWorker[]): boolean {
-  return working.some(
-    (item) => item.state === "working" || item.state === "starting",
-  );
-}
 
 export function composerPlaceholder(input: {
   approvalOpen: boolean;
@@ -23,20 +13,18 @@ export function composerPlaceholder(input: {
   questionsOpen: boolean;
   /** What the open question's screen asks of the prompt box, when it says. */
   screenReply: string | undefined;
-  /** Absent until project status has loaded. */
-  status: ProjectStatus | undefined;
+  facts: Pick<RoomStatusFacts, "thinking" | "working" | "failed" | "app">;
   /** No pane deliverables, design draft, or concepts yet. */
   nothingFiled: boolean;
 }): string {
   if (input.approvalOpen) return wording.approval.composerPlaceholder;
   if (input.questionsOpen)
     return input.screenReply ?? wording.questions.composerPlaceholder;
-  const status = input.status;
-  if (status === undefined) return copy.reply;
-  if (underWay(status.working)) return copy.reply;
-  if (status.app.state === "running") return copy.change;
-  if (status.app.state === "failed" || status.failedSpecialist !== undefined)
-    return copy.fix;
+  const { thinking, working, failed, app } = input.facts;
+  // Work under way asks for a reply, and names no one.
+  if (thinking || working.length > 0) return copy.reply;
+  if (app === "running") return copy.change;
+  if (app === "failed" || failed.length > 0) return copy.fix;
   if (input.nothingFiled) return copy.making;
   return copy.reply;
 }

@@ -51,10 +51,6 @@ export const keys = {
     all: ["openDecisions"] as const,
     of: (projectId: string) => ["openDecisions", projectId] as const,
   },
-  projectNextStep: {
-    all: ["projectNextStep"] as const,
-    of: (projectId: string) => ["projectNextStep", projectId] as const,
-  },
   /** The calls one run made, from its saved conversation. */
   runSteps: (tenantId: string, runId: string) =>
     ["runSteps", tenantId, runId] as const,

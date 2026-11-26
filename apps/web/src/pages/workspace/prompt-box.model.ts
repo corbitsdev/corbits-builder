@@ -132,6 +132,8 @@ export type PromptBox = {
   spaceScreen: SpaceScreenProps | null;
   /** The pill's line and button. */
   status: StatusPillContent | null;
+  /** The facts the pill's line comes from. The box's placeholder reads them too. */
+  facts: RoomStatusFacts;
   /** The line above the words about what sending them restarts. */
   restarts: string | null;
   /** A specialist is at work, so Stop stands where Send is while the box is empty. */
@@ -392,6 +394,7 @@ export function usePromptBox(room: PromptBoxRoom): PromptBox {
           },
     spaceScreen,
     status,
+    facts,
     restarts: sendWarning(waiting),
     working: working.length > 0,
     decides,

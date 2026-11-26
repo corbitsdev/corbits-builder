@@ -151,7 +151,6 @@ import {
   useSeenVersions,
   type SeenVersions,
 } from "./seen-versions.ts";
-import { projectNextStepQuery, useProjectNextStep } from "./next-step.model.ts";
 import { composerPlaceholder } from "./composer-placeholder.ts";
 import {
   needsModelSetup,
@@ -503,7 +502,6 @@ export function useRoomGate({
   // The room's other reads start with it, so the ready room mounts with them in hand.
   usePrefetchQuery(projectActivityQuery(projectId));
   usePrefetchQuery(projectRunStatesQuery(projectId));
-  usePrefetchQuery(projectNextStepQuery(projectId));
   usePrefetchQuery(acceptedMaterialsQuery(projectId));
   // A prefetch cannot wait on the project's status, so this read observes the decisions instead.
   useQuery(openDecisionsQuery(projectId, status === "active"));
@@ -690,8 +688,6 @@ export function useRoom({
   committedAtRef.current = latestAssistantAt(mirror);
   const reportedFailure = useRef<number | null>(null);
   const rolesAtWork = useRolesAtWork(projectId);
-  // The line above the conversation is preference-gated; the placeholder is not.
-  const projectStatus = useProjectNextStep(projectId);
   const [gateDone, setGateDone] = useState(0);
   // The waits that belong to this project, from the open decisions.
   const decisions = useQuery(
@@ -1836,7 +1832,7 @@ export function useRoom({
                 openQuestion.asked.action ?? "",
               )?.reply
             : undefined),
-        status: projectStatus.data,
+        facts: promptBox.facts,
         nothingFiled: nothingYet,
       }),
       inputRef: composerRef,

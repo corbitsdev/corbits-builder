@@ -60,7 +60,6 @@ describe("project room", () => {
     for (const key of [
       keys.projectActivity.of(projectId),
       keys.projectRunStates.of(projectId),
-      keys.projectNextStep.of(projectId),
       keys.acceptedMaterials.of(projectId),
     ])
       expect(queryClient.getQueryState(key)?.fetchStatus).toBe("fetching");
