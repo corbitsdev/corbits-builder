@@ -1135,7 +1135,6 @@ export const wording = {
     passageNote: (quote: string) =>
       `Comment on “${quote.length > 40 ? `${quote.slice(0, 40).trimEnd()}…` : quote}”`,
   },
-  printDocument: "Save as PDF or print",
   removeAttachment: {
     confirm: "Yes, remove it",
     done: (name: string, told: boolean) =>

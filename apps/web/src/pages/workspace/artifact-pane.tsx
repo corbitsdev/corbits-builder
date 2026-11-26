@@ -31,7 +31,6 @@ import {
   readStoredPreference,
   writeStoredPreference,
 } from "../../stored-preference.ts";
-import { printDocument } from "./print-document.ts";
 import { LIVE_TAB, MANUAL_TAB, MOCKUP_TAB } from "./tab-follow.ts";
 import type { ApproachChoice } from "./approach-choice.ts";
 import type { PluginTab } from "./plugin-screens.tsx";
@@ -211,8 +210,6 @@ export type ArtifactPaneContent = {
   concepts: readonly DesignConcept[];
   /** The tab the room asks for, from the conversation or the sidebar; a new object asks again. */
   openTab?: { value: string } | null;
-  /** A written document the room asks to print; it prints once the pane has read it. */
-  printTab?: { value: string } | null;
   /** Hears which tab the pane shows, so the room can mark it. */
   onShownChange?: (tab: string | null) => void;
   /** The filed documents, a pane each. */
@@ -256,7 +253,6 @@ export function ArtifactPane({
   manual = null,
   concepts,
   openTab = null,
-  printTab = null,
   onShownChange,
   liveApp = null,
   conceptMockup,
@@ -393,25 +389,6 @@ export function ArtifactPane({
   useEffect(() => {
     onShownChange?.(openId);
   }, [openId]);
-  // A print the room asked for waits until the document it names is read on the pane.
-  const [toPrint, setToPrint] = useState<string | null>(null);
-  useEffect(() => {
-    if (printTab === null) return;
-    choose(printTab.value);
-    setToPrint(printTab.value);
-  }, [printTab]);
-  useEffect(() => {
-    if (toPrint === null || shown?.id !== toPrint) return;
-    if (state?.status === "loading") return;
-    setToPrint(null);
-    if (state?.status === "ready") print(toPrint);
-  }, [toPrint, shown?.id, state?.status]);
-  const print = (value: string) => {
-    const item = documents.find((entry) => entry.id === value);
-    const pane = document.getElementById(panelTabIds(TAB_PREFIX, value).pane);
-    if (item !== undefined && pane !== null)
-      printDocument(pane, item.title, item.status);
-  };
   const outputs = documents.length > 0 || concepts.length > 0;
   useEffect(() => {
     if (open && shown?.unread) onSeen(shown.id);
