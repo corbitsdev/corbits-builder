@@ -601,8 +601,9 @@ export const wording = {
     backToChat: "Back to chat",
     backToChatHint: "Back to chat (Esc)",
     /** A plugin tab's status in the room's top bar, for a screen reader, which otherwise hears only it. */
-    tabStatus: (tab: string, status: string) => `${tab}: ${status}`,
-    openTab: (tab: string) => `Open ${tab}`,
+    tabStatus: (tab: string, status: string) =>
+      status === tab ? tab : `${tab}: ${status}`,
+    openTab: (tab: string) => `Open the ${tab} page`,
     /** A plan step's settings, in its row's menu in the project sidebar. */
     plan: {
       askFirst: "Ask me first",
