@@ -103,8 +103,8 @@ used or Share with reviewers.
 A project keeps the preferences its creator had when it started; a later
 change applies to new projects.
 
-The same tab also has **Appearance** (a Light, System or Dark theme, and
-whether **Document tips** are shown) and your **Account**, with **Sign out**.
+The same tab also has **Appearance** (a Light, System or Dark theme) and your
+**Account**, with **Sign out**.
 
 ## 2. Start a project
 
@@ -236,8 +236,6 @@ While reading, you can:
   reload it.
 - Use the version menu to open an earlier version, or **Compare with previous**
   to see what changed. **Stop comparing** returns to the normal view.
-- Use **Tips** in the bar at the foot of the document for reminders. You can
-  turn them off there or in Settings.
 
 To ask for a change, write it in plain words in the conversation.
 

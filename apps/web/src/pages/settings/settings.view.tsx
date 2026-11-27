@@ -26,7 +26,6 @@ import {
   SettingsSectionBody,
   SettingsSubhead,
 } from "./settings-section.tsx";
-import { ChoiceSegments } from "@corbits-builder/plugin-ui/choice-segments";
 import { PictureChoice, ThemePicture } from "./preference-choice.tsx";
 import {
   Banner,
@@ -53,11 +52,6 @@ const THEME_OPTIONS = (["light", "system", "dark"] as const).map((mode) => ({
   picture: <ThemePicture mode={mode} />,
 }));
 
-const TIPS_OPTIONS = (["on", "off"] as const).map((shown) => ({
-  id: shown,
-  label: wording.settings.appearance.tipsChoices[shown],
-}));
-
 /** The sections that read the hub for themselves, each drawn only while its tab is open. */
 export type SettingsSlots = {
   providers: ReactNode;
@@ -71,9 +65,6 @@ export type SettingsSlots = {
 type AppearanceProps = {
   theme: ThemeMode;
   onThemeChange: (theme: ThemeMode) => void;
-  /** Documents show their tips. */
-  documentTips: boolean;
-  onDocumentTipsChange: (shown: boolean) => void;
 };
 
 type AccountProps = {
@@ -93,7 +84,7 @@ export type SettingsViewProps = SettingsSlots & {
     | { state: "loading" }
     | { state: "failed"; fault: string; onRetry: () => void }
     | { state: "ready" };
-  /** The theme and the document tips choice kept in this browser. */
+  /** The theme kept in this browser. */
   appearance: AppearanceProps;
   /** Who is signed in; null when nobody is, and the Account section is left out. */
   account: AccountProps | null;
@@ -229,12 +220,7 @@ function useEscapeBack(onBack: (() => void) | undefined) {
   }, [onBack]);
 }
 
-function Appearance({
-  theme,
-  onThemeChange,
-  documentTips,
-  onDocumentTipsChange,
-}: AppearanceProps) {
+function Appearance({ theme, onThemeChange }: AppearanceProps) {
   const copy = wording.settings.appearance;
   return (
     <SettingsGroup title={copy.section} lead={copy.lead}>
@@ -250,20 +236,6 @@ function Appearance({
           options={THEME_OPTIONS}
           choice={theme}
           onChoose={(mode) => onThemeChange(mode as ThemeMode)}
-        />
-      </SettingsRow>
-      <SettingsRow
-        layout="columns"
-        label={copy.tips}
-        hint={copy.tipsHint}
-        htmlFor="settings-tips"
-      >
-        <ChoiceSegments
-          id="settings-tips"
-          label={copy.tips}
-          options={TIPS_OPTIONS}
-          choice={documentTips ? "on" : "off"}
-          onChoose={(shown) => onDocumentTipsChange(shown === "on")}
         />
       </SettingsRow>
     </SettingsGroup>

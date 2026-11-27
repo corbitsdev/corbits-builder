@@ -289,15 +289,6 @@ export const wording = {
     user_manual: "User manual",
   } as Record<string, string> & { user_manual: string },
   documentRetryFailed: "The project could not be read. Try again.",
-  tips: {
-    label: "Tips",
-    turnOff: "Turn off tips",
-    items: [
-      "Select a passage on a page to comment on it",
-      "Ask for changes in plain words",
-      "Compare versions with the version menu",
-    ],
-  },
   liveApp: {
     frameTitle: "The running preview",
     notBuiltTitle: "Anything that runs appears here",
@@ -1513,9 +1504,6 @@ export const wording = {
       theme: "Theme",
       themeHint: `How ${productName} looks in this browser.`,
       themes: { light: "Light", system: "System", dark: "Dark" },
-      tips: "Document tips",
-      tipsHint: "A tips button at the foot of each document.",
-      tipsChoices: { on: "Shown", off: "Hidden" },
     },
     account: {
       section: "Account",

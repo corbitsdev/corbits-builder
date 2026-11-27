@@ -497,14 +497,6 @@ test("a registry read failure leaves browser settings usable", async () => {
       sessionStorage.setItem("sb.model-setup.later", "1"),
     );
     await page.goto(`${server.url}?view=settings&tab=preferences`);
-    const local = page.getByRole("radiogroup", {
-      name: "Document tips",
-      exact: true,
-    });
-    await local.getByRole("radio", { name: "Hidden", exact: true }).click();
-    await browserExpect(
-      local.getByRole("radio", { name: "Hidden", exact: true }),
-    ).toBeChecked();
     await browserExpect(
       page.getByText("Service Unavailable", { exact: true }),
     ).toBeVisible();
@@ -520,14 +512,9 @@ test("a registry read failure leaves browser settings usable", async () => {
     ).toBeVisible();
     await browserExpect(dark).toBeChecked();
     await browserExpect(page.locator("html")).toHaveClass(/dark/);
-    await browserExpect(
-      local.getByRole("radio", { name: "Hidden", exact: true }),
-    ).toBeChecked();
     await page.unroute("**/settings/preferences");
     await page.getByRole("button", { name: "Retry", exact: true }).click();
-    await browserExpect(
-      local.getByRole("radio", { name: "Hidden", exact: true }),
-    ).toBeChecked();
+    await browserExpect(dark).toBeChecked();
     await browserExpect(
       page.locator("#preference-row-replies").getByRole("radio").first(),
     ).toBeEnabled();
