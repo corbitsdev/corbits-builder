@@ -14,7 +14,11 @@ export const NativeSpecialistDeployment = type({
     "+": "reject",
     kind: "'asset'",
     assetId: "string > 0",
-    package: { "+": "reject", format: "'tarball'" },
+    package: type({ "+": "reject", format: "'tarball'" }).or({
+      "+": "reject",
+      format: "'source'",
+      commitSha: "string > 0",
+    }),
   },
   entry: "string > 0",
   pin: /^(?:@[a-z0-9._-]+\/)?[a-z0-9._-]+@\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/,

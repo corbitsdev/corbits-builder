@@ -61,19 +61,7 @@ type Inference = Record<string, RoleInference>;
 type Source = Pick<RoleBinding, "provider" | "model">;
 
 // One build per set of resolved role inference: it is inlined, so it is part of the bundle.
-const packages = new Map<
-  string,
-  Promise<
-    {
-      assetName: string;
-      filename: string;
-      packageName: string;
-      version: string;
-      entry: string;
-      bytes: Uint8Array;
-    }[]
-  >
->();
+const packages = new Map<string, ReturnType<typeof buildAndRead>>();
 
 export function startFailed(): ProjectError {
   return new ProjectError(409, "coordinator_start_failed", {
@@ -130,12 +118,15 @@ async function buildAndRead(key: string, inference: Inference) {
       inference,
     );
     return await Promise.all(
-      manifest.map(async (item) => ({
-        ...item,
-        bytes: new Uint8Array(
-          await Bun.file(join(directory, item.file)).arrayBuffer(),
-        ),
-      })),
+      manifest.map(async (item) => {
+        if (item.format === "source") return item;
+        return {
+          ...item,
+          bytes: new Uint8Array(
+            await Bun.file(join(directory, item.file)).arrayBuffer(),
+          ),
+        };
+      }),
     );
   } catch (error) {
     packages.delete(key);
@@ -375,6 +366,7 @@ async function registryAsset(
   ports: InstallForTenantPorts,
   actor: Actor,
   name: string,
+  kind: "package-registry" | "workflow",
 ): Promise<string> {
   const [found] = await ports.db
     .select({ id: asset.id })
@@ -382,7 +374,7 @@ async function registryAsset(
     .where(
       and(
         eq(asset.tenantId, actor.tenantId),
-        eq(asset.kind, "package-registry"),
+        eq(asset.kind, kind),
         eq(asset.name, name),
       ),
     );
@@ -390,7 +382,7 @@ async function registryAsset(
   try {
     const created = await ports.assets.createAsset({
       tenantId: actor.tenantId,
-      kind: "package-registry",
+      kind,
       name,
       creatorPrincipalId: actor.principalId,
     });
@@ -407,7 +399,7 @@ async function registryAsset(
       .where(
         and(
           eq(asset.tenantId, actor.tenantId),
-          eq(asset.kind, "package-registry"),
+          eq(asset.kind, kind),
           eq(asset.name, name),
         ),
       );
@@ -494,9 +486,41 @@ export async function installForTenant(
     const binding = bindings(role);
     return offerings.get(binding.provider + "\u0000" + binding.model)!;
   };
-  const published: { assetId: string; entry: string; pin: string }[] = [];
+  const published: {
+    assetId: string;
+    entry: string;
+    pin: string;
+    package: InstalledWorkflows["packages"][string]["source"]["package"];
+  }[] = [];
   for (const item of built) {
-    const assetId = await registryAsset(ports, actor, item.assetName);
+    const pin = item.packageName + "@" + item.version;
+    if (item.format === "source") {
+      const assetId = await registryAsset(
+        ports,
+        actor,
+        item.assetName,
+        "workflow",
+      );
+      const { commitSha } = await ports.assets.populateAsset({
+        assetId,
+        ref: DEFAULT_ASSET_REF,
+        principal: HUB,
+        tree: { files: item.files, message: pin },
+      });
+      published.push({
+        assetId,
+        entry: item.entry,
+        pin,
+        package: { format: "source", commitSha },
+      });
+      continue;
+    }
+    const assetId = await registryAsset(
+      ports,
+      actor,
+      item.assetName,
+      "package-registry",
+    );
     const names = await tarballNames(ports.assets, assetId);
     // The filename's version is the bundle's hash, so a stored tarball of that name holds this
     // bundle; its gzip bytes differ on every rebuild and are not compared.
@@ -514,7 +538,8 @@ export async function installForTenant(
     published.push({
       assetId,
       entry: item.entry,
-      pin: item.packageName + "@" + item.version,
+      pin,
+      package: { format: "tarball" },
     });
   }
   const deployment = (name: string, role: string) => {
@@ -524,7 +549,7 @@ export async function installForTenant(
       source: {
         kind: "asset" as const,
         assetId: receipt.assetId,
-        package: { format: "tarball" as const },
+        package: receipt.package,
       },
       entry: receipt.entry,
       pin: receipt.pin,
