@@ -377,7 +377,7 @@ export const wording = {
   },
   newProject: {
     title: "What do you want to make today?",
-    lead: "Build, write, edit or improve anything. Say what you want and the coordinator takes it from there.",
+    lead: "Build, publish and maintain anything. Say what you want and Builder will guide you from there.",
     starting: "Starting your project…",
     titleRequired: "A project needs a title.",
     createFailed: "The project could not be created.",
@@ -1177,8 +1177,7 @@ export const wording = {
     coordinatorNotStarted: "The coordinator for this project did not start.",
     projectNotOpened: "The project could not be opened.",
     projectLoading: (title: string) => `Opening ${title}…`,
-    projectEmpty:
-      "Describe what you want to make or change to start a project.",
+    projectEmpty: "Describe what you want to build to start a project.",
     stepFailed: "That step could not finish.",
   },
   /** The coordinator's questions as a card the person answers in the conversation. */

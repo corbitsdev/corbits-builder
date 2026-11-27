@@ -553,7 +553,7 @@ provider's status in **Settings → Providers**, then send your message again.
   whoever runs it to restart it.
 - **"Builder is responding slowly"**: everything waits on the server. If it
   stays slow, restart it.
-- **"Describe what you want to make or change to start a project."**: the box
+- **"Describe what you want to build to start a project."**: the box
   is empty; type what you want first.
 - **"No model provider connected"**: choose **Connect a model provider**.
 - **"The provider refused this key."**: check the key and test again.
