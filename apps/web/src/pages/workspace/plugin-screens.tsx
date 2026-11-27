@@ -11,24 +11,15 @@ import {
   type ReactNode,
 } from "react";
 import type { ScreenStatus } from "@corbits-builder/plugin";
-import type {
-  ScreenRender,
-  ShownScreen,
-} from "@corbits-builder/schemas/project";
+import type { ShownScreen } from "@corbits-builder/schemas/project";
 import { screenWords } from "./roles.ts";
-import type { ScreenLookup } from "./screens.ts";
+import { SLOT, type ScreenLookup } from "./screens.ts";
 import {
   ScreenQuestion,
   type HostSupplies,
   type ListedHostProps,
   type ScreenQuestionProps,
 } from "./screen-question.tsx";
-
-export const SLOT = {
-  "main-page": "page",
-  "inline-chat": "chat",
-  "plugin-bar": "tab",
-} as const satisfies Record<ScreenRender, "page" | "chat" | "tab">;
 
 /** A screen meant for a tab of its own, which the project view shows rather than the space. */
 export const inTab = (screen: ShownScreen) => SLOT[screen.render] === "tab";
