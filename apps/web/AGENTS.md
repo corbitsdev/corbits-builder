@@ -77,6 +77,10 @@ A section, panel or dialog that reads the hub for itself is split the same way.
   query library, the hub client or a model, and a model from importing a view
   or a style. `page-views.test.ts` keeps a view from rendering anything that
   imports the hub.
+- `bun run boundaries` keeps the shell below the pages, so only `App.tsx`,
+  `App.model.ts` and `main.tsx` import from `pages/`; keeps each folder under
+  `pages/` from importing another, so what two share sits directly in
+  `pages/`; and keeps modules out of import cycles, type-only ones included.
 
 ## Every artifact kind is a first-class document
 

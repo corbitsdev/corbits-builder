@@ -10,6 +10,14 @@ module.exports = {
       to: { circular: true, viaOnly: { dependencyTypesNot: ["type-only"] } },
     },
     {
+      name: "no-circular",
+      comment:
+        "Modules in a cycle, even one through types alone, cannot be understood, tested or moved apart one at a time.",
+      severity: "error",
+      from: {},
+      to: { circular: true },
+    },
+    {
       name: "plugin-isolation",
       comment:
         "A plugin must run without the hub, the host or any other plugin, so it may only depend on shared packages.",
@@ -26,6 +34,45 @@ module.exports = {
       severity: "error",
       from: { path: "^(apps|workflows)/" },
       to: { path: "^plugins/" },
+    },
+    {
+      name: "apps-and-workflows-do-not-import-plugins-by-alias",
+      comment:
+        "Only the interface resolves the @plugins alias, so these imports reach a plugin unresolved by the rule above; tests and stories may load a real plugin as a fixture.",
+      severity: "error",
+      from: {
+        path: "^(apps|workflows)/",
+        pathNot: "\\.(test|stories|testing)\\.tsx?$",
+      },
+      to: { path: "^@plugins/" },
+    },
+    {
+      name: "web-shell-below-pages",
+      comment:
+        "The interface's shell is what every page stands on, so only the files that mount the pages reach into them.",
+      severity: "error",
+      from: {
+        path: "^apps/web/src/[^/]+$",
+        pathNot: [
+          "^apps/web/src/(App\\.tsx|App\\.model\\.ts|main\\.tsx)$",
+          "\\.(test|stories|testing)\\.tsx?$",
+        ],
+      },
+      to: { path: "^apps/web/src/pages/" },
+    },
+    {
+      name: "web-page-areas-apart",
+      comment:
+        "Each folder under pages is an area of the interface that can change on its own; what two areas share goes directly in pages or below it.",
+      severity: "error",
+      from: {
+        path: "^apps/web/src/pages/([^/]+)/",
+        pathNot: "\\.(test|stories|testing)\\.tsx?$",
+      },
+      to: {
+        path: "^apps/web/src/pages/[^/]+/",
+        pathNot: "^apps/web/src/pages/$1/",
+      },
     },
     {
       name: "plugin-host-only-from-hub",
@@ -130,7 +177,7 @@ module.exports = {
     },
   ],
   options: {
-    exclude: { path: "(^|/)(node_modules|vendor|dist)/" },
+    exclude: { path: "(^|/)(node_modules|vendor|dist|storybook-static)/" },
     tsConfig: { fileName: "tsconfig.json" },
     tsPreCompilationDeps: true,
     enhancedResolveOptions: {
