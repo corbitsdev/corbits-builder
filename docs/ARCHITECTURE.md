@@ -53,6 +53,9 @@ flowchart TD
     contract["packages/publish-contract"]
     ssh["packages/ssh-publish"]
   end
+  subgraph planlayer["Plan rules"]
+    plan["packages/plan"]
+  end
   subgraph base["Schemas"]
     schemas["packages/schemas"]
   end
@@ -62,13 +65,16 @@ flowchart TD
 
   hub --> host
   hub --> api
+  hub --> plan
   hub --> schemas
   hub --> intx
   web --> client
   web --> ui
   web --> api
+  web --> plan
   web --> schemas
   host --> api
+  host --> plan
   host --> schemas
   plugins --> api
   plugins --> ui
@@ -76,7 +82,9 @@ flowchart TD
   plugins --> contract
   plugins --> ssh
   plugins --> schemas
+  api --> plan
   api --> schemas
+  plan --> schemas
   contract --> api
   ssh --> api
   ssh --> contract
@@ -95,6 +103,8 @@ Not allowed:
 - A plugin importing the hub, the web app, the plugin host or another plugin.
 - Anything other than the hub importing the plugin host.
 - A package importing an app or a plugin.
+- `packages/schemas` importing anything but other schemas.
+- `packages/plan` importing anything but `packages/schemas`.
 
 ## The hub
 
@@ -362,7 +372,7 @@ the plan cannot say a step is done when the records say otherwise:
   each missing fact and what makes it true;
 - anything else has not started.
 
-A group takes its state from its steps. The person declines and restores
+A step is finished once it is done, skipped or cancelled, and a group once nothing in it is left to do: every step is finished, apart from optional steps nobody started. A finished group reads done, or cancelled when the person cancelled any step in it; an unfinished one takes its state from its steps. These shapes are defined once in `@corbits-builder/schemas/plan` and these rules once in `@corbits-builder/plan`; the hub's plan read marks every step and group `finished`, and the coordinator, the plugins and the interface read that mark. The person declines and restores
 optional steps, sets "ask me first" and gives the go-ahead from the plan in the
 interface; each goes to the hub, which tells the coordinator in a note.
 

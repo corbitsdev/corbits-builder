@@ -4,7 +4,6 @@ import {
   credentialProvider,
   notNeededWhileOf,
   wrongFields,
-  Approval,
   type Fact,
   type Field,
   type Started,
@@ -35,6 +34,25 @@ import {
   templateField,
   unmet,
 } from "./facts.ts";
+import {
+  actionSteps,
+  awaitsGoAhead,
+  insertSteps,
+  isDeclined,
+  isLeftToDo,
+  readyPlanGroups,
+  removeSteps,
+  stepIds,
+  stepsForAction,
+  toWriteStep,
+} from "@corbits-builder/plan";
+import {
+  PlanStepApproval,
+  type PlanChildWrite,
+  type PlanGroupWrite,
+  type PlanStepWrite,
+  type PlanViewStep,
+} from "@corbits-builder/schemas/plan";
 import { fields } from "./search/fields.ts";
 import type { Strategy } from "./search/words.ts";
 import {
@@ -96,52 +114,6 @@ export type CheckRan =
     }
   | { started: true; plugin: string; action: string; checkId: string };
 
-/**
- * An action step of the project's plan as the host shows it: a plugin action with its input, and
- * where it stands.
- */
-type SavedPlanChild = {
-  id: string;
-  title: string;
-  plugin: string;
-  action: string;
-  input: Record<string, unknown>;
-  askFirst: boolean;
-  goAhead?: { by: string; at: string };
-  optional?: boolean;
-  approval?: Approval;
-  requires?: Fact[];
-  declined?: { by: string; at: string };
-  state: string;
-};
-/**
- * A step of the plan: an action step, or a group that only holds action steps, with the handle of
- * the ready-made plan it was added as when it was.
- */
-export type SavedPlanStep =
-  | SavedPlanChild
-  | {
-      id: string;
-      title: string;
-      plan?: string;
-      steps: readonly SavedPlanChild[];
-    };
-/** A step of the plan as saved: one with no id is new, and the host gives it one. */
-type PlanChildWrite = Omit<SavedPlanChild, "id" | "declined" | "state"> & {
-  id?: string;
-};
-type PlanGroupWrite = {
-  id?: string;
-  title: string;
-  plan?: string;
-  steps: PlanChildWrite[];
-};
-export type PlanStepWrite = PlanChildWrite | PlanGroupWrite;
-
-// The plan's action steps, those its groups hold among them.
-const actionSteps = (steps: readonly SavedPlanStep[]) =>
-  steps.flatMap((step) => ("steps" in step ? step.steps : [step]));
-
 /** What the coordinator's tools need from the project they act on, which only the host can do. */
 export type Project = StarterProject & {
   // Runs a check on its checked input against the project as saved.
@@ -162,7 +134,7 @@ export type Project = StarterProject & {
   // Stops a run the coordinator started that is still at work.
   stop(runId: string): Promise<unknown>;
   // The project's plan as the host shows it, with what it says of each step besides what was saved.
-  plan(): Promise<{ steps: readonly SavedPlanStep[] }>;
+  plan(): Promise<{ steps: readonly PlanViewStep[] }>;
   // Replaces the plan; a step saved with its id keeps the person's marks on it.
   savePlan(steps: readonly PlanStepWrite[]): Promise<unknown>;
   // Whether a credential of this name that deploy can use reaches the project, saved in its tenant or one above it.
@@ -412,7 +384,7 @@ export const makersIn = (catalog: Catalog) => (fact: Fact) =>
   makersOf(catalog, fact).map(({ name }) => name);
 
 /** What gates a plan step: the approval it waits for and the facts it suggests having first. */
-type Gate = { requires?: readonly Fact[]; approval?: Approval };
+type Gate = { requires?: readonly Fact[]; approval?: PlanStepApproval };
 
 /**
  * What a plan step's gate asks that the project lacks. Its approval holds the step back: one
@@ -462,16 +434,9 @@ function readiness(
   };
 }
 
-const SETTLED = new Set(["done", "skipped", "cancelled"]);
-
-// The plan's action steps for this action whose gate still holds: a settled step's gate is spent.
-const gatingSteps = (action: Action, steps: readonly SavedPlanStep[]) =>
-  actionSteps(steps).filter(
-    (step) =>
-      step.plugin === action.plugin &&
-      step.action === action.action &&
-      !SETTLED.has(step.state),
-  );
+// The plan's action steps for this action whose gate still holds: a finished step's gate is spent.
+const gatingSteps = (action: Action, steps: readonly PlanViewStep[]) =>
+  stepsForAction(steps, action).filter((step) => !step.finished);
 
 // The installed action that a plugin's handle and an action's name pick out.
 const installedAction = (
@@ -728,16 +693,14 @@ export type Outcome = { content: string; isError?: true };
 function stepsFor(
   action: Action,
   input: unknown,
-  steps: readonly SavedPlanStep[],
+  steps: readonly PlanViewStep[],
 ) {
   const returns = action.builder.returns ?? [];
   const making = resolveFacts(returns, input);
-  return actionSteps(steps).filter(
+  return stepsForAction(steps, action).filter(
     (step) =>
-      step.plugin === action.plugin &&
-      step.action === action.action &&
-      (isEmpty(step.input) ||
-        isDeepStrictEqual(resolveFacts(returns, step.input), making)),
+      isEmpty(step.input) ||
+      isDeepStrictEqual(resolveFacts(returns, step.input), making),
   );
 }
 
@@ -823,16 +786,14 @@ async function executing(
   if (!checked.ok) return { refused: checked.text };
   const { plan } = state;
   const doing = stepsFor(action, checked.input, plan.steps);
-  const declined = doing.find((step) => step.declined !== undefined);
+  const declined = doing.find(isDeclined);
   if (declined) return { refused: stepDeclined(action.name, declined.title) };
-  const asking = doing.find(
-    (step) => step.askFirst && step.goAhead === undefined,
-  );
+  const open = doing.filter(({ finished }) => !finished);
+  const asking = open.find(awaitsGoAhead);
   if (asking) return { refused: stepAwaitsGoAhead(action.name, asking.title) };
   // A step id is a hint for tying the run to the plan, never a reason to hold work back: one that
   // names none of the steps this start would do falls back to the one of them still open. Every open
   // step it would do holds it with its gate, so another step for the same work cannot slip past one.
-  const open = doing.filter(({ state }) => !SETTLED.has(state));
   const stepId =
     doing.find(({ id }) => id === asked.step)?.id ??
     (open.length === 1 ? open[0]?.id : undefined);
@@ -1103,7 +1064,7 @@ const PlanChildInput = type({
   input: "Record<string, unknown>",
   "askFirst?": "boolean",
   "optional?": "boolean",
-  "approval?": Approval,
+  "approval?": PlanStepApproval,
 });
 type PlanChildInput = typeof PlanChildInput.infer;
 export const Plan = type({
@@ -1294,12 +1255,12 @@ function planCallProblems(catalog: Catalog, asked: PlanCall) {
 // What is wrong with the step ids a call names, against the plan as saved.
 function planIdProblems(
   asked: PlanCall,
-  saved: readonly SavedPlanStep[],
+  saved: readonly PlanViewStep[],
   adding: readonly PlanStepWrite[],
 ) {
   const children = saved.flatMap((step) => ("steps" in step ? step.steps : []));
   const all = [...saved, ...children];
-  const ids = all.map(({ id }) => id);
+  const ids = stepIds(saved);
   const listed =
     all.length === 0
       ? "the plan has no steps yet"
@@ -1326,43 +1287,6 @@ function planIdProblems(
       });
   }
   return wrong;
-}
-
-// A saved step as it is saved again, under its id so the person's marks on it stay, and with what
-// its ready-made plan or the coordinator said of it.
-function childWrite({
-  id,
-  title,
-  plugin,
-  action,
-  input,
-  askFirst,
-  optional,
-  approval,
-  requires,
-}: SavedPlanChild): PlanChildWrite {
-  const written: PlanChildWrite = {
-    id,
-    title,
-    plugin,
-    action,
-    input,
-    askFirst,
-  };
-  if (optional) written.optional = optional;
-  if (approval) written.approval = approval;
-  if (requires) written.requires = requires;
-  return written;
-}
-function stepWrite(step: SavedPlanStep): PlanStepWrite {
-  if (!("steps" in step)) return childWrite(step);
-  const group: PlanGroupWrite = {
-    id: step.id,
-    title: step.title,
-    steps: step.steps.map(childWrite),
-  };
-  if (step.plan) group.plan = step.plan;
-  return group;
 }
 
 // A step the call names, new to the plan.
@@ -1408,54 +1332,32 @@ function readyPlanStep({
   return { title: description, plan: builder.handle, steps: children };
 }
 
-// The plan with steps added at its end, or after the step after names or before the step before
-// names, at whichever level it is; a group holds no groups, which planIdProblems refuses before this.
-function added(
-  plan: PlanStepWrite[],
-  adding: readonly PlanStepWrite[],
-  { after, before }: Pick<PlanCall, "after" | "before">,
-) {
-  const next = after ?? before;
-  if (next === undefined) return [...plan, ...adding];
-  const offset = after === undefined ? 0 : 1;
-  const at = plan.findIndex(({ id }) => id === next);
-  if (at >= 0) return plan.toSpliced(at + offset, 0, ...adding);
-  const held = adding.flatMap((each) => ("steps" in each ? [] : [each]));
-  for (const step of plan) {
-    if (!("steps" in step)) continue;
-    const under = step.steps.findIndex(({ id }) => id === next);
-    if (under >= 0)
-      step.steps = step.steps.toSpliced(under + offset, 0, ...held);
-  }
-  return plan;
-}
-
-// The plan without the steps ids names, nor what they hold.
-function removed(plan: PlanStepWrite[], ids: readonly string[]) {
-  const kept = ({ id }: PlanStepWrite) => id === undefined || !ids.includes(id);
-  for (const step of plan)
-    if ("steps" in step) step.steps = step.steps.filter(kept);
-  return plan.filter(kept);
+// The plan as the model reads it, without the finished marks: each step's state already says it.
+function planForModel(saved: { steps: readonly PlanViewStep[] }) {
+  const steps = new Set<unknown>([...saved.steps, ...actionSteps(saved.steps)]);
+  return JSON.stringify(
+    saved,
+    function (this: unknown, key: string, value: unknown) {
+      return key === "finished" && steps.has(this) ? undefined : value;
+    },
+  );
 }
 
 // The plan as it stands, and once only optional steps are left unstarted, what is owed on them.
 async function planAnswer(
-  saved: { steps: readonly SavedPlanStep[] },
+  saved: { steps: readonly PlanViewStep[] },
   project: Project,
 ) {
-  const answer = `${JSON.stringify(saved)}\n\n${PLAN_STEP_REMINDER}`;
   const steps = actionSteps(saved.steps);
-  const left = steps.filter(
+  const answer = `${planForModel(saved)}\n\n${PLAN_STEP_REMINDER}`;
+  // Only a step that can start is offered: execute refuses a waiting one.
+  const optionalToOffer = steps.filter(
     (step) => step.optional && step.state === "not_started",
   );
-  if (
-    left.length === 0 ||
-    steps.some((step) => !step.optional && !SETTLED.has(step.state))
-  )
-    return answer;
+  if (optionalToOffer.length === 0 || steps.some(isLeftToDo)) return answer;
   const { asksApprovals } = await project.state();
   return `${answer}\n\n${optionalLeft(
-    left.map(({ title }) => title),
+    optionalToOffer.map(({ title }) => title),
     asksApprovals,
   )}`;
 }
@@ -1495,28 +1397,24 @@ export async function managePlan(
     const { steps: saved } = await project.plan();
     if (
       readyPlan &&
-      saved.some(
-        (step) => "steps" in step && step.plan === readyPlan.builder.handle,
+      readyPlanGroups(saved).some(
+        ({ plan }) => plan === readyPlan.builder.handle,
       )
     )
       return { content: readyPlanFollowing(readyPlan.builder.handle) };
     const adding = readyPlan ? [readyPlanStep(readyPlan)] : steps;
     const wrongIds = planIdProblems(asked, saved, adding);
     if (wrongIds.length > 0) return wrongPlanCall(catalog, wrongIds);
-    const current = saved.map(stepWrite);
-    steps =
-      asked.operation === "add"
-        ? added(current, adding, asked)
-        : removed(current, asked.stepIds ?? []);
+    steps = saved.map(toWriteStep);
+    if (asked.operation === "add") insertSteps(steps, adding, asked);
+    else removeSteps(steps, asked.stepIds ?? []);
   }
   const refused = planRefusal(catalog, steps);
   if (refused) return { content: refused.text, isError: true };
   await project.savePlan(steps);
   const saved = await project.plan();
   await project.setFollowing(
-    saved.steps.flatMap((step) =>
-      "steps" in step && step.plan !== undefined ? [step.plan] : [],
-    ),
+    readyPlanGroups(saved.steps).map(({ plan }) => plan),
   );
   const plan = await planAnswer(saved, project);
   if (!readyPlan) return { content: plan };

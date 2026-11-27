@@ -33,7 +33,7 @@ import {
   RUNS_DESCRIPTION,
   startAfter,
 } from "@corbits-builder/plugin-host/text";
-import { PlanView } from "@corbits-builder/schemas/project";
+import { PlanView } from "@corbits-builder/schemas/plan";
 import type { PluginHint } from "../environment.ts";
 import {
   checkDeployments,

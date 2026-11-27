@@ -17,7 +17,7 @@ import {
   type ProjectRead,
   type ProjectValues,
   type Screen,
-  type StepStatus,
+  type PlanStepRead,
 } from "@corbits-builder/plugin";
 import type { ReadyPlanOffer } from "@corbits-builder/schemas/project";
 import type { QuestionAnswer } from "@corbits-builder/schemas/conversation";
@@ -116,7 +116,7 @@ export function storyScreen<In, Out, Data, Prepared>(
 // The project as the hub reads it for a screen, from the story's values, plan and ready-made plans.
 const storyRead = (
   values: ProjectValues,
-  plan: readonly StepStatus[],
+  plan: readonly PlanStepRead[],
   plans: (group: string) => readonly ReadyPlanOffer[],
 ): ProjectRead => ({
   value: (name) => values[name] ?? null,
@@ -153,7 +153,7 @@ export function ScreenStory({
   /** A screen placed on the page shows a card in the conversation that opens it. */
   placed?: "conversation" | "page";
   /** The project's plan steps a screen that prepares from the project reads. */
-  plan?: readonly StepStatus[];
+  plan?: readonly PlanStepRead[];
   /** The installed ready-made plans a screen that prepares from the project reads. */
   plans?: (group: string) => readonly ReadyPlanOffer[];
 }) {

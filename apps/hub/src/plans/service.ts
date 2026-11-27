@@ -1,15 +1,25 @@
 import { eq } from "drizzle-orm";
 import type { DB, DBExecutor } from "@intx/db";
 import { isLiveWorkflowRunStatus, principal } from "@intx/db/schema";
-import { droppable } from "@corbits-builder/plugin";
 import {
-  type PlanChildWrite,
-  type PlanStepWrite,
-  type StoredPlan,
-  type StoredPlanChild,
-  type StoredPlanGroup,
-  type StoredPlanStep,
-} from "@corbits-builder/schemas/project";
+  actionSteps,
+  canDrop,
+  cancelSteps,
+  giveGoAhead,
+  markAnswered,
+  setAskFirst,
+  setDeclined,
+  stepById,
+  stepIds,
+  toStoredStep,
+} from "@corbits-builder/plan";
+import type {
+  PlanChildWrite,
+  PlanStepWrite,
+  StoredPlan,
+  StoredPlanGroup,
+  StoredPlanStep,
+} from "@corbits-builder/schemas/plan";
 import type { ScreenQuestion } from "@corbits-builder/schemas/conversation";
 import type { Catalog } from "@corbits-builder/plugin-host/catalog";
 import {
@@ -37,50 +47,21 @@ import {
   stepProtectedText,
 } from "../config/answers.ts";
 
-// A plan step as stored, under the id it came with or a short new one, with the go-ahead, cancel,
-// decline and answer that marksOf says it keeps; only an optional step keeps a decline.
-function savedPlanStep(
-  step: PlanChildWrite,
-  marksOf: (step: PlanChildWrite, id: string) => PlanChildWrite | undefined,
-): StoredPlanChild {
-  const id = step.id ?? newPlanStepId();
-  const marks = marksOf(step, id);
-  // Whether a step asks first, may be declined and its gate stay as first saved: a run's save of a
-  // stored step keeps them as stored.
-  const said = marks ?? step;
-  const saved: StoredPlanChild = {
-    id,
-    title: step.title,
-    plugin: step.plugin,
-    action: step.action,
-    input: step.input,
-    askFirst: said.askFirst,
-  };
-  if (said.optional) saved.optional = said.optional;
-  if (said.approval) saved.approval = said.approval;
-  if (said.requires) saved.requires = said.requires;
-  if (marks?.goAhead) saved.goAhead = marks.goAhead;
-  if (marks?.cancelled) saved.cancelled = marks.cancelled;
-  if (marks?.declined && saved.optional) saved.declined = marks.declined;
-  if (marks?.answered) saved.answered = marks.answered;
-  return saved;
-}
-// A project with no plan saved yet has no steps.
-function planActionSteps(plan: StoredPlan | null | undefined) {
-  if (!plan) return [];
-  return plan.steps.flatMap((step) => ("steps" in step ? step.steps : [step]));
-}
 const newPlanStepId = () => crypto.randomUUID().slice(0, 12);
 
 // The plan as stored, with its project row locked until the transaction ends so that no other write
-// lands between this read and the write made from it.
-async function lockedPlan(tx: DBExecutor, projectId: string) {
+// lands between this read and the write made from it. A project with no plan saved yet has an empty
+// one, whose time the write sets.
+async function lockedPlan(
+  tx: DBExecutor,
+  projectId: string,
+): Promise<StoredPlan> {
   const [row] = await tx
     .select({ plan: project.plan })
     .from(project)
     .where(eq(project.id, projectId))
     .for("update");
-  return row?.plan;
+  return row?.plan ?? { steps: [], updatedAt: new Date().toISOString() };
 }
 const writePlan = (tx: DBExecutor, projectId: string, plan: StoredPlan) =>
   tx.update(project).set({ plan }).where(eq(project.id, projectId));
@@ -132,9 +113,7 @@ export function createPlanService(
         runs: await artifacts.stepRuns(
           actor,
           projectId,
-          plan.steps.flatMap((step) =>
-            "steps" in step ? step.steps.map(({ id }) => id) : [step.id],
-          ),
+          actionSteps(plan.steps).map(({ id }) => id),
         ),
         questions: asking,
       };
@@ -169,27 +148,30 @@ export function createPlanService(
       }
       return rawDB.transaction(async (tx) => {
         const before = new Map(
-          planActionSteps(await lockedPlan(tx, projectId)).map((step) => [
+          actionSteps((await lockedPlan(tx, projectId)).steps).map((step) => [
             step.id,
             step,
           ]),
         );
-        const marksOf = (step: PlanChildWrite, id: string) =>
-          caller?.kind === "user" ? step : before.get(id);
+        const stored = (step: PlanChildWrite) => {
+          const id = step.id ?? newPlanStepId();
+          return toStoredStep(
+            step,
+            id,
+            caller?.kind === "user" ? step : before.get(id),
+          );
+        };
         const saved = steps.map((step): StoredPlanStep => {
-          if (!("steps" in step)) return savedPlanStep(step, marksOf);
+          if (!("steps" in step)) return stored(step);
           const group: StoredPlanGroup = {
             id: step.id ?? newPlanStepId(),
             title: step.title,
-            steps: step.steps.map((child) => savedPlanStep(child, marksOf)),
+            steps: step.steps.map(stored),
           };
           if (step.plan) group.plan = step.plan;
           return group;
         });
-        const ids = saved.flatMap((step) => [
-          step.id,
-          ...("steps" in step ? step.steps : []).map(({ id }) => id),
-        ]);
+        const ids = stepIds(saved);
         const repeated = ids.find((id, at) => ids.indexOf(id) !== at);
         if (repeated !== undefined)
           throw new ProjectError(400, "repeated_plan_step", { id: repeated });
@@ -238,9 +220,11 @@ export function createPlanService(
         throw new ProjectError(403, "only_a_person_declines");
       const { plan, title, changed } = await rawDB.transaction(async (tx) => {
         const plan = await lockedPlan(tx, projectId);
-        const step = planActionSteps(plan).find(({ id }) => id === stepId);
-        if (!plan || !step)
+        const step = stepById(plan.steps, stepId);
+        if (!step)
           throw new ProjectError(404, "plan_step_not_found", { id: stepId });
+        if (step.cancelled)
+          throw new ProjectError(409, "plan_step_cancelled", { id: stepId });
         if (!step.optional)
           throw new ProjectError(409, "plan_step_required", {
             id: stepId,
@@ -248,12 +232,12 @@ export function createPlanService(
           });
         if (change.declined === (step.declined !== undefined))
           return { plan, title: step.title, changed: false };
-        if (change.declined)
-          step.declined = {
-            by: actor.principalId,
-            at: new Date().toISOString(),
-          };
-        else delete step.declined;
+        setDeclined(
+          step,
+          change.declined
+            ? { by: actor.principalId, at: new Date().toISOString() }
+            : undefined,
+        );
         plan.updatedAt = new Date().toISOString();
         await writePlan(tx, projectId, plan);
         return { plan, title: step.title, changed: true };
@@ -274,7 +258,7 @@ export function createPlanService(
     async cancelPlanSteps(
       actor: Actor,
       projectId: string,
-      stepIds: readonly string[],
+      cancelling: readonly string[],
       catalog: Catalog,
     ) {
       await authorizeProject(rawDB, actor, projectId, "manage");
@@ -287,9 +271,9 @@ export function createPlanService(
       // The screens open in front of the person are left out: an open one only shows a step that has
       // not run as needing them, and that step may be dropped either way.
       const { read } = await this.readPlan(actor, projectId, catalog, []);
-      const cancelled = read.steps
-        .flatMap((each) => ("steps" in each ? each.steps : [each]))
-        .filter(({ id, state }) => stepIds.includes(id) && droppable(state));
+      const cancelled = actionSteps(read.steps).filter(
+        ({ id, state }) => cancelling.includes(id) && canDrop(state),
+      );
       // The jobs stop before the steps are marked, so an answer retried after a failed stop still
       // finds them.
       const live = (await artifacts.runs(actor, projectId)).filter(
@@ -307,14 +291,13 @@ export function createPlanService(
         }
       await rawDB.transaction(async (tx) => {
         const plan = await lockedPlan(tx, projectId);
-        const named = planActionSteps(plan).filter(
-          (step) =>
-            cancelled.some(({ id }) => id === step.id) && !step.cancelled,
-        );
-        if (!plan || named.length === 0) return;
         const at = new Date().toISOString();
-        for (const step of named)
-          step.cancelled = { by: actor.principalId, at };
+        const named = cancelSteps(
+          plan.steps,
+          cancelled.map(({ id }) => id),
+          { by: actor.principalId, at },
+        );
+        if (named.length === 0) return;
         plan.updatedAt = at;
         await writePlan(tx, projectId, plan);
       });
@@ -330,17 +313,9 @@ export function createPlanService(
       await authorizeProject(rawDB, actor, projectId, "manage");
       await rawDB.transaction(async (tx) => {
         const plan = await lockedPlan(tx, projectId);
-        const step = planActionSteps(plan).find(
-          (each) =>
-            each.plugin === screen.plugin &&
-            each.action === screen.action &&
-            !each.answered &&
-            !each.declined &&
-            !each.cancelled,
-        );
-        if (!plan || !step) return;
         const at = new Date().toISOString();
-        step.answered = { by: actor.principalId, at };
+        if (!markAnswered(plan.steps, screen, { by: actor.principalId, at }))
+          return;
         plan.updatedAt = at;
         await writePlan(tx, projectId, plan);
       });
@@ -366,17 +341,12 @@ export function createPlanService(
       const at = new Date().toISOString();
       const mark = { by: actor.principalId, at };
       const plan = await rawDB.transaction(async (tx) => {
-        const plan = (await lockedPlan(tx, projectId)) ?? {
-          steps: [],
-          updatedAt: at,
-        };
+        const plan = await lockedPlan(tx, projectId);
         if (told.goAhead === undefined) {
-          const added = savedPlanStep(step, () => undefined);
+          const added = toStoredStep(step, step.id ?? newPlanStepId());
           added.goAhead = mark;
           plan.steps.push(added);
-        } else
-          for (const each of planActionSteps(plan))
-            if (told.goAhead.includes(each.id)) each.goAhead = mark;
+        } else giveGoAhead(plan.steps, told.goAhead, mark);
         plan.updatedAt = at;
         await writePlan(tx, projectId, plan);
         return plan;
@@ -426,9 +396,11 @@ export function createPlanService(
         throw new ProjectError(403, "only_a_person_decides");
       const { plan, note } = await rawDB.transaction(async (tx) => {
         const plan = await lockedPlan(tx, projectId);
-        const step = planActionSteps(plan).find(({ id }) => id === stepId);
-        if (!plan || !step)
+        const step = stepById(plan.steps, stepId);
+        if (!step)
           throw new ProjectError(404, "plan_step_not_found", { id: stepId });
+        if (step.cancelled)
+          throw new ProjectError(409, "plan_step_cancelled", { id: stepId });
         let note: string;
         if ("goAhead" in change.ask) {
           if (!step.askFirst)
@@ -436,16 +408,15 @@ export function createPlanService(
               id: stepId,
               text: STEP_NOT_ASK_FIRST_TEXT,
             });
-          step.goAhead = {
+          giveGoAhead(plan.steps, [stepId], {
             by: actor.principalId,
             at: new Date().toISOString(),
-          };
+          });
           note = stepGoAheadNote(step.title);
         } else {
           if (change.ask.askFirst === step.askFirst)
             return { plan, note: undefined };
-          step.askFirst = change.ask.askFirst;
-          if (step.askFirst) delete step.goAhead;
+          setAskFirst(step, change.ask.askFirst);
           note = stepAskFirstNote(step.title, step.askFirst);
         }
         plan.updatedAt = new Date().toISOString();

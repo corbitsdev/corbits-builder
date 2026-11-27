@@ -316,15 +316,21 @@ export function createAgentTokenBridge(
       if (!row) return denied();
       const config = row.config as Record<string, unknown> | null;
       const stored = InstalledWorkflows(config?.[INSTALLED_WORKFLOWS_KEY]);
-      const installed =
-        stored instanceof type.errors
-          ? upgrades &&
-            binding.run.principalId &&
-            (await upgrades.install(
-              { tenantId: row.id, principalId: binding.run.principalId },
-              binding.projectId,
-            ))
-          : stored;
+      let installed = stored instanceof type.errors ? undefined : stored;
+      if (!installed && upgrades) {
+        // An install records its actor as the creator of any package storage it makes, and
+        // Interchange lends the coordinator what that creator holds, so it runs as the person who
+        // deployed the coordinator, never as the run that asked.
+        const [deployed] = await db
+          .select({ person: workflowRunLaunchSpec.sourceAuthorityPrincipalId })
+          .from(workflowRunLaunchSpec)
+          .where(eq(workflowRunLaunchSpec.anchorRunId, binding.run.id));
+        if (deployed)
+          installed = await upgrades.install(
+            { tenantId: row.id, principalId: deployed.person },
+            binding.projectId,
+          );
+      }
       if (!installed) return denied();
       const { preferences } = await loadSettings(
         db,

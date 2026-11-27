@@ -3,8 +3,16 @@ import { type } from "arktype";
 import { and, eq, ne } from "drizzle-orm";
 import { createEnvKeyCredentialCipher } from "@intx/crypto";
 import { createRunTokenStore } from "@intx/db";
-import { grant, workflowRun, workflowRunLaunchSpec } from "@intx/db/schema";
+import {
+  asset,
+  grant,
+  principal,
+  tenant,
+  workflowRun,
+  workflowRunLaunchSpec,
+} from "@intx/db/schema";
 import { hexDecode } from "@intx/types";
+import { INSTALLED_WORKFLOWS_KEY } from "@corbits-builder/schemas/installed-workflows";
 import { startTestHub } from "./support/hub.ts";
 import {
   classifyRole,
@@ -130,6 +138,7 @@ test("a coordinator deploys a specialist without holding the person's admin auth
           action: grant.action,
           effect: grant.effect,
           origin: grant.origin,
+          expiresAt: grant.expiresAt,
         })
         .from(grant)
         .where(eq(grant.principalId, principalId))
@@ -166,21 +175,32 @@ test("a coordinator deploys a specialist without holding the person's admin auth
           /^(grant|role|principal|credential):/,
         );
     }
-    // Its own declared requirements outlive Interchange's one-day invoker grants, narrowed to its project.
-    const copies = (await grantsOf(coordinator))
-      .filter((held) => held.origin === "system")
-      .map((held) => `${held.effect} ${held.resource} ${held.action}`);
-    expect(copies).toEqual(
+    // Its declared requirements come from the package's creator, so none carries the one-day invoker expiry.
+    const declared = (await grantsOf(coordinator)).filter(
+      (held) => held.origin === "creator",
+    );
+    expect(
+      declared.map((held) => `${held.effect} ${held.resource} ${held.action}`),
+    ).toEqual(
       expect.arrayContaining([
-        `allow sb-project:${projectId} read`,
-        `allow sb-project:${projectId} manage`,
+        "allow sb-project:* read",
+        "allow sb-project:* manage",
         "allow sb-artifact:* write",
         "allow workflow:* create",
         "allow asset:* read",
         "allow credential:* read",
       ]),
     );
-    expect(copies.filter((copy) => copy.includes("sb-project:*"))).toEqual([]);
+    expect(declared.map((held) => held.expiresAt)).toEqual(
+      declared.map(() => null),
+    );
+    expect(
+      (await grantsOf(coordinator)).filter(
+        (held) =>
+          held.origin === "system" &&
+          !held.resource.startsWith("credential:hub:"),
+      ),
+    ).toEqual([]);
     expect(
       (
         await asRun(coordinator, "POST", "/roles", {
@@ -219,7 +239,7 @@ test("a coordinator deploys a specialist without holding the person's admin auth
     }
     expect(filed).toBe(true);
 
-    // A permission the person no longer holds is not copied when the coordinator is reattached.
+    // A permission the creator loses through Interchange is taken from the coordinator by Interchange.
     const [launch] = await db
       .select({ person: workflowRunLaunchSpec.sourceAuthorityPrincipalId })
       .from(workflowRunLaunchSpec)
@@ -229,30 +249,70 @@ test("a coordinator deploys a specialist without holding the person's admin auth
           type("string").assert(coordinatorRunId),
         ),
       );
-    await db.insert(grant).values({
-      id: `deny-${projectId}`,
-      tenantId,
-      principalId: type("string").assert(launch?.person),
-      resource: "credential:*",
-      action: "read",
-      effect: "deny",
-      origin: "system",
-    });
+    const denied = await fetch(
+      new URL(`/api/tenants/${tenantId}/grants`, hub.baseUrl),
+      {
+        method: "POST",
+        headers: {
+          Cookie: hub.cookie,
+          Origin: hub.baseUrl,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          principalId: type("string").assert(launch?.person),
+          resource: "credential:*",
+          action: "read",
+          effect: "deny",
+          origin: "system",
+        }),
+      },
+    );
+    expect(denied.status).toBeLessThan(300);
+    const after = (await grantsOf(coordinator)).map(
+      (held) => `${held.origin} ${held.effect} ${held.resource} ${held.action}`,
+    );
+    expect(after).toContain("creator allow asset:* read");
+    expect(after).not.toContain("creator allow credential:* read");
+
+    // Interchange lends the coordinator what its storage's creator holds, so that creator is the
+    // person: also when a running agent is what starts the install that makes the storage.
+    const storageCreator = async () => {
+      const [storage] = await db
+        .select({ kind: principal.kind })
+        .from(asset)
+        .innerJoin(principal, eq(principal.id, asset.creatorPrincipalId))
+        .where(
+          and(
+            eq(asset.tenantId, tenantId),
+            eq(asset.name, "sb-coordinator-source"),
+          ),
+        );
+      return storage?.kind;
+    };
+    expect(await storageCreator()).toBe("user");
     await db
-      .delete(grant)
+      .update(asset)
+      .set({ name: "sb-coordinator-source-before" })
       .where(
         and(
-          eq(grant.principalId, coordinator),
-          eq(grant.origin, "system"),
-          eq(grant.resource, "credential:*"),
+          eq(asset.tenantId, tenantId),
+          eq(asset.name, "sb-coordinator-source"),
         ),
       );
-    await client.startProjectCoordinator(workspaceTenantId, projectId);
-    const reattached = (await grantsOf(coordinator))
-      .filter((held) => held.origin === "system")
-      .map((held) => `${held.effect} ${held.resource} ${held.action}`);
-    expect(reattached).toContain("allow asset:* read");
-    expect(reattached).not.toContain("allow credential:* read");
+    const [space] = await db
+      .select({ config: tenant.config })
+      .from(tenant)
+      .where(eq(tenant.id, tenantId));
+    const config = type("Record<string, unknown>").assert(space?.config);
+    delete config[INSTALLED_WORKFLOWS_KEY];
+    await db.update(tenant).set({ config }).where(eq(tenant.id, tenantId));
+    const [held] = await tokens.loadDelivery(coordinator);
+    const scope = await fetch(
+      new URL("/api/workflow-project-scope", hub.baseUrl),
+      { headers: { authorization: `Bearer ${held?.token}` } },
+    );
+    expect(scope.status).toBe(200);
+    expect(await storageCreator()).toBe("user");
   } finally {
     await hub.close();
     await model.stop();

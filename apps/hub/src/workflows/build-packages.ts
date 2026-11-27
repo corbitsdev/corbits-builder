@@ -94,26 +94,37 @@ export async function buildWorkflowPackages(
       );
     const bundle = await result.outputs[0]!.text();
     const version = contentVersion(base, bundle);
-    const staging = await mkdtemp(join(tmpdir(), "sb-workflow-package-"));
     const packageName = nativePackageName(name);
+    const packageJson = JSON.stringify({
+      name: packageName,
+      version,
+      type: "module",
+      exports: { ".": "./dist/workflow.mjs" },
+      interchange: {
+        workflow: "./dist/workflow.mjs",
+        directors: "./dist/workflow.mjs",
+      },
+    });
+    // Interchange lends a package its creator's permissions only when it is stored as source, which
+    // the coordinator's are; the bundle has no dependencies, so its two files are the whole package.
+    if (name === "coordinator") {
+      manifest.push({
+        format: "source" as const,
+        assetName: "sb-coordinator-source",
+        packageName,
+        version,
+        entry: "./dist/workflow.mjs",
+        files: { "package.json": packageJson, "dist/workflow.mjs": bundle },
+      });
+      continue;
+    }
+    const staging = await mkdtemp(join(tmpdir(), "sb-workflow-package-"));
     const filename = name + "-native-" + version + ".tgz";
     try {
       await mkdir(join(staging, "package", "dist"), { recursive: true });
       const builtEntry = join(staging, "package", "dist", "workflow.mjs");
       await writeFile(builtEntry, bundle);
-      await writeFile(
-        join(staging, "package", "package.json"),
-        JSON.stringify({
-          name: packageName,
-          version,
-          type: "module",
-          exports: { ".": "./dist/workflow.mjs" },
-          interchange: {
-            workflow: "./dist/workflow.mjs",
-            directors: "./dist/workflow.mjs",
-          },
-        }),
-      );
+      await writeFile(join(staging, "package", "package.json"), packageJson);
       const tar = Bun.spawn(
         ["tar", "-czf", join(output, filename), "-C", staging, "package"],
         {
@@ -124,6 +135,7 @@ export async function buildWorkflowPackages(
       if ((await tar.exited) !== 0)
         throw new Error("workflow_package_archive_failed");
       manifest.push({
+        format: "tarball" as const,
         assetName: "sb-" + name + "-packages",
         filename,
         packageName,

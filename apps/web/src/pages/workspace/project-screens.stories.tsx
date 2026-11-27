@@ -5,7 +5,7 @@ import changeDirectionDefinition, {
   text,
 } from "@plugins/project/src/change-direction/definition.ts";
 import ChangeDirectionView from "@plugins/project/src/change-direction/view.tsx";
-import type { StepStatus } from "@corbits-builder/plugin";
+import type { PlanStepRead } from "@corbits-builder/plugin";
 import { ScreenStory, storyScreen } from "./screen-story.tsx";
 
 const changeDirectionScreen = storyScreen(
@@ -21,8 +21,8 @@ const changeDirectionScreen = storyScreen(
 const step = (
   id: string,
   title: string,
-  state: StepStatus["state"],
-): StepStatus => ({
+  state: PlanStepRead["state"],
+): PlanStepRead => ({
   id,
   title,
   plugin: "web-app",
@@ -33,7 +33,7 @@ const step = (
 });
 
 // A plan under way: the brief is done, the look waits for the person, and the rest has not started.
-const PLAN: readonly StepStatus[] = [
+const PLAN: readonly PlanStepRead[] = [
   step("brief", "Write the brief", "done"),
   step("design", "Design the look", "needs_you"),
   step("build-plan", "Write the build plan", "not_started"),
