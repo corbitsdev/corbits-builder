@@ -1,11 +1,10 @@
-import type { ProjectImportOptions } from "./projects";
-import type { TenantRolePage } from "./roles";
 import type { PreferenceRegistry } from "@corbits-builder/schemas/preferences";
 import type {
   CustomProviderCreate,
   CustomProviderReceipt,
   CustomProviderUpdate,
   ModelCatalog,
+  ModelLoginPlugin,
   ProviderTest,
   ProviderTestResult,
 } from "@corbits-builder/schemas/models";
@@ -77,14 +76,6 @@ import type {
   InvitationCreation,
   InvitationList,
 } from "@corbits-builder/schemas/invitation";
-import type { MePrincipalsPage, Workspace } from "./auth";
-import type {
-  ModelCredentialInput,
-  ModelCredentialReceipt,
-  ModelLogin,
-  ModelLoginPlugin,
-  ModelLoginState,
-} from "./credentials";
 
 export type ProductApiClientOptions = Readonly<{
   baseUrl: string | URL;
@@ -126,6 +117,78 @@ export type ProjectArtifact = {
   /** When the person recorded that approval, where the record says. */
   approvedAt?: string;
 };
+
+export type MePrincipal = Readonly<{
+  principalId: string;
+  tenantId: string;
+  tenantName: string;
+  tenantSlug: string;
+  kind: string;
+  status: string;
+  roles: Readonly<{ id: string; name: string }>[];
+}>;
+
+export type MePrincipalsPage = Readonly<{
+  data: MePrincipal[];
+  nextCursor: string | null;
+}>;
+
+/** A root tenant the person belongs to under the install root. */
+export type Workspace = Readonly<{
+  id: string;
+  name: string;
+}>;
+
+/** A role from the native Interchange role listing, as the hub returned it. */
+export type TenantRoleView = Readonly<{
+  id: string;
+  tenantId: string;
+  name: string;
+  description: string | null;
+  isSystem: boolean;
+  createdAt: string;
+  updatedAt: string;
+}>;
+
+export type TenantRolePage = Readonly<{
+  data: TenantRoleView[];
+  nextCursor: string | null;
+}>;
+
+export type ProjectImportOptions = { file: ProjectExport; profile?: string };
+
+export type ModelCredentialInput = Readonly<{
+  plugin: string;
+  /** Base URL for the model provider; defaults per plugin. */
+  baseURL?: string;
+  /** The user's API key. Sent once, encrypted server-side, never returned. */
+  secret: string;
+  /** Optional display label; a unique default is generated when absent. */
+  label?: string;
+}>;
+
+export type ModelCredentialReceipt = Readonly<{
+  provider: Readonly<{
+    id: string;
+    name: string;
+    plugin: string;
+    baseURL: string;
+  }>;
+  credential: Readonly<{ id: string; name: string }>;
+  modelProvider: Readonly<{
+    id: string;
+    name: string;
+    credentialId: string | null;
+  }>;
+}>;
+
+/** A ChatGPT or xAI sign-in in flight. The authorize URL is opened by the person; no token reaches the client. */
+export type ModelLogin = Readonly<{ loginId: string; authorizeUrl: string }>;
+export type ModelLoginState = Readonly<
+  | { status: "pending" }
+  | { status: "completed"; credentialId: string }
+  | { status: "failed"; message: string }
+>;
 
 export type ProductApiClient = Readonly<{
   addModelCredential(

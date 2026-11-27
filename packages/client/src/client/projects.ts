@@ -9,8 +9,6 @@ import {
   type ProductApiClient,
 } from "./shared";
 
-export type ProjectImportOptions = { file: ProjectExport; profile?: string };
-
 export function buildProjectsMethods(
   deps: ClientDeps,
 ): Pick<

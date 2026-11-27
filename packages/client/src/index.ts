@@ -19,23 +19,23 @@ import {
   type ProductApiClientOptions,
 } from "./client/shared";
 
-export type { MePrincipalsPage, MePrincipal, Workspace } from "./client/auth";
-export type { ProjectImportOptions } from "./client/projects";
 export type {
   ApprovalScope,
+  MePrincipal,
+  MePrincipalsPage,
+  ModelCredentialInput,
+  ModelCredentialReceipt,
+  ModelLogin,
+  ModelLoginState,
   NativeApproval,
   PackageZipReviewerQuery,
   ProductApiClient,
   ProductApiClientOptions,
   ProjectArtifact,
+  ProjectImportOptions,
+  Workspace,
 } from "./client/shared";
-export type {
-  ModelCredentialInput,
-  ModelCredentialReceipt,
-  ModelLogin,
-  ModelLoginPlugin,
-  ModelLoginState,
-} from "./client/credentials";
+export type { ModelLoginPlugin } from "@corbits-builder/schemas/models";
 export type {
   ActivityTool,
   AgentActivity,
