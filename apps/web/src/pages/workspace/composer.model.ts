@@ -20,7 +20,7 @@ import type { ChatMessage } from "../../api/types.ts";
 import { keys } from "../../queries/keys.ts";
 import { humanFault, humanFaultWithCode, responseCode } from "./human-fault.ts";
 import { latestTurnAt, SENDING, type SentMessage } from "./pending-sends.ts";
-import type { RoomComposer } from "./room.view.tsx";
+import type { RoomComposer } from "./prompt-box.view.tsx";
 
 export function acceptedMaterialsQuery(projectId: string) {
   return queryOptions({

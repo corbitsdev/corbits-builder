@@ -145,7 +145,8 @@ import {
   type EnableAiDialogProps,
 } from "../model-setup.model.ts";
 import { useModelCatalog } from "../settings/model-catalog.ts";
-import type { RoomContent, RoomDock } from "./room.view.tsx";
+import type { RoomDock } from "./prompt-box.view.tsx";
+import type { RoomContent } from "./room.view.tsx";
 import { useProjectSidebar } from "./project-sidebar.model.ts";
 import type { MenuProject, ProjectMenuHost } from "../project-menu.model.ts";
 import { parseBundle } from "./design-bundle.ts";
