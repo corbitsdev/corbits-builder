@@ -285,6 +285,12 @@
   }
 }
 
+/* A preview shows someone else's interface, whatever it is, so a status floating over its corner
+   reads as part of it. With one there, the preview starts below the controls' row. */
+.page:has(> .pageControls) [data-slot="device-preview"][data-fill] {
+  padding-block-start: calc(var(--space-4) + var(--close-size) + var(--space-2));
+}
+
 /* Pulled up, the chat covers the view's foot and, on a narrow canvas, its edge where the view's
    floating bar stands, so the bar steps aside until the chat is put away. */
 .main:has(
