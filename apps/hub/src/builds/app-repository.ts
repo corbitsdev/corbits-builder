@@ -26,7 +26,7 @@ import { ApprovedPackages } from "@corbits-builder/schemas/package-install";
 import { INPUTS_DIRECTORY } from "../config/inputs.ts";
 import { errorCode, requestErrorMetadata } from "../request-error.ts";
 import { readWorkflowChildEnvironment } from "../workflows/environment.ts";
-import { excludedFile as excludedSnapshotFile } from "./app-snapshot.ts";
+import { excludedFile as excludedSnapshotFile } from "@corbits-builder/schemas/app-files";
 import { linkOrGone, workspaceHoldsApp } from "./app-workspace.ts";
 import {
   mediatedHttpJson,

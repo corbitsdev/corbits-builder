@@ -2,8 +2,8 @@ import type { ArtifactRef } from "@corbits-builder/schemas/artifact";
 import {
   prepareDesignSubmission,
   readDesignFiles,
-  type PreparedDesignSubmission,
 } from "../artifacts/design-draft.ts";
+import type { PreparedDesignSubmission } from "../artifacts/design-tools.ts";
 import { relative, resolve, sep } from "node:path";
 import type { ToolCall, ToolResult } from "@intx/types/runtime";
 import type { CheckDetail } from "./check-detail.ts";
