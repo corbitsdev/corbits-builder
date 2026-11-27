@@ -334,7 +334,11 @@
   margin-top: 10px;
 }
 
-/* Margin items sit level with their passages, 32px clear of the page. */
+/* Margin items sit level with their passages. With room they are --card-width wide, 32px clear of
+   the page and 24px clear of the pane's edge. As the margin narrows the two gaps close first, to
+   16px each, and then the card narrows, down to --card-min, so the cards stay beside the page on
+   an ordinary laptop's screen. Every step is continuous, so nothing jumps while the window is
+   resized. */
 .margin {
   grid-column: 3;
   position: relative;
@@ -342,9 +346,20 @@
 }
 
 .marginItem {
+  /* Both gaps together, from the tight pair to the roomy pair as the margin allows. */
+  --inset: clamp(
+    var(--margin-inset-tight),
+    100% - var(--card-width),
+    var(--margin-inset)
+  );
+
   position: absolute;
-  left: var(--space-8);
-  width: var(--card-width);
+  /* The page's share of the inset: 16px of the tight 32, 32px of the roomy 56, in proportion
+     between. */
+  left: calc(
+    var(--space-4) + (var(--inset) - var(--margin-inset-tight)) * 2 / 3
+  );
+  width: clamp(var(--card-min), 100% - var(--inset), var(--card-width));
 }
 
 /* A passage's underline takes up its comment, so it reads as something to press. Without room for

@@ -411,15 +411,32 @@ export const CommentsBesideThePage: Story = {
 };
 
 /**
- * Just short of that room, as the room gives a 1440px window, each comment opens from its passage
- * over the page.
+ * As the room gives a 1440px window with the sidebar out: the margin is narrower, so the comments
+ * stand closer to the page and narrow to fit it, still level with their passages.
+ */
+export const CommentsBesideALaptopPage: Story = {
+  args: { comments: twoComments },
+  render: KeptComments,
+  decorators: [
+    (Story) => (
+      <div style={{ display: "flex", width: 1208, height: "100vh" }}>
+        <Story />
+      </div>
+    ),
+  ],
+  play: commentsPointAndOpen,
+};
+
+/**
+ * Short of the least margin a comment reads in, which a 1168px reader leaves, each comment opens
+ * from its passage over the page.
  */
 export const CommentsFromThePassage: Story = {
   args: { comments: twoComments },
   render: KeptComments,
   decorators: [
     (Story) => (
-      <div style={{ display: "flex", width: 1192, height: "100vh" }}>
+      <div style={{ display: "flex", width: 1100, height: "100vh" }}>
         <Story />
       </div>
     ),

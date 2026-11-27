@@ -93,11 +93,15 @@ const SCROLL_KEYS = new Set([
 // A margin item starts a little above its passage, so its first line sits level with it.
 const MARGIN_LEAD = 15;
 const MARGIN_GAP = 8;
-// A margin item is a card at most this wide; with less room than that beside the page, the cards
-// leave the margin and open from their passages instead. The stylesheet takes the width from here.
+// A margin item is a card at most this wide, and narrows with the margin down to the least its
+// comment still reads in; with less room than that beside the page, the cards leave the margin and
+// open from their passages instead, at the full width. The stylesheet takes the widths from here.
 const CARD_WIDTH = 280;
-// Cards sit --space-8 clear of the page and want --space-6 clear of the pane's edge.
+const CARD_MIN = 168;
+// With room, cards sit --space-8 clear of the page and --space-6 clear of the pane's edge; short of
+// room the gaps close first, to --space-4 each, before the card narrows.
 const MARGIN_INSET = 32 + 24;
+const MARGIN_INSET_TIGHT = 16 + 16;
 // The underline sits below the line's box, so a press just under the words still reaches it.
 const UNDERLINE_REACH = 8;
 // Each state is its own highlight, named as the stylesheet paints it.
@@ -464,7 +468,7 @@ export function DocumentPage({
         : now,
     );
     setRoomy(
-      column === null || column.clientWidth - MARGIN_INSET >= CARD_WIDTH,
+      column === null || column.clientWidth - MARGIN_INSET_TIGHT >= CARD_MIN,
     );
     follow();
   }, [passageKey, follow]);
@@ -711,7 +715,14 @@ export function DocumentPage({
     <div
       ref={scroller}
       className={styles.reader}
-      style={{ "--card-width": `${String(CARD_WIDTH)}px` } as CSSProperties}
+      style={
+        {
+          "--card-width": `${String(CARD_WIDTH)}px`,
+          "--card-min": `${String(CARD_MIN)}px`,
+          "--margin-inset": `${String(MARGIN_INSET)}px`,
+          "--margin-inset-tight": `${String(MARGIN_INSET_TIGHT)}px`,
+        } as CSSProperties
+      }
       data-slot="document-page"
       onScroll={() => {
         // Moving after a jump has settled is the person scrolling on.
