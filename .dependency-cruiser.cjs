@@ -1,5 +1,38 @@
 const { builtinModules } = require("node:module");
 
+// The open project's areas, each with the areas it stands on. An area imports only itself, those
+// areas and what sits directly in workspace; room puts the page together, so it may import every
+// area and none imports it.
+const WORKSPACE_AREAS = {
+  design: [],
+  documents: [],
+  screens: ["design"],
+  pane: ["design", "documents", "screens"],
+  approvals: ["design", "documents", "pane", "screens"],
+  app: ["design", "documents", "pane", "screens"],
+  chat: ["approvals", "design", "documents", "pane", "screens"],
+  sidebar: ["app", "design", "documents", "pane", "screens"],
+  prompt: ["approvals", "chat", "design", "documents", "pane", "screens"],
+};
+
+const WORKSPACE = "^apps/web/src/pages/workspace/";
+const TESTS_AND_STORIES = "\\.(test|stories|testing)\\.tsx?$";
+
+const workspaceAreaRules = Object.entries(WORKSPACE_AREAS).map(
+  ([area, below]) => ({
+    name: `web-workspace-${area}-layer`,
+    comment: `The workspace's ${area} area stands only on ${
+      below.length === 0 ? "what workspace shares" : below.join(", ")
+    }, so the areas above it can change without it.`,
+    severity: "error",
+    from: { path: `${WORKSPACE}${area}/`, pathNot: TESTS_AND_STORIES },
+    to: {
+      path: `${WORKSPACE}[^/]+/`,
+      pathNot: `${WORKSPACE}(${[area, ...below].join("|")})/`,
+    },
+  }),
+);
+
 module.exports = {
   forbidden: [
     {
@@ -66,6 +99,29 @@ module.exports = {
         path: "^apps/web/src/pages/[^/]+/",
         pathNot: "^apps/web/src/pages/$1/",
       },
+    },
+    {
+      name: "web-workspace-shared-below-areas",
+      comment:
+        "What sits directly in workspace is what its areas share, so it imports none of them.",
+      severity: "error",
+      from: { path: `${WORKSPACE}[^/]+$`, pathNot: TESTS_AND_STORIES },
+      to: { path: `${WORKSPACE}[^/]+/` },
+    },
+    ...workspaceAreaRules,
+    {
+      name: "web-workspace-area-listed",
+      comment:
+        "A workspace area imports another only once WORKSPACE_AREAS places it among the areas, so a new folder there is placed before it reaches into one.",
+      severity: "error",
+      from: {
+        path: `${WORKSPACE}([^/]+)/`,
+        pathNot: [
+          `${WORKSPACE}(${["room", ...Object.keys(WORKSPACE_AREAS)].join("|")})/`,
+          TESTS_AND_STORIES,
+        ],
+      },
+      to: { path: `${WORKSPACE}[^/]+/`, pathNot: `${WORKSPACE}$1/` },
     },
     {
       name: "web-models-apart-from-components",

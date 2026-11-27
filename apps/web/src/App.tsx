@@ -18,7 +18,7 @@ import { ModelSetup } from "./pages/model-setup.tsx";
 import { ProjectLibrary } from "./pages/project-library.jsx";
 import { Projects } from "./pages/projects.jsx";
 import { Settings } from "./pages/settings/settings.jsx";
-import { StageWorkspace } from "./pages/workspace/index.tsx";
+import { StageWorkspace } from "./pages/workspace/room/index.tsx";
 
 export function App() {
   const { resolvedMode } = useTheme();

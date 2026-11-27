@@ -111,8 +111,8 @@
     {
       "files": [
         "apps/hub/src/auth/agent-token-bridge.ts",
-        "apps/web/src/pages/workspace/deliverable-block.tsx",
-        "apps/web/src/pages/workspace/room.model.ts"
+        "apps/web/src/pages/workspace/pane/deliverable-block.tsx",
+        "apps/web/src/pages/workspace/room/room.model.ts"
       ],
       "rules": {
         "eslint/complexity": "off"

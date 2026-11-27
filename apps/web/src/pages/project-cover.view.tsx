@@ -3,7 +3,7 @@
  * picture, or its pattern while there is no mockup to show.
  */
 import { useEffect, useEffectEvent, useRef, type CSSProperties } from "react";
-import { GuiFrame } from "./workspace/gui-frame.tsx";
+import { GuiFrame } from "./workspace/design/gui-frame.tsx";
 import styles from "./project-cover.module.css";
 
 // A tile a screen's height away says it is near, so its mockup is there by the time it scrolls in.
