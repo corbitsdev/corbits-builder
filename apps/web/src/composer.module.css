@@ -211,6 +211,9 @@
   :is(textarea, [data-slot="prompt-input-mirror"]) {
   padding-block: 6px;
   padding-inline: 0;
+  /* A full-width bar is heavier than anything else in the row it shares with the controls. The
+     mirror holds the same bar's space, so its words wrap where the textarea's do. */
+  scrollbar-width: thin;
 }
 
 .box [data-slot="prompt-input"] > div:has(> textarea) {
