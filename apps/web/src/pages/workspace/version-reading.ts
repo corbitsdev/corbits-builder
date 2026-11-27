@@ -4,8 +4,25 @@
  * its versions through this, whatever it is drawn as.
  */
 import { useEffect, useRef, useState } from "react";
-import type { LoadedDeliverable, ReadVersion } from "./deliverable-block.tsx";
-import { predecessorOf } from "./document-versions.ts";
+import type { ApproachesMeta } from "@corbits-builder/schemas/approaches";
+import { predecessorOf, type RetainedVersion } from "./document-versions.ts";
+
+/** One version's text, when it was filed and, on an approaches document that filed them, its approaches. */
+export type ReadVersion = {
+  content: string;
+  filedAt: string;
+  approaches?: ApproachesMeta;
+};
+
+export type LoadedDeliverable = ReadVersion & {
+  title: string;
+  mediaType: string;
+  version: number;
+  sha256: string;
+  before: (ReadVersion & { version: number }) | null;
+  historyError?: string;
+  versions: readonly RetainedVersion[];
+};
 
 export type VersionReadingInput = {
   /** The room's read of the document: its newest version, the one before and the versions kept. */

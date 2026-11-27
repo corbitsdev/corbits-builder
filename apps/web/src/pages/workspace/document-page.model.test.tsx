@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { wording } from "../../config.ts";
-import type { LoadedDeliverable } from "./deliverable-block.tsx";
+import type { LoadedDeliverable } from "./version-reading.ts";
 import {
   briefPhone,
   briefSaturday,

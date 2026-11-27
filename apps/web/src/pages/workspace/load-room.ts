@@ -27,10 +27,8 @@ import { documentReadFailure } from "./document-read.ts";
 import { APPROVAL_PACKAGE_MEDIA_TYPE } from "./approval-package.ts";
 import { DESIGN_MEDIA_TYPE } from "./design-bundle.ts";
 import { humanFault } from "./human-fault.ts";
-import type {
-  DeliverableState,
-  LoadedDeliverable,
-} from "./deliverable-block.tsx";
+import type { DeliverableState } from "./deliverable-block.tsx";
+import type { LoadedDeliverable } from "./version-reading.ts";
 
 export type RoomSnapshot = {
   conversation: {

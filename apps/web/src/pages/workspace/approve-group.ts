@@ -5,8 +5,17 @@
  */
 import { useState } from "react";
 import { wording } from "../../config.ts";
-import type { DocumentApprovalControl } from "./deliverable-block.tsx";
 import type { PaneBarGroup } from "./pane-bar.tsx";
+
+/**
+ * The person's approval of the document they read, with no question asking for it: the version
+ * approved and when, if any, and how to approve the version on show.
+ */
+export type DocumentApprovalControl = {
+  approvedVersion: number | undefined;
+  approvedAt: string | undefined;
+  approve: (version: number) => Promise<void>;
+};
 
 export function useApproveGroup(
   approval: DocumentApprovalControl | undefined,
