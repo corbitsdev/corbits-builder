@@ -17,7 +17,6 @@ import {
   usePrefetchQuery,
   useQueries,
   useQuery,
-  useQueryClient,
 } from "@tanstack/react-query";
 import {
   projectActivityQuery,
@@ -26,21 +25,18 @@ import {
 } from "./project-activity.ts";
 import { dispatchLive } from "./dispatch.ts";
 import { earlierDocumentRole, restartedWork } from "./earlier-document.ts";
-import { ProductApiError, type ProjectArtifact } from "@corbits-builder/client";
+import { ProductApiError } from "@corbits-builder/client";
 import type { InFlightRun } from "@corbits-builder/schemas/artifact";
-import { toast } from "sonner";
 import type { SpaceScreenProps } from "./plugin-screens.tsx";
 import { useCommentDrafts, usePromptBox } from "./prompt-box.model.ts";
 import { acceptedMaterialsQuery, useComposer } from "./composer.model.ts";
 import { runStepsQuery, savedRunIds, useSavedRunSteps } from "./run-preview.ts";
 import { refusalBody } from "../../api/transport.ts";
 import {
-  approveDocument,
   readArtifact,
   readProjectValues,
   runPluginAction,
 } from "../../api/artifacts.ts";
-import { documentsForPane } from "./document-read.ts";
 import {
   getProject,
   restoreProject,
@@ -56,29 +52,17 @@ import { useQuestions } from "./questions.model.ts";
 import { openDecisionsQuery, useDecisions } from "./decisions.model.ts";
 import { useDelivery } from "./delivery.model.ts";
 import { useRunCards } from "./run-cards.model.ts";
-import { useFiledVersions } from "./filed-versions.ts";
+import { usePaneDocuments } from "./pane-documents.model.ts";
 import { threadUpdates } from "./specialist-updates.ts";
 import { openApprovalOf } from "./collaboration.ts";
 import { chosenApproach } from "./approach-choice.ts";
-import {
-  followDeliverableId,
-  shownDeliverableId,
-  type DocumentChoice,
-} from "./tab-follow.ts";
 import {
   useBindPoll,
   useReloadOnHold,
   useRoomReload,
   useSettleReloads,
 } from "./room-reload.model.ts";
-import {
-  documentTab,
-  paneArtifacts,
-  paneDocument,
-  shownDocument,
-  tabbedArtifacts,
-} from "./pane-documents.ts";
-import type { DeliverableState } from "./deliverable-block.tsx";
+import { documentTab } from "./pane-documents.ts";
 import { formatPassageQuote, type PassageQuote } from "./passage-quote.ts";
 import { humanFault, humanFaultWithCode } from "../../human-fault.ts";
 import { suggestedReplies } from "./suggested-replies.ts";
@@ -86,18 +70,15 @@ import { sentItemId, withLiveTurn } from "./visible-chat.ts";
 import {
   keptRoom,
   loadProjectRoom,
-  paneDocumentKey,
-  reloadProjectDocument,
   roomSnapshotReady,
   type RoomSnapshot,
 } from "./load-room.ts";
 import { useUserManual } from "./user-manual.model.ts";
 import { workUnitStanding } from "./work-unit-step.model.ts";
-import { conceptTab, DESIGN_OPTION, reviewApproval } from "./design-concept.ts";
+import { DESIGN_OPTION, reviewApproval } from "./design-concept.ts";
 import { designConcepts } from "./design-concepts.model.ts";
 import { useLiveAppPresence } from "./live-app.model.ts";
 import { usePreference } from "../../queries/preferences.ts";
-import { markSeen, useSeenVersions } from "./seen-versions.ts";
 import {
   needsModelSetup,
   type EnableAiDialogProps,
@@ -345,7 +326,6 @@ export function useRoom({
   spaceScreen: SpaceScreenProps | null;
   questionOutcomes: ReadonlyMap<string, AnswerOutcome>;
 } {
-  const queryClient = useQueryClient();
   const archived = status === "archived";
   const startFault = start.fault;
   const modelNeeded = start.modelNeeded;
@@ -372,11 +352,6 @@ export function useRoom({
     () => screensFor(selection.data ?? {}),
     [selection.data],
   );
-  const artifacts = paneArtifacts(snapshot.artifacts);
-  const documents = snapshot.documents;
-  const shownDocuments = artifacts.map((item) =>
-    shownDocument(item, documents[paneDocumentKey(projectId, item)]),
-  );
   // Kept stable, so an open screen reads the project's values once rather than on every render.
   const projectValues = useMemo(
     () => ({
@@ -385,14 +360,8 @@ export function useRoom({
     }),
     [projectId],
   );
-  const stakeholderApprovals =
-    usePreference("experimental_approvals") === "yes" ? "on" : "off";
   const documentGround =
     usePreference("document_ground") === "grey" ? "grey" : "white";
-  const seen = useSeenVersions();
-  const [documentChoice, setDocumentChoice] = useState<DocumentChoice | null>(
-    null,
-  );
   const [paneTab, setPaneTab] = useState<{ value: string } | null>(null);
   // The tab the project view shows, which the sidebar marks while the view is open.
   const [shownTab, setShownTab] = useState<string | null>(null);
@@ -511,47 +480,8 @@ export function useRoom({
       ? suggestedReplies(lastShown.text)
       : [];
   const sentId = sentItemId(turns, composer.sent.length > 0);
-  const [retryingKey, setRetryingKey] = useState<string | null>(null);
-  const retryDocument = async (item: ProjectArtifact) => {
-    const key = paneDocumentKey(projectId, item);
-    if (documents[key]?.status !== "error") return;
-    setRetryingKey(key);
-    try {
-      await reloadProjectDocument(projectId, key, queryClient, !archived);
-    } catch (cause) {
-      toast.error(humanFault(cause, wording.documentRetryFailed));
-    } finally {
-      setRetryingKey((current) => (current === key ? null : current));
-    }
-  };
-  const documentState = (
-    item: ProjectArtifact,
-  ): DeliverableState | undefined => {
-    const key = paneDocumentKey(projectId, item);
-    if (retryingKey === key) return { status: "loading" };
-    return documents[key];
-  };
-
   const addToPrompt = (passage: PassageQuote) =>
     composer.add(formatPassageQuote(passage));
-  const chooseDocument = (id: string) =>
-    setDocumentChoice({ id, filedCount: filed.length });
-  // The person approves the document they read; the next room read shows it approved. Approved,
-  // it is done with, so the project view closes on the conversation.
-  const approveRead = async (id: string, version: number) => {
-    const item = paneDeliverables.find((entry) => entry.kind === id);
-    if (item === undefined) return;
-    try {
-      await approveDocument(projectId, item.artifactId, version);
-      setProjectOpen(false);
-      reload();
-      onChanged();
-    } catch (cause) {
-      toast.error(
-        await humanFaultWithCode(cause, wording.documentApproval.failed),
-      );
-    }
-  };
   const openProject = (tab: string) => {
     setPaneTab({ value: tab });
     setProjectOpen(true);
@@ -566,12 +496,6 @@ export function useRoom({
       decisions,
       composerDisabled,
     });
-  // Words that name a document work already builds from say, as they are typed, what sending
-  // restarts; Send still sends at once. Without a read of who is at work there is nothing to say.
-  const restarting =
-    rolesAtWork === undefined || composer.text.trim() === ""
-      ? undefined
-      : earlierDocumentRole(composer.text, artifacts, rolesAtWork);
   useBindPoll(awaitingBind, reload, startCoordinator);
   const [restoring, setRestoring] = useState(false);
   const [restoreFault, setRestoreFault] = useState<string | null>(null);
@@ -590,16 +514,39 @@ export function useRoom({
       setRestoring(false);
     }
   };
+  const {
+    artifacts,
+    shownDocuments,
+    seen,
+    documentState,
+    paneDeliverables,
+    paneDocuments,
+    selected,
+    selectedState,
+    chooseDocument,
+    retryDocument,
+    approveRead,
+    markDocumentSeen,
+  } = usePaneDocuments({
+    projectId,
+    archived,
+    snapshot,
+    following: {
+      working: streaming || thinking,
+      liveText: `${liveTurn?.text ?? ""}\n${latestAssistant ?? ""}`,
+    },
+    reload,
+    onChanged,
+    closeProject: () => setProjectOpen(false),
+  });
+  // Words that name a document work already builds from say, as they are typed, what sending
+  // restarts; Send still sends at once. Without a read of who is at work there is nothing to say.
+  const restarting =
+    rolesAtWork === undefined || composer.text.trim() === ""
+      ? undefined
+      : earlierDocumentRole(composer.text, artifacts, rolesAtWork);
   // Each concept's option is its own tab beside the others, never an ordinary document.
   const options = artifacts.filter((item) => item.kind === DESIGN_OPTION);
-  const paneDeliverables = documentsForPane(
-    tabbedArtifacts(artifacts, stakeholderApprovals),
-    documentState,
-  );
-  const markDocumentSeen = (id: string) => {
-    const item = paneDeliverables.find((entry) => entry.kind === id);
-    if (item !== undefined) markSeen(seen, item.artifactId, item.version);
-  };
   const inFlight = snapshot.inFlight;
   const { dispatches, allDispatches, dispatchRoom, cards, runResults } =
     useRunCards({
@@ -775,38 +722,6 @@ export function useRoom({
     rolesAtWork !== undefined &&
       [...rolesAtWork].some((role) => writesCode({ role })),
   );
-  const filed = useFiledVersions({
-    projectId,
-    documents: artifacts.map((item) =>
-      item.kind === DESIGN_OPTION
-        ? {
-            kind: conceptTab(item.title),
-            title: wording.design.conceptTitle(item.title),
-            version: item.version,
-          }
-        : item,
-    ),
-  });
-  const followId = followDeliverableId(
-    paneDeliverables.map((item) => ({
-      id: item.kind,
-      title: item.title,
-      filed: true,
-    })),
-    {
-      filedDeliverableId: filed.at(-1)?.kind ?? null,
-      working: streaming || thinking,
-      liveText: `${liveTurn?.text ?? ""}\n${latestAssistant ?? ""}`,
-    },
-  );
-  const shownId = shownDeliverableId({
-    choice: documentChoice,
-    filedCount: filed.length,
-    followId,
-  });
-  const selected =
-    paneDeliverables.find((item) => item.kind === shownId) ?? null;
-  const selectedState = selected === null ? undefined : documentState(selected);
 
   // Until the first document is filed or there is an app, the project view has nothing to show.
   const nothingYet =
@@ -875,9 +790,6 @@ export function useRoom({
     seen,
     hasApp: liveApp !== null,
   });
-  const paneDocuments = paneDeliverables.map((item) =>
-    paneDocument(item, seen),
-  );
   const { sidebar, projectMenu } = useProjectSidebar(session, {
     title: projectTitle,
     project: menuProject,
