@@ -38,7 +38,7 @@ import {
   dispatchStatus,
   type Dispatch,
   type DispatchRoom,
-} from "./dispatch-card.tsx";
+} from "./dispatch.ts";
 import { humanFault } from "../../human-fault.ts";
 import type { SpaceScreenProps } from "./plugin-screens.tsx";
 import { screenWords } from "./roles.ts";
@@ -53,7 +53,7 @@ import type {
 import type { SeenVersions } from "./seen-versions.ts";
 import type { OpenApproval } from "./settled-approvals.ts";
 import type { StatusPillContent } from "./status-pill.tsx";
-import type { TypedYes } from "./typed-yes.tsx";
+import type { TypedYes } from "./approval-reply.ts";
 import { workPhrase } from "./work-unit.ts";
 import {
   boxCard,

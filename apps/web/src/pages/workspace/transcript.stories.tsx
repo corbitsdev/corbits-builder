@@ -1,7 +1,8 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import type { PromptQuestion } from "@corbits-builder/schemas/conversation";
 import { fn } from "storybook/test";
-import { RoomThread, type TranscriptTurn } from "./transcript.tsx";
+import { RoomThread } from "./transcript.tsx";
+import type { TranscriptTurn } from "./visible-chat.ts";
 import { ACTIVITY_SHOWN } from "../../config.ts";
 import workUnit from "./work-unit-step.stories.tsx";
 import type { WorkUnit } from "./work-unit.ts";

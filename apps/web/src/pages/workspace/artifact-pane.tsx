@@ -17,7 +17,6 @@ import {
 } from "./deliverable-block.tsx";
 import type { ReadVersion } from "./version-reading.ts";
 import { type DesignPart } from "./design-preview.view.tsx";
-import type { SidebarFile } from "./files-list.tsx";
 import {
   conceptOfTab,
   conceptTab,
@@ -32,6 +31,7 @@ import {
   writeStoredPreference,
 } from "../../stored-preference.ts";
 import { LIVE_TAB, MANUAL_TAB, MOCKUP_TAB } from "./tab-follow.ts";
+import { documentViews, type PaneDocument } from "./pane-documents.ts";
 import type { ApproachChoice } from "./approach-choice.ts";
 import type { PluginTab } from "./plugin-screens.tsx";
 import { splitLeadingHeading } from "./reading-selection.ts";
@@ -39,22 +39,6 @@ import {
   WrittenDocumentView,
   type WrittenDocumentViewProps,
 } from "./written-document.view.tsx";
-
-/** A filed document as the pane shows it. */
-export type PaneDocument = {
-  /** Names its pane: the document's kind, or an attached file's own id. */
-  id: string;
-  title: string;
-  /** Where it stands, in words: drafted at a version, or approved at one. */
-  status: string;
-  /** Its current version is one this viewer has not opened. */
-  unread: boolean;
-  /** A document the person can approve as they read it, with the version approved and when. */
-  approval?: {
-    approvedVersion: number | undefined;
-    approvedAt: string | undefined;
-  };
-};
 
 const TAB_PREFIX = "workspace-document";
 // No pane carries this value, so the body shows none while no tab is selected yet.
@@ -155,33 +139,6 @@ function manualPage(manual: UserManual): WrittenDocumentViewProps {
   };
 }
 
-// Each document's panes: one per document, two for the design.
-function documentViews(
-  item: PaneDocument,
-): { value: string; label: string; part?: DesignPart }[] {
-  const label = wording.documentTab[item.id] ?? item.title;
-  if (item.id !== "design") return [{ value: item.id, label }];
-  return [
-    { value: item.id, label, part: "plan" },
-    { value: MOCKUP_TAB, label: wording.design.mockupTab, part: "mockup" },
-  ];
-}
-
-/** The filed documents as Files rows, one for each pane, so a design gets a row for its mockup. */
-export function fileRows(documents: readonly PaneDocument[]): SidebarFile[] {
-  return documents.flatMap((document) =>
-    documentViews(document).map((view) => ({
-      id: view.value,
-      name:
-        view.part === undefined
-          ? document.title
-          : wording.projectShell.designFile[view.part](document.title),
-      opens: view.value,
-      files: [],
-    })),
-  );
-}
-
 /** The parts of the pane that read the hub for themselves, which whoever draws the pane fills. */
 export type ArtifactPaneSlots = DeliverableSlots & {
   /** Once there is an app, filed or being built, or a build plan for one, a tab for it. */
@@ -194,6 +151,8 @@ export type ArtifactPaneSlots = DeliverableSlots & {
       onDevice: (device: PreviewDevice) => void;
     },
   ) => ReactNode;
+  /** A plugin's own screen, in its tab. */
+  pluginPane: (pane: PluginTab["pane"]) => ReactNode;
 };
 
 /** What the pane shows and what the person can do in it. */
@@ -254,6 +213,7 @@ export function ArtifactPane({
   onShownChange,
   liveApp = null,
   conceptMockup,
+  pluginPane,
   documents,
   selectedId,
   state,
@@ -517,7 +477,7 @@ export function ArtifactPane({
             const ids = panelTabIds(TAB_PREFIX, tab.value);
             return (
               <PanelPane key={tab.value} value={tab.value} id={ids.pane}>
-                {tab.pane}
+                {pluginPane(tab.pane)}
               </PanelPane>
             );
           })}

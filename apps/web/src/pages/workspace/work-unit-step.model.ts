@@ -5,7 +5,7 @@
 import type { PartTool } from "@corbits/react-ui";
 import { isDocumentKind } from "@corbits-builder/schemas/artifact";
 import { wording } from "../../config.ts";
-import { dispatchStatus, type DispatchRoom } from "./dispatch-card.tsx";
+import { dispatchStatus, type DispatchRoom } from "./dispatch.ts";
 import type { RowPreview, WorkUnitStanding } from "./work-unit-step.view.tsx";
 import { roleLabel } from "./roles.ts";
 import { workPhrase, type WorkUnit } from "./work-unit.ts";

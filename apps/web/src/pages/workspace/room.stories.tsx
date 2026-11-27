@@ -5,7 +5,8 @@ import { wording } from "../../config.ts";
 import { AppView } from "../../App.view.tsx";
 import app from "../../App.stories.tsx";
 import type { PlanView } from "@corbits-builder/schemas/plan";
-import { fileRows, type ArtifactPaneProps } from "./artifact-pane.tsx";
+import type { ArtifactPaneProps } from "./artifact-pane.tsx";
+import { fileRows } from "./pane-documents.ts";
 import documentPane, {
   AppAndManual as appAndManual,
   Concepts as conceptTabs,

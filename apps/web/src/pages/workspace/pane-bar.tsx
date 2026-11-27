@@ -31,7 +31,7 @@ import {
   useStoredPreference,
   writeStoredPreference,
 } from "../../stored-preference.ts";
-import { useElapsedMs } from "./elapsed.tsx";
+import { useElapsedMs } from "./elapsed.ts";
 import styles from "./pane-bar.module.css";
 
 export type PaneBarAction = {

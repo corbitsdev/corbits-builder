@@ -6,7 +6,7 @@
  */
 import type { RunProgress } from "@corbits-builder/schemas/artifact";
 import { wording } from "../../config.ts";
-import { fileLabel } from "./agent-activity.tsx";
+import { fileLabel } from "./agent-activity.ts";
 
 const text = wording.liveApp.setup;
 

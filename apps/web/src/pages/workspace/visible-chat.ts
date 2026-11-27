@@ -276,6 +276,26 @@ export function visibleChatText(text: string): string {
   return prose.length > 0 ? prose : plainFallback(text);
 }
 
+type TurnBody = {
+  text: string;
+  at: number;
+  /** A turn's thinking and tool work, kept while this session saw it. Omitted turns are text only. */
+  parts?: readonly ConversationPart[];
+  /** The live turn while its message run is still going. */
+  streaming?: boolean;
+  /** The person's words on their way to the hub, not yet received. */
+  sending?: boolean;
+};
+
+export type TranscriptTurn =
+  | (TurnBody & { role: "person" })
+  | (TurnBody & { role: "assistant" })
+  | (TurnBody & { role: "participant"; sender: string });
+
+export function turnItemId(turn: TranscriptTurn, index: number): string {
+  return `${turn.role}:${String(turn.at)}:${String(index)}`;
+}
+
 export function turnLabel(turn: {
   readonly role: "person" | "assistant" | "participant";
   readonly sender?: string;

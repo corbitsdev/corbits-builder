@@ -2,11 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { ProductApiError } from "@corbits-builder/client";
 import { wording } from "../../config.ts";
-import {
-  ArtifactPane,
-  type ArtifactPaneSlots,
-  type PaneDocument,
-} from "./artifact-pane.tsx";
+import { ArtifactPane, type ArtifactPaneSlots } from "./artifact-pane.tsx";
+import type { PaneDocument } from "./pane-documents.ts";
 import { documentReadFailure, documentsForPane } from "./document-read.ts";
 import type { DeliverableState } from "./deliverable-block.tsx";
 import { WrittenDocument } from "./written-document.tsx";
@@ -25,6 +22,7 @@ function filed(id: string, title: string): PaneDocument {
 // A written document draws none of the other parts that read the hub.
 const parts: ArtifactPaneSlots = {
   conceptMockup: () => null,
+  pluginPane: () => null,
   approvalRounds: () => null,
   tweakPanel: () => null,
   writtenDocument: (page) => <WrittenDocument {...page} />,

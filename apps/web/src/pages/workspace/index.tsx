@@ -96,6 +96,7 @@ function ReadyRoom(props: ReadyRoomProps) {
             <TweakPanel {...panel} design={{ projectId }} />
           ),
           writtenDocument: (page) => <WrittenDocument {...page} />,
+          pluginPane: (pane) => <SpaceScreen {...pane} />,
         }}
       />
       <EnableAiDialog {...enableAi} />

@@ -5,7 +5,7 @@ import {
 } from "@corbits-builder/schemas/conversation";
 import type { ConversationTurn } from "../../api/conversation.ts";
 import type { ChatMessage } from "../../api/types.ts";
-import type { TranscriptTurn } from "./transcript.tsx";
+import type { TranscriptTurn } from "./visible-chat.ts";
 
 // A message's stand-in id until the hub's receipt replaces it.
 export const SENDING = "sending:";

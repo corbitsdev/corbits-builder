@@ -12,7 +12,7 @@ import {
   fileStem,
   markdownFile,
   useFileGroup,
-} from "./pane-file.tsx";
+} from "./pane-file.ts";
 import { splitLeadingHeading } from "./reading-selection.ts";
 import {
   useVersionReading,
