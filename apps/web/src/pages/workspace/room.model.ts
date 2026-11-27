@@ -70,14 +70,10 @@ import {
 import { keys } from "../../queries/keys.ts";
 import { useQuestions } from "./questions.model.ts";
 import { openDecisionsQuery, useDecisions } from "./decisions.model.ts";
+import { useDelivery } from "./delivery.model.ts";
 import { useFiledVersions } from "./filed-versions.ts";
 import { threadUpdates } from "./specialist-updates.ts";
 import { openApprovalOf } from "./collaboration.ts";
-import {
-  chooseApproachWithOpenApproval,
-  deliverWithOpenApproval,
-  useTypedYes,
-} from "./approval-reply.ts";
 import { chosenApproach } from "./approach-choice.ts";
 import {
   followDeliverableId,
@@ -493,13 +489,9 @@ export function useRoom({
   const {
     waits,
     settledApprovals,
-    pendingApprovals,
     openApproval,
     approvalBusy,
-    approvalError,
     readPendingApprovals,
-    onDecideApproval,
-    declineWith,
   } = decisions;
   useReloadOnHold(decisions.awaitingApproval, reload);
 
@@ -589,78 +581,20 @@ export function useRoom({
   };
   // A link opens the page it names, so the design opens on its plan. Only the mockup's row opens the mockup.
   const openDocument = (id: string) => openProject(id);
-  // The message names the pick. Resolves to the fault the person sees, or null once it is sent.
-  const chooseApproach = async (message: string): Promise<string | null> => {
-    const currentOpen = openApprovalOf(await readPendingApprovals());
-    return chooseApproachWithOpenApproval({
-      openApprovalId: currentOpen?.approvalId,
-      deliver: () => composer.mail(message),
-      decline: (approvalId) =>
-        composer.mail(message, false, declineWith(approvalId)),
-      notSent: wording.approaches.notSent,
+  const { composerDisabled, awaitingBind } = phase;
+  const { deliver, send, chooseApproach, typedYes, requestChanges } =
+    useDelivery({
+      composer,
+      question: { openQuestion, answer },
+      decisions,
+      composerDisabled,
     });
-  };
-  const deliver = async (body: string, clearComposer = false) => {
-    if (body.trim().length === 0 || sending) return false;
-    // While the coordinator waits on its question, whatever the person types is their answer.
-    if (openQuestion !== undefined) {
-      const sent = await answer(openQuestion.signalName, {
-        reply: body.trim(),
-      });
-      if (sent && clearComposer) composer.setText("");
-      return sent;
-    }
-    const currentOpen = openApprovalOf(await readPendingApprovals());
-    return deliverWithOpenApproval({
-      openApprovalId: currentOpen?.approvalId,
-      decide: onDecideApproval,
-      deliver: () => composer.mail(body, clearComposer),
-      decline: (approvalId) =>
-        composer.mail(body, clearComposer, declineWith(approvalId)),
-    });
-  };
-  const sendFiles = async () => {
-    if (sending) return false;
-    const currentOpen = openApprovalOf(await readPendingApprovals());
-    return deliverWithOpenApproval({
-      openApprovalId: currentOpen?.approvalId,
-      decide: onDecideApproval,
-      deliver: composer.sendFiles,
-    });
-  };
-  const undoTypedYes = async (message: string) => {
-    if (!(await deliver(message))) composer.restore(message);
-  };
-  const typedYes = useTypedYes({
-    pending: pendingApprovals?.map((approval) => approval.approvalId),
-    onApprove: (approvalId) =>
-      void onDecideApproval({ approvalId, choice: "yes" }),
-    onUndo: (message) => void undoTypedYes(message),
-    onDropped: composer.restore,
-  });
-  const send = () => {
-    if (composer.box.attachments.files.length > 0) return void sendFiles();
-    if (typedYes.hold(composer.text)) return composer.setText("");
-    void deliver(composer.text, true);
-  };
   // Words that name a document work already builds from say, as they are typed, what sending
   // restarts; Send still sends at once. Without a read of who is at work there is nothing to say.
   const restarting =
     rolesAtWork === undefined || composer.text.trim() === ""
       ? undefined
       : earlierDocumentRole(composer.text, artifacts, rolesAtWork);
-  // The composer is disabled while the decline saves, so the cursor goes there once it can take it.
-  const [changesAsked, setChangesAsked] = useState(false);
-  const requestChanges = () => {
-    setChangesAsked(true);
-  };
-  const { composerDisabled, awaitingBind } = phase;
-  useEffect(() => {
-    if (!changesAsked || composerDisabled) return;
-    setChangesAsked(false);
-    composer.inputRef.current?.focus();
-  }, [changesAsked, composerDisabled]);
-
   useBindPoll(awaitingBind, reload, startCoordinator);
   const [restoring, setRestoring] = useState(false);
   const [restoreFault, setRestoreFault] = useState<string | null>(null);
@@ -1013,14 +947,11 @@ export function useRoom({
     openQuestion,
     onAnswer: answerScreen,
     sending,
-    approvals: pendingApprovals,
-    approvalBusy,
-    approvalError,
+    decisions,
     typedYes:
       typedYes.held === null
         ? null
         : { held: typedYes.held, onUndo: typedYes.undo },
-    onDecide: onDecideApproval,
     onRequestChanges: requestChanges,
     plan: snapshot.plan.steps,
     // A screen with a tab of its own waits there, not in the space.

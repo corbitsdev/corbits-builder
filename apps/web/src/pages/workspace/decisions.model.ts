@@ -48,6 +48,8 @@ export function openDecisionsQuery(projectId: string, active: boolean) {
   });
 }
 
+export type RoomDecisions = ReturnType<typeof useDecisions>;
+
 export function useDecisions({
   projectId,
   status,
