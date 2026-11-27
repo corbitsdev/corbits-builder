@@ -8,7 +8,7 @@ import {
   resolveSelection,
   type ArtifactPaneSlots,
 } from "./artifact-pane.tsx";
-import { fileRows, type PaneDocument } from "./pane-documents.ts";
+import type { PaneDocument } from "./pane-documents.ts";
 import { APPROVAL_PACKAGE_MEDIA_TYPE } from "./approval-package.ts";
 import { ApprovalRoundsPanel } from "./approval-rounds.tsx";
 import {
@@ -16,7 +16,7 @@ import {
   type DeliverableState,
 } from "./deliverable-block.tsx";
 import { TweakPanel } from "./mockup-tweaks.tsx";
-import { LIVE_TAB, MOCKUP_TAB } from "./tab-follow.ts";
+import { LIVE_TAB } from "./tab-follow.ts";
 import { WrittenDocument } from "./written-document.tsx";
 
 const filed = (id: string, title: string, version: number): PaneDocument => ({
@@ -300,17 +300,5 @@ describe("remembered tab", () => {
     expect(
       resolveSelection("build_plan", true, [ready, plan], ready.id),
     ).toEqual({ selectedId: "build_plan", documentToOpen: null });
-  });
-});
-
-describe("fileRows", () => {
-  test("a filed design is two rows, one opening its plan and one its mockup", () => {
-    const rows = fileRows([ready, filed("design", "Friendly", 1)]);
-    expect(rows.map((row) => row.opens)).toEqual([
-      "problem_brief",
-      "design",
-      MOCKUP_TAB,
-    ]);
-    expect(new Set(rows.map((row) => row.name)).size).toBe(3);
   });
 });

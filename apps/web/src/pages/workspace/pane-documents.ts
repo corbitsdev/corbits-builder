@@ -5,7 +5,6 @@ import { wording } from "../../config.ts";
 import type { DeliverableState } from "./deliverable-block.tsx";
 import { DESIGN_OPTION } from "./design-concept.ts";
 import type { DesignPart } from "./design-preview.view.tsx";
-import type { SidebarFile } from "./files-list.tsx";
 import type { ShownDocument } from "./screen-question.tsx";
 import type { SeenVersions } from "./seen-versions.ts";
 import { MOCKUP_TAB } from "./tab-follow.ts";
@@ -36,21 +35,6 @@ export function documentViews(
     { value: item.id, label, part: "plan" },
     { value: MOCKUP_TAB, label: wording.design.mockupTab, part: "mockup" },
   ];
-}
-
-/** The filed documents as Files rows, one for each pane, so a design gets a row for its mockup. */
-export function fileRows(documents: readonly PaneDocument[]): SidebarFile[] {
-  return documents.flatMap((document) =>
-    documentViews(document).map((view) => ({
-      id: view.value,
-      name:
-        view.part === undefined
-          ? document.title
-          : wording.projectShell.designFile[view.part](document.title),
-      opens: view.value,
-      files: [],
-    })),
-  );
 }
 
 // Every material shares one kind, but each file is its own tab, so the pane names it by its artifact.

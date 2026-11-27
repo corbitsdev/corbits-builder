@@ -39,6 +39,7 @@ import { SettledFrame } from "@corbits-builder/plugin-ui/screen-card";
 import { wording } from "../../config.ts";
 import { Fault, InlineNote } from "../../components.jsx";
 import type { DesignFiles } from "./design-bundle.ts";
+import type { ReviewedDesign } from "./design-concept.ts";
 import { CommentCard, type CommentCardProps } from "./comment-card.tsx";
 import { MockupFrame, type MockupFrameProps } from "./mockup-frame.tsx";
 import { SettledReply, useAnswer } from "./questions-card.tsx";
@@ -52,13 +53,6 @@ export const projectFacts: readonly string[] = [];
 /** Reads the open project's values by name. */
 export type ProjectValuesStore = {
   read(keys: readonly string[], signal: AbortSignal): Promise<ProjectValues>;
-};
-
-/** The design a screen reviews, and the design option an approval of it chooses, if any. */
-export type ReviewedDesign = {
-  files: DesignFiles;
-  version: number;
-  approval: { option: string } | { unavailable: string };
 };
 
 /** A filed document at its current version, as a screen lists it to approve. */

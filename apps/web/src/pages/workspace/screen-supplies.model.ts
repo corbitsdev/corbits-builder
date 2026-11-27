@@ -20,7 +20,11 @@ import { humanFault } from "../../human-fault.ts";
 import { keys } from "../../queries/keys.ts";
 import type { DeliverableState } from "./deliverable-block.tsx";
 import { parseBundle } from "./design-bundle.ts";
-import { DESIGN_OPTION, reviewApproval } from "./design-concept.ts";
+import {
+  DESIGN_OPTION,
+  reviewApproval,
+  type ReviewedDesign,
+} from "./design-concept.ts";
 import { designConcepts } from "./design-concepts.model.ts";
 import type { Dispatch } from "./dispatch.ts";
 import type { RoomSnapshot } from "./load-room.ts";
@@ -28,7 +32,6 @@ import type {
   ChoosableConcept,
   HostSupplies,
   ListedHostProps,
-  ReviewedDesign,
   ShownDocument,
 } from "./screen-question.tsx";
 import { pluginTabs, screensFor, selectionNames } from "./screens.ts";

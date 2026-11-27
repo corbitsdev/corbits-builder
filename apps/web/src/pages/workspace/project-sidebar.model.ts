@@ -7,12 +7,16 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { PlanView } from "@corbits-builder/schemas/plan";
 import type { MenuProject, ProjectMenuHost } from "../project-menu.model.ts";
-import { fileRows, type PaneDocument } from "./pane-documents.ts";
+import type { PaneDocument } from "./pane-documents.ts";
 import { wording, type SettingsTab } from "../../config.ts";
 import { ROOM_NARROW_QUERY, useSidebar } from "../../sidebar-setting.ts";
 import { liveAppQuery } from "./live-app.model.ts";
 import type { FilesListProps } from "./files-list.tsx";
-import { projectOutline, type OutlineAppState } from "./project-outline.ts";
+import {
+  fileRows,
+  projectOutline,
+  type OutlineAppState,
+} from "./project-outline.ts";
 import type { ProjectSidebarViewProps } from "./project-sidebar.view.tsx";
 import type { RoomSession } from "./room-session.ts";
 import type { SidebarSectionsProps } from "./sidebar-sections.tsx";

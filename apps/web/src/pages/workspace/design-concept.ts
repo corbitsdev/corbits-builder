@@ -1,6 +1,6 @@
 import type { ProjectArtifact } from "@corbits-builder/client";
 import { wording } from "../../config.ts";
-import type { ReviewedDesign } from "./screen-question.tsx";
+import type { DesignFiles } from "./design-bundle.ts";
 
 /** The kind of the document each concept's designer files, titled by its concept. */
 export const DESIGN_OPTION = "design_option";
@@ -15,6 +15,13 @@ export type DesignConcept = {
   readonly option: { readonly artifactId: string; readonly version: number };
   /** The person chose this concept, and its option is the approved design. */
   readonly chosen?: boolean;
+};
+
+/** The design a screen reviews, and the design option an approval of it chooses, if any. */
+export type ReviewedDesign = {
+  files: DesignFiles;
+  version: number;
+  approval: { option: string } | { unavailable: string };
 };
 
 const CONCEPT_TAB = "concept:";

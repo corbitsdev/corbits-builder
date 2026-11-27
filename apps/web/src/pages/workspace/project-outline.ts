@@ -8,6 +8,9 @@
 import { isDeclined } from "@corbits-builder/plan";
 import type { PlanView } from "@corbits-builder/schemas/plan";
 import type { LiveApp } from "@corbits-builder/schemas/artifact";
+import { wording } from "../../config.ts";
+import type { SidebarFile } from "./files-list.tsx";
+import { documentViews, type PaneDocument } from "./pane-documents.ts";
 import { LIVE_TAB } from "./tab-follow.ts";
 
 type PlanStep = PlanView["steps"][number];
@@ -151,4 +154,19 @@ export function projectOutline(input: OutlineInput): Outline {
     plan: outlinePlan(input.plan, input.documents, input.app.shown),
     app: outlineApp(input.app),
   };
+}
+
+/** The filed documents as Files rows, one for each pane, so a design gets a row for its mockup. */
+export function fileRows(documents: readonly PaneDocument[]): SidebarFile[] {
+  return documents.flatMap((document) =>
+    documentViews(document).map((view) => ({
+      id: view.value,
+      name:
+        view.part === undefined
+          ? document.title
+          : wording.projectShell.designFile[view.part](document.title),
+      opens: view.value,
+      files: [],
+    })),
+  );
 }

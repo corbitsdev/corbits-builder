@@ -6,7 +6,6 @@ import { AppView } from "../../App.view.tsx";
 import app from "../../App.stories.tsx";
 import type { PlanView } from "@corbits-builder/schemas/plan";
 import type { ArtifactPaneProps } from "./artifact-pane.tsx";
-import { fileRows } from "./pane-documents.ts";
 import documentPane, {
   AppAndManual as appAndManual,
   Concepts as conceptTabs,
@@ -14,7 +13,11 @@ import documentPane, {
   ReadError as failedDocument,
 } from "./artifact-pane.stories.tsx";
 import { coordinatorPlan, planning } from "./project-outline.fixtures.ts";
-import { projectOutline, type OutlineAppState } from "./project-outline.ts";
+import {
+  fileRows,
+  projectOutline,
+  type OutlineAppState,
+} from "./project-outline.ts";
 import designer from "@plugins/designer/package.json";
 import choose from "@plugins/designer/src/choose/definition.ts";
 import ChooseView, {

@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { LIVE_TAB } from "./tab-follow.ts";
+import { wording } from "../../config.ts";
+import type { PaneDocument } from "./pane-documents.ts";
+import { LIVE_TAB, MOCKUP_TAB } from "./tab-follow.ts";
 import {
   building,
   coordinatorPlan,
@@ -10,6 +12,7 @@ import {
   planStep,
 } from "./project-outline.fixtures.ts";
 import {
+  fileRows,
   outlineApp,
   outlinePlan,
   outlineStep,
@@ -199,5 +202,31 @@ describe("the app", () => {
     ] as const)
       expect(outlineApp({ shown: true, state })).toBe(state);
     expect(projectOutline(building).app).toBe("running");
+  });
+});
+
+describe("fileRows", () => {
+  const filedDocument = (
+    id: string,
+    title: string,
+    version: number,
+  ): PaneDocument => ({
+    id,
+    title,
+    status: wording.documentStatus.drafted(version),
+    unread: true,
+  });
+
+  test("a filed design is two rows, one opening its plan and one its mockup", () => {
+    const rows = fileRows([
+      filedDocument("problem_brief", "Problem brief", 2),
+      filedDocument("design", "Friendly", 1),
+    ]);
+    expect(rows.map((row) => row.opens)).toEqual([
+      "problem_brief",
+      "design",
+      MOCKUP_TAB,
+    ]);
+    expect(new Set(rows.map((row) => row.name)).size).toBe(3);
   });
 });
