@@ -17,9 +17,9 @@ import type { InFlightRun } from "@corbits-builder/schemas/artifact";
 import type { SpaceScreenProps } from "./plugin-screens.tsx";
 import { useCommentDrafts, usePromptBox } from "./prompt-box.model.ts";
 import type { ReadyRoomProps } from "./room-gate.model.ts";
+import { useProjectRestore } from "./project-restore.model.ts";
 import { useComposer } from "./composer.model.ts";
 import { readArtifact } from "../../api/artifacts.ts";
-import { restoreProject } from "../../api/projects.ts";
 import {
   showsScreen,
   type QuestionAnswer,
@@ -42,12 +42,11 @@ import {
 } from "./room-reload.model.ts";
 import { documentTab } from "./pane-documents.ts";
 import { formatPassageQuote, type PassageQuote } from "./passage-quote.ts";
-import { humanFaultWithCode } from "../../human-fault.ts";
 import { suggestedReplies } from "./suggested-replies.ts";
 import { sentItemId, withLiveTurn } from "./visible-chat.ts";
 import { workUnitStanding } from "./work-unit-step.model.ts";
 import { usePreference } from "../../queries/preferences.ts";
-import { type EnableAiDialogProps } from "../model-setup.model.ts";
+import type { EnableAiDialogProps } from "../model-setup.model.ts";
 import type { RoomContent } from "./room.view.tsx";
 import { roomDock } from "./room-dock.ts";
 import { lastSentAt, roomPhase } from "./room-status.ts";
@@ -134,7 +133,6 @@ export function useRoom({
     screenQuestion !== undefined && screenAsks?.decides === true;
   // What the open screen asks of the prompt box, as the composer's placeholder says it.
   const screenReply = screenAsks?.reply;
-
   const { liveRun, settling, turns, coordinatorResults, liveTurn } =
     useLiveTurn({
       projectId,
@@ -145,7 +143,6 @@ export function useRoom({
       reload,
       composer,
     });
-
   const decisions = useDecisions({
     projectId,
     status,
@@ -161,9 +158,7 @@ export function useRoom({
     readPendingApprovals,
   } = decisions;
   useReloadOnHold(decisions.awaitingApproval, reload);
-
   useSettleReloads(settling, reload);
-
   const mailThreads = snapshot.conversation.threads;
   const specialistUpdates = useMemo(
     () => threadUpdates(mailThreads),
@@ -218,23 +213,7 @@ export function useRoom({
       composerDisabled,
     });
   useBindPoll(awaitingBind, reload, startCoordinator);
-  const [restoring, setRestoring] = useState(false);
-  const [restoreFault, setRestoreFault] = useState<string | null>(null);
-  const restore = async () => {
-    setRestoring(true);
-    setRestoreFault(null);
-    try {
-      await restoreProject(projectId);
-      await refetchProject();
-      onChanged();
-    } catch (cause) {
-      setRestoreFault(
-        await humanFaultWithCode(cause, wording.archivedProject.restoreFailed),
-      );
-    } finally {
-      setRestoring(false);
-    }
-  };
+  const restore = useProjectRestore({ projectId, refetchProject, onChanged });
   const {
     artifacts,
     shownDocuments,
@@ -279,7 +258,6 @@ export function useRoom({
       openProject,
       openDocument,
     });
-
   const {
     screenOf,
     projectValues,
@@ -434,11 +412,7 @@ export function useRoom({
       },
       dock: roomDock({
         archived,
-        restore: {
-          restoring,
-          fault: restoreFault,
-          onRestore: () => void restore(),
-        },
+        restore,
         modelNeeded: modelNeeded?.message ?? null,
         providerMissing,
         startFault,
