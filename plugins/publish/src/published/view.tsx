@@ -105,16 +105,16 @@ function KeepApp({
       <section className={styles.banner} aria-label={text.keep.passed.heading}>
         <p className={styles.heading}>{text.keep.passed.heading}</p>
         <p>{text.keep.passed.lead(keep.place)}</p>
-        <Note>{text.keep.passed.which}</Note>
-        <div className={styles.actions}>
+        <div className={styles.keepFoot}>
+          <Note>{text.keep.passed.which}</Note>
           {say(busy ? text.keep.saving : text.keep.kept, () => run("kept"))}
           {say(text.keep.passed.gone, () => run("gone", { what: "keep" }))}
         </div>
         {again === null ? null : (
-          <>
-            <p>{text.keep.passed.again}</p>
-            <div className={styles.actions}>{again}</div>
-          </>
+          <div className={styles.keepFoot} data-again="">
+            <Note>{text.keep.passed.again}</Note>
+            {again}
+          </div>
         )}
       </section>
     );

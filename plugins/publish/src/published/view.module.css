@@ -150,6 +150,19 @@
   margin-top: var(--space-2);
 }
 
+/* Publishing again is a different thing to do from answering, so it has a line of its own, ruled
+   off: why it gives a new address, with its button at the line's end. */
+.keepFoot[data-again] {
+  flex-wrap: nowrap;
+  justify-content: space-between;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--wb-border);
+}
+
+.keepFoot[data-again] > :last-child {
+  flex: none;
+}
+
 .already {
   display: flex;
   align-items: center;
