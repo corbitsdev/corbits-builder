@@ -82,7 +82,12 @@ A section, panel or dialog that reads the hub for itself is split the same way.
   `pages/` from importing another, so what two share sits directly in
   `pages/`; keeps a model from importing anything but types from a `.tsx`
   file, so a hook or helper a model needs lives in a plain `.ts` module; and
-  keeps modules out of import cycles, type-only ones included.
+  keeps modules out of import cycles, type-only ones included. The workspace
+  is split the same way into areas (`design`, `documents`, `screens`, `pane`,
+  `approvals`, `app`, `chat`, `sidebar`, `prompt`, and `room`, which puts them
+  together): each imports only the areas it stands on, as `WORKSPACE_AREAS` in
+  `.dependency-cruiser.cjs` lists them, and what areas share sits directly in
+  `workspace/`.
 
 ## Every artifact kind is a first-class document
 
