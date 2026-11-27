@@ -24,17 +24,7 @@ import {
   projectRunStatesQuery,
   useRolesAtWork,
 } from "./project-activity.ts";
-import {
-  askedOf,
-  dispatchLive,
-  endedRuns,
-  filedDispatches,
-  noteDispatches,
-  partsDispatches,
-  unseenRuns as unseenRunsOf,
-  type DispatchRoom,
-  type Sighting,
-} from "./dispatch.ts";
+import { dispatchLive } from "./dispatch.ts";
 import { earlierDocumentRole, restartedWork } from "./earlier-document.ts";
 import { ProductApiError, type ProjectArtifact } from "@corbits-builder/client";
 import type { InFlightRun } from "@corbits-builder/schemas/artifact";
@@ -42,13 +32,7 @@ import { toast } from "sonner";
 import type { SpaceScreenProps } from "./plugin-screens.tsx";
 import { useCommentDrafts, usePromptBox } from "./prompt-box.model.ts";
 import { acceptedMaterialsQuery, useComposer } from "./composer.model.ts";
-import {
-  runStepsQuery,
-  savedRunIds,
-  useRunStreams,
-  useSavedRunSteps,
-} from "./run-preview.ts";
-import { stopRun } from "../../api/activity.ts";
+import { runStepsQuery, savedRunIds, useSavedRunSteps } from "./run-preview.ts";
 import { refusalBody } from "../../api/transport.ts";
 import {
   approveDocument,
@@ -71,13 +55,13 @@ import { keys } from "../../queries/keys.ts";
 import { useQuestions } from "./questions.model.ts";
 import { openDecisionsQuery, useDecisions } from "./decisions.model.ts";
 import { useDelivery } from "./delivery.model.ts";
+import { useRunCards } from "./run-cards.model.ts";
 import { useFiledVersions } from "./filed-versions.ts";
 import { threadUpdates } from "./specialist-updates.ts";
 import { openApprovalOf } from "./collaboration.ts";
 import { chosenApproach } from "./approach-choice.ts";
 import {
   followDeliverableId,
-  LIVE_TAB,
   shownDeliverableId,
   type DocumentChoice,
 } from "./tab-follow.ts";
@@ -132,7 +116,6 @@ import type {
   ReviewedDesign,
 } from "./screen-question.tsx";
 import type { RoomSession } from "./room-session.ts";
-import { useSessionMemory, withEntries } from "./session-memory.ts";
 import { useLiveTurn } from "./live-turn.model.ts";
 import { screenWords, writesCode } from "./roles.ts";
 import { inTab, pluginTabs, screensFor, selectionNames } from "./screens.ts";
@@ -205,8 +188,6 @@ export type ReadyRoomProps = StageWorkspaceProps & LoadedRoom;
  * Reads the project and its room, and starts its coordinator, while the room shows its loading
  * or fault state; the room is ready only with a loaded snapshot.
  */
-const NO_RUNS: ReadonlyMap<string, InFlightRun> = new Map();
-const NO_SIGHTINGS: ReadonlyMap<string, Sighting> = new Map();
 
 export function useRoomGate({
   projectId,
@@ -416,10 +397,6 @@ export function useRoom({
   // The tab the project view shows, which the sidebar marks while the view is open.
   const [shownTab, setShownTab] = useState<string | null>(null);
   const documentPaneRef = useRef<HTMLElement>(null);
-  // The runs the person stopped here, which read as stopped before they have wound down.
-  const [stoppedHere, setStoppedHere] = useState<ReadonlySet<string>>(
-    () => new Set(),
-  );
   // The project view open over the conversation.
   const [projectOpen, setProjectOpen] = useState(false);
   const [enablingAi, setEnablingAi] = useState(false);
@@ -624,94 +601,19 @@ export function useRoom({
     if (item !== undefined) markSeen(seen, item.artifactId, item.version);
   };
   const inFlight = snapshot.inFlight;
-  const dispatches = shownTurns.flatMap((turn) =>
-    turn.role === "assistant" && turn.parts !== undefined
-      ? partsDispatches(turn.parts, coordinatorResults)
-      : [],
-  );
-  // Every specialist run this session saw, so its card keeps its result after the run ends. A run
-  // with no hand-off in this session's view, such as after a reload, still gets its card.
-  const runCards = useSessionMemory(NO_RUNS, (known) =>
-    withEntries(
-      known,
-      inFlight.map((run) => [run.runId, run] as const),
-      () => true,
-    ),
-  );
-  const unseenRuns = unseenRunsOf(runCards.values(), dispatches);
-  const allDispatches = [
-    ...dispatches,
-    ...unseenRuns.map(({ dispatch }) => dispatch),
-  ];
-  // When this session first saw each hand-off, so the document it files reads as its result.
-  const dispatchSeen = useSessionMemory(NO_SIGHTINGS, (known) =>
-    noteDispatches(known, snapshot.artifacts, allDispatches),
-  );
-  // Every card with a run streams its steps and what it is producing from the moment the call that
-  // started it returns, rather than once the room's next read lists it at work, and a step it takes
-  // reads the room again so its state moves with it.
-  const {
-    previews,
-    steps: runSteps,
-    results: runResults,
-    ended: runsEnded,
-  } = useRunStreams(
-    runTenantId,
-    allDispatches.flatMap((dispatch) =>
-      dispatch.runId === undefined ? [] : [dispatch.runId],
-    ),
-    new Set(
-      inFlight.flatMap((run) =>
-        run.state === "waiting" && run.since !== undefined ? [run.runId] : [],
-      ),
-    ),
-    reload,
-  );
-  // A run no longer at work has saved how it ended, which the last read of its record predates.
-  const atWork = inFlight.map((run) => run.runId).join("\n");
-  const wasAtWork = useRef<readonly string[]>([]);
-  useEffect(() => {
-    const now = atWork.split("\n");
-    if (runTenantId !== undefined)
-      for (const left of wasAtWork.current)
-        if (!now.includes(left))
-          void queryClient.invalidateQueries({
-            queryKey: keys.runSteps(runTenantId, left),
-          });
-    wasAtWork.current = now;
-  }, [atWork, runTenantId]);
-  const dispatchRoom: DispatchRoom = {
-    artifacts: snapshot.artifacts,
-    inFlight,
-    failed: snapshot.failed,
-    seen: dispatchSeen,
-    summaries: new Map(
-      shownDocuments.flatMap(({ kind, summary }): [string, string][] =>
-        summary === undefined ? [] : [[kind, summary]],
-      ),
-    ),
-    previews,
-    steps: runSteps,
-    asked: askedOf(waits),
-    ended: endedRuns(runsEnded, stoppedHere),
-    onOpenDocument: (kind) => {
-      // The app's source is read as the running app.
-      if (kind === "app") return openProject(LIVE_TAB);
-      openDocument(
-        kind.startsWith("concept:") ? conceptTab(kind.slice(8)) : kind,
-      );
-    },
-    onStop: async (stopped) => {
-      try {
-        await stopRun(projectId, stopped);
-        setStoppedHere((before) => new Set(before).add(stopped));
-        reload();
-      } catch (cause) {
-        toast.error(humanFault(cause, wording.dispatch.notStopped));
-      }
-    },
-  };
-  const cards = filedDispatches(dispatchRoom, dispatches, unseenRuns);
+  const { dispatches, allDispatches, dispatchRoom, cards, runResults } =
+    useRunCards({
+      projectId,
+      runTenantId,
+      snapshot,
+      shownTurns,
+      coordinatorResults,
+      shownDocuments,
+      waits,
+      reload,
+      openProject,
+      openDocument,
+    });
   const design = artifacts.find((item) => item.kind === "design");
   // The design a review screen shows: the newest design option, else the filed design.
   const reviewed = options.at(-1) ?? design;
