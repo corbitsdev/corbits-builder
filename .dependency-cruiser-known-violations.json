@@ -1,0 +1,392 @@
+[
+  {
+    "type": "cycle",
+    "from": "apps/hub/src/artifacts/design-draft.ts",
+    "to": "apps/hub/src/builds/app-snapshot.ts",
+    "unresolvedTo": "../builds/app-snapshot.ts",
+    "dependencyTypes": ["local", "import"],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "apps/hub/src/builds/app-snapshot.ts",
+        "dependencyTypes": ["local", "import"]
+      },
+      {
+        "name": "apps/hub/src/builds/starter.ts",
+        "dependencyTypes": ["local", "import"]
+      },
+      {
+        "name": "apps/hub/src/artifacts/design-tools.ts",
+        "dependencyTypes": ["local", "import"]
+      },
+      {
+        "name": "apps/hub/src/artifacts/design-draft.ts",
+        "dependencyTypes": ["local", "type-only", "import"]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "apps/hub/src/artifacts/design-draft.ts",
+    "to": "apps/hub/src/builds/starter.ts",
+    "unresolvedTo": "../builds/starter.ts",
+    "dependencyTypes": ["local", "import"],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "apps/hub/src/builds/starter.ts",
+        "dependencyTypes": ["local", "import"]
+      },
+      {
+        "name": "apps/hub/src/artifacts/design-tools.ts",
+        "dependencyTypes": ["local", "import"]
+      },
+      {
+        "name": "apps/hub/src/artifacts/design-draft.ts",
+        "dependencyTypes": ["local", "type-only", "import"]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "apps/hub/src/builds/app-repository.ts",
+    "to": "apps/hub/src/builds/app-snapshot.ts",
+    "unresolvedTo": "./app-snapshot.ts",
+    "dependencyTypes": ["local", "import"],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "apps/hub/src/builds/app-snapshot.ts",
+        "dependencyTypes": ["local", "import"]
+      },
+      {
+        "name": "apps/hub/src/builds/starter.ts",
+        "dependencyTypes": ["local", "import"]
+      },
+      {
+        "name": "apps/hub/src/builds/app-repository.ts",
+        "dependencyTypes": ["local", "type-only", "import"]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "apps/web/src/pages/workspace/dispatch-card.tsx",
+    "to": "apps/web/src/pages/workspace/run-preview.ts",
+    "unresolvedTo": "./run-preview.ts",
+    "dependencyTypes": ["local", "type-only", "import"],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "apps/web/src/pages/workspace/run-preview.ts",
+        "dependencyTypes": ["local", "type-only", "import"]
+      },
+      {
+        "name": "apps/web/src/pages/workspace/dispatch-card.tsx",
+        "dependencyTypes": ["local", "import"]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "apps/web/src/pages/workspace/dispatch-card.tsx",
+    "to": "apps/web/src/pages/workspace/transcript.tsx",
+    "unresolvedTo": "./transcript.tsx",
+    "dependencyTypes": ["local", "type-only", "import"],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "apps/web/src/pages/workspace/transcript.tsx",
+        "dependencyTypes": ["local", "type-only", "import"]
+      },
+      {
+        "name": "apps/web/src/pages/workspace/dispatch-card.tsx",
+        "dependencyTypes": ["local", "import"]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "apps/web/src/pages/workspace/document-decision.tsx",
+    "to": "apps/web/src/pages/workspace/transcript.tsx",
+    "unresolvedTo": "./transcript.tsx",
+    "dependencyTypes": ["local", "type-only", "import"],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "apps/web/src/pages/workspace/transcript.tsx",
+        "dependencyTypes": ["local", "type-only", "import"]
+      },
+      {
+        "name": "apps/web/src/pages/workspace/document-decision.tsx",
+        "dependencyTypes": ["local", "import"]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "apps/web/src/pages/workspace/transcript.tsx",
+    "to": "apps/web/src/pages/workspace/work-unit-step.view.tsx",
+    "unresolvedTo": "./work-unit-step.view.tsx",
+    "dependencyTypes": ["local", "import"],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "apps/web/src/pages/workspace/work-unit-step.view.tsx",
+        "dependencyTypes": ["local", "import"]
+      },
+      {
+        "name": "apps/web/src/pages/workspace/dispatch-card.tsx",
+        "dependencyTypes": ["local", "type-only", "import"]
+      },
+      {
+        "name": "apps/web/src/pages/workspace/transcript.tsx",
+        "dependencyTypes": ["local", "type-only", "import"]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "apps/web/src/pages/workspace/transcript.tsx",
+    "to": "apps/web/src/pages/workspace/work-unit.ts",
+    "unresolvedTo": "./work-unit.ts",
+    "dependencyTypes": ["local", "import"],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "apps/web/src/pages/workspace/work-unit.ts",
+        "dependencyTypes": ["local", "import"]
+      },
+      {
+        "name": "apps/web/src/pages/workspace/transcript.tsx",
+        "dependencyTypes": ["local", "type-only", "import"]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "apps/web/src/pages/workspace/work-unit-step.view.tsx",
+    "to": "apps/web/src/pages/workspace/run-preview.ts",
+    "unresolvedTo": "./run-preview.ts",
+    "dependencyTypes": ["local", "type-only", "import"],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "apps/web/src/pages/workspace/run-preview.ts",
+        "dependencyTypes": ["local", "type-only", "import"]
+      },
+      {
+        "name": "apps/web/src/pages/workspace/dispatch-card.tsx",
+        "dependencyTypes": ["local", "import"]
+      },
+      {
+        "name": "apps/web/src/pages/workspace/transcript.tsx",
+        "dependencyTypes": ["local", "type-only", "import"]
+      },
+      {
+        "name": "apps/web/src/pages/workspace/work-unit-step.view.tsx",
+        "dependencyTypes": ["local", "import"]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "apps/web/src/pages/workspace/work-unit.ts",
+    "to": "apps/web/src/pages/workspace/dispatch-card.tsx",
+    "unresolvedTo": "./dispatch-card.tsx",
+    "dependencyTypes": ["local", "type-only", "import"],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "apps/web/src/pages/workspace/dispatch-card.tsx",
+        "dependencyTypes": ["local", "type-only", "import"]
+      },
+      {
+        "name": "apps/web/src/pages/workspace/transcript.tsx",
+        "dependencyTypes": ["local", "type-only", "import"]
+      },
+      {
+        "name": "apps/web/src/pages/workspace/work-unit.ts",
+        "dependencyTypes": ["local", "import"]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "packages/client/src/client/auth.ts",
+    "to": "packages/client/src/client/shared.ts",
+    "unresolvedTo": "./shared",
+    "dependencyTypes": ["local", "type-only", "import"],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "packages/client/src/client/shared.ts",
+        "dependencyTypes": ["local", "type-only", "import"]
+      },
+      {
+        "name": "packages/client/src/client/auth.ts",
+        "dependencyTypes": ["local", "type-only", "import"]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "packages/client/src/client/credentials.ts",
+    "to": "packages/client/src/client/shared.ts",
+    "unresolvedTo": "./shared",
+    "dependencyTypes": ["local", "import"],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "packages/client/src/client/shared.ts",
+        "dependencyTypes": ["local", "import"]
+      },
+      {
+        "name": "packages/client/src/client/credentials.ts",
+        "dependencyTypes": ["local", "type-only", "import"]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "packages/client/src/client/projects.ts",
+    "to": "packages/client/src/client/shared.ts",
+    "unresolvedTo": "./shared",
+    "dependencyTypes": ["local", "import"],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "packages/client/src/client/shared.ts",
+        "dependencyTypes": ["local", "import"]
+      },
+      {
+        "name": "packages/client/src/client/projects.ts",
+        "dependencyTypes": ["local", "type-only", "import"]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "packages/client/src/client/roles.ts",
+    "to": "packages/client/src/client/shared.ts",
+    "unresolvedTo": "./shared",
+    "dependencyTypes": ["local", "import"],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "packages/client/src/client/shared.ts",
+        "dependencyTypes": ["local", "import"]
+      },
+      {
+        "name": "packages/client/src/client/roles.ts",
+        "dependencyTypes": ["local", "type-only", "import"]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "packages/plugin-host/src/catalog.ts",
+    "to": "packages/plugin-host/src/checks.ts",
+    "unresolvedTo": "./checks.ts",
+    "dependencyTypes": ["local", "import"],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "packages/plugin-host/src/checks.ts",
+        "dependencyTypes": ["local", "import"]
+      },
+      {
+        "name": "packages/plugin-host/src/catalog.ts",
+        "dependencyTypes": ["local", "type-only", "import"]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "packages/plugin-host/src/catalog.ts",
+    "to": "packages/plugin-host/src/text.ts",
+    "unresolvedTo": "./text.ts",
+    "dependencyTypes": ["local", "import"],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "packages/plugin-host/src/text.ts",
+        "dependencyTypes": ["local", "import"]
+      },
+      {
+        "name": "packages/plugin-host/src/catalog.ts",
+        "dependencyTypes": ["local", "type-only", "import"]
+      }
+    ]
+  },
+  {
+    "type": "dependency",
+    "from": "apps/web/src/pages/settings/collaborators.model.ts",
+    "to": "apps/web/src/pages/workspace/human-fault.ts",
+    "unresolvedTo": "../workspace/human-fault.ts",
+    "dependencyTypes": ["local", "import"],
+    "rule": {
+      "severity": "error",
+      "name": "web-page-areas-apart"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "apps/web/src/pages/workspace/room.model.ts",
+    "to": "apps/web/src/pages/settings/model-catalog.ts",
+    "unresolvedTo": "../settings/model-catalog.ts",
+    "dependencyTypes": ["local", "import"],
+    "rule": {
+      "severity": "error",
+      "name": "web-page-areas-apart"
+    }
+  }
+]
