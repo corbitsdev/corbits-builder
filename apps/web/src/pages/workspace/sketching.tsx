@@ -3,7 +3,7 @@
  * while the Builder is writing it.
  */
 import { createContext, useContext, useEffect, type ReactNode } from "react";
-import { clock, useElapsedMs } from "./elapsed.tsx";
+import { clock, useElapsedMs } from "./elapsed.ts";
 import styles from "./sketching.module.css";
 
 /** An app's frame drawn as placeholder bars; it pulses unless its container is still. */

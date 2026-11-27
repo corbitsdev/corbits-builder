@@ -3,7 +3,7 @@ import {
   chooseApproachWithOpenApproval,
   deliverWithOpenApproval,
   isAffirmation,
-} from "./typed-yes.tsx";
+} from "./approval-reply.ts";
 
 test("only a whole plain affirmation approves", () => {
   for (const message of [

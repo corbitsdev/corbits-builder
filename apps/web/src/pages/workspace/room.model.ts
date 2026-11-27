@@ -38,7 +38,7 @@ import {
   type DispatchRoom,
   type Sighting,
   type RunEnd,
-} from "./dispatch-card.tsx";
+} from "./dispatch.ts";
 import { earlierDocumentRole, restartedWork } from "./earlier-document.ts";
 import { ProductApiError, type ProjectArtifact } from "@corbits-builder/client";
 import {
@@ -46,7 +46,7 @@ import {
   type InFlightRun,
 } from "@corbits-builder/schemas/artifact";
 import { toast } from "sonner";
-import { inTab, pluginTabs, type SpaceScreenProps } from "./plugin-screens.tsx";
+import type { SpaceScreenProps } from "./plugin-screens.tsx";
 import { useCommentDrafts, usePromptBox } from "./prompt-box.model.ts";
 import { acceptedMaterialsQuery, useComposer } from "./composer.model.ts";
 import { subscribeWorkflowRun } from "../../api/run-stream.ts";
@@ -80,16 +80,15 @@ import {
   type QuestionAnswer,
 } from "@corbits-builder/schemas/conversation";
 import { keys } from "../../queries/keys.ts";
-import { turnItemId, type TranscriptTurn } from "./transcript.tsx";
 import { useQuestions } from "./questions.model.ts";
-import { useFiledVersions } from "./filed-versions.tsx";
+import { useFiledVersions } from "./filed-versions.ts";
 import { threadUpdates } from "./specialist-updates.ts";
 import { useSettledApprovals, type OpenApproval } from "./settled-approvals.ts";
 import {
   chooseApproachWithOpenApproval,
   deliverWithOpenApproval,
   useTypedYes,
-} from "./typed-yes.tsx";
+} from "./approval-reply.ts";
 import { chosenApproach } from "./approach-choice.ts";
 import {
   followDeliverableId,
@@ -114,12 +113,16 @@ import {
 import { createRoomReloader } from "./room-reload.ts";
 import { withPendingSends } from "./pending-sends.ts";
 import { decideApproval, openDecisions } from "../../api/decisions.ts";
-import type { PaneDocument } from "./artifact-pane.tsx";
+import type { PaneDocument } from "./pane-documents.ts";
 import type { DeliverableState } from "./deliverable-block.tsx";
 import { formatPassageQuote, type PassageQuote } from "./passage-quote.ts";
 import { humanFault, humanFaultWithCode } from "../../human-fault.ts";
 import { suggestedReplies } from "./suggested-replies.ts";
-import { visibleChatText } from "./visible-chat.ts";
+import {
+  turnItemId,
+  visibleChatText,
+  type TranscriptTurn,
+} from "./visible-chat.ts";
 import {
   keptRoom,
   loadProjectRoom,
@@ -150,8 +153,6 @@ import type { RoomContent } from "./room.view.tsx";
 import { useProjectSidebar } from "./project-sidebar.model.ts";
 import type { MenuProject, ProjectMenuHost } from "../project-menu.model.ts";
 import { parseBundle } from "./design-bundle.ts";
-import { CommentCard } from "./comment-card.tsx";
-import { MockupFrame } from "./mockup-frame.tsx";
 import type {
   ChoosableConcept,
   HostSupplies,
@@ -163,7 +164,7 @@ import type { RoomSession } from "./room-session.ts";
 import { useSessionMemory, withEntries } from "./session-memory.ts";
 import { inShort } from "@corbits-builder/schemas/in-short";
 import { roleOf, screenWords } from "./roles.ts";
-import { screensFor, selectionNames } from "./screens.ts";
+import { inTab, pluginTabs, screensFor, selectionNames } from "./screens.ts";
 
 // The stream says when the room moved. This read covers what it cannot see,
 // such as a coordinator run replaced while its old stream stays quiet.
@@ -1367,8 +1368,6 @@ export function useRoom({
   const supplies: HostSupplies = {
     design: reviewedDesign(),
     designConcepts: choosableConcepts(),
-    mockupFrame: MockupFrame,
-    commentCard: CommentCard,
     // The last round's answer on the same screen, so the person sees what they asked for before.
     earlierAnswer:
       screenQuestion === undefined

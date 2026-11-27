@@ -11,11 +11,16 @@ import {
   ScreenActionBuilder,
   SpecialistBuilder,
 } from "@corbits-builder/plugin";
-import type { ScreenRender } from "@corbits-builder/schemas/project";
-import { byAction, pluginFolder } from "./roles.ts";
+import type {
+  ScreenRender,
+  ShownScreen,
+} from "@corbits-builder/schemas/project";
+import { byAction, pluginFolder, screenWords } from "./roles.ts";
+import type { PluginTab } from "./plugin-screens.tsx";
 import {
   listedHost,
   screenHost,
+  type HostSupplies,
   type ListedHostProps,
   type ViewResources,
   type ScreenHostProps,
@@ -156,4 +161,42 @@ export function namesScreen(input: unknown) {
   const sharing = packages.get(plugin);
   if (sharing === undefined) return false;
   return sharing.some(({ name }) => installed.has(key(name, action)));
+}
+
+/** A screen meant for a tab of its own, which the project view shows rather than the space. */
+export const inTab = (screen: ShownScreen) => SLOT[screen.render] === "tab";
+
+type PluginScreensRoom = {
+  screens: readonly ShownScreen[];
+  screenOf: ScreenLookup;
+  supplies: HostSupplies;
+  act: ListedHostProps["act"];
+};
+
+/** The project view's plugin tabs, and when the clock alone next changes any shown screen. */
+export function pluginTabs(room: PluginScreensRoom) {
+  const tabs: PluginTab[] = [];
+  // In how many milliseconds the clock alone changes a drawn screen, so the room reads it again.
+  let rereadIn: number | undefined;
+  for (const screen of room.screens) {
+    const Listed = room.screenOf(screen)?.listed;
+    if (Listed === undefined) continue;
+    const { changesIn } = screen;
+    if (changesIn !== undefined)
+      rereadIn = Math.min(rereadIn ?? Infinity, changesIn);
+    if (!inTab(screen)) continue;
+    tabs.push({
+      value: `plugin-${screen.plugin}-${screen.action}`,
+      label:
+        screenWords(screen.plugin, screen.action)?.label({}) ?? screen.action,
+      pane: {
+        kind: "plugin",
+        name: `${screen.plugin} ${screen.action}`,
+        Listed,
+        listed: { state: screen.state, act: room.act, host: room.supplies },
+      },
+      status: screen.status,
+    });
+  }
+  return { tabs, rereadIn };
 }

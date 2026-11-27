@@ -39,8 +39,8 @@ import { SettledFrame } from "@corbits-builder/plugin-ui/screen-card";
 import { wording } from "../../config.ts";
 import { Fault, InlineNote } from "../../components.jsx";
 import type { DesignFiles } from "./design-bundle.ts";
-import type { CommentCardProps } from "./comment-card.tsx";
-import type { MockupFrameProps } from "./mockup-frame.tsx";
+import { CommentCard, type CommentCardProps } from "./comment-card.tsx";
+import { MockupFrame, type MockupFrameProps } from "./mockup-frame.tsx";
 import { SettledReply, useAnswer } from "./questions-card.tsx";
 import styles from "./screen-question.module.css";
 
@@ -72,14 +72,10 @@ export type ShownDocument = {
   summary?: string;
 };
 
-/** What the interface itself supplies a screen's view, by the names a manifest lists under host. */
+/** What the room works out and supplies a screen's view, by the names a manifest lists under host. */
 export type HostSupplies = {
   /** The live draft while a designer works, else the newest filed design or design option. */
   design: ReviewedDesign | null;
-  /** A design bundle drawn in the design pane's own sandboxed frame. */
-  mockupFrame: ComponentType<MockupFrameProps>;
-  /** The card a comment is written and kept in on the project's pages. */
-  commentCard: ComponentType<CommentCardProps>;
   /** The output of the latest question the coordinator asked with the same screen, if answered. */
   earlierAnswer: unknown;
   /** The project's filed documents, and a way to open one over the room by its kind. */
@@ -101,8 +97,10 @@ export type Tenants = { project: string; workspace: string };
 
 export type ViewResources = {
   design: HostSupplies["design"];
-  mockupFrame: HostSupplies["mockupFrame"];
-  commentCard: HostSupplies["commentCard"];
+  /** A design bundle drawn in the design pane's own sandboxed frame. */
+  mockupFrame: ComponentType<MockupFrameProps>;
+  /** The card a comment is written and kept in on the project's pages. */
+  commentCard: ComponentType<CommentCardProps>;
   earlierAnswer: unknown;
   documents: { list: readonly ShownDocument[] };
   designConcepts: readonly ChoosableConcept[];
@@ -149,7 +147,7 @@ export type ChoosableConcept = {
   approval: ReviewedDesign["approval"];
 };
 
-const SUPPLIED: ReadonlySet<string> = new Set<keyof HostSupplies>([
+const SUPPLIED: ReadonlySet<string> = new Set<keyof ViewResources>([
   "design",
   "mockupFrame",
   "commentCard",
@@ -371,8 +369,8 @@ export function screenHost<In, Out, Data, Prepared>(
           facts: projectFacts,
           resources: {
             design: host.design,
-            mockupFrame: host.mockupFrame,
-            commentCard: host.commentCard,
+            mockupFrame: MockupFrame,
+            commentCard: CommentCard,
             earlierAnswer: host.earlierAnswer,
             documents: { list: host.documents.list },
             designConcepts: host.designConcepts,
@@ -533,8 +531,8 @@ export function listedHost(
           facts: projectFacts,
           resources: {
             design: host.design,
-            mockupFrame: host.mockupFrame,
-            commentCard: host.commentCard,
+            mockupFrame: MockupFrame,
+            commentCard: CommentCard,
             earlierAnswer: undefined,
             documents: { list: host.documents.list },
             designConcepts: host.designConcepts,

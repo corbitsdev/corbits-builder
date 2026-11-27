@@ -46,7 +46,7 @@ import {
   type PartTool,
 } from "@corbits/react-ui";
 import { Tooltip } from "@corbits/react-ui/ui/tooltip";
-import { commandLine, readStep, type Step } from "./agent-activity.tsx";
+import { commandLine, readStep, type Step } from "./agent-activity.ts";
 import { DOCUMENT_LINK, Markdown } from "@corbits-builder/plugin-ui/markdown";
 import { toast } from "sonner";
 import styles from "./transcript.module.css";
@@ -56,7 +56,12 @@ import {
   type NamedDocument,
 } from "./collaboration.ts";
 import { DocumentDecision, PackageDecision } from "./document-decision.tsx";
-import { turnLabel, visibleTurnParts } from "./visible-chat.ts";
+import {
+  turnItemId,
+  turnLabel,
+  visibleTurnParts,
+  type TranscriptTurn,
+} from "./visible-chat.ts";
 import {
   distinctUpdates,
   groupUpdates,
@@ -74,7 +79,7 @@ import {
   partsDispatches,
   type Dispatch,
   type PlacedDispatch,
-} from "./dispatch-card.tsx";
+} from "./dispatch.ts";
 import { workUnits, type WorkUnit } from "./work-unit.ts";
 import {
   inProgress,
@@ -98,26 +103,6 @@ import {
   type ConversationQuestion,
 } from "@corbits-builder/schemas/conversation";
 import { screenWords } from "./roles.ts";
-
-type TurnBody = {
-  text: string;
-  at: number;
-  /** A turn's thinking and tool work, kept while this session saw it. Omitted turns are text only. */
-  parts?: readonly ConversationPart[];
-  /** The live turn while its message run is still going. */
-  streaming?: boolean;
-  /** The person's words on their way to the hub, not yet received. */
-  sending?: boolean;
-};
-
-export type TranscriptTurn =
-  | (TurnBody & { role: "person" })
-  | (TurnBody & { role: "assistant" })
-  | (TurnBody & { role: "participant"; sender: string });
-
-export function turnItemId(turn: TranscriptTurn, index: number): string {
-  return `${turn.role}:${String(turn.at)}:${String(index)}`;
-}
 
 function documentHref(id: string): string {
   return `${DOCUMENT_LINK}${encodeURIComponent(id).replace(/[()]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`)}`;

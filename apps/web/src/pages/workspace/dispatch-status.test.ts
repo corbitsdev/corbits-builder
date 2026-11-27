@@ -8,7 +8,7 @@ import {
   type Dispatch,
   type DispatchRoom,
   type RunEnd,
-} from "./dispatch-card.tsx";
+} from "./dispatch.ts";
 
 const room = (state: "working" | "waiting" | "approval"): DispatchRoom => ({
   artifacts: [],

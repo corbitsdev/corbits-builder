@@ -5,11 +5,10 @@ import {
   ArtifactPane,
   availableTab,
   defaultTab,
-  fileRows,
   resolveSelection,
   type ArtifactPaneSlots,
-  type PaneDocument,
 } from "./artifact-pane.tsx";
+import { fileRows, type PaneDocument } from "./pane-documents.ts";
 import { APPROVAL_PACKAGE_MEDIA_TYPE } from "./approval-package.ts";
 import { ApprovalRoundsPanel } from "./approval-rounds.tsx";
 import {
@@ -46,6 +45,7 @@ const document: DeliverableState = {
 };
 const parts: ArtifactPaneSlots = {
   conceptMockup: () => null,
+  pluginPane: () => null,
   approvalRounds: (rounds) => (
     <ApprovalRoundsPanel projectId="project" flush {...rounds} />
   ),

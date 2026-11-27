@@ -39,7 +39,7 @@ import {
   useFileGroup,
   ZIP_TYPE,
   zipFile,
-} from "./pane-file.tsx";
+} from "./pane-file.ts";
 import type { ApproachChoice } from "./approach-choice.ts";
 import type { TweakPanelProps } from "./mockup-tweaks.view.tsx";
 import type {

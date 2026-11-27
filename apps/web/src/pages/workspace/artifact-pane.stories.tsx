@@ -7,11 +7,8 @@ import approvalRounds, {
   InDocumentTab as roundsInTab,
 } from "./approval-rounds.stories.tsx";
 import { ApprovalRoundsView } from "./approval-rounds.view.tsx";
-import {
-  ArtifactPane,
-  type ArtifactPaneProps,
-  type PaneDocument,
-} from "./artifact-pane.tsx";
+import { ArtifactPane, type ArtifactPaneProps } from "./artifact-pane.tsx";
+import type { PaneDocument } from "./pane-documents.ts";
 import type { DeliverableState } from "./deliverable-block.tsx";
 import designConcept from "./design-concepts.stories.tsx";
 import { ConceptMockupView } from "./design-concepts.view.tsx";
@@ -139,6 +136,7 @@ const meta = {
     ),
     // The page the brief reads as, drawn from its own story's args.
     writtenDocument: () => <WrittenDocumentView {...writtenDocument.args} />,
+    pluginPane: () => null,
   },
   render: (args) => <Pane {...args} />,
 } satisfies Meta<typeof ArtifactPane>;

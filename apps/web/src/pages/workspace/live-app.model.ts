@@ -16,15 +16,15 @@ import { ApiFailure } from "../../api/types.ts";
 import { roleLabel, roleOf } from "./roles.ts";
 import { keys } from "../../queries/keys.ts";
 import { wording } from "../../config.ts";
-import { activityPhrase } from "./agent-activity.tsx";
+import { activityPhrase } from "./agent-activity.ts";
 import { useProjectActivity } from "./project-activity.ts";
-import { useElapsedMs } from "./elapsed.tsx";
+import { useElapsedMs } from "./elapsed.ts";
 import type {
   AppState,
   BuilderSetupViewProps,
   LiveAppViewProps,
 } from "./live-app.view.tsx";
-import { useFileGroup, ZIP_TYPE } from "./pane-file.tsx";
+import { useFileGroup, ZIP_TYPE } from "./pane-file.ts";
 import { setupProgressLine } from "./setup-progress.ts";
 
 const POLL_MS = 10_000;

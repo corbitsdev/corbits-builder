@@ -15,7 +15,7 @@ import {
 } from "react";
 import { WorkingText } from "../../components.tsx";
 import { wording } from "../../config.ts";
-import { useElapsedMs } from "./elapsed.tsx";
+import { useElapsedMs } from "./elapsed.ts";
 import rowStyles from "./sidebar-row.module.css";
 import styles from "./plan-timeline.module.css";
 

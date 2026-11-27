@@ -18,11 +18,7 @@ import {
 } from "../../api/run-stream.ts";
 import { keys } from "../../queries/keys.ts";
 import { finishedCallOf } from "./conversation-parts.ts";
-import {
-  partsDispatches,
-  type RunEnd,
-  type RunPreview,
-} from "./dispatch-card.tsx";
+import { partsDispatches, type RunEnd, type RunPreview } from "./dispatch.ts";
 import { resultOf, type CallResult } from "./live-run.ts";
 
 type Snapshot = NonNullable<ReturnType<typeof partialOf>>;

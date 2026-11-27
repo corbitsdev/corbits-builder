@@ -13,7 +13,7 @@ import {
   partsDispatches,
   type DispatchRoom,
   type RunPreview,
-} from "./dispatch-card.tsx";
+} from "./dispatch.ts";
 import { committedSteps, emptyLiveRun, foldLiveRun } from "./live-run.ts";
 import {
   joinedSteps,

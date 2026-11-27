@@ -68,6 +68,14 @@ module.exports = {
       },
     },
     {
+      name: "web-models-apart-from-components",
+      comment:
+        "A model is what a page does and a component is how it looks, so a model takes only types from a component's file; what both need at run time sits in a plain .ts module.",
+      severity: "error",
+      from: { path: "^apps/web/src/.+\\.model\\.ts$" },
+      to: { path: "\\.tsx$", dependencyTypesNot: ["type-only"] },
+    },
+    {
       name: "plugin-host-only-from-hub",
       comment:
         "The plugin host is the hub's loader; anything else importing it would couple itself to how plugins load.",

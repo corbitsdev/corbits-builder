@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { activityPhrase, readStep } from "./agent-activity.tsx";
+import { activityPhrase, readStep } from "./agent-activity.ts";
 
 const coder = {
   runId: "run-coder",

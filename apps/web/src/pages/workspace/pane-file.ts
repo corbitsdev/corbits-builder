@@ -5,7 +5,7 @@
  * that asked for it.
  */
 import JSZip from "jszip";
-import { useEffect, useRef } from "react";
+import { createElement, useEffect, useRef } from "react";
 import { Download, Share2 } from "lucide-react";
 import { toast } from "sonner";
 import { wording } from "../../config.ts";
@@ -204,7 +204,7 @@ export function useFileGroup(
       id: "download",
       label: source.download,
       ...(named ? { text: wording.paneFile.download } : {}),
-      icon: <Download size={16} aria-hidden="true" />,
+      icon: createElement(Download, { size: 16, "aria-hidden": "true" }),
       onSelect: () => void download(source),
     },
     ...(canShare(source.type)
@@ -213,7 +213,7 @@ export function useFileGroup(
             id: "share",
             label: source.share,
             ...(named ? { text: wording.paneFile.share } : {}),
-            icon: <Share2 size={16} aria-hidden="true" />,
+            icon: createElement(Share2, { size: 16, "aria-hidden": "true" }),
             onPrepare: () => {
               prepare(source);
             },
