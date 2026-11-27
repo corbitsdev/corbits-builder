@@ -14,7 +14,7 @@ import { productClient } from "../../api/transport.ts";
 import { workspaceTenantId, type HubUser } from "../../api/auth.ts";
 import type { Invitation } from "@corbits-builder/schemas/invitation";
 import { ProductApiError } from "@corbits-builder/client";
-import { responseCode } from "../workspace/human-fault.ts";
+import { responseCode } from "../../human-fault.ts";
 import type { CollaboratorsViewProps } from "./collaborators.view.tsx";
 
 export type CollaboratorsProps = { user: HubUser | null };

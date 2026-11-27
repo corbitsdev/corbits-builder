@@ -11,11 +11,11 @@ import {
   type ModelProvider,
 } from "@corbits-builder/schemas/models";
 import { type } from "arktype";
-import { wording } from "../../config.ts";
-import { queryClient } from "../../queries/client.ts";
-import { keys } from "../../queries/keys.ts";
-import { productClient } from "../../api/transport.ts";
-import { workspaceTenantId } from "../../api/auth.ts";
+import { wording } from "../config.ts";
+import { queryClient } from "../queries/client.ts";
+import { keys } from "../queries/keys.ts";
+import { productClient } from "../api/transport.ts";
+import { workspaceTenantId } from "../api/auth.ts";
 
 const copy = wording.providers;
 

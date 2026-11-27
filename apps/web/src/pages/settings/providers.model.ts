@@ -12,7 +12,7 @@ import {
   message,
   useModelCatalog,
   useSubscriptionLogins,
-} from "./model-catalog.ts";
+} from "../model-catalog.ts";
 import type {
   KeyConnection,
   ProvidersSectionViewProps,

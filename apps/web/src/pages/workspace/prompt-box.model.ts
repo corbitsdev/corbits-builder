@@ -39,7 +39,7 @@ import {
   type Dispatch,
   type DispatchRoom,
 } from "./dispatch-card.tsx";
-import { humanFault } from "./human-fault.ts";
+import { humanFault } from "../../human-fault.ts";
 import type { SpaceScreenProps } from "./plugin-screens.tsx";
 import { screenWords } from "./roles.ts";
 import { roomStatus, type RoomStatusFacts } from "./room-status.ts";

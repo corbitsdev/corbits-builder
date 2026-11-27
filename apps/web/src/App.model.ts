@@ -41,7 +41,7 @@ import {
 import type { ProjectLibraryProps } from "./pages/project-library.model.ts";
 import type { ProjectsProps } from "./pages/projects.model.ts";
 import type { SettingsProps } from "./pages/settings/settings.model.ts";
-import { humanFault, responseCode } from "./pages/workspace/human-fault.ts";
+import { humanFault, responseCode } from "./human-fault.ts";
 import type { StageWorkspace } from "./pages/workspace/index.tsx";
 import {
   inviteInUrl,
