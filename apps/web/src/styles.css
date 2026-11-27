@@ -55,6 +55,12 @@
   --wb-frame: var(--muted);
   --wb-canvas: color-mix(in srgb, var(--muted) 40%, var(--background));
   --wb-shadow: 0 1px 2px color-mix(in srgb, var(--foreground) 6%, transparent);
+  /* What lifts off the page while the person is in it: wide and soft, so it reads as height
+     rather than as an edge; dark mode below. */
+  --wb-raised-shadow:
+    0 2px 4px color-mix(in srgb, var(--foreground) 4%, transparent),
+    0 10px 24px -6px color-mix(in srgb, var(--foreground) 9%, transparent),
+    0 28px 56px -16px color-mix(in srgb, var(--foreground) 12%, transparent);
   /* What floats over the room, edged in a Bedrock Charcoal hairline; dark mode below. */
   --wb-pane-shadow:
     0 0 0 1px color-mix(in srgb, #5c5555 10%, transparent),
@@ -155,6 +161,11 @@ body {
   --wb-action-foreground: #000000;
   --wb-proceed-foreground: #000000;
   --wb-pane-shadow: 0 0 0 1px color-mix(in srgb, #e4d5bc 12%, transparent);
+  /* The foreground is light here and would glow, so the lift is drawn in black. */
+  --wb-raised-shadow:
+    0 2px 4px color-mix(in srgb, #000000 30%, transparent),
+    0 10px 24px -6px color-mix(in srgb, #000000 45%, transparent),
+    0 28px 56px -16px color-mix(in srgb, #000000 55%, transparent);
 }
 
 * {

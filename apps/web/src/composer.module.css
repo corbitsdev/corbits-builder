@@ -48,6 +48,12 @@
   border-radius: var(--radius-xl);
   background: var(--wb-card);
   box-shadow: var(--wb-shadow);
+  transition: box-shadow var(--duration-standard) var(--ease-out);
+}
+
+/* With the person in it the box rises off the page. */
+.box:focus-within {
+  box-shadow: var(--wb-raised-shadow);
 }
 
 .panel {
