@@ -27,6 +27,7 @@
     "./approaches": "./src/approaches.ts",
     "./approval-round": "./src/approval-round.ts",
     "./app-files": "./src/app-files.ts",
+    "./download-name": "./src/download-name.ts",
     "./repository-import": "./src/repository-import.ts"
   },
   "dependencies": {

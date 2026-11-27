@@ -34,6 +34,7 @@ import {
   type TriageItem,
   type WorkspaceReviewer,
 } from "@corbits-builder/schemas/approval-round";
+import { downloadName } from "@corbits-builder/schemas/download-name";
 import {
   approvalRound,
   artifactImportApproval,
@@ -155,14 +156,6 @@ export type ApprovalRoundStore = {
   now?(): Date;
 };
 
-function sanitizeArchiveStem(title: string): string {
-  const cleaned = title
-    .replace(/[\p{Cc}\\/:*?"<>|\s]+/gu, "-")
-    .replace(/\.{2,}/g, "-")
-    .replace(/^[.-]+/, "");
-  return cleaned === "" ? "package" : cleaned;
-}
-
 function isSafeRelativePath(path: string): boolean {
   return (
     path !== "" &&
@@ -279,11 +272,23 @@ async function buildPackageArchive(
     { path: "deck.pdf", data: pdf },
     ...docEntries,
   ];
-  const stem = sanitizeArchiveStem(pkg.projectTitle);
-  const filename =
+  const filename = `${
     reviewer === undefined || reviewer.name.trim() === ""
-      ? `${stem}-package-v${String(pkg.version)}.zip`
-      : `${stem.toLowerCase()}-approval-package-for-${sanitizeArchiveStem(reviewer.name).toLowerCase()}-${sanitizeArchiveStem(reviewer.persona).toLowerCase()}.zip`;
+      ? downloadName(
+          pkg.projectTitle,
+          ["package", `v${String(pkg.version)}`],
+          "package",
+        )
+      : downloadName(
+          pkg.projectTitle.toLowerCase(),
+          [
+            "approval-package-for",
+            reviewer.name.toLowerCase(),
+            reviewer.persona.toLowerCase(),
+          ],
+          "package",
+        )
+  }.zip`;
   return {
     filename,
     archive: await zip(entries),

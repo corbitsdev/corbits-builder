@@ -96,6 +96,7 @@ import {
   ProjectExport,
   ProjectExportMaterial,
 } from "@corbits-builder/schemas/project";
+import { downloadName } from "@corbits-builder/schemas/download-name";
 import JSZip from "jszip";
 import {
   COMMAND_PROGRESS_FILE,
@@ -223,6 +224,27 @@ const PINNED_REF = new RegExp("^(" + UUID + ")@(\\d+)@([a-f0-9]{64})$", "i");
 // out of the directory it is archived under.
 const isContainedPath = (path: string) =>
   !path.startsWith("/") && !path.split(/[\\/]/).includes("..");
+
+// A material's or design option's title as the name of its file or folder in an export, cut as a
+// download's name is; `taken` holds the folder's names so far, compared as a case-blind system
+// compares them, and a repeat is numbered rather than written over.
+function exportedName(
+  title: string,
+  fallback: string,
+  taken: Set<string>,
+  extension = "",
+) {
+  const stem = title.slice(0, title.length - extension.length);
+  let name = downloadName(stem, [], fallback) + extension;
+  for (let copy = 2; taken.has(name.toLowerCase()); copy++)
+    name = downloadName(stem, [String(copy)], fallback) + extension;
+  taken.add(name.toLowerCase());
+  return name;
+}
+
+// A file's extension is kept whole when its name is cut, so it still opens with its program.
+const extensionOf = (name: string) =>
+  /\.[\p{L}\p{N}]{1,12}$/u.exec(name)?.[0] ?? "";
 
 async function isDirectory(path: string) {
   try {
@@ -453,13 +475,8 @@ export function createArtifactService(
       .select({ title: project.title })
       .from(project)
       .where(eq(project.id, projectId));
-    // The name is the archive's one top directory and its filename: never hidden, never a climb.
-    return (
-      row!.title
-        .replace(/[\\/:*?"<>|\s]+/g, "-")
-        .replace(/\.{2,}/g, "-")
-        .replace(/^[.-]+/, "") || "app"
-    );
+    // The name is the archive's one top directory and its filename.
+    return downloadName(row!.title);
   }
 
   async function requireProject(
@@ -2378,6 +2395,8 @@ export function createArtifactService(
       const { rows } = await listArtifacts(db, actor.tenantId, {
         limit: MAX_LIST_LIMIT,
       });
+      const materials = new Set<string>();
+      const options = new Set<string>();
       for (const artifact of rows) {
         if (!artifact.contentSha256 || artifact.kind === "app") continue;
         const section = exportSection(artifact.kind);
@@ -2389,10 +2408,9 @@ export function createArtifactService(
         );
         if (!stored) continue;
         if (artifact.kind === MATERIAL_KIND) {
-          if (!isContainedPath(stored.title)) continue;
           const data = /^data:[^;,]*;base64,(.*)$/s.exec(stored.content)?.[1];
           zip.file(
-            `planning/materials/${stored.title}`,
+            `planning/materials/${exportedName(stored.title, "material", materials, extensionOf(stored.title))}`,
             data === undefined ? stored.content : base64Decode(data),
           );
         } else if (section === "planning") {
@@ -2402,8 +2420,11 @@ export function createArtifactService(
             DesignBundle.assert(parseJson(stored.content)).files,
           );
           if (artifact.kind === "design") add("design", files);
-          else if (isContainedPath(stored.title))
-            add(`design/options/${stored.title}`, files);
+          else
+            add(
+              `design/options/${exportedName(stored.title, "option", options)}`,
+              files,
+            );
         }
       }
       if (sections.includes(exportSection("app"))) {
