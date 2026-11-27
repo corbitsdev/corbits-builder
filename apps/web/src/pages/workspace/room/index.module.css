@@ -171,7 +171,9 @@
 }
 
 /* The project view's way back to the chat, in its top corner on the floating rail's look so it
-   reads as a control over the view rather than part of the page beneath. */
+   reads as a control over the view rather than part of the page beneath. It stands in the same
+   place at the same size whatever the view shows, a written page or a preview, so the way back is
+   always where it was last time. */
 .close {
   position: absolute;
   top: var(--space-4);
@@ -196,50 +198,7 @@
   background: var(--wb-frame);
 }
 
-/* Over a written page it stands just beyond the page's top right corner, so it reads as closing
-   the page, at the size of the page's own Download and Share. The page is 768px at the pane's middle, as the document lays it; where the pane leaves
-   no room beside it, the button keeps to the corner. */
-.page:has(
-  > [data-slot="artifact-pane"]
-    [data-slot="panel-pane"][data-state="active"]
-    [data-slot="document-page"]
-) {
-  --close-size: 1.75rem;
-  --close-left: min(
-    50% + min(768px, 100% - 2 * var(--space-4)) / 2 + var(--space-3),
-    100% - var(--close-size) - var(--space-4)
-  );
-  --controls-right: calc(100% - var(--close-left) + var(--space-2));
-}
-
-/* On the white ground no sheet edge shows, so the button goes just past the text instead, inside
-   the page's side padding. */
-.page[data-ground="white"]:has(
-    > [data-slot="artifact-pane"]
-      [data-slot="panel-pane"][data-state="active"]
-      [data-slot="document-page"]
-  ) {
-  --close-left: min(
-    50% + min(768px, 100% - 2 * var(--space-4)) / 2 -
-      var(--document-page-gutter) + var(--space-3),
-    100% - var(--close-size) - var(--space-4)
-  );
-}
-
-.page:has(
-    > [data-slot="artifact-pane"]
-      [data-slot="panel-pane"][data-state="active"]
-      [data-slot="document-page"]
-  )
-  > .close {
-  right: auto;
-  left: var(--close-left);
-  width: var(--close-size);
-  height: var(--close-size);
-}
-
-/* The tabs' status goes just left of the close button and moves with it, at its own regular size,
-   centred on the close button however tall that is. */
+/* The tabs' status goes just left of the close button, level with it. */
 .pageControls {
   position: absolute;
   top: var(--space-4);
@@ -249,40 +208,6 @@
   align-items: center;
   gap: var(--space-2);
   height: var(--close-size);
-}
-
-.page:has(
-    > [data-slot="artifact-pane"]
-      [data-slot="panel-pane"][data-state="active"]
-      [data-slot="document-page"]
-  )
-  > .close
-  > svg {
-  width: 14px;
-  height: 14px;
-}
-
-/* Where the written page lays its contents beside it, the button is level with Download and
-   Share; narrower, they stand above the title and the button keeps to the corner. */
-@container (width >= 74rem) {
-  .page:has(
-      > [data-slot="artifact-pane"]
-        [data-slot="panel-pane"][data-state="active"]
-        [data-slot="document-page"]
-    )
-    > .close {
-    top: var(--document-controls-top);
-  }
-
-  /* Next to the button it would cover a long title, so it goes in the corner, where the chat has it. */
-  .page:has(
-      > [data-slot="artifact-pane"]
-        [data-slot="panel-pane"][data-state="active"]
-        [data-slot="document-page"]
-    )
-    > .pageControls {
-    --controls-right: var(--space-4);
-  }
 }
 
 /* A preview shows someone else's interface, whatever it is, so a status floating over its corner
