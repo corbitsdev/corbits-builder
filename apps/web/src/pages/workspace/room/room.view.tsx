@@ -474,8 +474,7 @@ function TabStatusControls({
         <UiButton
           key={tab}
           type="button"
-          size="sm"
-          variant="outline"
+          variant="secondary"
           className={styles.control}
           data-mark={mark}
           aria-label={wording.conversation.tabStatus(tab, label)}

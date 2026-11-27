@@ -53,24 +53,8 @@
   gap: var(--space-2);
 }
 
-/* Boxed like the close button and a page's Download and Share. It opens the tab, so its words are
-   at full strength like any button's; one that needs the person carries a dot, one that failed
-   reads red. */
-.control {
-  height: 1.75rem;
-  padding-inline: 10px;
-  border: 1px solid var(--wb-border);
-  border-radius: var(--radius-control);
-  background: var(--wb-background);
-  color: var(--wb-foreground);
-  font-size: 0.8125rem;
-  font-weight: 500;
-}
-
-.control:hover {
-  background: var(--wb-muted);
-}
-
+/* A regular secondary button, which opens the tab; one that needs the person carries a dot, one
+   that failed reads red. */
 .control[data-mark="needs_you"]::before {
   content: "";
   width: 6px;
@@ -79,13 +63,16 @@
   background: var(--wb-action);
 }
 
-.control[data-mark="failed"] {
+/* Over the app's own colour for an enabled secondary button, which is set with more weight than a
+   class alone. */
+:is(.controls, .pageControls)
+  > button.control[data-mark="failed"]:not(:disabled) {
   color: var(--wb-destructive);
 }
 
 /* With controls in the corner, the turns start below them, where the row that held them ended. */
 .conversation:has(> .top .control) [role="log"] {
-  padding-top: calc(var(--space-4) + 1.75rem + var(--space-5));
+  padding-top: calc(var(--space-4) + 2.25rem + var(--space-5));
 }
 
 .conversation {
@@ -243,6 +230,11 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  height: var(--close-size);
+}
+
+/* Beside a written page's smaller close button, Download and Share, it takes their height. */
+.pageControls .control {
   height: var(--close-size);
 }
 
