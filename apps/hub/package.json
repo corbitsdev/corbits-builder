@@ -25,6 +25,7 @@
     "@anthropic-ai/sandbox-runtime": "0.0.81",
     "@corbits-builder/coordinator": "workspace:*",
     "@corbits-builder/environment": "workspace:*",
+    "@corbits-builder/plan": "workspace:*",
     "@corbits-builder/plugin": "workspace:*",
     "@corbits-builder/plugin-host": "workspace:*",
     "@corbits-builder/publish-contract": "workspace:*",

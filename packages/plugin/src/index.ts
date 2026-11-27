@@ -10,14 +10,20 @@ import {
 } from "@corbits-builder/schemas/installed-workflows";
 import { Tier } from "@corbits-builder/schemas/models";
 import type {
-  PlanStepStateName,
   ReadyPlanOffer,
   Removes,
   ScreenRender,
   ScreenStatus,
 } from "@corbits-builder/schemas/project";
+import {
+  PlanStepApproval,
+  type PlanStepStateName,
+  type PlanViewChild,
+  type PlanViewGroup,
+} from "@corbits-builder/schemas/plan";
 import { SpecialistInstruction } from "@corbits-builder/schemas/native-specialist";
 
+export { canDrop } from "@corbits-builder/plan";
 export type { ReadyPlanOffer, Removes, ScreenStatus };
 
 /** The value an arktype type checked, or undefined when the check failed. */
@@ -640,20 +646,6 @@ export const SpecialistBuilder = Common.merge({
 });
 export type SpecialistBuilder = typeof SpecialistBuilder.infer;
 
-// When a ready-made plan's step waits for the person's go-ahead: required always waits for the
-// person's own answer, even when they left approvals to Builder; optional waits only while they
-// decide approvals.
-const ApprovalWhen = type("'required' | 'optional'");
-
-// How a step asks for the person's go-ahead: of names the document kinds they approve, and
-// "design" for the design they choose; when says when it waits.
-export const Approval = type({
-  "+": "reject",
-  of: type("string > 0").array().atLeastLength(1),
-  when: ApprovalWhen,
-});
-export type Approval = typeof Approval.infer;
-
 // One step of a ready-made plan: a plugin action, the facts the plan suggests having first, and,
 // so the project's plan can hold it, a title and the input it starts on. An optional step is one
 // the person may decline. approval is the one way a step asks for the person's go-ahead; a step
@@ -664,7 +656,7 @@ export const ReadyPlanStepBuilder = type({
   action: "string > 0",
   requires: Facts,
   "optional?": "boolean",
-  "approval?": Approval,
+  "approval?": PlanStepApproval,
   "title?": "string > 0",
   "input?": "Record<string, unknown>",
 });
@@ -804,22 +796,14 @@ export type Offer<Output> = {
   sendBack?: Output;
 };
 
-export type StepStatus = {
-  id: string;
-  title: string;
-  plugin: string;
-  action: string;
-  plan: string | undefined;
-  state: PlanStepStateName;
-  summary: string | undefined;
+// A plan step as a screen reads it: where it stands, without its input or the person's marks.
+export type PlanStepRead = Pick<
+  PlanViewChild,
+  "id" | "title" | "plugin" | "action" | "state"
+> & {
+  plan: PlanViewGroup["plan"];
+  summary: PlanViewChild["summary"];
 };
-
-/**
- * Whether the person's yes can still drop a plan step: one done stays as the record of the work, and
- * one cancelled is dropped already.
- */
-export const droppable = (state: PlanStepStateName) =>
-  state !== "done" && state !== "cancelled";
 
 // A run the coordinator started for a plugin action, as a screen reads it.
 export type RunRead = {
@@ -836,9 +820,14 @@ export type ProjectRead = {
   // A project value as stored, null while the project has none.
   value(name: string): unknown;
   facts: ReadonlySet<Fact>;
-  plan: readonly StepStatus[];
-  // Each ready-made plan the project's plan holds, with where its steps stand together.
-  planned: readonly { plan: string; state: PlanStepStateName }[];
+  plan: readonly PlanStepRead[];
+  // Each ready-made plan the project's plan holds, with where its steps stand together and whether
+  // nothing in it is left to do.
+  planned: readonly {
+    plan: string;
+    state: PlanStepStateName;
+    finished: boolean;
+  }[];
   // The hub's time of this read, in milliseconds since the epoch. A state that reads the clock
   // reads it here, so it depends on nothing but this read.
   now: number;

@@ -1,4 +1,4 @@
-import { defineScreen, droppable } from "@corbits-builder/plugin";
+import { canDrop, defineScreen } from "@corbits-builder/plugin";
 import { Input, Output } from "./schema.ts";
 
 export const text = {
@@ -19,7 +19,7 @@ export default defineScreen({
   // The steps are named as the plan names them, not as the coordinator put it.
   fromProject: ({ stepIds, instead }, project) => ({
     stops: project.plan.flatMap(({ id, title, state }) =>
-      stepIds.includes(id) && droppable(state) ? [{ id, title }] : [],
+      stepIds.includes(id) && canDrop(state) ? [{ id, title }] : [],
     ),
     instead,
   }),

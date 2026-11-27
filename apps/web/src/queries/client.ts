@@ -70,7 +70,8 @@ const persistOptions: PersistQueryClientOptions = {
   maxAge: CACHE_LIFETIME_MS,
   // Saved data is read back without checking its shape, so a change to what a cached read
   // holds needs a new value here, or pages render the old shape and break.
-  buster: "room-question-status-screens-hub-preferences-listed-ready-plans",
+  buster:
+    "room-question-status-screens-hub-preferences-listed-ready-plans-finished",
   dehydrateOptions: savedReads,
 };
 

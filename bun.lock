@@ -65,6 +65,7 @@
         "@anthropic-ai/sandbox-runtime": "0.0.81",
         "@corbits-builder/coordinator": "workspace:*",
         "@corbits-builder/environment": "workspace:*",
+        "@corbits-builder/plan": "workspace:*",
         "@corbits-builder/plugin": "workspace:*",
         "@corbits-builder/plugin-host": "workspace:*",
         "@corbits-builder/publish-contract": "workspace:*",
@@ -123,6 +124,7 @@
       "version": "0.1.0-rc.3",
       "dependencies": {
         "@corbits-builder/client": "workspace:*",
+        "@corbits-builder/plan": "workspace:*",
         "@corbits-builder/plugin": "workspace:*",
         "@corbits-builder/plugin-ui": "workspace:*",
         "@corbits-builder/publish-contract": "workspace:*",
@@ -181,10 +183,18 @@
       "name": "@corbits/pdf",
       "version": "0.1.0-rc.2",
     },
+    "packages/plan": {
+      "name": "@corbits-builder/plan",
+      "version": "0.1.0-rc.3",
+      "dependencies": {
+        "@corbits-builder/schemas": "workspace:*",
+      },
+    },
     "packages/plugin": {
       "name": "@corbits-builder/plugin",
       "version": "0.1.0-rc.3",
       "dependencies": {
+        "@corbits-builder/plan": "workspace:*",
         "@corbits-builder/schemas": "workspace:*",
         "@corbits/zip": "workspace:*",
         "@intx/agent": "workspace:*",
@@ -196,6 +206,7 @@
       "name": "@corbits-builder/plugin-host",
       "version": "0.1.0-rc.3",
       "dependencies": {
+        "@corbits-builder/plan": "workspace:*",
         "@corbits-builder/plugin": "workspace:*",
         "@corbits-builder/schemas": "workspace:*",
         "@intx/types": "workspace:*",
@@ -1023,6 +1034,8 @@
     "@corbits-builder/environment": ["@corbits-builder/environment@workspace:packages/environment"],
 
     "@corbits-builder/hub": ["@corbits-builder/hub@workspace:apps/hub"],
+
+    "@corbits-builder/plan": ["@corbits-builder/plan@workspace:packages/plan"],
 
     "@corbits-builder/plugin": ["@corbits-builder/plugin@workspace:packages/plugin"],
 

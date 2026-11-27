@@ -1,12 +1,12 @@
 import { expect, test } from "bun:test";
 import { isValidElement, type ReactNode } from "react";
-import type { PlanView } from "@corbits-builder/schemas/project";
+import { isFinished } from "@corbits-builder/plan";
+import type { PlanView, PlanViewChild } from "@corbits-builder/schemas/plan";
 import { StepControls, planProgress } from "./plan-panel.tsx";
 
-type Child = Extract<PlanView["steps"][number], { plugin: string }>;
-type State = Child["state"];
+type State = PlanViewChild["state"];
 
-const step = (id: string, state: State, optional = false): Child => ({
+const step = (id: string, state: State, optional = false): PlanViewChild => ({
   id,
   title: id,
   plugin: "writer",
@@ -15,6 +15,7 @@ const step = (id: string, state: State, optional = false): Child => ({
   askFirst: false,
   optional,
   state,
+  finished: isFinished(state),
   kind: "workflow",
 });
 
@@ -29,13 +30,14 @@ const built = [
   step("manual", "not_started", true),
 ];
 
-const readyMade = (steps: Child[]): PlanView["steps"] => [
+const readyMade = (steps: PlanViewChild[]): PlanView["steps"] => [
   {
     id: "web-app",
     title:
       "A ready-made plan for a web app: requirements, a design, a build plan, then the build.",
     plan: "build-web-app",
     state: "not_started",
+    finished: false,
     steps,
   },
 ];
@@ -87,7 +89,7 @@ function controls(node: ReactNode): Map<string, Control> {
   return found;
 }
 
-function stepControls(child: Child) {
+function stepControls(child: PlanViewChild) {
   const sent: unknown[] = [];
   const found = controls(
     StepControls({
@@ -150,7 +152,11 @@ test.each(["done", "running", "failed"] as const)(
   },
 );
 
-test("an optional step has no controls once it is done or running", () => {
+test("an optional step has no controls once it is done, cancelled or running", () => {
   expect(stepControls(step("looks", "done", true)).found.size).toBe(0);
   expect(stepControls(step("looks", "running", true)).found.size).toBe(0);
+  const cancelled = step("looks", "cancelled", true);
+  cancelled.cancelled = { by: "person", at: "2026-01-01T00:00:00.000Z" };
+  cancelled.declined = cancelled.cancelled;
+  expect(stepControls(cancelled).found.size).toBe(0);
 });

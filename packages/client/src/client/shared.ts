@@ -60,7 +60,7 @@ import type {
   ProjectActivity,
   RunSteps,
 } from "@corbits-builder/schemas/activity";
-import type { PlanView, StoredPlan } from "@corbits-builder/schemas/project";
+import type { PlanView, StoredPlan } from "@corbits-builder/schemas/plan";
 import type {
   LiveRunStates,
   ProjectStatus,

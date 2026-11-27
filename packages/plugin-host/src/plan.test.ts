@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import type { Fact } from "@corbits-builder/plugin";
-import { protectedSteps, type PlanStepView } from "./plan.ts";
+import type { PlanViewChild } from "@corbits-builder/schemas/plan";
+import { protectedSteps } from "./plan.ts";
 
 const records = {
   facts: new Set<Fact>(),
@@ -8,7 +9,7 @@ const records = {
   asksApprovals: true,
 };
 // A check step that matches a failed record some earlier plan left.
-const check: PlanStepView = {
+const check: PlanViewChild = {
   id: "check",
   title: "Check the app",
   plugin: "tester",
@@ -16,10 +17,11 @@ const check: PlanStepView = {
   input: {},
   askFirst: false,
   state: "failed",
+  finished: false,
   kind: "check",
   checkId: "earlier",
 };
-const build: PlanStepView = {
+const build: PlanViewChild = {
   id: "build",
   title: "Build the app",
   plugin: "builder",
@@ -27,9 +29,10 @@ const build: PlanStepView = {
   input: {},
   askFirst: false,
   state: "not_started",
+  finished: false,
   kind: "workflow",
 };
-const built: PlanStepView = {
+const built: PlanViewChild = {
   id: "build",
   title: "Build the app",
   plugin: "builder",
@@ -37,10 +40,11 @@ const built: PlanStepView = {
   input: {},
   askFirst: false,
   state: "done",
+  finished: true,
   kind: "workflow",
   runId: "run",
 };
-const answered: PlanStepView = {
+const answered: PlanViewChild = {
   id: "ask",
   title: "Choose the look",
   plugin: "designer",
@@ -48,6 +52,7 @@ const answered: PlanStepView = {
   input: {},
   askFirst: false,
   state: "done",
+  finished: true,
   kind: "screen",
   answered: { by: "person", at: "2026-01-01T00:00:00.000Z" },
 };
@@ -62,4 +67,21 @@ test("a plan is under way once one of its own steps has begun, not because a ste
     { step: check, reason: "underway" },
     { step: built, reason: "done" },
   ]);
+});
+
+test("a skipped step is not held for its approval, since it will not run", () => {
+  const skipped: PlanViewChild = {
+    id: "design",
+    title: "Design the look",
+    plugin: "designer",
+    action: "mockup",
+    input: {},
+    askFirst: false,
+    approval: { of: ["product_requirements"], when: "required" },
+    declined: { by: "person", at: "2026-01-01T00:00:00.000Z" },
+    state: "skipped",
+    finished: true,
+    kind: "workflow",
+  };
+  expect(protectedSteps([skipped], records)).toEqual([]);
 });

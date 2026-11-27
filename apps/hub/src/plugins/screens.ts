@@ -5,7 +5,7 @@ import type {
   Fact,
   ProjectRead,
   RunRead,
-  StepStatus,
+  PlanStepRead,
 } from "@corbits-builder/plugin";
 import type { Catalog } from "@corbits-builder/plugin-host/catalog";
 import { readyPlanOffers } from "@corbits-builder/plugin-host/plan";
@@ -16,9 +16,10 @@ import {
 } from "@corbits-builder/schemas/conversation";
 import type {
   AskedScreen,
-  PlanView,
   ShownScreen,
 } from "@corbits-builder/schemas/project";
+import { readyPlanGroups } from "@corbits-builder/plan";
+import type { PlanView } from "@corbits-builder/schemas/plan";
 import {
   readProjectValues,
   type ProjectState,
@@ -35,11 +36,11 @@ const statusOf = (
     title: string;
     plugin: string;
     action: string;
-    state: StepStatus["state"];
+    state: PlanStepRead["state"];
     summary?: string;
   },
   plan: string | undefined,
-): StepStatus => ({
+): PlanStepRead => ({
   id: step.id,
   title: step.title,
   plugin: step.plugin,
@@ -83,11 +84,11 @@ export function projectRead(catalog: Catalog, read: ReadProject): ProjectRead {
         ? step.steps.map((child) => statusOf(child, step.plan))
         : [statusOf(step, undefined)],
     ),
-    planned: read.steps.flatMap((step) =>
-      "steps" in step && step.plan !== undefined
-        ? [{ plan: step.plan, state: step.state }]
-        : [],
-    ),
+    planned: readyPlanGroups(read.steps).map(({ plan, state, finished }) => ({
+      plan,
+      state,
+      finished,
+    })),
     now: read.now,
     app: { version: read.appVersion },
     coordinator: read.coordinator,

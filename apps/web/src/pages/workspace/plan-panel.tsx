@@ -10,7 +10,16 @@ import {
   type PointerEvent,
 } from "react";
 import { PanelRightClose } from "lucide-react";
-import type { PlanView } from "@corbits-builder/schemas/project";
+import {
+  actionSteps,
+  awaitsGoAhead,
+  isDeclined,
+  stepById,
+} from "@corbits-builder/plan";
+import type {
+  PlanViewChild,
+  PlanViewStep,
+} from "@corbits-builder/schemas/plan";
 import { Button, Switch } from "@corbits/react-ui";
 import {
   Steps,
@@ -30,8 +39,6 @@ const MIN_WIDTH = 280;
 const MAX_WIDTH = 440;
 const DEFAULT_WIDTH = 320;
 const KEY_STEP = 16;
-
-type PlanStep = PlanView["steps"][number];
 
 const clampWidth = (width: number) =>
   Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, Math.round(width)));
@@ -56,12 +63,10 @@ export function usePlanCollapsed(): readonly [
   ];
 }
 
-type PlanChild = Exclude<PlanStep, { steps: unknown }>;
-
 /** Where a step stands, as the plan's button marks it. */
-export type PlanMark = "done" | "failed" | "needs_you" | "running" | "open";
+type PlanMark = "done" | "failed" | "needs_you" | "running" | "open";
 
-function markOf(step: PlanChild): PlanMark {
+function markOf(step: PlanViewChild): PlanMark {
   if (
     step.state === "done" ||
     step.state === "failed" ||
@@ -72,21 +77,17 @@ function markOf(step: PlanChild): PlanMark {
   return "open";
 }
 
-// A skipped or cancelled step will not happen, so it is neither done nor still to do.
-const dropped = (step: PlanChild) =>
-  step.state === "skipped" || step.state === "cancelled";
-
-const actionSteps = (steps: readonly PlanStep[]): PlanChild[] =>
-  steps.flatMap((step) => ("steps" in step ? step.steps : [step]));
-
 /**
  * How far along the plan is, over the steps the panel lists (a group's steps, not the group): a
  * mark per step still in play, how many are done, and the step state that should draw the person
  * to the plan (a failure before a step waiting on them), or null while the plan has no steps.
  */
-export function planProgress(steps: readonly PlanStep[]) {
+export function planProgress(steps: readonly PlanViewStep[]) {
   if (steps.length === 0) return null;
-  const counted = actionSteps(steps).filter((step) => !dropped(step));
+  // A step that will not happen counts as neither done nor left.
+  const counted = actionSteps(steps).filter(
+    ({ finished, state }) => !finished || state === "done",
+  );
   const marks = counted.map((step) => ({ id: step.id, mark: markOf(step) }));
   const has = (mark: PlanMark) => marks.some((each) => each.mark === mark);
   const alerts = ["failed", "needs_you"] as const;
@@ -103,7 +104,7 @@ export function planProgress(steps: readonly PlanStep[]) {
  * description as its title, so its steps stand on their own under the panel's heading; any other
  * group keeps its title and the state the hub gave it.
  */
-export function panelSteps(steps: readonly PlanStep[]): StepItem[] {
+function panelSteps(steps: readonly PlanViewStep[]): StepItem[] {
   return steps.flatMap((step): StepItem[] => {
     if (!("steps" in step)) return [step];
     if (step.plan !== undefined) return step.steps;
@@ -118,7 +119,7 @@ export function panelSteps(steps: readonly PlanStep[]): StepItem[] {
   });
 }
 
-function hasRunningClock(steps: readonly PlanStep[]) {
+function hasRunningClock(steps: readonly PlanViewStep[]) {
   const running = (step: StepFields) =>
     step.state === "running" && step.startedAt !== undefined;
   return steps.some((step) =>
@@ -147,7 +148,7 @@ export function StepControls({
   onDecline,
   onGoAhead,
 }: {
-  step: PlanChild;
+  step: PlanViewChild;
   /** This step's change is on its way to the room, so it holds until that lands. */
   busy: boolean;
   onAskFirst: (askFirst: boolean) => void;
@@ -155,20 +156,15 @@ export function StepControls({
   onGoAhead: () => void;
 }) {
   const words = wording.conversation.plan;
-  const declined = step.declined !== undefined;
-  const waitingOnGo =
-    step.askFirst && step.goAhead === undefined && step.state === "needs_you";
+  const declined = isDeclined(step);
+  const waitingOnGo = awaitsGoAhead(step) && step.state === "needs_you";
   const mayAsk =
-    !declined &&
-    step.cancelled === undefined &&
-    (step.state === "waiting" ||
-      step.state === "not_started" ||
-      step.state === "needs_you");
+    step.state === "waiting" ||
+    step.state === "not_started" ||
+    step.state === "needs_you";
   const mayDecline =
     declined ||
-    (step.optional === true &&
-      step.state !== "done" &&
-      step.state !== "running");
+    (step.optional === true && !step.finished && step.state !== "running");
   if (!waitingOnGo && !mayAsk && !mayDecline) return null;
   // "Ask me first" stays on a skipped step, switched off, so skipping does not change the row's
   // height.
@@ -219,7 +215,7 @@ export function PlanPanel({
   onGoAhead,
   onAskFirst,
 }: {
-  steps: readonly PlanStep[];
+  steps: readonly PlanViewStep[];
   /** The room is narrow, so the panel lies over the conversation. */
   drawer: boolean;
   onHide: () => void;
@@ -254,7 +250,7 @@ export function PlanPanel({
     }
   };
   const stepAction = (step: StepFields) => {
-    const saved = actionSteps(steps).find(({ id }) => id === step.id);
+    const saved = stepById(steps, step.id);
     if (saved === undefined) return null;
     return (
       <StepControls
