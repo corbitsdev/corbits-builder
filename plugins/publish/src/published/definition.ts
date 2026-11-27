@@ -156,17 +156,41 @@ const MARK: Partial<Record<PublishState["state"], ScreenStatus["mark"]>> = {
   published: "done",
 };
 
+// What leads the word and the dot after it: going up, up to date, out of date, in trouble or coming
+// down. A state that needs the person, or failed, has no tone, so its mark speaks for it.
+const LOOK: Record<
+  PublishState["state"],
+  {
+    icon: NonNullable<ScreenStatus["icon"]>;
+    tone?: NonNullable<ScreenStatus["tone"]>;
+  }
+> = {
+  unpublished: { icon: "cloud-upload", tone: "neutral" },
+  publishing: { icon: "cloud-upload", tone: "neutral" },
+  stalled: { icon: "cloud-upload" },
+  needsYou: { icon: "cloud-upload" },
+  published: { icon: "cloud-check", tone: "success" },
+  changes: { icon: "cloud-sync", tone: "warning" },
+  failed: { icon: "cloud-alert" },
+  takingDown: { icon: "cloud-off", tone: "neutral" },
+  takeDownFailed: { icon: "cloud-alert" },
+};
+
 // A keep link with time left needs the person whatever the state, and after its deadline a
-// published app may have been removed.
+// published app may have been removed; either keeps the state's icon and drops its tone.
 const statusOf = ({ state, keep }: Publishing): ScreenStatus => {
+  const { icon, tone } = LOOK[state.state];
   if (keep !== null && !keep.passed)
-    return { label: text.status.keep, mark: "needs_you" };
+    return { label: text.status.keep, mark: "needs_you", icon };
   if (keep !== null && state.state === "published")
-    return { label: text.status.keepPassed, mark: "needs_you" };
+    return { label: text.status.keepPassed, mark: "needs_you", icon };
   const mark = MARK[state.state];
-  return mark === undefined
-    ? { label: text.status[state.state] }
-    : { label: text.status[state.state], mark };
+  return {
+    label: text.status[state.state],
+    ...(mark === undefined ? {} : { mark }),
+    icon,
+    ...(tone === undefined ? {} : { tone }),
+  };
 };
 
 export default defineScreen({

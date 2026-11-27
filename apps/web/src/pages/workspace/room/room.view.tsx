@@ -14,7 +14,15 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
-import { X } from "lucide-react";
+import {
+  CloudAlert,
+  CloudCheck,
+  CloudOff,
+  CloudSync,
+  CloudUpload,
+  X,
+  type LucideIcon,
+} from "lucide-react";
 import { Button as UiButton, ConversationEmptyState } from "@corbits/react-ui";
 import type { ScreenStatus } from "@corbits-builder/plugin";
 import { wording } from "../../../config.ts";
@@ -460,6 +468,15 @@ function BackToChat({ onClose }: { onClose: () => void }) {
 }
 
 /** Each plugin tab's status, as a button that opens the tab. */
+/** The icon each name a plugin's status may lead with stands for. */
+const STATUS_ICONS: Record<NonNullable<TabStatus["icon"]>, LucideIcon> = {
+  "cloud-upload": CloudUpload,
+  "cloud-sync": CloudSync,
+  "cloud-check": CloudCheck,
+  "cloud-alert": CloudAlert,
+  "cloud-off": CloudOff,
+};
+
 function TabStatusControls({
   tabStatus,
   className,
@@ -470,20 +487,30 @@ function TabStatusControls({
   if (tabStatus.length === 0) return null;
   return (
     <div className={className}>
-      {tabStatus.map(({ tab, label, mark, onOpen }) => (
-        <UiButton
-          key={tab}
-          type="button"
-          variant="secondary"
-          className={styles.control}
-          data-mark={mark}
-          aria-label={wording.conversation.tabStatus(tab, label)}
-          title={wording.conversation.openTab(tab)}
-          onClick={() => onOpen()}
-        >
-          {label}
-        </UiButton>
-      ))}
+      {tabStatus.map(({ tab, label, mark, icon, tone, onOpen }) => {
+        const Icon = icon === undefined ? null : STATUS_ICONS[icon];
+        // One dot at most: the plugin's tone where it gives one, else the dot of a status that
+        // needs the person.
+        const dot = tone ?? (mark === "needs_you" ? "needs_you" : undefined);
+        return (
+          <UiButton
+            key={tab}
+            type="button"
+            variant="secondary"
+            className={styles.control}
+            data-mark={mark}
+            aria-label={wording.conversation.tabStatus(tab, label)}
+            title={wording.conversation.openTab(tab)}
+            onClick={() => onOpen()}
+          >
+            {Icon === null ? null : <Icon aria-hidden="true" />}
+            {label}
+            {dot === undefined ? null : (
+              <span className={styles.dot} data-tone={dot} aria-hidden="true" />
+            )}
+          </UiButton>
+        );
+      })}
     </div>
   );
 }

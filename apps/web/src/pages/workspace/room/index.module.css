@@ -53,13 +53,30 @@
   gap: var(--space-2);
 }
 
-/* A regular secondary button, which opens the tab; one that needs the person carries a dot, one
-   that failed reads red. */
-.control[data-mark="needs_you"]::before {
-  content: "";
+/* A regular secondary button, which opens the tab: the plugin's icon, its word, and at the end one
+   dot, in the plugin's tone or, for a status that needs the person, the action's colour. One that
+   failed reads red. The tones are the theme's own status colours, since the library's dot draws
+   success and warning alike. */
+.dot {
+  flex: none;
   width: 6px;
   height: 6px;
   border-radius: 50%;
+}
+
+.dot[data-tone="neutral"] {
+  background: var(--wb-muted-foreground);
+}
+
+.dot[data-tone="warning"] {
+  background: var(--warn);
+}
+
+.dot[data-tone="success"] {
+  background: var(--wb-okay);
+}
+
+.dot[data-tone="needs_you"] {
   background: var(--wb-action);
 }
 
@@ -221,7 +238,8 @@
   height: var(--close-size);
 }
 
-/* The tabs' status goes just left of the close button and moves with it. */
+/* The tabs' status goes just left of the close button and moves with it, at its own regular size,
+   centred on the close button however tall that is. */
 .pageControls {
   position: absolute;
   top: var(--space-4);
@@ -230,11 +248,6 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  height: var(--close-size);
-}
-
-/* Beside a written page's smaller close button, Download and Share, it takes their height. */
-.pageControls .control {
   height: var(--close-size);
 }
 
