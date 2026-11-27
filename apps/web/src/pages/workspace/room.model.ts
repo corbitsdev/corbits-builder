@@ -13,7 +13,6 @@ import type { AnswerOutcome } from "./question-outcome.tsx";
 import { wording, type SettingsTab } from "../../config.ts";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  queryOptions,
   skipToken,
   usePrefetchQuery,
   useQueries,
@@ -21,11 +20,8 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import {
-  heldOnApproval,
   projectActivityQuery,
   projectRunStatesQuery,
-  useProjectActivity,
-  useProjectRunStates,
   useRolesAtWork,
 } from "./project-activity.ts";
 import {
@@ -67,23 +63,16 @@ import {
   startProjectCoordinator,
 } from "../../api/projects.ts";
 import { workspaceTenantId } from "../../api/auth.ts";
-import type { ChatMessage, Wait } from "../../api/types.ts";
 import {
-  deliveredText,
   showsScreen,
   type QuestionAnswer,
 } from "@corbits-builder/schemas/conversation";
 import { keys } from "../../queries/keys.ts";
 import { useQuestions } from "./questions.model.ts";
+import { openDecisionsQuery, useDecisions } from "./decisions.model.ts";
 import { useFiledVersions } from "./filed-versions.ts";
 import { threadUpdates } from "./specialist-updates.ts";
-import { useSettledApprovals } from "./settled-approvals.ts";
-import {
-  documentApprovalsFrom,
-  openApprovalOf,
-  pendingApprovalsFrom,
-  type OpenApproval,
-} from "./collaboration.ts";
+import { openApprovalOf } from "./collaboration.ts";
 import {
   chooseApproachWithOpenApproval,
   deliverWithOpenApproval,
@@ -102,7 +91,6 @@ import {
   useRoomReload,
   useSettleReloads,
 } from "./room-reload.model.ts";
-import { decideApproval, openDecisions } from "../../api/decisions.ts";
 import {
   documentTab,
   paneArtifacts,
@@ -156,21 +144,6 @@ import { inTab, pluginTabs, screensFor, selectionNames } from "./screens.ts";
 // A coder at work can report how the project's program starts at any time.
 const RUN_POLL_MS = 5_000;
 const RUN_VALUE = "stack.run";
-
-// Only an active project has a coordinator whose decisions can be open. The one room read never
-// shown from an earlier visit, saved or in memory: a card answered since would be offered again,
-// and the person could act on it.
-function openDecisionsQuery(projectId: string, active: boolean) {
-  return queryOptions({
-    queryKey: keys.openDecisions.of(projectId),
-    retry: false,
-    staleTime: 0,
-    gcTime: 0,
-    meta: { persist: false },
-    refetchOnWindowFocus: false,
-    queryFn: active ? () => openDecisions(projectId) : skipToken,
-  });
-}
 
 const MODEL_CHOICE_REFUSALS: ReadonlySet<string> = new Set([
   "model_provider_missing",
@@ -440,8 +413,6 @@ export function useRoom({
   const documentGround =
     usePreference("document_ground") === "grey" ? "grey" : "white";
   const seen = useSeenVersions();
-  const [approvalBusy, setApprovalBusy] = useState(false);
-  const [approvalError, setApprovalError] = useState<string | null>(null);
   const [documentChoice, setDocumentChoice] = useState<DocumentChoice | null>(
     null,
   );
@@ -457,27 +428,6 @@ export function useRoom({
   const [projectOpen, setProjectOpen] = useState(false);
   const [enablingAi, setEnablingAi] = useState(false);
   const rolesAtWork = useRolesAtWork(projectId);
-  const [gateDone, setGateDone] = useState(0);
-  // The waits that belong to this project, from the open decisions.
-  const decisions = useQuery(
-    openDecisionsQuery(projectId, status === "active"),
-  );
-  // Once per outage: each failed poll is a new error, and a dismissed toast stays dismissed.
-  useEffect(() => {
-    if (!decisions.isError) return;
-    toast.error(humanFault(decisions.error, wording.approval.notRead), {
-      id: "waits-read",
-    });
-  }, [decisions.isError]);
-  // Undefined until read: an unread list is not one with nothing open.
-  const waits = decisions.data;
-  const activity = useProjectActivity(projectId);
-  useEffect(() => {
-    if (!activity.isError) return;
-    toast.error(humanFault(activity.error, wording.activity.notRead), {
-      id: "activity-read",
-    });
-  }, [activity.isError]);
   const reload = useRoomReload(projectId, status);
   const composer = useComposer({
     projectId,
@@ -533,21 +483,25 @@ export function useRoom({
       composer,
     });
 
-  // The runs held on an approval, from the polled run states: a coder's package request raises no
-  // room event, so the room alone would not say the person's turn came until something else moved.
-  const awaitingApproval = heldOnApproval(useProjectRunStates(projectId).data);
-  // A room that moved may mean a message reached the coordinator from elsewhere, or a coordinator
-  // or coder decision opened; read who is at work and the open decisions. A run parking on an
-  // approval moves no room, so the open decisions are read again then too.
-  useEffect(() => {
-    void queryClient.invalidateQueries({
-      queryKey: keys.projectActivity.of(projectId),
-    });
-    void queryClient.invalidateQueries({
-      queryKey: keys.openDecisions.of(projectId),
-    });
-  }, [projectId, queryClient, snapshot, gateDone, awaitingApproval]);
-  useReloadOnHold(awaitingApproval, reload);
+  const decisions = useDecisions({
+    projectId,
+    status,
+    snapshot,
+    onChanged,
+    composer,
+  });
+  const {
+    waits,
+    settledApprovals,
+    pendingApprovals,
+    openApproval,
+    approvalBusy,
+    approvalError,
+    readPendingApprovals,
+    onDecideApproval,
+    declineWith,
+  } = decisions;
+  useReloadOnHold(decisions.awaitingApproval, reload);
 
   useSettleReloads(settling, reload);
 
@@ -559,18 +513,6 @@ export function useRoom({
   const latestAssistant = [...mirror]
     .reverse()
     .find((turn) => turn.role === "assistant")?.text;
-  const documentApprovals =
-    waits === undefined ? undefined : documentApprovalsFrom(waits);
-  const { settled: settledApprovals, settle } = useSettledApprovals(
-    projectId,
-    documentApprovals,
-  );
-  const pendingFrom = (list: readonly Wait[]): OpenApproval[] =>
-    pendingApprovalsFrom(list, settledApprovals);
-  const pendingApprovals = waits === undefined ? undefined : pendingFrom(waits);
-  const openApprovalIds = new Set(
-    pendingApprovals?.map((approval) => approval.approvalId),
-  );
   const phase = roomPhase({
     status,
     bound: events !== null,
@@ -579,9 +521,9 @@ export function useRoom({
     liveRun,
     runId,
     waits,
-    openApprovals: openApprovalIds,
+    openApprovals: decisions.openApprovalIds,
     questionOpen: openQuestion !== undefined,
-    coordinator: activity.data?.agents.find(
+    coordinator: decisions.activity?.agents.find(
       (agent) => agent.role === "coordinator",
     ),
     sending,
@@ -621,24 +563,6 @@ export function useRoom({
     return documents[key];
   };
 
-  // A park created moments after `inference.done` can already stand on the hub before the next
-  // room reload lands; read once on demand when the cached list shows no open ask.
-  const readPendingApprovals = async (): Promise<
-    readonly OpenApproval[] | undefined
-  > => {
-    if (pendingApprovals !== undefined && pendingApprovals.length > 0)
-      return pendingApprovals;
-    try {
-      const fresh = await queryClient.fetchQuery(
-        openDecisionsQuery(projectId, true),
-      );
-      return pendingFrom(fresh);
-    } catch (cause) {
-      // The cached list is still the best answer; the send that follows reports a hub that is down.
-      console.warn("Open decisions could not be re-read.", cause);
-      return pendingApprovals;
-    }
-  };
   const addToPrompt = (passage: PassageQuote) =>
     composer.add(formatPassageQuote(passage));
   const chooseDocument = (id: string) =>
@@ -665,107 +589,6 @@ export function useRoom({
   };
   // A link opens the page it names, so the design opens on its plan. Only the mockup's row opens the mockup.
   const openDocument = (id: string) => openProject(id);
-  // "settled" is a 409: someone already decided the ask, or its run moved on; the page reads
-  // where it stands.
-  const saveDecision = async (decision: {
-    approvalId: string;
-    choice: "yes" | "always" | "no";
-    message?: string;
-  }): Promise<"saved" | "settled" | { fault: string }> => {
-    const notSaved = { fault: wording.approval.notSaved };
-    const cachedWaits = queryClient.getQueryData<readonly Wait[]>(
-      keys.openDecisions.of(projectId),
-    );
-    const wait =
-      waits?.find((item) => item.approvalId === decision.approvalId) ??
-      cachedWaits?.find((item) => item.approvalId === decision.approvalId);
-    const approvalId = wait?.approvalId;
-    const tenantId = wait?.tenantId;
-    if (
-      wait === undefined ||
-      approvalId === undefined ||
-      tenantId === undefined ||
-      approvalBusy
-    )
-      return notSaved;
-    setApprovalBusy(true);
-    setApprovalError(null);
-    const decided =
-      documentApprovals?.find((item) => item.approvalId === approvalId) ??
-      (cachedWaits === undefined
-        ? undefined
-        : documentApprovalsFrom(cachedWaits).find(
-            (item) => item.approvalId === approvalId,
-          ));
-    try {
-      await decideApproval({
-        tenantId,
-        approvalId,
-        decision:
-          decision.choice === "yes" || decision.choice === "always"
-            ? "approve"
-            : "reject",
-        ...(decision.choice === "always" ? { scope: "always" as const } : {}),
-        ...(decision.message === undefined
-          ? {}
-          : { message: decision.message }),
-      });
-      if (decided !== undefined)
-        settle(decided, {
-          status:
-            decision.choice === "yes" || decision.choice === "always"
-              ? "approved"
-              : "rejected",
-          ...(decision.choice === "always" ? { scope: "always" } : {}),
-        });
-      setGateDone((value) => value + 1);
-      onChanged();
-      return "saved";
-    } catch (cause: unknown) {
-      if (cause instanceof ProductApiError && cause.response.status === 409) {
-        setGateDone((value) => value + 1);
-        onChanged();
-        return "settled";
-      }
-      const fault = await humanFaultWithCode(cause, notSaved.fault);
-      setApprovalError(fault);
-      return { fault };
-    } finally {
-      setApprovalBusy(false);
-    }
-  };
-  // Resolves to the fault the person sees, or null once the decision stands.
-  const onDecideApproval = async (decision: {
-    approvalId: string;
-    choice: "yes" | "always" | "no";
-  }): Promise<string | null> => {
-    const saved = await saveDecision(decision);
-    return typeof saved === "object" ? saved.fault : null;
-  };
-  // The person's words go with the decline as their reason; mailed instead when the ask could
-  // not take them, so they are never lost and a failed mail says why.
-  const declineWith =
-    (approvalId: string) =>
-    async (text: string): Promise<ChatMessage> => {
-      const saved = await saveDecision({
-        approvalId,
-        choice: "no",
-        message: deliveredText(text),
-      });
-      if (saved === "settled") return composer.post(text);
-      if (typeof saved === "object") {
-        // The composer reports the fault; the card keeps no second copy of it.
-        setApprovalError(null);
-        throw new Error(saved.fault);
-      }
-      return {
-        id: `declined:${approvalId}`,
-        author: "me",
-        body: text,
-        at: new Date().toISOString(),
-      };
-    };
-  const openApproval = openApprovalOf(pendingApprovals);
   // The message names the pick. Resolves to the fault the person sees, or null once it is sent.
   const chooseApproach = async (message: string): Promise<string | null> => {
     const currentOpen = openApprovalOf(await readPendingApprovals());
