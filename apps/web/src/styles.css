@@ -364,6 +364,20 @@ button[aria-disabled="true"] {
   pointer-events: auto;
 }
 
+/* The library's link button is bare words until hovered, which reads as a label. Here it is
+   underlined at rest like a link in a document, the line thickening under the pointer. The
+   library names the variant only in its classes. */
+[data-slot="button"].underline-offset-4 {
+  text-decoration-line: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+[data-slot="button"].underline-offset-4:hover:not(:disabled):not(
+    [aria-disabled="true"]
+  ) {
+  text-decoration-thickness: 2px;
+}
+
 /* An upstream bug, corrected locally: theme.css declares --input: #8a8080 in
    both schemes, so the composer's outline and the secondary button's stay mid
    grey while every other border darkens. Matching the rest of the frame is
