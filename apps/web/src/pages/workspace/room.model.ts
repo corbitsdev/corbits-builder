@@ -110,7 +110,12 @@ import {
   sameParts,
   type LiveRun,
 } from "./live-run.ts";
-import { createRoomReloader } from "./room-reload.ts";
+import {
+  useBindPoll,
+  useReloadOnHold,
+  useRoomReload,
+  useSettleReloads,
+} from "./room-reload.model.ts";
 import { withPendingSends } from "./pending-sends.ts";
 import { decideApproval, openDecisions } from "../../api/decisions.ts";
 import {
@@ -167,19 +172,9 @@ import { useSessionMemory, withEntries } from "./session-memory.ts";
 import { screenWords, writesCode } from "./roles.ts";
 import { inTab, pluginTabs, screensFor, selectionNames } from "./screens.ts";
 
-// The stream says when the room moved. This read covers what it cannot see,
-// such as a coordinator run replaced while its old stream stays quiet.
-const FALLBACK_RELOAD_MS = 30_000;
 // A coder at work can report how the project's program starts at any time.
 const RUN_POLL_MS = 5_000;
 const RUN_VALUE = "stack.run";
-// No coordinator's stream announces the next one binding, so an unbound room reads again until it does.
-const BIND_POLL_MS = 1_000;
-// A handoff binds within seconds; past this the room starts the coordinator itself, so a start the
-// hub could not make shows its refusal instead of an endless thinking mark.
-const BIND_WAIT_MS = 15_000;
-// After a run closes, the mirror's commit can trail its last frame.
-const SETTLE_RELOAD_MS = [1_000, 3_000, 7_000, 15_000];
 
 // Only an active project has a coordinator whose decisions can be open. The one room read never
 // shown from an earlier visit, saved or in memory: a card answered since would be offered again,
@@ -512,26 +507,13 @@ export function useRoom({
       id: "activity-read",
     });
   }, [activity.isError]);
-  const reloadRef = useRef<() => void>(() => {});
-
-  useEffect(() => {
-    const reloader = createRoomReloader(() =>
-      loadProjectRoom(projectId, queryClient, status === "active"),
-    );
-    reloadRef.current = reloader.request;
-    const timer = setInterval(reloader.request, FALLBACK_RELOAD_MS);
-    return () => {
-      clearInterval(timer);
-      reloader.dispose();
-      reloadRef.current = () => {};
-    };
-  }, [projectId, queryClient, status]);
+  const reload = useRoomReload(projectId, status);
   const composer = useComposer({
     projectId,
     openingMessage,
     mirror,
     onChanged,
-    reload: () => reloadRef.current(),
+    reload,
   });
   const { sending, setSending } = composer;
   const { questions, openQuestion, answer, outcomes } = useQuestions({
@@ -539,7 +521,7 @@ export function useRoom({
     runId,
     loaded: snapshot.conversation.questions,
     archived,
-    reload: () => reloadRef.current(),
+    reload,
     onChanged,
     setSending,
   });
@@ -577,7 +559,6 @@ export function useRoom({
     liveRunRef.current = emptyLiveRun;
     setLiveRun(emptyLiveRun);
     if (runId === null || runTenantId === undefined) return;
-    const reload = () => reloadRef.current();
     return subscribeWorkflowRun(runTenantId, runId, {
       onEvent: (event) => {
         const next = foldLiveRun(
@@ -593,7 +574,7 @@ export function useRoom({
       onReconnect: reload,
       onError: reload,
     }).unsubscribe;
-  }, [projectId, runId, runTenantId]);
+  }, [projectId, runId, runTenantId, reload]);
 
   // The runs held on an approval, from the polled run states: a coder's package request raises no
   // room event, so the room alone would not say the person's turn came until something else moved.
@@ -609,22 +590,10 @@ export function useRoom({
       queryKey: keys.openDecisions.of(projectId),
     });
   }, [projectId, queryClient, snapshot, gateDone, awaitingApproval]);
-  // The plan and who is at work are read with the room, so a run parking on an approval, or
-  // leaving one, reads the room again for its step to say so.
-  useEffect(() => {
-    reloadRef.current();
-  }, [awaitingApproval]);
+  useReloadOnHold(awaitingApproval, reload);
 
   const settling = awaitingCommit(liveRun, mirror);
-  useEffect(() => {
-    if (!settling) return;
-    const timers = SETTLE_RELOAD_MS.map((ms) =>
-      setTimeout(() => reloadRef.current(), ms),
-    );
-    return () => {
-      for (const timer of timers) clearTimeout(timer);
-    };
-  }, [settling]);
+  useSettleReloads(settling, reload);
 
   // A dead run is not a quiet colleague. Say so once, and stop the thinking
   // mark, when the person is still waiting on a reply that will not come.
@@ -773,7 +742,7 @@ export function useRoom({
     try {
       await approveDocument(projectId, item.artifactId, version);
       setProjectOpen(false);
-      reloadRef.current();
+      reload();
       onChanged();
     } catch (cause) {
       toast.error(
@@ -960,15 +929,7 @@ export function useRoom({
     composer.inputRef.current?.focus();
   }, [changesAsked, composerDisabled]);
 
-  useEffect(() => {
-    if (!awaitingBind) return;
-    const timer = setInterval(() => reloadRef.current(), BIND_POLL_MS);
-    const fallback = setTimeout(() => void startCoordinator(), BIND_WAIT_MS);
-    return () => {
-      clearInterval(timer);
-      clearTimeout(fallback);
-    };
-  }, [awaitingBind]);
+  useBindPoll(awaitingBind, reload, startCoordinator);
   const [restoring, setRestoring] = useState(false);
   const [restoreFault, setRestoreFault] = useState<string | null>(null);
   const restore = async () => {
@@ -1038,7 +999,7 @@ export function useRoom({
         run.state === "waiting" && run.since !== undefined ? [run.runId] : [],
       ),
     ),
-    () => reloadRef.current(),
+    reload,
   );
   // A run no longer at work has saved how it ended, which the last read of its record predates.
   const atWork = inFlight.map((run) => run.runId).join("\n");
@@ -1078,7 +1039,7 @@ export function useRoom({
       try {
         await stopRun(projectId, stopped);
         setStoppedHere((before) => new Set(before).add(stopped));
-        reloadRef.current();
+        reload();
       } catch (cause) {
         toast.error(humanFault(cause, wording.dispatch.notStopped));
       }
@@ -1201,7 +1162,7 @@ export function useRoom({
     } catch (cause) {
       return humanFault(cause, wording.questions.answerFault.refused);
     }
-    reloadRef.current();
+    reload();
     return undefined;
   };
   const pluginScreens = pluginTabs({
@@ -1214,9 +1175,9 @@ export function useRoom({
   const { rereadIn } = pluginScreens;
   useEffect(() => {
     if (rereadIn === undefined) return;
-    const timer = setTimeout(() => reloadRef.current(), rereadIn);
+    const timer = setTimeout(() => reload(), rereadIn);
     return () => clearTimeout(timer);
-  }, [snapshot, rereadIn]);
+  }, [snapshot, rereadIn, reload]);
   const appFiled = snapshot.artifacts.some((item) => item.kind === "app");
   const firstBuilder = appFiled ? undefined : inFlight.find(writesCode);
   // There is an app to preview once one is filed, built here or imported, or a coder is building
@@ -1290,7 +1251,7 @@ export function useRoom({
     shown: projectShown ? shownTab : null,
     openTab: openProject,
     send: (message) => void deliver(message),
-    reload: () => reloadRef.current(),
+    reload,
   };
   // Comments go as an ordinary message, so they wait while a question or approval would take it,
   // unless the question asks to accept something, which they answer by asking for changes.
