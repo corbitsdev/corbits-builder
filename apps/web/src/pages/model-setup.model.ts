@@ -5,10 +5,7 @@
  */
 import { useState } from "react";
 import type { AddProviderDialogProps } from "./settings/add-provider-dialog.model.ts";
-import {
-  useModelCatalog,
-  useSubscriptionLogins,
-} from "./settings/model-catalog.ts";
+import { useModelCatalog, useSubscriptionLogins } from "./model-catalog.ts";
 import type {
   EnableAiDialogViewProps,
   ModelSetupViewProps,

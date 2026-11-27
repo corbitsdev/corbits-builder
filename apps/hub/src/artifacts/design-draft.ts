@@ -25,6 +25,7 @@ import {
 } from "../config/design.ts";
 import { withDesignTokens } from "./design-tokens.ts";
 import { DESIGN_STYLES } from "./design-tweaks.ts";
+import type { PreparedDesignSubmission } from "./design-tools.ts";
 
 const hasInlineNonHomeScreen = (index: string | undefined) => {
   if (index === undefined) return false;
@@ -107,7 +108,7 @@ const PLACEHOLDER = /<[A-Za-z][^<>=`"]*\s[^<>=`"]*>/g;
 
 export function prepareDesignSubmission(
   collected: Readonly<Record<string, Buffer>>,
-) {
+): PreparedDesignSubmission {
   const files = withoutUnusedStarterHome(
     Object.fromEntries(
       Object.entries(collected).map(([path, bytes]) => [
@@ -155,10 +156,6 @@ export function prepareDesignSubmission(
   const title = doc.match(/^#\s+(.+)$/m)?.[1]?.trim() ?? "Design";
   return { content: serialized.content, title: title.slice(0, 512) };
 }
-
-export type PreparedDesignSubmission = ReturnType<
-  typeof prepareDesignSubmission
->;
 
 const isStarterPages = (files: Readonly<Record<string, string>>) => {
   const index = files["designs/index.html"];

@@ -6,11 +6,14 @@
  */
 import { isDocumentKind } from "@corbits-builder/schemas/artifact";
 import { wording } from "../../config.ts";
-import type { Dispatch, DispatchStatus } from "./dispatch-card.tsx";
+import type {
+  Dispatch,
+  DispatchStatus,
+  PlacedDispatch,
+} from "./dispatch-card.tsx";
 import { saidOf } from "@corbits-builder/plugin";
 import { actionRole, roleOf } from "./roles.ts";
 import type { SpecialistUpdate } from "./specialist-updates.ts";
-import type { PlacedDispatch } from "./transcript.tsx";
 
 const text = wording.dispatch;
 

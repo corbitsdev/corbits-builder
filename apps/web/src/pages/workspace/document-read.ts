@@ -4,7 +4,7 @@
  * its tab so the person can retry.
  */
 import { ProductApiError } from "@corbits-builder/client";
-import { humanFault } from "./human-fault.ts";
+import { humanFault } from "../../human-fault.ts";
 
 export function documentReadFailure(cause: unknown): {
   message: string;

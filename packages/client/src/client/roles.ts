@@ -1,20 +1,9 @@
-import { tenantPath, type ClientDeps, type ProductApiClient } from "./shared";
-
-/** A role from the native Interchange role listing, as the hub returned it. */
-export type TenantRoleView = Readonly<{
-  id: string;
-  tenantId: string;
-  name: string;
-  description: string | null;
-  isSystem: boolean;
-  createdAt: string;
-  updatedAt: string;
-}>;
-
-export type TenantRolePage = Readonly<{
-  data: TenantRoleView[];
-  nextCursor: string | null;
-}>;
+import {
+  tenantPath,
+  type ClientDeps,
+  type ProductApiClient,
+  type TenantRoleView,
+} from "./shared";
 
 type Page<T> = { data: T[]; nextCursor: string | null };
 

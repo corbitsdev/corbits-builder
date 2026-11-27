@@ -19,7 +19,7 @@ import {
   useWorkspaceReviewers,
 } from "../../workspace-approvals-setting.ts";
 import type { ReviewerDraft } from "../approval-fields.tsx";
-import { humanFault } from "./human-fault.ts";
+import { humanFault } from "../../human-fault.ts";
 import type { SharePackageViewProps } from "./share-package.view.tsx";
 
 const roundText = wording.approvalRound;

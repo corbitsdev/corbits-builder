@@ -7,7 +7,7 @@ import {
   type Field,
   type ValueDeclaration,
 } from "@corbits-builder/plugin";
-import type { Choice, Plugin, ScreenAction } from "./catalog.ts";
+import type { Choice, Plugin, ScreenAction } from "./plugins.ts";
 
 // A fact in plain words, as the catalog has it from the plugins.
 type FactText = (fact: Fact) => string;

@@ -18,7 +18,11 @@ import { sendMessage, type ConversationTurn } from "../../api/conversation.ts";
 import { acceptedMaterials, attachMaterials } from "../../api/artifacts.ts";
 import type { ChatMessage } from "../../api/types.ts";
 import { keys } from "../../queries/keys.ts";
-import { humanFault, humanFaultWithCode, responseCode } from "./human-fault.ts";
+import {
+  humanFault,
+  humanFaultWithCode,
+  responseCode,
+} from "../../human-fault.ts";
 import { latestTurnAt, SENDING, type SentMessage } from "./pending-sends.ts";
 import type { RoomComposer } from "./prompt-box.view.tsx";
 

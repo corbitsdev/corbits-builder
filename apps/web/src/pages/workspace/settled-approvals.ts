@@ -11,8 +11,8 @@ import type { DecidedApproval } from "@corbits-builder/schemas/artifact";
 import { keys } from "../../queries/keys.ts";
 import { askOf } from "../../api/ask.ts";
 import { readDecidedApprovals } from "../../api/activity.ts";
-import { humanFault } from "./human-fault.ts";
-import type { ApprovalOutcome, DocumentApproval } from "./transcript.tsx";
+import { humanFault } from "../../human-fault.ts";
+import type { ApprovalOutcome, DocumentApproval } from "./collaboration.ts";
 
 export type OpenApproval = DocumentApproval & { readonly tenantId: string };
 

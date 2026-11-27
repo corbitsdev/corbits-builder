@@ -13,6 +13,7 @@
     "./facts": "./src/facts.ts",
     "./folder": "./src/folder.ts",
     "./plan": "./src/plan.ts",
+    "./plugins": "./src/plugins.ts",
     "./search/fields": "./src/search/fields.ts",
     "./search/triggers": "./src/search/triggers.ts",
     "./search/words": "./src/search/words.ts",

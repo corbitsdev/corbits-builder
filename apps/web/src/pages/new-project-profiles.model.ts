@@ -16,7 +16,7 @@ import { keys } from "../queries/keys.ts";
 import { workspaceTenantId } from "../api/auth.ts";
 import { productClient } from "../api/transport.ts";
 import { available } from "./settings/profiles.model.ts";
-import { useModelCatalog } from "./settings/model-catalog.ts";
+import { useModelCatalog } from "./model-catalog.ts";
 
 const copy = wording.profiles;
 

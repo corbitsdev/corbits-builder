@@ -14,7 +14,7 @@ import {
   type WrongField,
 } from "@corbits-builder/plugin";
 import { type } from "arktype";
-import type { CheckAction } from "./catalog.ts";
+import type { CheckAction } from "./plugins.ts";
 import { templateField } from "./facts.ts";
 
 // How long a command check may run unless it says less, and how much longer the host may take to

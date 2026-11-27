@@ -3,13 +3,6 @@ const { builtinModules } = require("node:module");
 module.exports = {
   forbidden: [
     {
-      name: "no-circular-at-runtime",
-      // Runtime cycles make module initialization depend on import order.
-      severity: "error",
-      from: {},
-      to: { circular: true, viaOnly: { dependencyTypesNot: ["type-only"] } },
-    },
-    {
       name: "no-circular",
       comment:
         "Modules in a cycle, even one through types alone, cannot be understood, tested or moved apart one at a time.",

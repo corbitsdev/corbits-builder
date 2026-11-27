@@ -1,5 +1,10 @@
 import type { ModelLoginPlugin } from "@corbits-builder/schemas/models";
-import { tenantPath, type ClientDeps, type ProductApiClient } from "./shared";
+import {
+  tenantPath,
+  type ClientDeps,
+  type ModelLoginState,
+  type ProductApiClient,
+} from "./shared";
 
 /**
  * BYOK model credentials, composed from the hub's real endpoints:
@@ -27,40 +32,6 @@ type ModelProviderView = Readonly<{
   plugin: string;
   disabled: boolean;
 }>;
-
-export type ModelCredentialInput = Readonly<{
-  plugin: string;
-  /** Base URL for the model provider; defaults per plugin. */
-  baseURL?: string;
-  /** The user's API key. Sent once, encrypted server-side, never returned. */
-  secret: string;
-  /** Optional display label; a unique default is generated when absent. */
-  label?: string;
-}>;
-
-export type ModelCredentialReceipt = Readonly<{
-  provider: Readonly<{
-    id: string;
-    name: string;
-    plugin: string;
-    baseURL: string;
-  }>;
-  credential: Readonly<{ id: string; name: string }>;
-  modelProvider: Readonly<{
-    id: string;
-    name: string;
-    credentialId: string | null;
-  }>;
-}>;
-
-/** A ChatGPT or xAI sign-in in flight. The authorize URL is opened by the person; no token reaches the client. */
-export type ModelLogin = Readonly<{ loginId: string; authorizeUrl: string }>;
-export type ModelLoginState = Readonly<
-  | { status: "pending" }
-  | { status: "completed"; credentialId: string }
-  | { status: "failed"; message: string }
->;
-export type { ModelLoginPlugin };
 
 // CODEX_BASE_URL and XAI_OAUTH_PROXY_BASE_URL: the only endpoints these logins' tokens work on.
 const LOGIN_BASE_URLS: Record<ModelLoginPlugin, string> = {

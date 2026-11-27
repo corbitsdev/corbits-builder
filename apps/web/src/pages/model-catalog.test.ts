@@ -1,13 +1,13 @@
 import { afterAll, expect, mock, test } from "bun:test";
 import { environmentManager } from "@tanstack/react-query";
 import type { ModelLoginState } from "@corbits-builder/client";
-import * as actualTransport from "../../api/transport.ts";
-import { wording } from "../../config.ts";
+import * as actualTransport from "../api/transport.ts";
+import { wording } from "../config.ts";
 
 const realTransport = { ...actualTransport };
 let answers: ModelLoginState[] = [];
 
-mock.module("../../api/transport.ts", () => ({
+mock.module("../api/transport.ts", () => ({
   ...realTransport,
   productClient: () => ({
     modelLogin: async () => answers.shift() ?? { status: "pending" },
@@ -18,7 +18,7 @@ const wasServer = environmentManager.isServer();
 environmentManager.setIsServer(() => false);
 afterAll(() => {
   environmentManager.setIsServer(() => wasServer);
-  mock.module("../../api/transport.ts", () => realTransport);
+  mock.module("../api/transport.ts", () => realTransport);
 });
 
 const { loginCredential } = await import("./model-catalog.ts");

@@ -16,8 +16,9 @@ import {
   approvalQuestion,
   approvalToolPart,
   runsShell,
+  type ApprovalOutcome,
+  type DocumentApproval,
 } from "./collaboration.ts";
-import type { ApprovalOutcome, DocumentApproval } from "./transcript.tsx";
 import styles from "./document-decision.module.css";
 
 const text = wording.approval;

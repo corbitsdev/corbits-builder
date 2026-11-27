@@ -20,7 +20,7 @@ import type {
 import { keys } from "../../queries/keys.ts";
 import { productClient } from "../../api/transport.ts";
 import { workspaceTenantId } from "../../api/auth.ts";
-import { message, useModelCatalog } from "./model-catalog.ts";
+import { message, useModelCatalog } from "../model-catalog.ts";
 import type {
   EditorTier,
   ProfileEditorProps,

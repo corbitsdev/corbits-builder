@@ -7,7 +7,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { wording } from "../../config.ts";
 import { saveDesignTweaks } from "../../api/artifacts.ts";
-import { humanFault } from "./human-fault.ts";
+import { humanFault } from "../../human-fault.ts";
 import { lookTokens } from "./mockup-look.ts";
 import type {
   TweakPanelProps,

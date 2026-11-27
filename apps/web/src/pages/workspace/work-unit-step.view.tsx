@@ -20,9 +20,8 @@ import {
   type DocumentBlockProps,
 } from "@corbits-builder/plugin-ui/document-block";
 import { Markdown } from "@corbits-builder/plugin-ui/markdown";
-import type { DispatchStatus } from "./dispatch-card.tsx";
+import type { DispatchStatus, RunPreview } from "./dispatch-card.tsx";
 import { useElapsedMs } from "./elapsed.tsx";
-import type { RunPreview } from "./run-preview.ts";
 import { ThreadList } from "./thread-list.tsx";
 import styles from "./work-unit-step.module.css";
 

@@ -1,4 +1,4 @@
-import type { Plugin } from "../catalog.ts";
+import type { Plugin } from "../plugins.ts";
 
 // A search: the plugins that fit what the person asked, best first. A plugin it leaves out was not found.
 export type Strategy = (

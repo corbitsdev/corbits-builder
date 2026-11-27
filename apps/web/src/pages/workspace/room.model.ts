@@ -117,7 +117,7 @@ import { decideApproval, openDecisions } from "../../api/decisions.ts";
 import type { PaneDocument } from "./artifact-pane.tsx";
 import type { DeliverableState } from "./deliverable-block.tsx";
 import { formatPassageQuote, type PassageQuote } from "./passage-quote.ts";
-import { humanFault, humanFaultWithCode } from "./human-fault.ts";
+import { humanFault, humanFaultWithCode } from "../../human-fault.ts";
 import { suggestedReplies } from "./suggested-replies.ts";
 import { visibleChatText } from "./visible-chat.ts";
 import {
@@ -144,7 +144,7 @@ import {
   needsModelSetup,
   type EnableAiDialogProps,
 } from "../model-setup.model.ts";
-import { useModelCatalog } from "../settings/model-catalog.ts";
+import { useModelCatalog } from "../model-catalog.ts";
 import type { RoomDock } from "./prompt-box.view.tsx";
 import type { RoomContent } from "./room.view.tsx";
 import { useProjectSidebar } from "./project-sidebar.model.ts";

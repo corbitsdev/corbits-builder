@@ -6,7 +6,6 @@ import {
   DesignBundle,
   HubArtifactReceipt,
 } from "@corbits-builder/schemas/artifact";
-import type { PreparedDesignSubmission } from "./design-draft.ts";
 import { resolveWorkflowProjectScope } from "@corbits-builder/plugin/project-scope";
 import { workflowHttpJson } from "@corbits-builder/plugin/http-json";
 
@@ -34,6 +33,9 @@ export async function unpackDesign(content: string, workspace: string) {
   await rm(root, { recursive: true, force: true });
   return writeBundle(root, files);
 }
+
+// A design ready to file as an option: its bundle serialized, and the title its DESIGN.md gives it.
+export type PreparedDesignSubmission = { content: string; title: string };
 
 export async function fileDesignOption(
   capabilities: RuntimeCapabilities,

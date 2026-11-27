@@ -17,7 +17,7 @@ import type {
   AddProviderStep,
 } from "./add-provider-dialog.view.tsx";
 import { useCustomProviderDraft } from "./custom-providers.model.ts";
-import { message, NO_PROVIDERS, useModelCatalog } from "./model-catalog.ts";
+import { message, NO_PROVIDERS, useModelCatalog } from "../model-catalog.ts";
 
 const copy = wording.providers;
 

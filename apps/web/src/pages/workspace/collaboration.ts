@@ -6,6 +6,24 @@
 import type { PartTool, ToolApprovalStatus } from "@corbits/react-ui";
 import { wording } from "../../config.ts";
 
+export type DocumentApproval = {
+  approvalId: string;
+  toolName?: string;
+  /** The ask's main argument, such as the address a browser tool opens. */
+  subject?: string;
+  packages?: readonly string[];
+  /** When the native approval was raised, in ms; its card sits there in the thread. */
+  at?: number;
+  /** How the native record settled it, once it is no longer pending. */
+  outcome?: ApprovalOutcome;
+};
+
+export type ApprovalOutcome = {
+  readonly status: Exclude<ToolApprovalStatus, "pending">;
+  /** "always" when the decision stands for the rest of the run. */
+  readonly scope?: "once" | "always";
+};
+
 export type NamedDocument = {
   readonly id: string;
   readonly title: string;
