@@ -51,7 +51,7 @@ import type {
   ProjectValuesStore,
 } from "./screen-question.tsx";
 import type { SeenVersions } from "./seen-versions.ts";
-import type { OpenApproval } from "./collaboration.ts";
+import type { RoomDecisions } from "./decisions.model.ts";
 import type { StatusPillContent } from "./status-pill.tsx";
 import type { TypedYes } from "./approval-reply.ts";
 import { workPhrase } from "./work-unit.ts";
@@ -72,16 +72,12 @@ export type PromptBoxRoom = {
   onAnswer: (signalName: string, answer: QuestionAnswer) => Promise<boolean>;
   /** A message or an answer is on its way. */
   sending: boolean;
-  /** The approvals no one has decided yet; undefined until read. */
-  approvals: readonly OpenApproval[] | undefined;
-  approvalBusy: boolean;
-  approvalError: string | null;
+  /** The approvals no one has decided yet, and deciding one. */
+  decisions: Pick<
+    RoomDecisions,
+    "pendingApprovals" | "approvalBusy" | "approvalError" | "onDecideApproval"
+  >;
   typedYes: { held: TypedYes; onUndo: () => void } | null;
-  /** Resolves to the fault the person sees, or null once the decision stands. */
-  onDecide: (decision: {
-    approvalId: string;
-    choice: "yes" | "always" | "no";
-  }) => Promise<string | null>;
   /** Takes the person to the box to say what should change instead. */
   onRequestChanges: () => void;
   plan: PlanView["steps"];
@@ -189,7 +185,7 @@ export function usePromptBox(
                     questionScreen.input,
                   ),
           },
-    approvals: room.approvals ?? [],
+    approvals: room.decisions.pendingApprovals ?? [],
     plan: room.plan,
     screens: listed.map((screen) => titleOf(screen.plugin, screen.action, {})),
     restarts: room.restarts,
@@ -226,18 +222,21 @@ export function usePromptBox(
                 room.onAnswer(openQuestion.signalName, answer),
             };
       case "approval": {
-        const approval = room.approvals?.find(
+        const approval = room.decisions.pendingApprovals?.find(
           (item) => item.approvalId === card.approvalId,
         );
         if (approval === undefined) return null;
         return {
           kind: "approval",
           approval,
-          disabled: room.approvalBusy || session.archived,
-          error: room.approvalError,
+          disabled: room.decisions.approvalBusy || session.archived,
+          error: room.decisions.approvalError,
           typedYes: room.typedYes,
           onDecide: (choice) => {
-            void room.onDecide({ approvalId: approval.approvalId, choice });
+            void room.decisions.onDecideApproval({
+              approvalId: approval.approvalId,
+              choice,
+            });
             // Not yet leaves the person in the box to say what to do instead.
             if (choice === "no") room.onRequestChanges();
           },
