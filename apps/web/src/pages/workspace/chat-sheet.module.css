@@ -1,0 +1,370 @@
+/* The sheet reaches past the box by an even 12px (11 and its 1px edge) on
+   three sides, so the box never moves as the chat opens. Closed, it has no
+   edge or fill and only the handle or the pill shows above the box. */
+.sheet {
+  position: relative;
+  /* Its own layer, so the edge can sit under the chat and the box. */
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  margin: 0 -12px -12px;
+  padding: 0 11px 11px;
+  border: 1px solid transparent;
+  /* Concentric with the box it reaches 12px past. */
+  border-radius: calc(var(--radius-xl) + 12px);
+}
+
+/* The sheet's edge, fill and lift on a layer of their own, so moving they
+   fade with the sheet's height rather than repainting a colour each frame. */
+.edge {
+  position: absolute;
+  inset: -1px;
+  z-index: -1;
+  border: 1px solid var(--wb-border);
+  border-radius: inherit;
+  background: var(--wb-background);
+  box-shadow: var(--wb-pane-shadow);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.sheet:is([data-state="open"], [data-state="full"]) > .edge {
+  opacity: 1;
+}
+
+/* Full screen, the chat is the page: no edge, no lift, the box at its foot. */
+.sheet[data-state="full"] {
+  flex: 1;
+  /* Out by its 1px edge, so the box and the lines above it keep the very
+     width and place they had in the sheet and nothing rewraps. */
+  margin: 0 -1px -1px;
+  padding: 56px 0 0;
+  border-radius: 0;
+}
+
+.sheet[data-state="full"] > .edge {
+  border-color: transparent;
+  box-shadow: none;
+}
+
+/* Above the box while the chat is put away: the handle on its top edge, or
+   the pill 8px above it, or a pill with its own action above the handle.
+   Out of the flow, so the page never shifts. */
+.grip {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  translate: -50% 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-width: 100%;
+  z-index: 1;
+}
+
+.grip > [data-slot="pull-handle"] {
+  margin-bottom: -1px;
+}
+
+.grip > [data-slot="pill"] {
+  margin-bottom: var(--space-2);
+  animation: global(fade-in) var(--duration-standard) var(--ease-out) both;
+}
+
+/* While the sheet moves, the pill rides with it and hands over to the handle
+   on the sheet, which stands in for this one. It is held clear of that
+   handle's 14px row, so it is where it was the moment the sheet sets off and
+   where it stays once it is back. */
+.sheet[data-state="moving"] > .grip {
+  bottom: calc(100% - 14px);
+}
+
+.sheet[data-state="moving"] > .grip > [data-slot="pull-handle"] {
+  visibility: hidden;
+}
+
+.handle {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 14px;
+  padding: 0;
+  border: 0;
+  border-radius: 9999px;
+  background: transparent;
+  touch-action: none;
+  cursor: grab;
+  position: relative;
+}
+
+.handle[data-state="dragging"] {
+  cursor: grabbing;
+}
+
+/* A bigger target than the bar it shows, for a thumb as much as a pointer. */
+.handle::before {
+  content: "";
+  position: absolute;
+  inset: -10px -8px;
+}
+
+/* Focus is blue, as every ring in the box is; the library's ring is the brand orange. */
+.handle:focus-visible {
+  outline: 2px solid var(--wb-action);
+  outline-offset: 2px;
+}
+
+.bar {
+  width: 32px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--wb-border-strong);
+  transition:
+    width var(--duration-micro),
+    background-color var(--duration-micro);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .handle:hover .bar {
+    width: 40px;
+    background: var(--wb-muted-foreground);
+  }
+}
+
+.handle[data-state="dragging"] .bar {
+  width: 40px;
+  background: var(--wb-foreground);
+}
+
+.history {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: min(60vh, 560px);
+  overflow: hidden;
+}
+
+.history[hidden] {
+  display: none;
+}
+
+.sheet[data-state="full"] .history {
+  flex: 1;
+  max-height: none;
+}
+
+/* Between closed and open the history is given its height a frame at a time and is pinned to the
+   box, so the newest line shows first. Whatever does not fit fades out under the top edge rather
+   than being cut by it. */
+.sheet[data-state="moving"] .history {
+  justify-content: flex-end;
+  mask-image: linear-gradient(to bottom, transparent, #000 var(--fade, 0px));
+}
+
+.sheet[data-state="moving"] .messages {
+  flex: none;
+  overflow: hidden;
+}
+
+/* Over the history by 1px, as the handle above a closed sheet sits over the
+   box's edge, so the handle never steps as the sheet sets off or lands. */
+.handleRow {
+  display: flex;
+  justify-content: center;
+  flex: none;
+  margin-bottom: -1px;
+}
+
+/* No heading: the messages under it are plainly the chat, so the header holds only its controls. */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-1);
+  flex: none;
+  height: 44px;
+  margin-bottom: var(--space-2);
+  padding: 0 var(--space-2) 0 var(--space-4);
+}
+
+.sheet[data-state="full"] :is(.header, .messages) {
+  max-width: 48rem;
+  width: 100%;
+  margin-inline: auto;
+}
+
+.icon {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--wb-muted-foreground);
+}
+
+/* 28px to look at, 36px to hit. */
+.icon::before {
+  content: "";
+  position: absolute;
+  inset: -4px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .icon:hover {
+    background: var(--wb-muted);
+    color: var(--wb-foreground);
+  }
+}
+
+/* Full screen, the conversation stays by the box, as it sits while pulled up,
+   and the room above it fills from the bottom. */
+.sheet[data-state="full"] .messages > :first-child {
+  margin-top: auto;
+}
+
+/* Level with the words in the box below: its 14px inset and 1px edge. */
+.messages {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 0 calc(14px + 1px) var(--space-4);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.box {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.returnTo {
+  position: absolute;
+  top: var(--space-3);
+  left: 50%;
+  translate: -50% 0;
+}
+
+.returnTitle {
+  font-weight: var(--font-weight-semibold);
+}
+
+.returnVersion {
+  color: var(--wb-muted-foreground);
+}
+
+/* Going to or from full screen is one view transition: the edge travels and
+   reshapes, the newest lines and the box stay put, and the page under the
+   sheet fades. The parts are named only while it runs. */
+.sheet[data-morph] > .edge {
+  view-transition-name: chat-sheet;
+}
+
+.sheet[data-morph] .header {
+  view-transition-name: chat-sheet-header;
+}
+
+.sheet[data-morph] .messages {
+  view-transition-name: chat-sheet-messages;
+}
+
+.sheet[data-morph] > .box {
+  view-transition-name: chat-sheet-box;
+}
+
+.sheet[data-morph] > .returnTo {
+  view-transition-name: chat-sheet-return;
+}
+
+.sheet[data-morph] > .handleRow {
+  view-transition-name: chat-sheet-handle;
+}
+
+:root[data-chat-sheet]::view-transition-group(*),
+:root[data-chat-sheet]::view-transition-old(*),
+:root[data-chat-sheet]::view-transition-new(*) {
+  animation-duration: var(--duration-large);
+  animation-timing-function: var(--ease-out);
+}
+
+/* A snapshot of the edge would stretch its corners as it grows, so the edge
+   is drawn live on the layer that carries it instead. */
+:root[data-chat-sheet]::view-transition-old(chat-sheet),
+:root[data-chat-sheet]::view-transition-new(chat-sheet) {
+  animation: none;
+  opacity: 0;
+}
+
+:root[data-chat-sheet]::view-transition-image-pair(chat-sheet) {
+  border: 1px solid var(--wb-border);
+  border-radius: calc(var(--radius-xl) + 12px);
+  background: var(--wb-background);
+  box-shadow: var(--wb-pane-shadow);
+}
+
+/* The edge travels across the screen, so it eases in and out of the move rather than covering
+   most of it at once and drifting the rest; its corners and lift change in step with it. */
+:root[data-chat-sheet]::view-transition-group(chat-sheet) {
+  animation-timing-function: var(--wb-ease-in-out);
+}
+
+:root[data-chat-sheet="full"]::view-transition-image-pair(chat-sheet) {
+  animation: toPage var(--duration-large) var(--wb-ease-in-out) both;
+}
+
+:root[data-chat-sheet="closed"]::view-transition-image-pair(chat-sheet) {
+  animation: toBox var(--duration-large) var(--wb-ease-in-out) both;
+}
+
+@keyframes toPage {
+  to {
+    border-color: transparent;
+    border-radius: 0;
+    box-shadow: none;
+  }
+}
+
+/* Back down, it takes its corners and lift again and fades into the box as
+   it reaches it. */
+@keyframes toBox {
+  from {
+    border-color: transparent;
+    border-radius: 0;
+    box-shadow: none;
+  }
+  60% {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+/* The conversation is pinned to the box in both states, so each snapshot is
+   held at its foot, uncropped, and the two meet rather than slide. */
+:root[data-chat-sheet]::view-transition-old(chat-sheet-messages),
+:root[data-chat-sheet]::view-transition-new(chat-sheet-messages) {
+  height: 100%;
+  object-fit: none;
+  object-position: 50% 100%;
+}
+
+/* The handle has no place on the page, so it leaves as the edge sets off
+   rather than being swept under it. */
+:root[data-chat-sheet="full"]::view-transition-old(chat-sheet-handle) {
+  animation-duration: var(--duration-micro);
+}
+
+/* What does not come back down leaves quickly, ahead of the edge. */
+:root[data-chat-sheet="closed"]::view-transition-old(chat-sheet-messages),
+:root[data-chat-sheet="closed"]::view-transition-old(chat-sheet-header),
+:root[data-chat-sheet="closed"]::view-transition-old(chat-sheet-return) {
+  animation-duration: var(--duration-micro);
+}

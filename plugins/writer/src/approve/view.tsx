@@ -1,7 +1,7 @@
 import type { ScreenViewProps } from "@corbits-builder/plugin-ui/screen";
 /**
- * The ask to approve the documents, as one card in the conversation: what is asked, each document
- * as the shared document block shows any filed document. The host answers it from the screen's
+ * The ask to approve the documents, as one card: what is asked, a lone document's own summary in
+ * a line, and each document as a chip that opens it. The host answers it from the screen's
  * decision: one Approve for them all, or what the person types in the prompt box. Settles to one
  * line once answered.
  */
@@ -11,6 +11,7 @@ import {
   DocumentBlock,
   documentBlockText,
 } from "@corbits-builder/plugin-ui/document-block";
+import { Markdown } from "@corbits-builder/plugin-ui/markdown";
 import { ScreenActions } from "@corbits-builder/plugin-ui/screen-actions";
 import {
   ScreenCard,
@@ -48,12 +49,11 @@ export const text = {
   title: "Approve the documents",
   ask: ([only, ...others]: readonly string[]) =>
     only !== undefined && others.length === 0
-      ? `Approve ${named(only)}?`
-      : `Approve these ${String(others.length + 1)} documents?`,
+      ? `Ready to approve ${named(only)}?`
+      : `Ready to approve these ${String(others.length + 1)} documents?`,
   approved: "already approved",
   notFiled: (kind: string) => `${kind} is not filed yet.`,
   unfiled: "Each document is approved once it is filed.",
-  orType: "Or type what should change in the message box below.",
   noDocuments: "The documents cannot be shown here.",
   settled: (approved: readonly { title: string; version: number }[]) => {
     const [only, ...others] = approved;
@@ -137,15 +137,24 @@ export function ApproveDocuments({
   if (openDocument === undefined)
     throw new Error("The document approval screen requires openDocument.");
   const open = openDocument;
+  // A lone document's own summary says what is being approved; several speak through their chips.
+  const [only, ...others] = filed;
+  const summary =
+    only !== undefined && others.length === 0 && missing.length === 0
+      ? only.summary
+      : undefined;
   return (
-    <ScreenCard
-      title={text.ask(input.kinds)}
-      actions={<ScreenActions note={text.orType} />}
-    >
+    <ScreenCard title={text.ask(input.kinds)} actions={<ScreenActions />}>
+      {summary === undefined ? null : (
+        <div className={styles.summary}>
+          <Markdown source={summary} />
+        </div>
+      )}
       <ul className={styles.documents} data-slot="approve-documents">
         {filed.map((document) => (
           <li key={document.kind}>
             <DocumentBlock
+              compact
               kind={document.kind}
               title={document.title}
               version={document.version}
@@ -154,7 +163,6 @@ export function ApproveDocuments({
                   ? text.approved
                   : undefined
               }
-              summary={document.summary}
               onOpen={open}
             />
           </li>

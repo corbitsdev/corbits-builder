@@ -37,7 +37,7 @@
   margin: 0;
   padding: 0;
   list-style: none;
-  transition: opacity 150ms ease-out;
+  transition: opacity var(--duration-micro) var(--ease-out);
 }
 
 .row {
@@ -85,7 +85,7 @@
 }
 
 .mark[data-mark="current"] {
-  border-color: var(--primary-emphasis);
+  border-color: var(--wb-foreground);
 }
 
 .mark[data-mark="current"]::after {
@@ -93,7 +93,7 @@
   width: 0.375rem;
   height: 0.375rem;
   border-radius: 999px;
-  background: var(--primary-emphasis);
+  background: var(--wb-foreground);
 }
 
 .mark[data-mark="folded"] {
@@ -175,7 +175,7 @@
 }
 
 .ruleCount {
-  color: var(--primary-emphasis);
+  color: var(--wb-foreground);
 }
 
 .ruleCount::before {
@@ -204,12 +204,12 @@
 }
 
 .choice:hover {
-  border-color: color-mix(in oklab, var(--primary-emphasis) 35%, var(--border));
+  border-color: color-mix(in oklab, var(--wb-action) 35%, var(--border));
 }
 
 .choice[data-checked] {
-  border-color: var(--primary);
-  background: var(--wb-selected);
+  border-color: var(--wb-action);
+  background: color-mix(in oklab, var(--wb-action) 8%, var(--wb-background));
 }
 
 .choiceText {
@@ -230,21 +230,15 @@
   padding-block: var(--space-2);
 }
 
-/* The hidden radio and the borderless own-words field show focus on their row; the library's
-   checkbox draws its own ring. */
-.choice:has(input:not([type="checkbox"]):focus-visible) {
-  outline: 2px solid var(--wb-ring);
+/* The hidden radio or checkbox and the borderless own-words field show focus on their row. */
+.choice:has(input:focus-visible) {
+  outline: 2px solid var(--wb-action);
   outline-offset: 1px;
 }
 
 .question:disabled .choice {
   opacity: 0.6;
   cursor: default;
-}
-
-/* The library's checkbox sits on its label's first line; here the row centres it. */
-.choice > .check {
-  margin-top: 0;
 }
 
 /* The native radio stays for keyboards and screen readers; the box beside it shows its state. */
@@ -279,9 +273,9 @@
 }
 
 .choice[data-checked] .box {
-  border-color: var(--primary);
-  background: var(--primary);
-  color: var(--primary-foreground);
+  border-color: var(--wb-action);
+  background: var(--wb-action);
+  color: var(--wb-action-foreground);
 }
 
 .own {
@@ -314,8 +308,29 @@
   gap: var(--space-2);
   margin-top: var(--space-3);
   padding-top: var(--space-3);
-  border-top: 1px solid
-    color-mix(in oklab, var(--primary-emphasis) 20%, transparent);
+  border-top: 1px solid var(--wb-border);
+}
+
+/* Continue and Send answers move the work forward, so they are the proceed green. */
+.footer .next {
+  background: var(--wb-proceed);
+  color: var(--wb-proceed-foreground);
+}
+
+.footer .next:hover {
+  background: color-mix(in oklab, var(--wb-proceed) 85%, var(--wb-foreground));
+}
+
+/* Its buttons drawn elsewhere, such as in the prompt box, leave no rule behind. */
+.footer:empty {
+  display: none;
+}
+
+/* The buttons where the host draws them, in the row they keep in the card. */
+.hosted {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
 }
 
 /* Why the answers did not send, just above the buttons that send them again. */
@@ -343,4 +358,149 @@
   font-size: 0.875rem;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
+}
+
+/* In the prompt box: the open question heads the card with Back and where it stands beside it,
+   and each answer is a row on a rail, marked once picked by the rail turning the action blue. */
+.inBox {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-4) var(--space-2);
+}
+
+.boxHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 24px;
+}
+
+.boxQuestion {
+  flex: 1 1 0;
+  min-width: 0;
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 400;
+  line-height: 1rem;
+  color: var(--wb-foreground);
+}
+
+.step {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: 0.75rem;
+  color: var(--wb-muted-foreground);
+}
+
+.step p {
+  margin: 0;
+}
+
+.stepBack {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--wb-foreground);
+  cursor: pointer;
+}
+
+.stepBack:hover {
+  background: color-mix(in oklab, var(--wb-foreground) 6%, transparent);
+}
+
+.stepBack:focus-visible {
+  outline: 2px solid var(--wb-action);
+  outline-offset: 1px;
+}
+
+.stepBack svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* The heading asks the question, so the legend and the rule are read out only. */
+[data-place="box"] :is(.prompt, .rule) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Rail rows: in the prompt box, and for a pick-any question anywhere. */
+.choices[data-rail] {
+  gap: 0;
+}
+
+.choices[data-rail] .choice,
+.choices[data-rail] .choice:has(.choiceDescription) {
+  align-items: flex-start;
+  gap: var(--space-2);
+  min-height: 0;
+  padding: var(--space-2) 40px var(--space-2) 15px;
+  border: 0;
+  border-left: 1px solid var(--wb-border);
+  border-radius: 0;
+  background: none;
+  font-size: 0.75rem;
+  line-height: 1rem;
+  color: var(--wb-foreground);
+}
+
+.choices[data-rail] .choice:hover,
+.choices[data-rail] .choice[data-checked] {
+  background: color-mix(in oklab, var(--wb-foreground) 2.5%, transparent);
+}
+
+.choices[data-rail] .choice[data-checked] {
+  padding-left: 14px;
+  border-left: 2px solid var(--wb-action);
+}
+
+.choices[data-rail] .choice[data-checked] .choiceLabel {
+  font-weight: 500;
+}
+
+.choices[data-rail] .choice input[type="checkbox"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.choices[data-rail] .choice:has(input:focus-visible) {
+  outline: 2px solid var(--wb-action);
+  outline-offset: -2px;
+}
+
+.choices[data-rail] .choiceDescription {
+  font-size: 0.75rem;
+  color: var(--wb-muted-foreground);
+}
+
+.choiceLabel {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.recommended {
+  padding: 2px var(--space-2);
+  border-radius: 999px;
+  background: var(--wb-muted);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1rem;
+  color: var(--wb-muted-foreground);
 }

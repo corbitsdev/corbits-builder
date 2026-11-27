@@ -5,6 +5,7 @@ import { useQuestionOutcome } from "./question-outcome.tsx";
  */
 import {
   useCallback,
+  useContext,
   useEffect,
   useMemo,
   useRef,
@@ -19,12 +20,17 @@ import {
   Pencil,
   Plus,
 } from "lucide-react";
-import { Button, Checkbox, GateBlock } from "@corbits/react-ui";
+import { Button, GateBlock } from "@corbits/react-ui";
 import { Tooltip } from "@corbits/react-ui/ui/tooltip";
 import {
   SettledAnswers,
   SettledFrame,
 } from "@corbits-builder/plugin-ui/screen-card";
+import {
+  ActionsSlot,
+  usePromptPlaceholder,
+  usePromptSend,
+} from "@corbits-builder/plugin-ui/screen-actions";
 import type {
   PromptQuestion,
   QuestionAnswer,
@@ -40,15 +46,26 @@ const text = wording.questions;
 type Asked = PromptQuestion["asked"];
 type Question = Asked["questions"][number];
 
-/** The options picked, by label, plus the person's own words; typing those is the "Something else" answer. */
-type Answer = { readonly chosen: readonly string[]; readonly own: string };
+/**
+ * The options picked, by label, plus the person's own words; typing those is the "Something else"
+ * answer. Details are words sent from the prompt box after a pick, and go with it.
+ */
+type Answer = {
+  readonly chosen: readonly string[];
+  readonly own: string;
+  readonly details?: string;
+};
 
 /** What a reload brings back: the answers so far and the question the person was on. */
 type Progress = { readonly step: number; readonly answers: readonly Answer[] };
 
 const SavedProgress = type({
   step: "number.integer >= 0",
-  answers: type({ chosen: "string[]", own: "string" }).array(),
+  answers: type({
+    chosen: "string[]",
+    own: "string",
+    "details?": "string",
+  }).array(),
 });
 
 // Saved progress fits only the questions it was saved for.
@@ -63,9 +80,16 @@ const progressFor =
       : undefined;
   };
 
-const startingProgress = (questions: readonly Question[]): Progress => ({
+// In the prompt box nothing starts picked: the recommendation shows as a tag, and the person's
+// own words in the box answer until they pick.
+const startingProgress = (
+  questions: readonly Question[],
+  place: Place,
+): Progress => ({
   step: 0,
-  answers: questions.map(startingAnswer),
+  answers: questions.map((question) =>
+    place === "box" ? { chosen: [], own: "" } : startingAnswer(question),
+  ),
 });
 
 /**
@@ -155,14 +179,32 @@ function chosenOf(question: Question, answer: Answer): readonly string[] {
   return !question.multiple && answer.own.trim() !== "" ? [] : answer.chosen;
 }
 
-/** The answer as it is sent: the options that count, then the person's own words. */
+/** The answer as it is sent: the options that count, then the person's own words, then details. */
 export function answerLabels(question: Question, answer: Answer): string[] {
   const chosen = chosenOf(question, answer);
   const labels = question.options
     .filter((option) => chosen.includes(option.label))
     .map((option) => option.label);
-  const own = answer.own.trim();
-  return own === "" ? labels : [...labels, own];
+  const details = answer.details === undefined ? [] : [answer.details.trim()];
+  return [labels, answer.own.trim(), details]
+    .flat()
+    .filter((label) => label !== "");
+}
+
+/**
+ * Words sent from the prompt box as this question's answer: details beside a pick, else the
+ * person's own answer where the question takes one; undefined where it takes neither.
+ */
+export function withWords(
+  question: Question,
+  answer: Answer,
+  words: string,
+): Answer | undefined {
+  if (chosenOf(question, answer).length > 0)
+    return { ...answer, details: words };
+  if (question.custom || question.options.length === 0)
+    return { chosen: [], own: words };
+  return undefined;
 }
 
 /** Option `index` picked: the only choice on a pick-one question, toggled on a pick-any one. */
@@ -348,11 +390,27 @@ function AnsweredRow({
   );
 }
 
-/** An option's label, with the line that explains it where the coordinator wrote one. */
-function OptionText({ label, description }: Question["options"][number]) {
+/**
+ * An option's label, with the line that explains it where the coordinator wrote one. In the prompt
+ * box the coordinator's recommendation is a tag beside the label rather than part of it.
+ */
+function OptionText({
+  label,
+  description,
+  boxed,
+}: Question["options"][number] & { boxed: boolean }) {
   return (
     <span className={styles.choiceText}>
-      {label}
+      {boxed ? (
+        <span className={styles.choiceLabel}>
+          {shownLabel(label)}
+          {label.endsWith(recommendedSuffix) ? (
+            <span className={styles.recommended}>{text.recommended}</span>
+          ) : null}
+        </span>
+      ) : (
+        label
+      )}
       {description === "" ? null : (
         <span className={styles.choiceDescription}>{description}</span>
       )}
@@ -367,6 +425,7 @@ function Choices({
   ruleId,
   onPick,
   onOwn,
+  boxed,
 }: {
   name: string;
   question: Question;
@@ -374,6 +433,8 @@ function Choices({
   ruleId: string;
   onPick: (index: number) => void;
   onOwn: (own: string) => void;
+  /** In the prompt box, whose own words answer instead of a field in the card. */
+  boxed: boolean;
 }) {
   const multi = question.multiple;
   const typed = question.options.length === 0;
@@ -395,26 +456,32 @@ function Choices({
           ) : null}
         </p>
       )}
-      <div className={styles.choices} data-kind={multi ? "multi" : "single"}>
+      <div
+        className={styles.choices}
+        data-kind={multi ? "multi" : "single"}
+        // A pick-any row is a rail row wherever it is; in the prompt box every row is.
+        data-rail={boxed || multi ? "" : undefined}
+      >
         {question.options.map((option, index) => {
           const checked = chosen.includes(option.label);
+          // A pick-any row shows its pick by its rail alone, its native checkbox kept for keys and
+          // screen readers.
           if (multi)
             return (
               <label
                 key={option.label}
                 className={styles.choice}
                 data-checked={checked ? "" : undefined}
-                // Safari leaves focus where it was on a click; the card's keys need it here.
-                onClick={(event) =>
-                  event.currentTarget.querySelector("input")?.focus()
-                }
               >
-                <Checkbox
+                <input
+                  type="checkbox"
                   checked={checked}
-                  onCheckedChange={() => onPick(index)}
-                  className={styles.check}
+                  aria-keyshortcuts={String(index + 1)}
+                  onChange={() => onPick(index)}
+                  // Safari leaves focus where it was on a click; the card's keys need it here.
+                  onClick={(event) => event.currentTarget.focus()}
                 />
-                <OptionText {...option} />
+                <OptionText {...option} boxed={boxed} />
               </label>
             );
           return (
@@ -436,14 +503,17 @@ function Choices({
                   if (checked) onPick(index);
                 }}
               />
-              <span className={styles.box} aria-hidden>
-                {checked ? <Check /> : index + 1}
-              </span>
-              <OptionText {...option} />
+              {boxed ? null : (
+                <span className={styles.box} aria-hidden>
+                  {checked ? <Check /> : index + 1}
+                </span>
+              )}
+              <OptionText {...option} boxed={boxed} />
             </label>
           );
         })}
-        {question.custom ? (
+        {/* In the prompt box the person's own words go in the box, unless there is nothing to pick. */}
+        {question.custom && !(boxed && !typed) ? (
           <label
             className={styles.choice}
             data-checked={answer.own.trim() === "" ? undefined : ""}
@@ -487,6 +557,7 @@ function OpenCard({
   onAnswer,
   focusFollows,
   onFocusFollows,
+  place,
 }: {
   id: string;
   ask: Asked;
@@ -506,8 +577,11 @@ function OpenCard({
    */
   focusFollows: boolean;
   onFocusFollows: () => void;
+  place: Place;
 }) {
   const { questions } = ask;
+  const boxed = place === "box";
+  const slot = useContext(ActionsSlot);
   const [earlierShown, setEarlierShown] = useState(false);
   const card = useRef<HTMLDivElement>(null);
   const choices = useRef<HTMLDivElement>(null);
@@ -515,6 +589,20 @@ function OpenCard({
   const aimed = useRef<HTMLInputElement>(null);
 
   const question = questions[step];
+  const picked =
+    question === undefined
+      ? []
+      : chosenOf(question, answers[step] ?? { chosen: [], own: "" });
+  usePromptPlaceholder(
+    picked.length === 0
+      ? undefined
+      : text.addDetails(picked.map(shownLabel).join(", ")),
+  );
+  usePromptSend(
+    boxed && question !== undefined && !blocked && !sending
+      ? (words) => takeWords(words)
+      : undefined,
+  );
   useEffect(() => {
     // While the card is inert its options take no focus; this runs again once it opens.
     if (
@@ -573,11 +661,20 @@ function OpenCard({
     if (last) send(current);
     else go(step + 1);
   };
-  // A pick-one question moves on once picked, except the last: only the person sends.
+  // Send in the prompt box carries what it holds with the pick, then moves on as Continue does.
+  function takeWords(words: string): boolean {
+    if (question === undefined) return false;
+    const current = withWords(question, answer, words);
+    if (current === undefined) return false;
+    next(current);
+    return true;
+  }
+  // A pick-one question moves on once picked, except the last: only the person sends. In the prompt
+  // box a pick only selects, so the person can add details before Continue.
   const choose = (index: number) => {
     if (question.options[index] === undefined) return;
     setAnswer(pick(question, answer, index));
-    if (!question.multiple && !last) go(step + 1);
+    if (!boxed && !question.multiple && !last) go(step + 1);
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -639,6 +736,127 @@ function OpenCard({
     );
   };
 
+  const current = (
+    <div ref={choices}>
+      <Choices
+        key={question.id}
+        name={`${id}-${question.id}`}
+        question={question}
+        answer={answer}
+        ruleId={ruleId}
+        onPick={choose}
+        onOwn={(own) => setAnswer({ ...answer, own })}
+        boxed={boxed}
+      />
+    </div>
+  );
+
+  const buttons = (
+    <>
+      {step === 0 ? null : (
+        <Tooltip label={text.backKeys}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className={styles.back}
+            aria-keyshortcuts="ArrowLeft"
+            onClick={() => go(step - 1)}
+          >
+            <ChevronLeft aria-hidden />
+            {text.back}
+          </Button>
+        </Tooltip>
+      )}
+      {/* Cancel and Continue keep the end of the row, so neither moves as Back comes and goes. */}
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className={styles.cancel}
+        onClick={() => deliver({ reply: text.cancelReply })}
+      >
+        {text.cancel}
+      </Button>
+      <Tooltip label={last ? text.sendKeys : text.nextKeys}>
+        <Button
+          type="button"
+          size="sm"
+          className={styles.next}
+          aria-disabled={!ready}
+          aria-describedby={question.options.length === 0 ? undefined : ruleId}
+          aria-keyshortcuts={last ? "Enter" : "Enter ArrowRight"}
+          onClick={() => next(answer)}
+        >
+          {nextLabel(last, sending)}
+          <CornerDownLeft aria-hidden />
+        </Button>
+      </Tooltip>
+    </>
+  );
+
+  // In the prompt box the open question heads the card, with Back and where it stands beside it;
+  // Continue stands where Send does only once something is picked, else the box's own Send. It
+  // reads Continue on the last question too: the box is one step of a flow, and its tooltip says
+  // that this step sends.
+  if (boxed)
+    return (
+      <section
+        ref={card}
+        className={styles.inBox}
+        aria-label={question.question}
+        onKeyDown={onKeyDown}
+        inert={disabled}
+        data-place="box"
+      >
+        <header className={styles.boxHeader}>
+          <h3 className={styles.boxQuestion}>{question.question}</h3>
+          {questions.length > 1 ? (
+            <div className={styles.step}>
+              {step === 0 ? null : (
+                <Tooltip label={text.backKeys}>
+                  <button
+                    type="button"
+                    className={styles.stepBack}
+                    aria-label={text.back}
+                    aria-keyshortcuts="ArrowLeft"
+                    onClick={() => go(step - 1)}
+                  >
+                    <ChevronLeft aria-hidden />
+                  </button>
+                </Tooltip>
+              )}
+              <p aria-live="polite">
+                {text.position(step + 1, questions.length)}
+              </p>
+            </div>
+          ) : null}
+        </header>
+        <div className={styles.thread}>{current}</div>
+        {fault !== undefined ? (
+          <div className={styles.fault}>
+            <Fault>{fault}</Fault>
+          </div>
+        ) : null}
+        {slot?.(
+          ready ? (
+            <div className={styles.hosted} inert={disabled}>
+              <Tooltip label={last ? text.sendKeys : text.nextKeys}>
+                <Button
+                  type="button"
+                  size="sm"
+                  aria-keyshortcuts={last ? "Enter" : "Enter ArrowRight"}
+                  onClick={() => next(answer)}
+                >
+                  {sending ? text.sending : text.next}
+                </Button>
+              </Tooltip>
+            </div>
+          ) : null,
+        )}
+      </section>
+    );
+
   return (
     <GateBlock
       className={styles.card}
@@ -672,17 +890,7 @@ function OpenCard({
           <li className={styles.row} aria-current="step">
             {/* A lone question has no steps to mark; the empty cell keeps the column. */}
             {questions.length > 1 ? <ThreadMark mark="current" /> : <span />}
-            <div ref={choices}>
-              <Choices
-                key={question.id}
-                name={`${id}-${question.id}`}
-                question={question}
-                answer={answer}
-                ruleId={ruleId}
-                onPick={choose}
-                onOwn={(own) => setAnswer({ ...answer, own })}
-              />
-            </div>
+            {current}
           </li>
           {upcoming === undefined ? null : (
             <li className={styles.row} data-upcoming="">
@@ -700,63 +908,36 @@ function OpenCard({
           </div>
         ) : null}
         <div className={styles.footer}>
-          {step === 0 ? null : (
-            <Tooltip label={text.backKeys}>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className={styles.back}
-                aria-keyshortcuts="ArrowLeft"
-                onClick={() => go(step - 1)}
-              >
-                <ChevronLeft aria-hidden />
-                {text.back}
-              </Button>
-            </Tooltip>
-          )}
-          {/* Cancel and Continue keep the end of the row, so neither moves as Back comes and goes. */}
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className={styles.cancel}
-            onClick={() => deliver({ reply: text.cancelReply })}
-          >
-            {text.cancel}
-          </Button>
-          <Tooltip label={last ? text.sendKeys : text.nextKeys}>
-            <Button
-              type="button"
-              size="sm"
-              className={styles.next}
-              aria-disabled={!ready}
-              aria-describedby={
-                question.options.length === 0 ? undefined : ruleId
-              }
-              aria-keyshortcuts={last ? "Enter" : "Enter ArrowRight"}
-              onClick={() => next(answer)}
-            >
-              {nextLabel(last, sending)}
-              <CornerDownLeft aria-hidden />
-            </Button>
-          </Tooltip>
+          {/* Drawn where the host puts them, such as in the prompt box where Send stands; there
+              they are outside the card's inert hold, so they take it again. */}
+          {slot === null
+            ? buttons
+            : slot(
+                <div className={styles.hosted} inert={disabled}>
+                  {buttons}
+                </div>,
+              )}
         </div>
       </div>
     </GateBlock>
   );
 }
 
+/** In the conversation, or inside the prompt box above the words. */
+type Place = "conversation" | "box";
+
 export function QuestionsCard({
   question,
   disabled,
   onAnswer,
+  place = "conversation",
 }: {
   question: PromptQuestion;
   /** Closed to answers for now, such as while another message is sending. */
   disabled: boolean;
   /** Sends each question's answer under its id, or Cancel's reply; whether the hub took it. */
   onAnswer: (answer: QuestionAnswer) => Promise<boolean>;
+  place?: Place;
 }) {
   const { signalName, asked } = question;
   const outcome = useQuestionOutcome(signalName);
@@ -769,9 +950,11 @@ export function QuestionsCard({
     readProgress,
     onAnswer,
   );
-  const progress = draft ?? startingProgress(asked.questions);
+  const progress = draft ?? startingProgress(asked.questions, place);
   const update = (next: (current: Progress) => Progress) =>
-    change((current) => next(current ?? startingProgress(asked.questions)));
+    change((current) =>
+      next(current ?? startingProgress(asked.questions, place)),
+    );
   // Held above the open card, so a failed send reopens it with focus where it was.
   const [focusFollows, setFocusFollows] = useState(false);
   switch (question.status) {
@@ -803,6 +986,7 @@ export function QuestionsCard({
           }
           focusFollows={focusFollows}
           onFocusFollows={() => setFocusFollows(true)}
+          place={place}
         />
       );
     case "answered":

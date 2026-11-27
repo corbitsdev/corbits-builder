@@ -1,0 +1,235 @@
+import type { Meta, StoryObj } from "@storybook/react-vite";
+import { DocumentView } from "@corbits-builder/plugin-ui/markdown";
+import { Download } from "lucide-react";
+import { fn } from "storybook/test";
+import { wording } from "../../config.ts";
+import {
+  DocumentPage,
+  type MarginPassage,
+  type PassagePlace,
+} from "./document-page.tsx";
+import type { PaneBarGroup } from "./pane-bar.tsx";
+import { splitLeadingHeading } from "./reading-selection.ts";
+import { versionGroup } from "./version-menu.tsx";
+
+/** The Problem brief as the hi-fi page shows it. */
+export const PROBLEM_BRIEF = `# Problem brief
+
+Small bakeries take cake orders by phone and on paper, and lose some of them on busy days.
+
+## Who has it
+
+- Owners who bake and serve at once
+- Counter staff who answer the phone mid-shift
+- Regulars who order the same cake every month
+
+## What it must do
+
+- Take a cake order online: size, flavour, message and pickup date
+- Flag allergies and dietary needs on every order
+- Tell the customer when their cake is ready
+
+## A good Saturday
+
+Every order is in one list, and nobody calls back to ask.
+
+## Not in the first version
+
+Card payments beyond a deposit, and delivery routes.
+`;
+
+/** The brief cut off mid-word, as it reads while it is still being written. */
+const PROBLEM_BRIEF_SO_FAR = PROBLEM_BRIEF.slice(
+  0,
+  PROBLEM_BRIEF.indexOf("size, fla") + "size, fla".length,
+);
+
+/** A brief long enough to run over several pages. */
+const LONG_BRIEF = `${PROBLEM_BRIEF}
+## How orders come in today
+
+${Array.from(
+  { length: 4 },
+  () =>
+    "Most orders arrive by phone between eight and eleven, while the first bake is still in the oven. Whoever is nearest picks up, writes the order on the pad by the till, and pins the page to the board. On a busy morning the board holds forty pages, and a page that falls behind the counter is an order nobody makes.",
+).join("\n\n")}
+
+## What a customer needs to know
+
+- The price before they confirm
+- The pickup time, and where to collect
+- Who to call if something changes
+
+## What the staff need to see
+
+${Array.from(
+  { length: 3 },
+  () =>
+    "One list of the day's orders, in pickup order, with the cake, the message and any allergy on one line. A finished cake is ticked off, and the customer hears that it is ready without anyone picking up the phone.",
+).join("\n\n")}
+
+## Questions still open
+
+- Whether a deposit is taken at order time or at pickup
+- How far ahead a cake can be ordered
+- What happens to an order nobody collects
+`;
+
+const COMMENTED: readonly { id: string; quote: string; note: string }[] = [
+  {
+    id: "texts",
+    quote: "Counter staff who answer the phone mid-shift",
+    note: "Some regulars text their order to the counter. Should texts count too?",
+  },
+  {
+    id: "allergy",
+    quote: "Flag allergies and dietary needs",
+    note: "Should the cake label show the allergy as well?",
+  },
+];
+
+/** One passage in each state a comment can leave it in. */
+const STATES: readonly (MarginPassage & { note: string })[] = COMMENTED.map(
+  (item) =>
+    item.id === "allergy" ? { ...item, state: "selected" as const } : item,
+);
+
+/**
+ * A stand-in for what the margin holds, level with its passage. The comment cards themselves are
+ * drawn elsewhere; this only shows where the page places them.
+ */
+function MarginStandIn({ place }: { place: PassagePlace }) {
+  const note = STATES.find((item) => item.id === place.id)?.note;
+  return (
+    <div
+      style={{
+        padding: "12px 12px 14px",
+        border: "1px solid var(--wb-border)",
+        borderRadius: "var(--radius-lg)",
+        background: "var(--wb-background)",
+        boxShadow: "var(--wb-shadow)",
+        fontSize: "0.8125rem",
+        lineHeight: 1.5,
+      }}
+    >
+      {note}
+    </div>
+  );
+}
+
+const download: PaneBarGroup = [
+  {
+    id: "download",
+    label: wording.paneFile.downloadDocument,
+    icon: <Download aria-hidden="true" />,
+    onSelect: fn(),
+  },
+];
+
+/** The version menu with versions 1 to `latest` kept, reading `viewing`. */
+const versions = (viewing: number, latest = 2): PaneBarGroup =>
+  versionGroup({
+    versions: Array.from({ length: latest }, (_, at) => ({
+      version: latest - at,
+    })),
+    viewing,
+    pending: false,
+    canCompare: viewing === latest && latest > 1,
+    onView: fn(),
+    onComparePrevious: fn(),
+  });
+
+function body(source: string) {
+  return <DocumentView source={splitLeadingHeading(source).body} />;
+}
+
+const meta = {
+  title: "Screens/Workspace/DocumentPage",
+  component: DocumentPage,
+  // The fade's story reads the same document.
+  excludeStories: ["PROBLEM_BRIEF"],
+  parameters: { layout: "fullscreen" },
+  args: {
+    project: "Bakery orders",
+    title: "Problem brief",
+    meta: wording.documentViewer.filedOn("2026-11-18T10:00:00.000Z"),
+    groups: [versions(2), download],
+    passages: COMMENTED,
+    margin: (place) => <MarginStandIn place={place} />,
+    children: body(PROBLEM_BRIEF),
+  },
+  decorators: [
+    (Story) => (
+      <div
+        style={{ display: "flex", flexDirection: "column", height: "100vh" }}
+      >
+        <Story />
+      </div>
+    ),
+  ],
+} satisfies Meta<typeof DocumentPage>;
+
+export default meta;
+type Story = StoryObj<typeof meta>;
+
+/** A filed document with two commented passages, their notes level with them in the margin. */
+export const Filed: Story = {};
+
+/** A passage in each state its comment can be in: saved, and selected while it is written. */
+export const PassageStates: Story = { args: { passages: STATES } };
+
+export const PassageStatesDark: Story = {
+  args: { passages: STATES },
+  globals: { mode: "dark" },
+};
+
+export const ZoomedOut: Story = {
+  args: { children: body(LONG_BRIEF), initialZoom: 0.75 },
+};
+
+/** Still being written: an orange caret ends the last line so far. */
+export const Writing: Story = {
+  args: {
+    meta: wording.documentViewer.writing(1),
+    writing: "live",
+    groups: [versions(1, 1), download],
+    passages: [],
+    children: body(PROBLEM_BRIEF_SO_FAR),
+  },
+};
+
+/** The writing stopped before the end: a note where it stopped, with the way to start it again. */
+export const WritingStopped: Story = {
+  args: {
+    meta: wording.documentViewer.filedOn("2026-11-18T10:00:00.000Z"),
+    writing: "stopped",
+    onResume: fn(),
+    groups: [versions(1, 1), download],
+    passages: [],
+    children: body(PROBLEM_BRIEF_SO_FAR),
+  },
+};
+
+/** A document that runs over several pages, scrolled part way: the bar counts the page being read. */
+export const LongScrolled: Story = {
+  args: { children: body(LONG_BRIEF) },
+  play: async ({ canvasElement }) => {
+    const reader = canvasElement.querySelector<HTMLElement>(
+      '[data-slot="document-page"]',
+    );
+    reader?.scrollTo({ top: 700 });
+  },
+};
+
+/** A document with no sections: the contents name the document alone. */
+export const NoSections: Story = {
+  args: {
+    title: "Interview notes",
+    passages: [],
+    children: body(
+      "Three bakeries, interviewed on a Saturday morning. All three take orders by phone, and two write them on paper.",
+    ),
+  },
+};
+
+export const Dark: Story = { globals: { mode: "dark" } };

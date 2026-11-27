@@ -148,8 +148,16 @@
   padding: var(--space-2) var(--space-4) var(--space-4);
 }
 
-/* A quiet line with its ways on: before a change to what a specialist builds from, or on an
-   archived project. */
+/* The chat taken full screen stands in for the project view or page it was pulled up over; that
+   stays mounted, only hidden. */
+.page:has(
+    > [data-slot="composer"] > [data-slot="chat-sheet"][data-state="full"]
+  )
+  > :not([data-slot="composer"]) {
+  display: none;
+}
+
+/* A quiet line on an archived project, with its way on beside it. */
 .caution {
   display: flex;
   flex-wrap: wrap;
@@ -165,14 +173,45 @@
   flex: 1 1 18rem;
 }
 
-.cautionActions {
+/* In the prompt box, one quiet line just above the words it is about: no band, no rule under it. */
+.restarts {
   display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 10px var(--space-4) 0 17px;
+  color: var(--wb-muted-foreground);
+  font-size: var(--text-sm);
+  line-height: 20px;
+}
+
+.restarts > svg {
+  flex: none;
+}
+
+[data-slot="composer-panel"]:has(> .restarts:last-child) {
+  border-bottom: 0;
+}
+
+/* Comments waiting to be made, carried with whatever is typed after them. */
+.commentsToken {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
   gap: var(--space-1);
+  align-self: center;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 6px;
+  background: var(--wb-muted);
+  color: var(--wb-foreground);
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-medium);
+  white-space: nowrap;
 }
 
 /* Says what Send carries while a screen has feedback staged, so the one send control names its load. */
 .sendLabel {
-  margin-inline-start: auto;
   color: var(--wb-muted-foreground);
   font-size: 0.8125rem;
   white-space: nowrap;
@@ -195,9 +234,9 @@
   background: var(--wb-background);
   /* It fades and grows in as it opens and back out as it closes; display waits for the fade. */
   transition:
-    opacity 180ms ease-out,
-    scale 180ms ease-out,
-    display 180ms ease-out allow-discrete;
+    opacity var(--duration-standard) var(--ease-out),
+    scale var(--duration-standard) var(--ease-out),
+    display var(--duration-standard) allow-discrete;
 }
 
 .page[hidden] {

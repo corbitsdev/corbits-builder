@@ -73,8 +73,25 @@
   --wb-ring: var(--ring);
   --wb-okay: var(--ok);
   --wb-destructive: var(--destructive);
+  /* White on the destructive fill in both themes; the library's own turns black in dark, which
+     made the Stop square read as a hole. */
+  --wb-destructive-foreground: #ffffff;
+  /* Sending what the person typed, such as Send once there are words. Blue, so it never reads as
+     the brand orange or as a yes; dark below. */
+  --wb-action: #2370d6;
+  --wb-action-foreground: #ffffff;
+  /* Every yes or move-forward button: Yes, go ahead; Approve; Continue; Use Concept B. */
+  --wb-proceed: #2f7c40;
+  --wb-proceed-foreground: #ffffff;
+  /* Moving across the screen, as the chat's edge does going full screen; the library has an
+     ease-out for things that come and go, but none for travel. */
+  --wb-ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
   --wb-font-ui: var(--font-sans);
   --wb-font-mono: var(--font-mono);
+  /* Controls and supporting text (DESIGN.md), between the library's
+     --text-xs and --text-sm; named the way Tailwind names those. */
+  --wb-text-control: 0.8125rem;
+  --wb-text-control--line-height: calc(18 / 13);
   /* mock.css pins 10px / 6px. The library derives md/lg from --radius:
      0.5rem, so md is 8px and rounded-md on the composer fights the mock. */
   --radius: 6px;
@@ -141,6 +158,8 @@ body {
    Canvas Cream, the brand's structure colour on dark. */
 :root.dark {
   --wb-frame: #000000;
+  --wb-action: #6aa0f0;
+  --wb-proceed: #5cb573;
   --wb-pane: var(--background);
   --wb-pane-shadow: 0 0 0 1px color-mix(in srgb, #e4d5bc 12%, transparent);
 }
@@ -245,20 +264,6 @@ h3 {
   }
 }
 
-/* While the specialist writes, a thin ring sweeps the composer's border,
-   after aicss.dev's input. The wait is at the box, so the box says so. */
-@property --ring-angle {
-  syntax: "<angle>";
-  inherits: false;
-  initial-value: 0deg;
-}
-
-@keyframes ring-spin {
-  to {
-    --ring-angle: 360deg;
-  }
-}
-
 @keyframes fade-in {
   from {
     opacity: 0;
@@ -325,10 +330,16 @@ button[aria-disabled="true"] {
   --input: var(--border-strong);
 }
 /* --- Sidebar width ----------------------------------------------------------
-   The rail's default is a fifth of a laptop window; the conversation needs
-   it more than the two labels do. */
+   The project sidebar's width in the design, wide enough for a project's name
+   beside its mark. The app's rail takes the same width, so moving between them
+   does not shift the page. In rem, as the library sizes its own rail, so it
+   grows with the reader's text size. */
+:root {
+  --rail-width: 14rem;
+}
+
 [data-slot="sidebar"]:not([data-collapsed="true"]) {
-  width: 12.75rem;
+  width: var(--rail-width);
 }
 
 /* Typing "fine" outside a field (flourish.tsx) makes the whole page deliberately bad for a moment. */
