@@ -9,7 +9,7 @@ import type { ProjectArtifact } from "@corbits-builder/client";
 import { useState } from "react";
 import { listProjectArtifacts, readArtifact } from "../api/artifacts.ts";
 import { keys } from "../queries/keys.ts";
-import { firstPage, parseBundle } from "./workspace/design-bundle.ts";
+import { firstPage, parseBundle } from "./workspace/design/design-bundle.ts";
 
 const COVER_STALE_MS = 5 * 60_000;
 

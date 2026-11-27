@@ -924,5 +924,5 @@ bun run dev:seed -- --stage=ready_to_build --tenant=<workspaceTenantId>
 - The coordinator's prompt: `workflows/coordinator/src/prompt.ts`. A
   specialist's prompt and agent: its plugin folder.
 - How the interface draws a plugin's screen:
-  `apps/web/src/pages/workspace/screens.ts` and `screen-question.tsx`.
+  `apps/web/src/pages/workspace/screens/screens.ts` and `screen-question.tsx`.
 - Interchange docs: [Interchange's](https://github.com/faremeter/interchange) `docs/` folder at the commit in `vendor/VENDORED_REVISION`.

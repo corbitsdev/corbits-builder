@@ -1,0 +1,413 @@
+/**
+ * A piece of work as one step in the coordinator's list, the same step from start to end: the
+ * specialist, what it does and where it stands as its row, with what the person can open beside it;
+ * under it, what it filed, what it was asked to do, then what it is writing, why it stopped, or its
+ * report. Its own steps stay folded until the person opens them, so a room of busy specialists stays
+ * short.
+ */
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { clsx } from "clsx";
+import {
+  Button,
+  Tool,
+  ToolHeader,
+  type PartTool,
+  type ToolTraceStatus,
+} from "@corbits/react-ui";
+import { wording } from "../../../config.ts";
+import {
+  DocumentBlock,
+  type DocumentBlockProps,
+} from "@corbits-builder/plugin-ui/document-block";
+import { Markdown } from "@corbits-builder/plugin-ui/markdown";
+import type { DispatchStatus, RunPreview } from "./dispatch.ts";
+import { useElapsedMs } from "../elapsed.ts";
+import { ThreadList } from "./thread-list.tsx";
+import styles from "./work-unit-step.module.css";
+
+const text = wording.dispatch;
+
+/** Where the work stands, as a step's status. */
+export const STEP_STATUS: Record<DispatchStatus["state"], ToolTraceStatus> = {
+  starting: "pending",
+  working: "running",
+  approval: "approval-requested",
+  ready: "output-available",
+  finished: "output-available",
+  // A run that ended early is a quiet state of its row, not an alarm: its words say how it ended.
+  stopped: "output-denied",
+  failed: "output-denied",
+  blocked: "output-denied",
+};
+
+/** The words at the end of a row, by where its work stands. */
+function statusLabels(status: DispatchStatus) {
+  if (status.state === "stopped") return { "output-denied": text.stopped };
+  if (status.state === "blocked") return { "output-denied": text.blocked };
+  if (status.state === "failed") return { "output-denied": text.status.error };
+  if (status.state === "approval" && status.asked !== undefined)
+    return { "approval-requested": text.waitingFor(status.asked) };
+  return text.status;
+}
+
+/** A working row's live slot: what its run's stream shows, or that it waits with nothing streaming. */
+export type RowPreview = RunPreview | { readonly kind: "waiting" };
+
+/** A piece of work as its step shows it, by where its hand-off stands. */
+export type WorkUnitStanding = {
+  /** The work's hand-off, naming its step. */
+  unitKey: string;
+  /** Where the hand-off stands. */
+  status: DispatchStatus;
+  /** What the work does: "Building the code". */
+  label: string;
+  /** Each call the specialist made while the room watched it, in order. */
+  steps: readonly PartTool[];
+  /** What the run is producing right now, from its own stream, for as long as it works. */
+  preview: RowPreview | undefined;
+  /** What the coordinator asked it to do; absent when the hand-off carried no instruction. */
+  instruction: string | undefined;
+  /** What the specialist reported last, shown under its steps once the work is done. */
+  report: string | undefined;
+  /** The document the work filed, shown under its row once done; absent for anything else. */
+  document: DocumentBlockProps | undefined;
+  /** Opens the document the work filed; absent where nothing can open it. */
+  onOpenDocument: ((kind: string) => void) | undefined;
+  /** Stops the work once the person confirms it, offered only while it works. */
+  stop: { ask: string; confirm: () => Promise<void> } | undefined;
+};
+
+export type WorkUnitStepViewProps = WorkUnitStanding & {
+  /** The specialist's own steps as the thread draws a list of them. */
+  run: (steps: readonly PartTool[]) => ReactNode;
+};
+
+/** The row while the work runs, its time counting up beside it; the list it sits in says it runs. */
+function WorkingHeader({ label, since }: { label: ReactNode; since: string }) {
+  const seconds = Math.floor(useElapsedMs(since) / 1_000);
+  const elapsed = wording.activity.elapsed(
+    Math.floor(seconds / 60),
+    seconds % 60,
+  );
+  return (
+    <ToolHeader
+      label={label}
+      statusLabels={{ running: elapsed }}
+      className={styles.row}
+    />
+  );
+}
+
+/** Whether the work still runs, so its row belongs in the list of work in progress. */
+export function inProgress(status: DispatchStatus): boolean {
+  return (
+    status.state === "starting" ||
+    status.state === "working" ||
+    status.state === "approval"
+  );
+}
+
+/** The work still running, gathered in one list that counts it. */
+export function WorkInProgress({
+  count,
+  children,
+}: {
+  count: number;
+  children: ReactNode;
+}) {
+  return (
+    <ThreadList label={text.inProgress(count)} busy>
+      {children}
+    </ThreadList>
+  );
+}
+
+/** Stops the work, asking once in the row first. */
+function StopAction({ stop }: { stop: NonNullable<WorkUnitStanding["stop"]> }) {
+  const [asking, setAsking] = useState(false);
+  const [stopping, setStopping] = useState(false);
+  if (!asking)
+    return (
+      <Button
+        type="button"
+        variant="link"
+        size="sm"
+        className={styles.action}
+        onClick={() => setAsking(true)}
+      >
+        {text.stop}
+      </Button>
+    );
+  const confirm = async () => {
+    setStopping(true);
+    try {
+      await stop.confirm();
+    } finally {
+      setStopping(false);
+      setAsking(false);
+    }
+  };
+  return (
+    <span className={styles.ask} role="group" aria-label={stop.ask}>
+      {stop.ask}
+      <Button
+        type="button"
+        variant="link"
+        size="sm"
+        className={styles.action}
+        disabled={stopping}
+        onClick={() => void confirm()}
+      >
+        {text.stop}
+      </Button>
+      <Button
+        type="button"
+        variant="link"
+        size="sm"
+        className={styles.action}
+        disabled={stopping}
+        onClick={() => setAsking(false)}
+      >
+        {text.keepGoing}
+      </Button>
+    </span>
+  );
+}
+
+/** Beside the row: open what it filed when no document block does. */
+function RowAction({
+  status,
+  onOpen,
+}: {
+  status: DispatchStatus;
+  onOpen: WorkUnitStanding["onOpenDocument"];
+}) {
+  if (status.state === "ready" && onOpen !== undefined)
+    return (
+      <Button
+        type="button"
+        variant="link"
+        size="sm"
+        className={styles.action}
+        aria-label={text.openNamed(status.title, status.version)}
+        title={text.openNamed(status.title, status.version)}
+        onClick={() => onOpen(status.kind)}
+      >
+        {text.open}
+      </Button>
+    );
+  return null;
+}
+
+// Within this many pixels of the end, the preview follows new text; scrolled further up, it stays put.
+const FOLLOW_PX = 24;
+
+/**
+ * The working row's one live slot, its height fixed for as long as the run works, its content
+ * replaced in place: what the run is writing, the newest kept in view; else the newest two lines of
+ * its reasoning, or that it is thinking when its reasoning has no words to show; else that it is
+ * waiting with nothing streaming in.
+ */
+function LiveSlot({ preview }: { preview: RowPreview }) {
+  return (
+    <div className={styles.slot}>
+      <SlotContent preview={preview} />
+    </div>
+  );
+}
+
+function SlotContent({ preview }: { preview: RowPreview }) {
+  const box = useRef<HTMLDivElement>(null);
+  const following = useRef(true);
+  const shown = preview.kind === "writing" ? preview.text : "";
+  useLayoutEffect(() => {
+    const element = box.current;
+    if (element !== null && following.current)
+      element.scrollTop = element.scrollHeight;
+  }, [shown]);
+  if (preview.kind === "waiting")
+    return <p className={styles.thinking}>{text.waitingForStep}</p>;
+  if (preview.kind === "thinking" && preview.text.trim() === "")
+    return <p className={styles.thinking}>{text.thinkingThrough}</p>;
+  if (preview.kind === "thinking")
+    return (
+      // Off, so a live region around the conversation does not read out every word as it arrives.
+      <div className={styles.reasoning} aria-live="off">
+        <p className={styles.reasoningText}>{preview.text}</p>
+      </div>
+    );
+  return (
+    <div
+      ref={box}
+      className={styles.preview}
+      role="log"
+      aria-label={text.preview}
+      tabIndex={0}
+      onScroll={(event) => {
+        const element = event.currentTarget;
+        following.current =
+          element.scrollHeight - element.scrollTop - element.clientHeight <
+          FOLLOW_PX;
+      }}
+    >
+      <Markdown source={shown} />
+    </div>
+  );
+}
+
+/**
+ * Says whether the text overflows its box now and again whenever the box or the text in it changes
+ * size: the same words wrap onto more lines in a narrower column, and fewer in a wider one or once
+ * the page's font arrives.
+ */
+export function watchClipping<
+  Box extends { scrollHeight: number; clientHeight: number },
+>(
+  box: Box,
+  onClipped: (clipped: boolean) => void,
+  onResize: (box: Box, measure: () => void) => () => void,
+): () => void {
+  const measure = () => onClipped(box.scrollHeight > box.clientHeight);
+  measure();
+  return onResize(box, measure);
+}
+
+/** Calls `measure` whenever the element or one of its children changes size, until stopped. */
+function resized(element: HTMLElement, measure: () => void): () => void {
+  const observer = new ResizeObserver(measure);
+  observer.observe(element);
+  for (const child of Array.from(element.children)) observer.observe(child);
+  return () => observer.disconnect();
+}
+
+/** Text held to a few lines until the person asks for the rest: a specialist's report, or its goal. */
+function Report({ source }: { source: string }) {
+  const box = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const [clipped, setClipped] = useState(false);
+  useLayoutEffect(() => {
+    const element = box.current;
+    if (element === null || open) return;
+    return watchClipping(element, setClipped, resized);
+  }, [source, open]);
+  return (
+    <div className={styles.report}>
+      <div
+        ref={box}
+        className={styles.reportText}
+        data-open={open || undefined}
+      >
+        <Markdown source={source} />
+      </div>
+      {clipped ? (
+        <Button
+          type="button"
+          variant="link"
+          size="sm"
+          className={styles.action}
+          aria-expanded={open}
+          onClick={() => setOpen(!open)}
+        >
+          {open ? text.less : text.more}
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
+export function WorkUnitStepView({
+  unitKey,
+  status,
+  label,
+  steps,
+  preview,
+  instruction,
+  report,
+  document,
+  onOpenDocument,
+  stop,
+  run,
+}: WorkUnitStepViewProps) {
+  const [open, setOpen] = useState(false);
+  const heading =
+    steps.length === 0 ? (
+      label
+    ) : (
+      <>
+        {label}
+        <span className={styles.count}>
+          {wording.activity.run(steps.length)}
+        </span>
+      </>
+    );
+  // Once the row has held a live slot, what follows the work keeps at least its height, so the end
+  // of the work never pulls the page up.
+  const [held, setHeld] = useState(preview !== undefined);
+  if (preview !== undefined && !held) setHeld(true);
+  const outcome =
+    preview === undefined ? (
+      <>
+        {status.state === "failed" ? (
+          <p className={styles.failed} title={status.reason}>
+            {status.reason}
+          </p>
+        ) : null}
+        {/* The agent's own words on what stops it, read in full: they say what to deal with. */}
+        {status.state === "blocked" ? (
+          <p className={styles.blocked}>{status.reason}</p>
+        ) : null}
+        {report === undefined ? null : <Report source={report} />}
+      </>
+    ) : (
+      <LiveSlot preview={preview} />
+    );
+  return (
+    <Tool
+      // The library shows a toggle only for a row with input, so a row with no steps to unfold has none.
+      part={{
+        kind: "tool-trace",
+        toolCallId: unitKey,
+        name: "",
+        status: STEP_STATUS[status.state],
+        ...(steps.length > 0 ? { input: steps } : {}),
+      }}
+      open={open}
+      onOpenChange={setOpen}
+    >
+      <div className={styles.header}>
+        {status.state === "working" ? (
+          <WorkingHeader label={heading} since={status.since} />
+        ) : (
+          <ToolHeader
+            label={heading}
+            statusLabels={statusLabels(status)}
+            className={clsx(
+              styles.row,
+              status.state === "approval" && styles.waiting,
+            )}
+          />
+        )}
+        <RowAction
+          status={status}
+          onOpen={document === undefined ? onOpenDocument : undefined}
+        />
+        {stop === undefined ? null : <StopAction stop={stop} />}
+      </div>
+      <div className={styles.work}>
+        {document === undefined ? null : (
+          <div className={styles.document}>
+            <DocumentBlock {...document} />
+          </div>
+        )}
+        {instruction === undefined ? null : (
+          <div className={styles.goal}>
+            <span className={styles.goalLabel}>{text.askedTo}</span>
+            <Report source={instruction} />
+          </div>
+        )}
+        {open ? run(steps) : null}
+        {held ? <div className={styles.outcome}>{outcome}</div> : outcome}
+      </div>
+    </Tool>
+  );
+}

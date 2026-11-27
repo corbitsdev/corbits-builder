@@ -1,0 +1,778 @@
+import { describe, expect, test } from "bun:test";
+import "../plugin-roles.testing.ts";
+import { isValidElement, type ReactNode } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import {
+  clippedTurnText,
+  maxTurnText,
+} from "@corbits-builder/schemas/conversation";
+import {
+  type ActivityShown,
+  IMPORTED_PROJECT_LEAD,
+  wording,
+} from "../../../config.ts";
+import { Markdown } from "@corbits-builder/plugin-ui/markdown";
+import { DocumentDecision } from "../approvals/document-decision.tsx";
+import {
+  awaitingCommit,
+  awaitingReply,
+  emptyLiveRun,
+  foldLiveRun,
+  liveTurnStreaming,
+  parkedOnApproval,
+  pendingLiveTurn,
+  waitingOnPerson,
+} from "./live-run.ts";
+import { Activity, MessageParts, type PartTool } from "@corbits/react-ui";
+import { RoomThread } from "./transcript.tsx";
+import { WorkUnitStepView } from "./work-unit-step.view.tsx";
+import { workUnitStanding } from "./work-unit-step.model.ts";
+import type { WorkUnit } from "./work-unit.ts";
+
+function findElement(
+  node: ReactNode,
+  type: unknown,
+): { props: Record<string, unknown> } | null {
+  if (Array.isArray(node)) {
+    for (const child of node) {
+      const found = findElement(child as ReactNode, type);
+      if (found !== null) return found;
+    }
+    return null;
+  }
+  if (!isValidElement(node)) return null;
+  const element = node as { type: unknown; props: Record<string, unknown> };
+  if (element.type === type) return element;
+  return findElement(element.props["children"] as ReactNode, type);
+}
+
+const briefId = "problem_brief";
+
+// A room with nothing filed and no run at work, so each hand-off stands where its own call puts it.
+const standing = (unit: WorkUnit) =>
+  workUnitStanding(unit, {
+    artifacts: [],
+    inFlight: [],
+    failed: [],
+    seen: new Map(),
+  });
+
+type Piece = keyof ActivityShown;
+const PIECES: Piece[] = [
+  "coordinatorSteps",
+  "specialists",
+  "specialistSteps",
+  "specialistDocument",
+  "specialistInstruction",
+  "specialistReport",
+  "thinking",
+];
+const without = (gone: readonly Piece[]): ActivityShown => ({
+  coordinatorSteps: !gone.includes("coordinatorSteps"),
+  specialists: !gone.includes("specialists"),
+  specialistSteps: !gone.includes("specialistSteps"),
+  specialistDocument: !gone.includes("specialistDocument"),
+  specialistInstruction: !gone.includes("specialistInstruction"),
+  specialistReport: !gone.includes("specialistReport"),
+  thinking: !gone.includes("thinking"),
+});
+const ALL_SHOWN = without([]);
+const IN_ROW: Piece[] = [
+  "specialistSteps",
+  "specialistDocument",
+  "specialistInstruction",
+  "specialistReport",
+];
+
+describe("conversation transcript", () => {
+  test("each piece of the agents' activity is hidden by its own switch and no other", () => {
+    const lookUp = {
+      kind: "tool-trace" as const,
+      toolCallId: "call-look",
+      name: "discover",
+      status: "output-available" as const,
+      input: {},
+    };
+    const instruction = "Write the limits.";
+    const report = "Filed the limits.";
+    const drawn = (shows: ActivityShown) => {
+      const html = renderToStaticMarkup(
+        <RoomThread
+          shows={shows}
+          thinking
+          runs={[
+            {
+              at: 3,
+              dispatch: {
+                key: "run-coder",
+                call: "run-coder",
+                tool: "execute",
+                role: "coder",
+                kind: "build",
+                pending: false,
+              },
+            },
+          ]}
+          standing={(unit) => {
+            const row = workUnitStanding(unit, {
+              artifacts: [],
+              inFlight: [],
+              failed: [],
+              seen: new Map(),
+              steps: new Map([["run-writer", [lookUp]]]),
+            });
+            // Done, so the switch alone decides whether the row shows; running work always does.
+            return {
+              unitKey: row.unitKey,
+              status: { state: "finished" },
+              label: row.label,
+              steps: row.steps,
+              preview: undefined,
+              instruction: row.instruction,
+              report,
+              document: {
+                kind: "constraints",
+                title: "The limits",
+                version: 1,
+                summary: "One tablet.",
+                onOpen: () => {},
+              },
+              onOpenDocument: row.onOpenDocument,
+              stop: row.stop,
+            };
+          }}
+          results={
+            new Map([
+              [
+                "call-writer",
+                {
+                  content: JSON.stringify({ runs: [{ runId: "run-writer" }] }),
+                  isError: false,
+                },
+              ],
+            ])
+          }
+          turns={[
+            { role: "person", text: "Start", at: 1 },
+            {
+              role: "assistant",
+              text: "",
+              at: 2,
+              parts: [
+                lookUp,
+                {
+                  kind: "tool-trace",
+                  toolCallId: "call-writer",
+                  name: "execute",
+                  status: "output-available",
+                  input: {
+                    plugin: "writer",
+                    action: "write",
+                    input: { kind: "constraints", instruction },
+                  },
+                },
+              ],
+            },
+          ]}
+        />,
+      );
+      // A run with no hand-off in view is a row too, and goes by the same switch.
+      expect(html.includes('data-item-id="work:run-coder"')).toBe(
+        shows.specialists,
+      );
+      const row = html.slice(html.indexOf('data-item-id="work:call-writer"'));
+      return {
+        coordinatorSteps: html.includes('data-slot="activity-trigger"'),
+        specialists: html.includes('data-item-id="work:call-writer"'),
+        specialistSteps: row.includes(wording.activity.run(1)),
+        specialistDocument: row.includes("One tablet."),
+        specialistInstruction: row.includes(instruction),
+        specialistReport: row.includes(report),
+        thinking: html.includes(`>${wording.activity.thinkingNow}<`),
+      };
+    };
+    expect(drawn(ALL_SHOWN)).toEqual(ALL_SHOWN);
+    for (const off of PIECES) {
+      // What sits inside a specialist's row goes with the row.
+      const gone = off === "specialists" ? [off, ...IN_ROW] : [off];
+      expect(drawn(without([off]))).toEqual(without(gone));
+    }
+  });
+
+  test("work still running shows in one list with the specialists switch off", () => {
+    const html = renderToStaticMarkup(
+      <RoomThread
+        standing={standing}
+        turns={[
+          { role: "person", text: "Start", at: 1 },
+          {
+            role: "assistant",
+            text: "",
+            at: 2,
+            parts: [
+              {
+                kind: "tool-trace",
+                toolCallId: "call-writer",
+                name: "execute",
+                status: "output-available",
+                input: {
+                  plugin: "writer",
+                  action: "write",
+                  input: { kind: "constraints", instruction: "Write." },
+                },
+              },
+            ],
+          },
+        ]}
+      />,
+    );
+    const list = html.slice(html.indexOf('data-slot="thread-list"'));
+    expect(html).toContain('data-slot="thread-list"');
+    expect(list).toContain('data-item-id="work:call-writer"');
+    expect(list).toContain(wording.dispatch.inProgress(1));
+  });
+
+  test("turns render through MessageParts and keep the conversation log name", () => {
+    const html = renderToStaticMarkup(
+      <RoomThread
+        standing={standing}
+        shows={ALL_SHOWN}
+        turns={[
+          { role: "person", text: "What is the weather?", at: 1 },
+          {
+            role: "assistant",
+            text: "Checking.",
+            at: -1,
+            parts: [
+              { kind: "reasoning", text: "Look up the city" },
+              {
+                kind: "tool-trace",
+                toolCallId: "call-1",
+                name: "weather",
+                status: "running",
+                input: { location: "SF" },
+              },
+              { kind: "text", text: "Checking." },
+            ],
+          },
+        ]}
+      />,
+    );
+    expect(html).toContain('role="log"');
+    expect(html).toContain('aria-label="Conversation"');
+    expect(html).toContain('data-slot="message-parts"');
+    expect(html).toContain("What is the weather?");
+    expect(html).toContain("Checking.");
+    expect(html).not.toContain("location");
+    expect(html).not.toContain("Approved once");
+    expect(html).not.toContain("Approve always");
+  });
+
+  test("a document name is a control that can open it, without its id", () => {
+    const html = renderToStaticMarkup(
+      <RoomThread
+        standing={standing}
+        turns={[
+          {
+            role: "assistant",
+            text: "I drafted the problem brief. What should the outcome be?",
+            at: 2,
+          },
+        ]}
+        documents={[{ id: briefId, title: "Problem brief" }]}
+        onOpenDocument={() => {}}
+      />,
+    );
+    expect(html).toContain('data-slot="document-mention"');
+    expect(html).toContain("problem brief");
+    expect(html).toContain("What should the outcome be?");
+    expect(html).not.toContain(briefId);
+    expect(html).not.toContain("sha256");
+  });
+
+  test("a bold document name stays inline in its sentence and opens by click or key", () => {
+    const source =
+      "Already written into **Ways to build your list**. What the app does is next.";
+    const documents = [{ id: "approaches", title: "Ways to build your list" }];
+    const html = renderToStaticMarkup(
+      <RoomThread
+        standing={standing}
+        turns={[{ role: "assistant", text: source, at: 2 }]}
+        documents={documents}
+        onOpenDocument={() => {}}
+      />,
+    );
+    // Inline, not a <button>: a button is one unbreakable box, so the title would leave the line.
+    expect(html.replace(/ class="[^"]*"/g, "")).toContain(
+      'into <strong><span role="button" tabindex="0" data-slot="document-mention">Ways to build your list</span></strong>. What',
+    );
+    expect(html).not.toContain("href");
+
+    const opened: string[] = [];
+    const mention = findElement(
+      Markdown({
+        source: "See [Ways to build your list](document:approaches).",
+        openDocument: (id) => opened.push(id),
+      }),
+      "span",
+    );
+    (mention?.props["onClick"] as (() => void) | undefined)?.();
+    const onKeyDown = mention?.props["onKeyDown"] as
+      | ((event: { key: string; preventDefault(): void }) => void)
+      | undefined;
+    const prevented: string[] = [];
+    for (const key of ["Enter", " ", "Tab"]) {
+      onKeyDown?.({ key, preventDefault: () => prevented.push(key) });
+    }
+    expect(opened).toEqual(["approaches", "approaches", "approaches"]);
+    expect(prevented).toEqual(["Enter", " "]);
+  });
+
+  test("an approval still open waits in the prompt box; the thread keeps it once decided", () => {
+    const ask = {
+      approvalId: "appr-1",
+      toolName: "run_shell",
+      subject: "bun run build",
+    };
+    const open = RoomThread({ standing, turns: [], approvals: [ask] });
+    expect(findElement(open, DocumentDecision)).toBeNull();
+    const decided = RoomThread({
+      standing,
+      turns: [],
+      approvals: [{ ...ask, outcome: { status: "approved", scope: "once" } }],
+    });
+    expect(findElement(decided, DocumentDecision)).not.toBeNull();
+  });
+
+  test("a coordinator held on an approval or a question is waiting, not thinking", () => {
+    const approval = { runId: "run-c", approvalId: "appr-1" };
+    const question = { runId: "run-c", park: { seq: 4 } };
+    const coder = { runId: "run-coder", approvalId: "appr-2" };
+    expect(
+      waitingOnPerson([approval], new Set(["appr-1"]), "run-c", true),
+    ).toBe(true);
+    expect(waitingOnPerson([approval], new Set(), "run-c", true)).toBe(false);
+    expect(waitingOnPerson([question], new Set(), "run-c", false)).toBe(true);
+    expect(waitingOnPerson([question], new Set(), "run-c", true)).toBe(false);
+    expect(waitingOnPerson([coder], new Set(["appr-2"]), "run-c", true)).toBe(
+      false,
+    );
+  });
+
+  test("a sent message waits on the coordinator until its approval card opens, and through an answered question", () => {
+    const approval = { runId: "run-c", approvalId: "appr-1" };
+    const question = { runId: "run-c", park: { seq: 4 } };
+    const heldOnCard = parkedOnApproval(
+      [approval],
+      new Set(["appr-1"]),
+      "run-c",
+    );
+    expect(awaitingReply(10, "person", null, false)).toBe(true);
+    expect(awaitingReply(10, "person", null, heldOnCard)).toBe(false);
+    expect(awaitingReply(10, "assistant", null, false)).toBe(false);
+    expect(awaitingReply(10, "person", 12, false)).toBe(false);
+    // The answer is sent while the question still stands and before the stream reports the run.
+    const answered = parkedOnApproval([question], new Set(), "run-c");
+    expect(awaitingReply(20, "person", 12, answered)).toBe(true);
+  });
+
+  test("an inference call that finishes with tool work settles even while the message run stays open on a park", () => {
+    const started = foldLiveRun(
+      emptyLiveRun,
+      { type: "inference.start" },
+      null,
+    ).run;
+    const withTool = foldLiveRun(
+      started,
+      {
+        type: "inference.tool_call.end",
+        data: {
+          callId: "call-1",
+          name: "execute",
+          arguments: { plugin: "writer", action: "write" },
+        },
+      },
+      null,
+    ).run;
+    expect(awaitingCommit(withTool, [])).toBe(false);
+    const done = foldLiveRun(withTool, { type: "inference.done" }, null).run;
+    expect(done.ended).toBe(false);
+    expect(awaitingCommit(done, [])).toBe(true);
+  });
+
+  test("a reply over a turn's length is committed by its clipped copy, even when the clip drops half an emoji", () => {
+    const reply = `${"a".repeat(maxTurnText - 1)}😀 and more`;
+    const run = [
+      { type: "inference.start" },
+      {
+        type: "inference.text.delta",
+        data: { partial: { text: reply, toolCalls: [] } },
+      },
+      { type: "inference.done" },
+    ].reduce((live, event) => foldLiveRun(live, event, null).run, emptyLiveRun);
+    expect(
+      pendingLiveTurn(run, [
+        { role: "assistant", text: clippedTurnText(reply), at: 5 },
+      ]),
+    ).toBeNull();
+  });
+
+  test("a turn held on the person's approval is no longer being written", () => {
+    const held = [
+      { type: "message.run.started" },
+      { type: "inference.start" },
+      {
+        type: "inference.tool_call.end",
+        data: {
+          callId: "call-1",
+          name: "execute",
+          arguments: { plugin: "designer", action: "pick-fonts" },
+        },
+      },
+      { type: "inference.done" },
+    ].reduce((run, event) => foldLiveRun(run, event, null).run, emptyLiveRun);
+    const waits = [
+      { runId: "run-c", approvalId: "appr-1" },
+      { runId: "run-coder", approvalId: "appr-2" },
+    ];
+    const streaming = (open: string[]) =>
+      liveTurnStreaming(
+        held,
+        [],
+        parkedOnApproval(waits, new Set(open), "run-c"),
+      );
+    expect(held.ended).toBe(false);
+    expect(streaming(["appr-1"])).toBe(false);
+    expect(streaming(["appr-2"])).toBe(true);
+    expect(streaming([])).toBe(true);
+  });
+
+  test("a working coordinator turn keeps one quiet thinking line at its end through every frame, and never its reasoning", () => {
+    const reasoning = "Weighing which font reads best";
+    const reply = "The order list now sets in the humanist sans.";
+    const frames = [
+      [
+        { type: "message.run.started" },
+        { type: "inference.start" },
+        {
+          type: "inference.delta",
+          data: { partial: { thinking: reasoning, toolCalls: [] } },
+        },
+      ],
+      [
+        {
+          type: "inference.tool_call.end",
+          data: { callId: "c1", name: "Read the brief", arguments: {} },
+        },
+        { type: "inference.done" },
+        { type: "inference.start" },
+      ],
+      [
+        {
+          type: "inference.delta",
+          data: { partial: { thinking: reasoning, toolCalls: [] } },
+        },
+      ],
+      [
+        {
+          type: "inference.text.delta",
+          data: {
+            partial: { thinking: reasoning, text: reply, toolCalls: [] },
+          },
+        },
+      ],
+    ];
+    const person = { role: "person", text: "Change the font", at: 1 } as const;
+    const thinkingLine = `>${wording.activity.thinkingNow}<`;
+    const copy = `aria-label="${wording.message.copy}"`;
+    let run = emptyLiveRun;
+    for (const batch of frames) {
+      for (const frame of batch) run = foldLiveRun(run, frame, null).run;
+      const live = pendingLiveTurn(run, [person]);
+      const html = renderToStaticMarkup(
+        <RoomThread
+          standing={standing}
+          shows={ALL_SHOWN}
+          turns={
+            live === null
+              ? [person]
+              : [
+                  person,
+                  {
+                    role: "assistant",
+                    text: live.text,
+                    at: -1,
+                    streaming: true,
+                    parts: live.parts,
+                  },
+                ]
+          }
+          thinking
+        />,
+      );
+      expect(html.split(thinkingLine)).toHaveLength(2);
+      expect(html).not.toContain(reasoning);
+      expect(html).not.toContain(copy);
+      // Nothing of the turn stands below its live line.
+      const end = html.slice(html.indexOf(thinkingLine));
+      expect(end).not.toContain("Read the brief");
+      expect(end).not.toContain(reply);
+    }
+    const finished = renderToStaticMarkup(
+      <RoomThread
+        standing={standing}
+        turns={[person, { role: "assistant", text: reply, at: 2 }]}
+      />,
+    );
+    expect(finished).not.toContain(thinkingLine);
+    expect(finished).toContain(copy);
+  });
+
+  test("the thinking line stays at the bottom, under a report that follows the coordinator's words", () => {
+    const live = {
+      role: "assistant",
+      text: "",
+      at: -1,
+      streaming: true,
+      parts: [{ kind: "reasoning", text: "Read the idea" }],
+    } as const;
+    const thinkingLine = `>${wording.activity.thinkingNow}<`;
+    const report = "Saved the requirements.";
+    const afterReport = renderToStaticMarkup(
+      <RoomThread
+        standing={standing}
+        turns={[
+          { role: "person", text: "Start", at: 1 },
+          { role: "assistant", text: "Being written up now.", at: 2 },
+          live,
+        ]}
+        updates={[{ sender: "writer", text: report, at: 3 }]}
+        thinking
+      />,
+    );
+    expect(afterReport.split(thinkingLine)).toHaveLength(2);
+    expect(afterReport.indexOf(thinkingLine)).toBeGreaterThan(
+      afterReport.indexOf(report),
+    );
+  });
+
+  test("a started specialist is a row of its own and a long run of lone reports folds", () => {
+    const summary =
+      "Wrote the limits for your weather app, covering offline use and units.";
+    const html = renderToStaticMarkup(
+      <RoomThread
+        standing={standing}
+        shows={ALL_SHOWN}
+        live={() => true}
+        turns={[
+          { role: "person", text: "Start", at: 1 },
+          {
+            role: "assistant",
+            text: "Starting the constraints.",
+            at: 2,
+            parts: [
+              {
+                kind: "tool-trace",
+                toolCallId: "call-1",
+                name: "execute",
+                status: "output-available",
+                input: {
+                  plugin: "writer",
+                  action: "write",
+                  input: {
+                    kind: "constraints",
+                    instruction: "Write the limits.",
+                  },
+                },
+              },
+              { kind: "text", text: "Starting the constraints." },
+            ],
+          },
+          { role: "participant", sender: "writer", text: summary, at: 3 },
+          { role: "person", text: "Build it", at: 4 },
+          {
+            role: "participant",
+            sender: "coder",
+            text: "Scaffolded the app.",
+            at: 5,
+          },
+          {
+            role: "participant",
+            sender: "designer",
+            text: "Drafted the layout.",
+            at: 6,
+          },
+          {
+            role: "participant",
+            sender: "coder",
+            text: "Wired the forecast.",
+            at: 7,
+          },
+          {
+            role: "participant",
+            sender: "designer",
+            text: "Tuned the colours.",
+            at: 8,
+          },
+        ]}
+      />,
+    );
+    // Not a card of its own, and in no list of the coordinator's: the row is its own item.
+    expect(html).not.toContain('data-item-id="units:');
+    expect(html).toContain('data-item-id="work:call-1"');
+    expect(html).not.toContain('data-slot="activity-content"');
+    const row = "Writing the constraints";
+    expect(html.split(row)).toHaveLength(2);
+    expect(html).not.toContain('data-slot="update-names">Constraints<');
+    expect(html).toContain(wording.updatesFolded(4));
+    expect(html).toContain(`data-slot="update-names">${wording.buildSubject}<`);
+  });
+
+  test("a specialist's step opens onto what came of it", () => {
+    const shell = {
+      kind: "tool-trace" as const,
+      toolCallId: "call-test",
+      name: "run_shell",
+      status: "output-available" as const,
+      input: { command: "bun test" },
+    };
+    const build = {
+      kind: "tool-trace" as const,
+      toolCallId: "call-build",
+      name: "execute",
+      status: "output-available" as const,
+      input: { plugin: "coder", action: "build", input: {} },
+    };
+    const thread = RoomThread({
+      standing,
+      results: new Map([
+        [
+          "call-build",
+          {
+            content: JSON.stringify({ runs: [{ runId: "run-build" }] }),
+            isError: false,
+          },
+        ],
+        ["call-test", { content: "3 pass", isError: false }],
+      ]),
+      turns: [
+        {
+          role: "assistant",
+          text: "Building.",
+          at: 2,
+          parts: [build, { kind: "text", text: "Building." }],
+        },
+      ],
+    });
+    const parts = findElement(thread, MessageParts);
+    const renderActivity = parts?.props["renderActivity"] as (
+      steps: readonly (typeof build)[],
+    ) => ReactNode;
+    const row = findElement(renderActivity([build]), WorkUnitStepView);
+    const run = row?.props["run"] as (steps: readonly PartTool[]) => ReactNode;
+    const activity = findElement(run([shell]), Activity);
+    const steps = activity?.props["steps"] as readonly PartTool[] | undefined;
+    expect(steps?.[0]?.output).toBe("3 pass");
+  });
+
+  test("a coordinator stretch is unnamed on the page, its words first and its cards last", () => {
+    const html = renderToStaticMarkup(
+      <RoomThread
+        standing={standing}
+        turns={[
+          { role: "person", text: "Start", at: 1 },
+          { role: "assistant", text: "First words.", at: 2 },
+          { role: "assistant", text: "Second words.", at: 4 },
+          { role: "person", text: "Next", at: 5 },
+          { role: "assistant", text: "Later words.", at: 6 },
+        ]}
+        approvals={[
+          {
+            approvalId: "appr-1",
+            toolName: "run_shell",
+            at: 3,
+            outcome: { status: "approved", scope: "once" },
+          },
+        ]}
+      />,
+    );
+    expect(html).not.toContain(`>${wording.speaker.coordinator}<`);
+    expect(html).not.toContain(`>${wording.speaker.you}<`);
+    expect(html).toContain(`aria-label="${wording.speaker.coordinator}"`);
+    const order = [
+      "Start",
+      "First words.",
+      "Second words.",
+      wording.approval.tool("run shell"),
+      "Next",
+    ];
+    const positions = order.map((text) => html.indexOf(text));
+    expect(positions.every((at) => at >= 0)).toBe(true);
+    expect(positions).toEqual(
+      [...positions].sort((left, right) => left - right),
+    );
+  });
+
+  test("a reported workflow dump keeps the outcome and hides the bookkeeping", () => {
+    const hash = "a".repeat(64);
+    const dump = [
+      "The constraints document is ready for you to review.",
+      "",
+      "revision: 4",
+      `sha256: ${hash}`,
+      "specialist run run_01HSPECIALIST",
+      "assignmentReady: true",
+      "send_workflow_message",
+      "artifactId: artifact-sb-ly2mtlm1x-constraints",
+      "projectId: sb-ly2mtlm1x",
+      "blocker: specialist_project_mismatch",
+      '{"status":"deployed","revision":"4","eventCount":2,"assignmentReady":false,"runId":"run_01HSPECIALIST"}',
+    ].join("\n");
+    const html = renderToStaticMarkup(
+      <RoomThread
+        standing={standing}
+        turns={[{ role: "assistant", text: dump, at: 2 }]}
+      />,
+    );
+    expect(html).toContain(
+      "The constraints document is ready for you to review.",
+    );
+    expect(html).toContain('aria-label="Conversation"');
+    expect(html).toContain('role="log"');
+    for (const hidden of [
+      "revision",
+      hash,
+      "run_01HSPECIALIST",
+      "assignmentReady",
+      "send_workflow_message",
+      "artifact-sb-ly2mtlm1x-constraints",
+      "sb-ly2mtlm1x",
+      "specialist_project_mismatch",
+      "eventCount",
+      "artifactId",
+      "projectId",
+    ]) {
+      expect(html).not.toContain(hidden);
+    }
+  });
+
+  test("an imported project's opening is a divider, not the person's message", () => {
+    const html = renderToStaticMarkup(
+      <RoomThread
+        standing={standing}
+        turns={[
+          {
+            role: "person",
+            text: `${IMPORTED_PROJECT_LEAD} Then tell me what happens next.`,
+            at: 1,
+          },
+          { role: "person", text: "What should we do first?", at: 2 },
+          { role: "assistant", text: "The brief needs your approval.", at: 3 },
+          { role: "person", text: "Go ahead and draft it.", at: 4 },
+        ]}
+      />,
+    );
+    expect(html).toContain(wording.projectImported);
+    expect(html).not.toContain("Then tell me what happens next.");
+  });
+});

@@ -73,7 +73,7 @@ inline a plugin's skills, starters and themes.
 
 The interface compiles each plugin's manifest and its actions' definitions,
 views and data in with `import.meta.glob`
-([apps/web/src/pages/workspace/screen-files.ts](https://github.com/corbitsdev/corbits-builder/blob/main/apps/web/src/pages/workspace/screen-files.ts)),
+([apps/web/src/pages/workspace/screens/screen-files.ts](https://github.com/corbitsdev/corbits-builder/blob/main/apps/web/src/pages/workspace/screens/screen-files.ts)),
 and nothing else from the folder.
 
 ### Hub tools

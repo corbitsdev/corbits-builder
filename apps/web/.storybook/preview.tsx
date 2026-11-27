@@ -6,7 +6,7 @@ import { Toaster } from "sonner";
 import "@corbits/react-ui/styles.css";
 import "../src/styles.css";
 // The plugins' roles and screens, as main.tsx installs them, so a hand-off reads as its specialist.
-import "../src/pages/workspace/screen-files.ts";
+import "../src/pages/workspace/screens/screen-files.ts";
 
 type Mode = "light" | "dark";
 
