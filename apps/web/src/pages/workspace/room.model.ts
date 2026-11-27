@@ -30,21 +30,19 @@ import {
   useRolesAtWork,
 } from "./project-activity.ts";
 import {
+  askedOf,
   dispatchLive,
+  endedRuns,
   filedDispatches,
   noteDispatches,
   partsDispatches,
-  runDispatch,
+  unseenRuns as unseenRunsOf,
   type DispatchRoom,
   type Sighting,
-  type RunEnd,
 } from "./dispatch.ts";
 import { earlierDocumentRole, restartedWork } from "./earlier-document.ts";
 import { ProductApiError, type ProjectArtifact } from "@corbits-builder/client";
-import {
-  isDocumentKind,
-  type InFlightRun,
-} from "@corbits-builder/schemas/artifact";
+import type { InFlightRun } from "@corbits-builder/schemas/artifact";
 import { toast } from "sonner";
 import type { SpaceScreenProps } from "./plugin-screens.tsx";
 import { useCommentDrafts, usePromptBox } from "./prompt-box.model.ts";
@@ -83,7 +81,13 @@ import { keys } from "../../queries/keys.ts";
 import { useQuestions } from "./questions.model.ts";
 import { useFiledVersions } from "./filed-versions.ts";
 import { threadUpdates } from "./specialist-updates.ts";
-import { useSettledApprovals, type OpenApproval } from "./settled-approvals.ts";
+import { useSettledApprovals } from "./settled-approvals.ts";
+import {
+  documentApprovalsFrom,
+  openApprovalOf,
+  pendingApprovalsFrom,
+  type OpenApproval,
+} from "./collaboration.ts";
 import {
   chooseApproachWithOpenApproval,
   deliverWithOpenApproval,
@@ -93,63 +97,62 @@ import { chosenApproach } from "./approach-choice.ts";
 import {
   followDeliverableId,
   LIVE_TAB,
-  MOCKUP_TAB,
   shownDeliverableId,
   type DocumentChoice,
 } from "./tab-follow.ts";
 import {
   awaitingCommit,
-  awaitingReply,
   committedSteps,
   emptyLiveRun,
   foldLiveRun,
   latestAssistantAt,
   pendingLiveTurn,
-  liveTurnStreaming,
-  parkedOnApproval,
-  waitingOnPerson,
+  sameParts,
   type LiveRun,
 } from "./live-run.ts";
 import { createRoomReloader } from "./room-reload.ts";
 import { withPendingSends } from "./pending-sends.ts";
 import { decideApproval, openDecisions } from "../../api/decisions.ts";
-import type { PaneDocument } from "./pane-documents.ts";
+import {
+  documentTab,
+  paneArtifacts,
+  paneDocument,
+  shownDocument,
+  tabbedArtifacts,
+} from "./pane-documents.ts";
 import type { DeliverableState } from "./deliverable-block.tsx";
 import { formatPassageQuote, type PassageQuote } from "./passage-quote.ts";
 import { humanFault, humanFaultWithCode } from "../../human-fault.ts";
 import { suggestedReplies } from "./suggested-replies.ts";
 import {
-  turnItemId,
+  sentItemId,
   visibleChatText,
-  type TranscriptTurn,
+  withLiveTurn,
+  withSteps,
 } from "./visible-chat.ts";
 import {
   keptRoom,
   loadProjectRoom,
+  paneDocumentKey,
   reloadProjectDocument,
-  roomDocumentKey,
   roomSnapshotReady,
   type RoomSnapshot,
 } from "./load-room.ts";
 import { useUserManual } from "./user-manual.model.ts";
 import { workUnitStanding } from "./work-unit-step.model.ts";
-import { conceptTab } from "./design-concept.ts";
-import { designConcepts, DESIGN_OPTION } from "./design-concepts.model.ts";
+import { conceptTab, DESIGN_OPTION, reviewApproval } from "./design-concept.ts";
+import { designConcepts } from "./design-concepts.model.ts";
 import { useLiveAppPresence } from "./live-app.model.ts";
 import { usePreference } from "../../queries/preferences.ts";
-import {
-  markSeen,
-  useSeenVersions,
-  type SeenVersions,
-} from "./seen-versions.ts";
-import { composerPlaceholder } from "./composer-placeholder.ts";
+import { markSeen, useSeenVersions } from "./seen-versions.ts";
 import {
   needsModelSetup,
   type EnableAiDialogProps,
 } from "../model-setup.model.ts";
 import { useModelCatalog } from "../model-catalog.ts";
-import type { RoomDock } from "./prompt-box.view.tsx";
 import type { RoomContent } from "./room.view.tsx";
+import { roomDock } from "./room-dock.ts";
+import { lastSentAt, roomPhase } from "./room-status.ts";
 import { useProjectSidebar } from "./project-sidebar.model.ts";
 import type { MenuProject, ProjectMenuHost } from "../project-menu.model.ts";
 import { parseBundle } from "./design-bundle.ts";
@@ -158,12 +161,10 @@ import type {
   HostSupplies,
   ListedHostProps,
   ReviewedDesign,
-  ShownDocument,
 } from "./screen-question.tsx";
 import type { RoomSession } from "./room-session.ts";
 import { useSessionMemory, withEntries } from "./session-memory.ts";
-import { inShort } from "@corbits-builder/schemas/in-short";
-import { roleOf, screenWords } from "./roles.ts";
+import { screenWords, writesCode } from "./roles.ts";
 import { inTab, pluginTabs, screensFor, selectionNames } from "./screens.ts";
 
 // The stream says when the room moved. This read covers what it cannot see,
@@ -172,9 +173,6 @@ const FALLBACK_RELOAD_MS = 30_000;
 // A coder at work can report how the project's program starts at any time.
 const RUN_POLL_MS = 5_000;
 const RUN_VALUE = "stack.run";
-// A run whose role writes the project's code, whose app the room previews.
-const writesCode = (run: { readonly role: string }) =>
-  roleOf(run.role)?.writesCode === true;
 // No coordinator's stream announces the next one binding, so an unbound room reads again until it does.
 const BIND_POLL_MS = 1_000;
 // A handoff binds within seconds; past this the room starts the coordinator itself, so a start the
@@ -196,116 +194,6 @@ function openDecisionsQuery(projectId: string, active: boolean) {
     refetchOnWindowFocus: false,
     queryFn: active ? () => openDecisions(projectId) : skipToken,
   });
-}
-
-function documentApprovalsFrom(waits: readonly Wait[]): OpenApproval[] {
-  return waits.flatMap((wait): OpenApproval[] => {
-    if (wait.approvalId === undefined || wait.tenantId === undefined) return [];
-    const at =
-      wait.createdAt === undefined ? Number.NaN : Date.parse(wait.createdAt);
-    return [
-      {
-        approvalId: wait.approvalId,
-        tenantId: wait.tenantId,
-        ...(Number.isNaN(at) ? {} : { at }),
-        ...(wait.toolName === undefined ? {} : { toolName: wait.toolName }),
-        ...(wait.subject === undefined ? {} : { subject: wait.subject }),
-        ...(wait.packages === undefined ? {} : { packages: wait.packages }),
-      },
-    ];
-  });
-}
-
-/** What each run held on an open approval asked the person, by run id: its packages, else its tool. */
-function askedOf(waits: readonly Wait[] | undefined): Map<string, string> {
-  const asked = new Map<string, string>();
-  for (const wait of waits ?? []) {
-    if (wait.approvalId === undefined) continue;
-    if (wait.packages !== undefined)
-      asked.set(wait.runId, wording.dispatch.asked.install(wait.packages));
-    else if (wait.toolName !== undefined)
-      asked.set(
-        wait.runId,
-        wording.dispatch.asked.tool(
-          wait.toolName
-            .slice(wait.toolName.lastIndexOf(".") + 1)
-            .replaceAll("_", " "),
-        ),
-      );
-  }
-  return asked;
-}
-
-// Every material shares one kind, but each file is its own tab, so the pane names it by its artifact.
-const MATERIAL = "material";
-const MATERIAL_TAB = `${MATERIAL}:`;
-function paneArtifact(item: ProjectArtifact): ProjectArtifact {
-  return item.kind === MATERIAL
-    ? { ...item, kind: `${MATERIAL_TAB}${item.artifactId}` }
-    : item;
-}
-
-const APPROVAL_PACKAGE = "approval_package";
-
-/**
- * The filed artifacts that are the pane's documents: a concept's option has a tab of its own, and
- * an approval package is one only while stakeholder approvals are on.
- */
-export function tabbedArtifacts(
-  artifacts: readonly ProjectArtifact[],
-  approvals: "on" | "off",
-): ProjectArtifact[] {
-  return artifacts.filter(
-    (item) =>
-      item.kind !== DESIGN_OPTION &&
-      (approvals === "on" || item.kind !== APPROVAL_PACKAGE),
-  );
-}
-
-/**
- * A filed artifact as its tab shows it, at its newest version, unread while this viewer has not
- * opened that version.
- */
-export function paneDocument(
-  item: ProjectArtifact,
-  seen: SeenVersions,
-): PaneDocument {
-  return {
-    id: item.kind,
-    title: item.title,
-    status:
-      item.approvedVersion === undefined
-        ? wording.documentStatus.drafted(item.version)
-        : wording.documentStatus.approved(item.version),
-    unread: seen[item.artifactId] !== item.version,
-    ...(isDocumentKind(item.kind)
-      ? {
-          approval: {
-            approvedVersion: item.approvedVersion,
-            approvedAt: item.approvedAt,
-          },
-        }
-      : {}),
-  };
-}
-
-function documentKey(projectId: string, item: ProjectArtifact): string {
-  return roomDocumentKey(
-    projectId,
-    item.kind.startsWith(MATERIAL_TAB) ? { ...item, kind: MATERIAL } : item,
-  );
-}
-
-/** A filed document as an approval lists it, with its In short section once its body has loaded. */
-function shownDocument(
-  item: ProjectArtifact,
-  state: DeliverableState | undefined,
-): ShownDocument {
-  const summary =
-    state?.status === "ready" && state.document.mediaType === "text/markdown"
-      ? inShort(state.document.content)
-      : undefined;
-  return summary === undefined ? item : { ...item, summary };
 }
 
 const MODEL_CHOICE_REFUSALS: ReadonlySet<string> = new Set([
@@ -375,11 +263,6 @@ export type ReadyRoomProps = StageWorkspaceProps & LoadedRoom;
 const NO_STEPS: ReadonlyMap<number, readonly ConversationPart[]> = new Map();
 const NO_RUNS: ReadonlyMap<string, InFlightRun> = new Map();
 const NO_SIGHTINGS: ReadonlyMap<string, Sighting> = new Map();
-// A live run hands its steps over again on each render, as new arrays of the same parts.
-const sameParts = (
-  kept: readonly ConversationPart[],
-  next: readonly ConversationPart[],
-) => kept.length === next.length && kept.every((part, at) => part === next[at]);
 
 export function useRoomGate({
   projectId,
@@ -564,13 +447,10 @@ export function useRoom({
     () => screensFor(selection.data ?? {}),
     [selection.data],
   );
-  // The coder's filed app source is the resume point for a later coder, not a document to read.
-  const artifacts = snapshot.artifacts
-    .filter((item) => item.kind !== "app")
-    .map(paneArtifact);
+  const artifacts = paneArtifacts(snapshot.artifacts);
   const documents = snapshot.documents;
   const shownDocuments = artifacts.map((item) =>
-    shownDocument(item, documents[documentKey(projectId, item)]),
+    shownDocument(item, documents[paneDocumentKey(projectId, item)]),
   );
   const [liveRun, setLiveRun] = useState<LiveRun>(emptyLiveRun);
   // Kept stable, so an open screen reads the project's values once rather than on every render.
@@ -619,12 +499,9 @@ export function useRoom({
   // Once per outage: each failed poll is a new error, and a dismissed toast stays dismissed.
   useEffect(() => {
     if (!decisions.isError) return;
-    toast.error(
-      humanFault(decisions.error, "Open decisions could not be read."),
-      {
-        id: "waits-read",
-      },
-    );
+    toast.error(humanFault(decisions.error, wording.approval.notRead), {
+      id: "waits-read",
+    });
   }, [decisions.isError]);
   // Undefined until read: an unread list is not one with nothing open.
   const waits = decisions.data;
@@ -672,10 +549,14 @@ export function useRoom({
       : undefined;
   // A screen asking the person to accept something takes their comments, as their typed words, as
   // the changes they want in place of accepting.
+  const screenAsks =
+    screenQuestion === undefined
+      ? undefined
+      : screenWords(screenQuestion.asked.plugin, screenQuestion.asked.action);
   const screenDecides =
-    screenQuestion !== undefined &&
-    screenWords(screenQuestion.asked.plugin, screenQuestion.asked.action)
-      ?.decides === true;
+    screenQuestion !== undefined && screenAsks?.decides === true;
+  // What the open screen asks of the prompt box, as the composer's placeholder says it.
+  const screenReply = screenAsks?.reply;
   // A document opened from the screen waiting in the box, so the plan can say it waits on the
   // person while that screen stays unanswered.
   const [openedFromScreen, setOpenedFromScreen] = useState<{
@@ -772,22 +653,20 @@ export function useRoom({
   );
   // What this session watched the coordinator do wins; a reply from before it has its saved calls.
   const coordinatorSteps = useSavedRunSteps(runTenantId, runId);
-  const turns = useMemo(() => {
-    const saved = savedTurnSteps(
-      coordinatorSteps.steps,
-      mirror.flatMap((turn) => (turn.role === "assistant" ? [turn.at] : [])),
-    );
-    return withPendingSends(mirror, composer.sent).map((turn) => {
-      if (turn.parts !== undefined || turn.role !== "assistant") return turn;
-      const steps = stepsByAt.get(turn.at) ?? saved.get(turn.at);
-      return steps === undefined
-        ? turn
-        : {
-            ...turn,
-            parts: [...steps, { kind: "text" as const, text: turn.text }],
-          };
-    });
-  }, [mirror, composer.sent, coordinatorSteps.steps, stepsByAt]);
+  const turns = useMemo(
+    () =>
+      withSteps(
+        withPendingSends(mirror, composer.sent),
+        stepsByAt,
+        savedTurnSteps(
+          coordinatorSteps.steps,
+          mirror.flatMap((turn) =>
+            turn.role === "assistant" ? [turn.at] : [],
+          ),
+        ),
+      ),
+    [mirror, composer.sent, coordinatorSteps.steps, stepsByAt],
+  );
   // What each of the coordinator's calls returned, saved or as this session watched it.
   const coordinatorResults = new Map([
     ...savedResults(coordinatorSteps.steps),
@@ -807,64 +686,45 @@ export function useRoom({
     projectId,
     documentApprovals,
   );
-  // A card decided here is already its settled line; the pending read lags behind it.
   const pendingFrom = (list: readonly Wait[]): OpenApproval[] =>
-    documentApprovalsFrom(list).filter(
-      (approval) =>
-        !settledApprovals.some(
-          (item) => item.approvalId === approval.approvalId,
-        ),
-    );
+    pendingApprovalsFrom(list, settledApprovals);
   const pendingApprovals = waits === undefined ? undefined : pendingFrom(waits);
   const openApprovalIds = new Set(
     pendingApprovals?.map((approval) => approval.approvalId),
   );
-  // Until the open decisions are read, no approval is known to hold the coordinator. An open
-  // question holds it too, though its message run stays open while it waits.
-  const parked =
-    openQuestion !== undefined ||
-    (waits !== undefined && parkedOnApproval(waits, openApprovalIds, runId));
+  const phase = roomPhase({
+    status,
+    bound: events !== null,
+    mirror,
+    lastTurnRole: turns.at(-1)?.role,
+    liveRun,
+    runId,
+    waits,
+    openApprovals: openApprovalIds,
+    questionOpen: openQuestion !== undefined,
+    coordinator: activity.data?.agents.find(
+      (agent) => agent.role === "coordinator",
+    ),
+    sending,
+    approvalBusy,
+    failed: composer.failed,
+    awaitingSince: composer.awaitingSince,
+    startFault,
+    modelNeeded: modelNeeded !== null,
+    providerMissing,
+  });
+  const { streaming, thinking } = phase;
   const liveTurn = pendingLiveTurn(liveRun, mirror);
-  const streaming = liveTurnStreaming(liveRun, mirror, parked);
-  const shownTurns =
-    liveTurn === null
-      ? turns
-      : [
-          ...turns,
-          {
-            role: "assistant" as const,
-            text: liveTurn.text,
-            at: -1,
-            parts: liveTurn.parts,
-            streaming,
-          },
-        ];
+  const shownTurns = withLiveTurn(turns, liveTurn, streaming);
   const lastShown = shownTurns.at(-1);
   const replies =
     lastShown?.role === "assistant" && !streaming && !sending
       ? suggestedReplies(lastShown.text)
       : [];
-  const agents = activity.data?.agents;
-  const coordinator = agents?.find((agent) => agent.role === "coordinator");
-  // Mid-turn by the hub's read: the coordinator's run began after the last end this stream saw.
-  // The stream's own flag is not used; a frame missed while the tab is hidden leaves it set.
-  const working =
-    coordinator !== undefined &&
-    (liveRun.endedAt === null ||
-      Date.parse(coordinator.since) > liveRun.endedAt);
-  // The engine treats the first id as history and every later change as a
-  // send: it pins that turn and reserves space under it. A turn loaded from
-  // the mirror is not a send. Passing it pins the old message and the reserve
-  // grows without a bound.
-  const sentId =
-    composer.sent.length === 0
-      ? undefined
-      : turns.reduce<string | undefined>((found, turn, index) => {
-          return turn.role === "person" ? turnItemId(turn, index) : found;
-        }, undefined);
+  const sentId = sentItemId(turns, composer.sent.length > 0);
   const [retryingKey, setRetryingKey] = useState<string | null>(null);
   const retryDocument = async (item: ProjectArtifact) => {
-    const key = documentKey(projectId, item);
+    const key = paneDocumentKey(projectId, item);
     if (documents[key]?.status !== "error") return;
     setRetryingKey(key);
     try {
@@ -878,7 +738,7 @@ export function useRoom({
   const documentState = (
     item: ProjectArtifact,
   ): DeliverableState | undefined => {
-    const key = documentKey(projectId, item);
+    const key = paneDocumentKey(projectId, item);
     if (retryingKey === key) return { status: "loading" };
     return documents[key];
   };
@@ -934,7 +794,7 @@ export function useRoom({
     choice: "yes" | "always" | "no";
     message?: string;
   }): Promise<"saved" | "settled" | { fault: string }> => {
-    const notSaved = { fault: "That decision was not saved." };
+    const notSaved = { fault: wording.approval.notSaved };
     const cachedWaits = queryClient.getQueryData<readonly Wait[]>(
       keys.openDecisions.of(projectId),
     );
@@ -1027,15 +887,10 @@ export function useRoom({
         at: new Date().toISOString(),
       };
     };
-  const openApproval = pendingApprovals?.find(
-    (approval) => approval.packages === undefined,
-  );
+  const openApproval = openApprovalOf(pendingApprovals);
   // The message names the pick. Resolves to the fault the person sees, or null once it is sent.
   const chooseApproach = async (message: string): Promise<string | null> => {
-    const currentApprovals = await readPendingApprovals();
-    const currentOpen = currentApprovals?.find(
-      (approval) => approval.packages === undefined,
-    );
+    const currentOpen = openApprovalOf(await readPendingApprovals());
     return chooseApproachWithOpenApproval({
       openApprovalId: currentOpen?.approvalId,
       deliver: () => composer.mail(message),
@@ -1054,10 +909,7 @@ export function useRoom({
       if (sent && clearComposer) composer.setText("");
       return sent;
     }
-    const currentApprovals = await readPendingApprovals();
-    const currentOpen = currentApprovals?.find(
-      (approval) => approval.packages === undefined,
-    );
+    const currentOpen = openApprovalOf(await readPendingApprovals());
     return deliverWithOpenApproval({
       openApprovalId: currentOpen?.approvalId,
       decide: onDecideApproval,
@@ -1068,10 +920,7 @@ export function useRoom({
   };
   const sendFiles = async () => {
     if (sending) return false;
-    const currentApprovals = await readPendingApprovals();
-    const currentOpen = currentApprovals?.find(
-      (approval) => approval.packages === undefined,
-    );
+    const currentOpen = openApprovalOf(await readPendingApprovals());
     return deliverWithOpenApproval({
       openApprovalId: currentOpen?.approvalId,
       decide: onDecideApproval,
@@ -1104,24 +953,13 @@ export function useRoom({
   const requestChanges = () => {
     setChangesAsked(true);
   };
-  const unbound = events === null;
-  const composerWaits = sending || approvalBusy || unbound;
-  const composerDisabled = composerWaits || providerMissing;
+  const { composerDisabled, awaitingBind } = phase;
   useEffect(() => {
     if (!changesAsked || composerDisabled) return;
     setChangesAsked(false);
     composer.inputRef.current?.focus();
   }, [changesAsked, composerDisabled]);
 
-  // A project that has talked before is between coordinators (an upgrade, a reopen): its thread
-  // stays and reads as the coordinator at work, not as a project starting from nothing.
-  const between =
-    unbound && mirror.length > 0 && startFault === null && modelNeeded === null;
-  const awaitingBind =
-    status === "active" &&
-    unbound &&
-    startFault === null &&
-    modelNeeded === null;
   useEffect(() => {
     if (!awaitingBind) return;
     const timer = setInterval(() => reloadRef.current(), BIND_POLL_MS);
@@ -1148,24 +986,6 @@ export function useRoom({
       setRestoring(false);
     }
   };
-  const held =
-    openQuestion !== undefined ||
-    (waits !== undefined &&
-      waitingOnPerson(waits, openApprovalIds, runId, liveRun.running));
-  const awaiting =
-    awaitingReply(
-      composer.awaitingSince,
-      turns.at(-1)?.role,
-      liveRun.endedAt,
-      parked,
-    ) &&
-    !archived &&
-    startFault === null &&
-    modelNeeded === null;
-  // The mark stays for the whole turn: between model calls and during long tool work the live
-  // reply shows nothing moving.
-  const thinking =
-    !composer.failed && (sending || awaiting || (working && !held) || between);
   // Each concept's option is its own tab beside the others, never an ordinary document.
   const options = artifacts.filter((item) => item.kind === DESIGN_OPTION);
   const paneDeliverables = documentsForPane(
@@ -1191,25 +1011,14 @@ export function useRoom({
       () => true,
     ),
   );
-  const unseenRuns = [...runCards.values()]
-    .filter(
-      (run) =>
-        !dispatches.some((dispatch) =>
-          dispatch.runId === undefined
-            ? dispatch.role === run.role
-            : dispatch.runId === run.runId,
-        ),
-    )
-    .map((run) => ({
-      at: Date.parse(run.startedAt),
-      dispatch: runDispatch(run),
-    }));
+  const unseenRuns = unseenRunsOf(runCards.values(), dispatches);
+  const allDispatches = [
+    ...dispatches,
+    ...unseenRuns.map(({ dispatch }) => dispatch),
+  ];
   // When this session first saw each hand-off, so the document it files reads as its result.
   const dispatchSeen = useSessionMemory(NO_SIGHTINGS, (known) =>
-    noteDispatches(known, snapshot.artifacts, [
-      ...dispatches,
-      ...unseenRuns.map(({ dispatch }) => dispatch),
-    ]),
+    noteDispatches(known, snapshot.artifacts, allDispatches),
   );
   // Every card with a run streams its steps and what it is producing from the moment the call that
   // started it returns, rather than once the room's next read lists it at work, and a step it takes
@@ -1221,8 +1030,8 @@ export function useRoom({
     ended: runsEnded,
   } = useRunStreams(
     runTenantId,
-    [...dispatches, ...unseenRuns.map(({ dispatch }) => dispatch)].flatMap(
-      (dispatch) => (dispatch.runId === undefined ? [] : [dispatch.runId]),
+    allDispatches.flatMap((dispatch) =>
+      dispatch.runId === undefined ? [] : [dispatch.runId],
     ),
     new Set(
       inFlight.flatMap((run) =>
@@ -1257,13 +1066,7 @@ export function useRoom({
     previews,
     steps: runSteps,
     asked: askedOf(waits),
-    ended: new Map([
-      ...runsEnded,
-      ...[...stoppedHere].map((stopped): [string, RunEnd] => [
-        stopped,
-        { status: "cancelled" },
-      ]),
-    ]),
+    ended: endedRuns(runsEnded, stoppedHere),
     onOpenDocument: (kind) => {
       // The app's source is read as the running app.
       if (kind === "app") return openProject(LIVE_TAB);
@@ -1283,8 +1086,7 @@ export function useRoom({
   };
   const cards = filedDispatches(dispatchRoom, dispatches, unseenRuns);
   const design = artifacts.find((item) => item.kind === "design");
-  // The design a review screen shows: the newest design option, else the filed design. Only an option is approved there: the hub records the choice
-  // from the answer.
+  // The design a review screen shows: the newest design option, else the filed design.
   const reviewed = options.at(-1) ?? design;
   const reviewedState =
     reviewed === undefined ? undefined : documentState(reviewed);
@@ -1296,17 +1098,6 @@ export function useRoom({
     () => (reviewedContent === undefined ? null : parseBundle(reviewedContent)),
     [reviewedContent],
   );
-  const reviewApproval = (
-    item: ProjectArtifact,
-  ): ReviewedDesign["approval"] => {
-    if (item.kind === DESIGN_OPTION) return { option: item.artifactId };
-    return {
-      unavailable:
-        item.approvedVersion === item.version
-          ? wording.designReview.approved
-          : wording.designReview.noOption,
-    };
-  };
   const reviewedDesign = (): ReviewedDesign | null => {
     if (reviewed === undefined || reviewedFiles === null) return null;
     return {
@@ -1506,11 +1297,9 @@ export function useRoom({
   const commentDrafts = useCommentDrafts(session, {
     question: openQuestion !== undefined && !screenDecides,
     approval: openApproval !== undefined,
-    sending: sending || approvalBusy,
+    sending: phase.busy,
     approvalOpenNow: async () =>
-      (await readPendingApprovals())?.some(
-        (approval) => approval.packages === undefined,
-      ) ?? false,
+      openApprovalOf(await readPendingApprovals()) !== undefined,
     mail: (message, clearBox) =>
       screenDecides
         ? deliver(message, clearBox)
@@ -1552,7 +1341,7 @@ export function useRoom({
         ? null
         : wording.earlierDocument.restarts(restartedWork(restarting)),
     thinking,
-    dispatches: [...dispatches, ...unseenRuns.map(({ dispatch }) => dispatch)],
+    dispatches: allDispatches,
     dispatchRoom,
     failed: snapshot.failed,
     lastSentAt: lastSentAt(composer.awaitingSince, turns),
@@ -1560,77 +1349,6 @@ export function useRoom({
     seen,
     hasApp: liveApp !== null,
   });
-  const dock = (): RoomDock => {
-    if (archived)
-      return {
-        kind: "archived",
-        restoring,
-        fault: restoreFault,
-        onRestore: () => void restore(),
-      };
-    // A coordinator with no model to run on cannot answer, even one still bound from before.
-    if (modelNeeded !== null && !providerMissing)
-      return {
-        kind: "modelNeeded",
-        message: modelNeeded.message,
-        onOpenSettings,
-        onRetry: () => void startCoordinator(),
-      };
-    // The person does not start the coordinator by typing: an unbound room waits for the
-    // start that opening it asked for, and a refused start says why and offers it again.
-    if (unbound && !providerMissing && !between) {
-      if (startFault === null) return { kind: "starting" };
-      return {
-        kind: "startFailed",
-        message: startFault,
-        onRetry: () => void startCoordinator(),
-      };
-    }
-    return {
-      kind: "composer",
-      ...composer.box,
-      onSend: send,
-      placeholder: composerPlaceholder({
-        approvalOpen: openApproval !== undefined,
-        questionsOpen: openQuestion !== undefined,
-        screenReply:
-          openQuestion !== undefined && showsScreen(openQuestion)
-            ? screenWords(
-                openQuestion.asked.plugin,
-                openQuestion.asked.action ?? "",
-              )?.reply
-            : undefined,
-        facts: promptBox.facts,
-        nothingFiled: nothingYet,
-      }),
-      working: promptBox.working,
-      busy: sending || approvalBusy,
-      disabled: composerWaits,
-      needsProvider: providerMissing,
-      onEnableAi: () => setEnablingAi(true),
-      restarts: promptBox.restarts,
-      status: promptBox.status,
-      onStop: promptBox.onStop,
-      suggestedReplies: replies,
-      onReply: (reply) => void deliver(reply),
-      // Words typed or comments beside a screen asking to approve something ask for changes instead.
-      sendLabel:
-        promptBox.decides &&
-        (composer.text.trim() !== "" || (commentDrafts.box?.count ?? 0) > 0)
-          ? wording.promptBox.waiting.makeChanges
-          : null,
-      ...(commentDrafts.box === null
-        ? {}
-        : {
-            comments: commentDrafts.box.count,
-            commentsBlocked: commentDrafts.box.blocked,
-            commentsSending: commentDrafts.box.sending,
-            onSendComments: commentDrafts.box.onSend,
-            onShowComments: commentDrafts.box.onShow,
-            onRemoveComments: commentDrafts.box.onRemove,
-          }),
-    };
-  };
   const paneDocuments = paneDeliverables.map((item) =>
     paneDocument(item, seen),
   );
@@ -1690,7 +1408,33 @@ export function useRoom({
         },
         empty: emptyConversation(),
       },
-      dock: dock(),
+      dock: roomDock({
+        archived,
+        restore: {
+          restoring,
+          fault: restoreFault,
+          onRestore: () => void restore(),
+        },
+        modelNeeded: modelNeeded?.message ?? null,
+        providerMissing,
+        startFault,
+        onOpenSettings,
+        onRetryStart: () => void startCoordinator(),
+        phase,
+        composer: {
+          box: composer.box,
+          onSend: send,
+          onEnableAi: () => setEnablingAi(true),
+          suggestedReplies: replies,
+          onReply: (reply) => void deliver(reply),
+          approvalOpen: openApproval !== undefined,
+          questionOpen: openQuestion !== undefined,
+          screenReply,
+          nothingFiled: nothingYet,
+          promptBox,
+          comments: commentDrafts.box,
+        },
+      }),
       sidebar,
       waiting: promptBox.waiting,
       space:
@@ -1762,16 +1506,3 @@ export function useRoom({
     questionOutcomes: outcomes,
   };
 }
-
-/** When the person last wrote: their latest turn, or a send this session has not seen land yet. */
-function lastSentAt(
-  awaitingSince: number | null,
-  turns: readonly TranscriptTurn[],
-): number | null {
-  const wrote = turns.findLast((turn) => turn.role === "person")?.at;
-  if (wrote === undefined) return awaitingSince;
-  return awaitingSince === null ? wrote : Math.max(wrote, awaitingSince);
-}
-
-// A screen that shows more of the design takes the mockup's place.
-const documentTab = (id: string) => (id === "design" ? MOCKUP_TAB : id);

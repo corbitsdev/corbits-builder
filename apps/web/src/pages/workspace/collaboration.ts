@@ -4,6 +4,7 @@
  * draws. What the person reads is titles only — never ids.
  */
 import type { PartTool, ToolApprovalStatus } from "@corbits/react-ui";
+import type { Wait } from "../../api/types.ts";
 import { wording } from "../../config.ts";
 
 export type DocumentApproval = {
@@ -17,6 +18,46 @@ export type DocumentApproval = {
   /** How the native record settled it, once it is no longer pending. */
   outcome?: ApprovalOutcome;
 };
+
+/** An approval still pending, with the tenant its native record lives in. */
+export type OpenApproval = DocumentApproval & { readonly tenantId: string };
+
+/** The open decisions that are approvals, each as its card shows it. */
+export function documentApprovalsFrom(waits: readonly Wait[]): OpenApproval[] {
+  return waits.flatMap((wait): OpenApproval[] => {
+    if (wait.approvalId === undefined || wait.tenantId === undefined) return [];
+    const at =
+      wait.createdAt === undefined ? Number.NaN : Date.parse(wait.createdAt);
+    return [
+      {
+        approvalId: wait.approvalId,
+        tenantId: wait.tenantId,
+        ...(Number.isNaN(at) ? {} : { at }),
+        ...(wait.toolName === undefined ? {} : { toolName: wait.toolName }),
+        ...(wait.subject === undefined ? {} : { subject: wait.subject }),
+        ...(wait.packages === undefined ? {} : { packages: wait.packages }),
+      },
+    ];
+  });
+}
+
+/** The approvals still pending. A card decided here is already its settled line; the pending read lags behind it. */
+export function pendingApprovalsFrom(
+  waits: readonly Wait[],
+  settled: readonly DocumentApproval[],
+): OpenApproval[] {
+  return documentApprovalsFrom(waits).filter(
+    (approval) =>
+      !settled.some((item) => item.approvalId === approval.approvalId),
+  );
+}
+
+/** The pending approval a message answers: the first that is not a request to install packages. */
+export function openApprovalOf(
+  approvals: readonly OpenApproval[] | undefined,
+): OpenApproval | undefined {
+  return approvals?.find((approval) => approval.packages === undefined);
+}
 
 export type ApprovalOutcome = {
   readonly status: Exclude<ToolApprovalStatus, "pending">;

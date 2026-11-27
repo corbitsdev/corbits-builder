@@ -5,8 +5,6 @@
 import type { ProjectArtifact } from "@corbits-builder/client";
 import type { DesignConcept } from "./design-concept.ts";
 
-export const DESIGN_OPTION = "design_option";
-
 /**
  * The concepts with a filed option whose design is read, in the order the person was asked about
  * them. Directions come only from the hand-offs this room has seen.

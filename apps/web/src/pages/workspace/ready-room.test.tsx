@@ -12,7 +12,6 @@ import { keys } from "../../queries/keys.ts";
 import { useRolesAtWork } from "./project-activity.ts";
 import { StageWorkspace } from "./index.tsx";
 import type { RoomSnapshot } from "./load-room.ts";
-import { paneDocument, tabbedArtifacts } from "./room.model.ts";
 
 const projectId = "project-1";
 
@@ -218,22 +217,6 @@ describe("project room", () => {
     expect(queryClient.getQueryCache().getAll().length).toBeGreaterThan(10);
   });
 
-  test("an approval package is a document only while stakeholder approvals are on", () => {
-    const filed = (kind: string) => ({
-      artifactId: kind,
-      kind,
-      title: kind,
-      version: 1,
-      sha256: "a".repeat(64),
-      filedAt: "2026-10-30T12:00:00.000Z",
-    });
-    const artifacts = [filed("problem_brief"), filed("approval_package")];
-    const kinds = (approvals: "on" | "off") =>
-      tabbedArtifacts(artifacts, approvals).map((item) => item.kind);
-    expect(kinds("on")).toEqual(["problem_brief", "approval_package"]);
-    expect(kinds("off")).toEqual(["problem_brief"]);
-  });
-
   test("a failed activity read is not nobody at work", async () => {
     function Roles() {
       const roles = useRolesAtWork(projectId);
@@ -261,23 +244,4 @@ describe("project room", () => {
     idle.setQueryData(keys.projectActivity.of(projectId), { agents: [] });
     expect(render(idle)).toContain("at work: </p>");
   });
-});
-
-test("a document revised after the person approved it is shown at its newest version, with no approval of an older one named", () => {
-  const revised = paneDocument(
-    {
-      artifactId: "44444444-4444-4444-8444-444444444444",
-      kind: "product_requirements",
-      title: "Product requirements",
-      version: 2,
-      sha256: "0".repeat(64),
-      filedAt: new Date(20).toISOString(),
-      approvedVersion: 1,
-    },
-    { "44444444-4444-4444-8444-444444444444": 1 },
-  );
-  expect(revised.status).toBe(wording.documentStatus.approved(2));
-  expect(revised.status).not.toContain("v1");
-  // The viewer read v1; v2 is new to them, so the tab opens on it unread.
-  expect(revised.unread).toBe(true);
 });

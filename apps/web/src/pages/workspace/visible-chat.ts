@@ -296,6 +296,67 @@ export function turnItemId(turn: TranscriptTurn, index: number): string {
   return `${turn.role}:${String(turn.at)}:${String(index)}`;
 }
 
+/**
+ * Each committed reply with its thinking and tool work before its text: what this session watched
+ * the coordinator do wins, and a reply from before it has its saved calls. A turn that already
+ * carries its parts, or has none known, stays as it is.
+ */
+export function withSteps(
+  turns: readonly TranscriptTurn[],
+  watched: ReadonlyMap<number, readonly ConversationPart[]>,
+  saved: ReadonlyMap<number, readonly ConversationPart[]>,
+): TranscriptTurn[] {
+  return turns.map((turn) => {
+    if (turn.parts !== undefined || turn.role !== "assistant") return turn;
+    const steps = watched.get(turn.at) ?? saved.get(turn.at);
+    return steps === undefined
+      ? turn
+      : {
+          ...turn,
+          parts: [...steps, { kind: "text" as const, text: turn.text }],
+        };
+  });
+}
+
+/** The turns, then the live reply the mirror has not committed yet, while there is one. */
+export function withLiveTurn(
+  turns: TranscriptTurn[],
+  live: {
+    readonly text: string;
+    readonly parts: readonly ConversationPart[];
+  } | null,
+  streaming: boolean,
+): TranscriptTurn[] {
+  return live === null
+    ? turns
+    : [
+        ...turns,
+        {
+          role: "assistant" as const,
+          text: live.text,
+          at: -1,
+          parts: live.parts,
+          streaming,
+        },
+      ];
+}
+
+/**
+ * The person's latest turn, as the conversation engine names it, once this session has sent one.
+ * The engine treats the first id as history and every later change as a send: it pins that turn
+ * and reserves space under it. A turn loaded from the mirror is not a send. Passing it pins the old
+ * message and the reserve grows without a bound.
+ */
+export function sentItemId(
+  turns: readonly TranscriptTurn[],
+  sentHere: boolean,
+): string | undefined {
+  if (!sentHere) return undefined;
+  return turns.reduce<string | undefined>((found, turn, index) => {
+    return turn.role === "person" ? turnItemId(turn, index) : found;
+  }, undefined);
+}
+
 export function turnLabel(turn: {
   readonly role: "person" | "assistant" | "participant";
   readonly sender?: string;

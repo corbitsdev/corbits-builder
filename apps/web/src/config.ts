@@ -1018,6 +1018,10 @@ export const wording = {
     decline: "Decline",
     /** The composer's placeholder while an approval is open: a message declines it, with these words as the reason. */
     composerPlaceholder: "Or say what to do instead…",
+    /** The open decisions could not be read, so no card can be offered. */
+    notRead: "Open decisions could not be read.",
+    /** A decision on an approval card did not reach the hub. */
+    notSaved: "That decision was not saved.",
     /** In the prompt box, the ask to run a shell command; the command shows beneath. */
     run: "Allow this command to run?",
     /** Before a command line in the prompt box, as a terminal shows one. */

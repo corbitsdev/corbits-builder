@@ -212,6 +212,12 @@ export function committedSteps(
   return steps;
 }
 
+// A live run hands its steps over again on each render, as new arrays of the same parts.
+export const sameParts = (
+  kept: readonly ConversationPart[],
+  next: readonly ConversationPart[],
+) => kept.length === next.length && kept.every((part, at) => part === next[at]);
+
 /**
  * What still stands in the log: every segment after the last committed one,
  * merged into one turn. Null when nothing does.

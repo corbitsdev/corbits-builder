@@ -12,6 +12,7 @@ import {
   type FailedRun,
   type InFlightRun,
 } from "@corbits-builder/schemas/artifact";
+import type { Wait } from "../../api/types.ts";
 import { wording } from "../../config.ts";
 import type { CallResult } from "./live-run.ts";
 import { withEntries } from "./session-memory.ts";
@@ -446,4 +447,63 @@ export function runDispatch(run: InFlightRun): Dispatch {
     pending: false,
     ...(run.concept === undefined ? {} : { concept: run.concept }),
   };
+}
+
+/** What each run held on an open approval asked the person, by run id: its packages, else its tool. */
+export function askedOf(
+  waits: readonly Wait[] | undefined,
+): Map<string, string> {
+  const asked = new Map<string, string>();
+  for (const wait of waits ?? []) {
+    if (wait.approvalId === undefined) continue;
+    if (wait.packages !== undefined)
+      asked.set(wait.runId, text.asked.install(wait.packages));
+    else if (wait.toolName !== undefined)
+      asked.set(
+        wait.runId,
+        text.asked.tool(
+          wait.toolName
+            .slice(wait.toolName.lastIndexOf(".") + 1)
+            .replaceAll("_", " "),
+        ),
+      );
+  }
+  return asked;
+}
+
+/**
+ * The runs no hand-off in view names, each placed at its start: a hand-off names its run by id,
+ * or by its role while the call has not said which run it started.
+ */
+export function unseenRuns(
+  runs: Iterable<InFlightRun>,
+  handoffs: readonly Dispatch[],
+): PlacedDispatch[] {
+  return [...runs]
+    .filter(
+      (run) =>
+        !handoffs.some((dispatch) =>
+          dispatch.runId === undefined
+            ? dispatch.role === run.role
+            : dispatch.runId === run.runId,
+        ),
+    )
+    .map((run) => ({
+      at: Date.parse(run.startedAt),
+      dispatch: runDispatch(run),
+    }));
+}
+
+/** How each run ended, by run id: a run the person stopped here reads as stopped before it has wound down. */
+export function endedRuns(
+  ended: ReadonlyMap<string, RunEnd>,
+  stoppedHere: ReadonlySet<string>,
+): Map<string, RunEnd> {
+  return new Map([
+    ...ended,
+    ...[...stoppedHere].map((stopped): [string, RunEnd] => [
+      stopped,
+      { status: "cancelled" },
+    ]),
+  ]);
 }
