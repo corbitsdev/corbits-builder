@@ -80,7 +80,9 @@ A section, panel or dialog that reads the hub for itself is split the same way.
 - `bun run boundaries` keeps the shell below the pages, so only `App.tsx`,
   `App.model.ts` and `main.tsx` import from `pages/`; keeps each folder under
   `pages/` from importing another, so what two share sits directly in
-  `pages/`; and keeps modules out of import cycles, type-only ones included.
+  `pages/`; keeps a model from importing anything but types from a `.tsx`
+  file, so a hook or helper a model needs lives in a plain `.ts` module; and
+  keeps modules out of import cycles, type-only ones included.
 
 ## Every artifact kind is a first-class document
 
