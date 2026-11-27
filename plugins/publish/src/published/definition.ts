@@ -27,8 +27,8 @@ export const text = {
   status: {
     unpublished: PUBLISH,
     publishing: "Publishing…",
-    stalled: CARRY_ON,
-    needsYou: "Publish · needs you",
+    stalled: "Publishing paused",
+    needsYou: "Publishing needs you",
     published: "Published",
     changes: PUBLISH_CHANGES,
     failed: "Publish failed",
@@ -36,8 +36,9 @@ export const text = {
     takeDownFailed: "Take-down failed",
     // While the link to keep an app on a temporary account works, whatever the state.
     keep: KEEP_YOUR_APP,
-    // Replaces Published once the deadline to keep the app passed: it may have been removed.
-    keepPassed: "Time to keep it is up",
+    // Replaces Published once the deadline to keep the app passed: it may have been removed, and
+    // only the person can say whether they kept it.
+    keepPassed: "Check your app",
   } satisfies Record<PublishState["state"] | "keep" | "keepPassed", string>,
   unpublished: {
     title: "Publish your app",
@@ -161,7 +162,7 @@ const statusOf = ({ state, keep }: Publishing): ScreenStatus => {
   if (keep !== null && !keep.passed)
     return { label: text.status.keep, mark: "needs_you" };
   if (keep !== null && state.state === "published")
-    return { label: text.status.keepPassed };
+    return { label: text.status.keepPassed, mark: "needs_you" };
   const mark = MARK[state.state];
   return mark === undefined
     ? { label: text.status[state.state] }
@@ -179,8 +180,9 @@ export default defineScreen({
     says: { label: () => text.tab },
     summary:
       "Shows the person where the app is published, with the way to publish it, publish its changes or take it down.",
-    when: "The project has a saved app and a ready-made plan in the publish group is installed.",
-    unless: "There is no saved app, or nowhere to publish it.",
+    when: "The project has an app filed after its checks passed and a ready-made plan in the publish group is installed.",
+    unless:
+      "No app has been filed yet, as while the first build is under way, or there is nowhere to publish it.",
     fields: {},
   },
 });

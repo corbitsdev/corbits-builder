@@ -31,11 +31,15 @@ let actions: ReadonlyMap<
   { role: string; kind: string | undefined; says: Says | undefined }
 > = new Map();
 
-/** What a person reads of a screen in the conversation's map, from its definition. */
+/** What a person reads of a screen in the conversation, from its definition. */
 export type ScreenWords = {
   label: (input: unknown) => string | undefined;
   chose: (output: unknown) => string | undefined;
   reply: string | undefined;
+  /** The screen asks the person to accept something, such as approving a document. */
+  decides: boolean;
+  /** The kind of filed artifact the screen shows more of, when it says. */
+  shows: string | undefined;
 };
 let screens: ReadonlyMap<string, ScreenWords> = new Map();
 
@@ -124,6 +128,8 @@ export function installRoles({
               : chose(output);
           },
           reply,
+          decides: screen.decision !== undefined,
+          shows: screen.shows,
         };
         return [[`${builder.handle} ${action}`, words] as const];
       }),

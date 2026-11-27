@@ -1,7 +1,8 @@
 /**
- * A written document's sections beside its page: the document's name, then each section under a
- * thin rail. The section being read is lifted onto the page colour, and a section someone has
- * commented on carries a comment mark.
+ * A written document's sections beside its page, under a thin rail. The section being read is
+ * shaded, and a section someone has commented on carries a comment mark. The toggle that folds the
+ * list away stands in the row of Download and Share, so the list opens beneath that row and
+ * closes up into it.
  */
 import { MessageSquare } from "lucide-react";
 import { wording } from "../../config.ts";
@@ -16,56 +17,51 @@ export type DocumentSection = {
 };
 
 export function DocumentContents({
-  title,
+  id,
+  open,
   sections,
   current,
   onOpen,
 }: {
-  title: string;
+  /** What the toggle names as the part it opens and closes. */
+  id: string;
+  open: boolean;
   sections: readonly DocumentSection[];
   /** The section being read, by its anchor; null at the top of the page. */
   current: string | null;
-  /** Scrolls the page to a section, or to its top for null. */
-  onOpen: (id: string | null) => void;
+  /** Scrolls the page to a section. */
+  onOpen: (id: string) => void;
 }) {
   const words = wording.documentViewer;
   return (
     <nav
+      id={id}
       className={styles.contents}
       data-slot="document-contents"
+      data-open={open ? "" : undefined}
       aria-label={words.contentsLabel}
     >
-      <p className={styles.label}>{words.contents}</p>
-      <button
-        type="button"
-        className={styles.document}
-        onClick={() => onOpen(null)}
-      >
-        {title}
-      </button>
-      {sections.length === 0 ? null : (
-        <ol className={styles.sections}>
-          {sections.map((section) => (
-            <li key={section.id}>
-              <button
-                type="button"
-                className={styles.section}
-                aria-current={section.id === current ? "location" : undefined}
-                onClick={() => onOpen(section.id)}
-              >
-                <span className={styles.name}>{section.title}</span>
-                {section.commented ? (
-                  <MessageSquare
-                    size={14}
-                    aria-label={words.commented}
-                    role="img"
-                  />
-                ) : null}
-              </button>
-            </li>
-          ))}
-        </ol>
-      )}
+      <ol className={styles.sections}>
+        {sections.map((section) => (
+          <li key={section.id}>
+            <button
+              type="button"
+              className={styles.section}
+              aria-current={section.id === current ? "location" : undefined}
+              onClick={() => onOpen(section.id)}
+            >
+              <span className={styles.name}>{section.title}</span>
+              {section.commented ? (
+                <MessageSquare
+                  size={14}
+                  aria-label={words.commented}
+                  role="img"
+                />
+              ) : null}
+            </button>
+          </li>
+        ))}
+      </ol>
     </nav>
   );
 }

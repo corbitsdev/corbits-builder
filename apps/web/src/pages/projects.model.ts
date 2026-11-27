@@ -4,7 +4,8 @@
  * becomes the project's first conversation message once the coordinator
  * binds, which the workspace sends on arrival.
  */
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { toast } from "sonner";
 import type { ProjectImport } from "@corbits-builder/schemas/project-import";
 import {
@@ -13,7 +14,7 @@ import {
   type SuggestedReason,
 } from "@corbits-builder/schemas/repository-import";
 import { wording } from "../config.ts";
-import { ApiFailure } from "../api/types.ts";
+import { ApiFailure, type ProjectSummary } from "../api/types.ts";
 import {
   createProject,
   importProject,
@@ -27,17 +28,39 @@ import {
   readDirectory,
   type PickedDirectory,
 } from "../api/repository.ts";
+import {
+  ROOM_NARROW_QUERY,
+  SIDEBAR_KEY,
+  useSidebar,
+} from "../sidebar-setting.ts";
+import { writeStoredPreference } from "../stored-preference.ts";
+import { composerKey, moveUnsent, useUnsent } from "../unsent.ts";
 import { canStartProject } from "./home-view.ts";
 import { useNewProjectProfiles } from "./new-project-profiles.model.ts";
 import type { AddProviderDialogProps } from "./settings/add-provider-dialog.model.ts";
+import type { SettingsTab } from "./settings/settings.view.tsx";
 import type { FolderReading, ProjectsViewProps } from "./projects.view.tsx";
+import { useCoverPages } from "./project-cover.model.ts";
+import { libraryProject } from "./project-library.model.ts";
 
 export type ProjectsProps = {
   onOpen: (projectId: string, openingMessage?: string) => void;
   onChanged: () => void;
+  onOpenSettings: (tab?: SettingsTab) => void;
   /** No model provider holds a usable key, so a project cannot start yet. */
   needsProvider: boolean;
+  /** Every project the person can see; the ones last worked on show as cards under the prompt. */
+  projects: readonly ProjectSummary[];
+  /** Opens the Projects page, where every project is. */
+  onOpenLibrary: () => void;
 };
+
+/** How many of the projects last worked on show as cards under the prompt. */
+const RECENT_CARDS = 4;
+
+// Kept apart from every project's own box, since the project does not exist yet; a start that
+// fails leaves it here for the next.
+const STARTING_KEY = "unsent:composer:starting";
 
 // A folder read as a project, with the files the reading suggests leaving out, ticked from the
 // start, which the person can keep.
@@ -93,20 +116,49 @@ const failure = (cause: unknown) =>
 export function useProjects({
   onOpen,
   onChanged,
+  onOpenSettings,
   needsProvider,
+  projects,
+  onOpenLibrary,
 }: ProjectsProps): {
   view: ProjectsViewProps;
   /** The dialog the page's offer to connect a provider opens. */
   providerDialog: AddProviderDialogProps;
 } {
   const [idea, setIdea] = useState("");
+  // What the person types into the room while it starts, until the project it belongs to exists.
+  const [followUp, setFollowUp] = useUnsent(STARTING_KEY);
   const [activity, setActivity] =
     useState<ProjectsViewProps["activity"]>("idle");
+  const sidebar = useSidebar(ROOM_NARROW_QUERY);
   const [connecting, setConnecting] = useState(false);
   // A new project starts on the preferred profile until the person picks another.
   const profiles = useNewProjectProfiles();
   const [picked, setPicked] = useState<string>();
   const profile = picked ?? profiles.preferred;
+  const recent = projects
+    .filter((project) => project.archivedAt === null)
+    .toSorted((a, b) => b.lastActivityAt.localeCompare(a.lastActivityAt))
+    .slice(0, RECENT_CARDS);
+  const covers = useCoverPages(
+    recent.map((project) => project.id),
+    true,
+  );
+
+  // The start the starting room stands for. Leaving the room lets it go: the project is still
+  // made, and listed, but the person is not taken into it.
+  const shownStart = useRef<symbol | null>(null);
+  useEffect(
+    () => () => {
+      shownStart.current = null;
+    },
+    [],
+  );
+  const leaveStart = () => {
+    shownStart.current = null;
+    setIdea("");
+    setActivity("idle");
+  };
 
   const start = async () => {
     if (activity !== "idle") return;
@@ -114,22 +166,43 @@ export function useProjects({
       toast.error(wording.message.projectEmpty);
       return;
     }
-    setActivity("starting");
+    // The page turns into the room as it goes, the box gliding to the foot, where the browser can
+    // carry it across and the person has not asked for less motion.
+    const glide =
+      typeof document.startViewTransition === "function" &&
+      !matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (glide)
+      document.startViewTransition(() =>
+        flushSync(() => setActivity("starting")),
+      );
+    else setActivity("starting");
+    const shown = Symbol("start");
+    shownStart.current = shown;
+    const opening = idea.trim();
     try {
-      const opening = idea.trim();
       const created = await createProject({
         problemStatement: opening,
         ...(profile === undefined ? {} : { profile }),
       });
-      setIdea("");
+      moveUnsent(STARTING_KEY, composerKey(created.projectId));
+      // A new project has nothing in its sidebar yet, so it opens on the conversation.
+      writeStoredPreference(SIDEBAR_KEY, "closed");
       onChanged();
+      if (shownStart.current !== shown) return;
+      setIdea("");
       // The hub mailed the opening sentence to the coordinator; the workspace
       // shows it until the conversation records it.
       onOpen(created.projectId, opening);
     } catch (cause) {
       toast.error(failure(cause));
+      // Left before it failed, the idea goes back in the box, unless something new is there.
+      if (shownStart.current !== shown)
+        setIdea((now) => (now === "" ? opening : now));
     } finally {
-      setActivity("idle");
+      if (shownStart.current === shown) {
+        shownStart.current = null;
+        setActivity("idle");
+      }
     }
   };
 
@@ -239,13 +312,32 @@ export function useProjects({
   return {
     view: {
       activity,
+      sidebar: {
+        open: sidebar.open,
+        drawer: sidebar.drawer,
+        onToggleSidebar: sidebar.toggle,
+        onHome: leaveStart,
+        onPreferences: () => {
+          leaveStart();
+          onOpenSettings("preferences");
+        },
+      },
       idea,
       onIdeaChange: setIdea,
+      followUp,
+      onFollowUpChange: setFollowUp,
       onStart: () => void start(),
       profiles: profiles.options,
       profile,
       onProfileChange: setPicked,
       needsProvider,
+      recent: recent.map((project, index) =>
+        libraryProject(project, covers.pages[index]!),
+      ),
+      onCoverNear: covers.onNear,
+      onOpenLibrary:
+        projects.length > recent.length ? onOpenLibrary : undefined,
+      onOpenProject: (projectId) => onOpen(projectId),
       onConnectProvider: () => setConnecting(true),
       onImportFile: (file) => void chooseImport(file),
       onPickFolder: canPickDirectory() ? () => void pickFolder() : null,

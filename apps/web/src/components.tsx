@@ -1,13 +1,14 @@
-import { type ComponentProps, type ReactNode } from "react";
+import { Fragment, type ComponentProps, type ReactNode } from "react";
 import { Loader2 } from "lucide-react";
 import {
   Badge,
   Button as UiButton,
   Select,
+  ShimmerText,
   StatusDot,
   type StatusDotTone,
 } from "@corbits/react-ui";
-import { MenuItem } from "@corbits/react-ui/ui/menu";
+import { MenuContent, MenuItem } from "@corbits/react-ui/ui/menu";
 import corbitsMark from "./assets/corbits-mark.svg";
 import { wording } from "./config.ts";
 import styles from "./components.module.css";
@@ -189,6 +190,29 @@ export function BannerAction({ children }: { children: ReactNode }) {
   );
 }
 
+/**
+ * Words for work under way, such as Thinking or a running step's Working: the text colour with a
+ * lighter band sweeping through. Without motion they are plain text colour.
+ */
+export function WorkingText({
+  role,
+  children,
+}: {
+  role?: "status";
+  children: string;
+}) {
+  return (
+    <span className={styles.working}>
+      <ShimmerText
+        {...(role === undefined ? {} : { role })}
+        className={styles.sweep}
+      >
+        {children}
+      </ShimmerText>
+    </span>
+  );
+}
+
 /** A short status or explanation in supporting text, beside or under what it is about. */
 export function InlineNote({
   as: Tag = "p",
@@ -251,6 +275,19 @@ export function Field({ children }: { children: ReactNode }) {
   );
 }
 
+/** A menu's panel as the room draws it: roomy, in groups, lifted like the room's cards. */
+export function MenuPanel(
+  props: Omit<ComponentProps<typeof MenuContent>, "className">,
+) {
+  return (
+    <MenuContent
+      {...props}
+      className={styles.menuPanel}
+      data-slot="menu-panel"
+    />
+  );
+}
+
 /** A menu item that destroys or removes something, in the destructive colour. */
 export function DangerMenuItem(
   props: Omit<ComponentProps<typeof MenuItem>, "className">,
@@ -263,6 +300,29 @@ export function MenuItemLabel({ children }: { children: ReactNode }) {
   return (
     <span className={styles.menuItemLabel} data-slot="menu-item-label">
       {children}
+    </span>
+  );
+}
+
+/** What something does, then the keys that do it too, each drawn as a key; any one of them will do. */
+export function KeyHint({
+  label,
+  keys,
+}: {
+  label: string;
+  keys: readonly string[];
+}) {
+  return (
+    <span className={styles.keyHint} data-slot="key-hint">
+      {label}
+      <span className={styles.keys}>
+        {keys.map((key, index) => (
+          <Fragment key={key}>
+            {index === 0 ? null : wording.keyHint.or}
+            <kbd className={styles.key}>{key}</kbd>
+          </Fragment>
+        ))}
+      </span>
     </span>
   );
 }

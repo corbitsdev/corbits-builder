@@ -20,18 +20,28 @@
   margin-inline: auto;
 }
 
-/* The pane's whole page: the pane is the frame, so only a phone keeps edges, at its sides. */
+/* The pane's whole page, framed as a page inside Builder, or edge to edge with the pane as its
+   frame, where only a phone keeps edges, at its sides. */
 .preview[data-fill] {
+  /* 1 frames the preview; 0 fills the pane. */
+  --framed: 1;
+
   flex: 1;
   min-height: 0;
+  padding: calc(var(--framed) * var(--space-3));
+  /* Its top edge is level with the sidebar card's, beside it. */
+  padding-block-start: calc(var(--framed) * var(--frame-edge, var(--space-3)));
+  /* Framed, the column at its right holds the bar of actions and the way back to the chat, a
+     44px bar or a 36px button with a margin either side, clear of the frame and its scrollbar. */
+  padding-inline-end: calc(var(--framed) * (2.75rem + 2 * var(--space-4)));
 }
 
 .preview[data-fill] > .bezel {
   display: flex;
   flex: 1;
   min-height: 0;
-  border: 0;
-  border-radius: 0;
+  border: calc(var(--framed) * 1px) solid var(--wb-border);
+  border-radius: calc(var(--framed) * var(--radius-lg));
 }
 
 .preview[data-fill][data-device="phone"] > .bezel {

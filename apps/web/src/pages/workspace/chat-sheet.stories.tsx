@@ -43,20 +43,27 @@ const ready = {
   },
 } satisfies Args["dock"];
 
-// A stand-in for the page the box sits under: a document in the room's own page, which hides
-// everything but the box while the chat is full screen.
+// A stand-in for the page the box sits under: a document in the room's own page.
 function Page({ children }: { children: ReactNode }) {
   return (
     <div style={{ position: "relative", height: "100vh" }}>
-      <div className={room.page} style={{ background: "var(--wb-frame)" }}>
-        <div className={room.pageScreen} style={{ overflow: "auto" }}>
+      <div className={room.page} style={{ background: "var(--wb-background)" }}>
+        <div
+          style={{
+            display: "flex",
+            flex: 1,
+            flexDirection: "column",
+            minHeight: 0,
+            overflow: "auto",
+          }}
+        >
           <article
             style={{
               width: "min(640px, calc(100% - 32px))",
               margin: "64px auto 0",
               padding: "40px 64px",
               flex: 1,
-              background: "var(--wb-pane)",
+              background: "var(--wb-background)",
               color: "var(--wb-foreground)",
             }}
           >
@@ -95,8 +102,6 @@ function Page({ children }: { children: ReactNode }) {
 
 type Args = Parameters<typeof RoomDockView>[0];
 
-const brief = { title: "Problem brief", version: "Version 2" };
-
 function Screen(args: Args) {
   const dock = args.dock.kind === "composer" ? args.dock : composer;
   const [text, setText] = useState(dock.text);
@@ -105,8 +110,9 @@ function Screen(args: Args) {
       <RoomDockView
         {...args}
         dock={{ ...dock, text, onTextChange: setText }}
-        // Full screen names the page above, from whichever state it was taken to.
-        chatStart={{ returnTo: brief, ...args.chatStart }}
+        // In the room, full screen puts the page away for the room's own conversation. Over the
+        // page the conversation is out of sight, so the pill says what is running.
+        chatStart={{ onFullScreen: fn(), saysWork: true, ...args.chatStart }}
       />
     </Page>
   );
@@ -141,14 +147,6 @@ export const ChatOpen: Story = {
   args: { ...whileWorking, chatStart: { defaultState: "open" } },
 };
 
-/** Full screen: only the way back down, and the page the person left named at the top. */
-export const FullScreen: Story = {
-  args: {
-    ...whileWorking,
-    chatStart: { defaultState: "full" },
-  },
-};
-
 /** Escape puts the chat back and the pill returns. */
 export const EscapeCloses: Story = {
   args: { ...whileWorking, chatStart: { defaultState: "open" } },
@@ -167,17 +165,36 @@ export const EscapeCloses: Story = {
   },
 };
 
-/** Pressing the pill opens the chat, and the handle on the sheet puts it back. */
+/** Work running over the page: the pill above the box says what it is, with the chat behind it. */
+export const WorkingOverPage: Story = { args: whileWorking };
+
+/** While work runs over the page, the pill says so, and pressing it opens the chat. */
 export const PressToOpen: Story = {
   args: whileWorking,
   play: async ({ canvasElement }) => {
-    const pillButton =
-      canvasElement.querySelector<HTMLElement>('[data-slot="pill"]');
-    if (pillButton === null) throw new Error("No pill");
-    await userEvent.click(pillButton);
+    const pill = canvasElement.querySelector<HTMLElement>('[data-slot="pill"]');
+    if (pill === null) throw new Error("No pill");
+    await userEvent.click(pill);
     // Shown once the room's page has faded in and the sheet has begun to open.
     await waitFor(() =>
       expect(within(canvasElement).getByRole("log")).toBeVisible(),
+    );
+  },
+};
+
+/**
+ * Where the conversation is the page, its own thinking says what is running, so no pill stands
+ * above the box repeating it: only the handle.
+ */
+export const WorkInSight: Story = {
+  args: { ...whileWorking, chatStart: { saysWork: false } },
+  play: async ({ canvasElement }) => {
+    await expect(canvasElement.querySelector('[data-slot="pill"]')).toBeNull();
+    // The handle fades in with the page, so it is looked for once the fade is done.
+    await waitFor(() =>
+      expect(
+        canvasElement.querySelector('[data-slot="pull-handle"]'),
+      ).toBeVisible(),
     );
   },
 };

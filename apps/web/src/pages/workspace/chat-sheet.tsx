@@ -1,8 +1,10 @@
 /**
- * The chat behind the prompt box. With nothing running, a pull handle sits on the box's top edge;
- * while work runs the status pill takes its place and does its job. Dragging either up, or
+ * The chat behind the prompt box. A pull handle sits on the box's top edge; dragging it up, or
  * pressing it, grows a sheet up around the box holding the conversation. Pulling it down, or
- * Escape, puts it back and the pill returns.
+ * Escape, puts it back. Over the project, where the conversation is out of sight, the status pill
+ * says what is running and opens the chat in the handle's place; where the conversation is the
+ * page, its own thinking says that, so only a pill with something to press, such as Open on a
+ * document that is ready, stands above the box, with the handle beneath.
  */
 import {
   useEffect,
@@ -17,9 +19,8 @@ import {
   type RefObject,
 } from "react";
 import { flushSync } from "react-dom";
-import { ArrowDown, ArrowLeft, Maximize2 } from "lucide-react";
+import { ArrowDown, Maximize2 } from "lucide-react";
 import { wording } from "../../config.ts";
-import { Pill } from "./pill.tsx";
 import { StatusPill, type StatusPillContent } from "./status-pill.tsx";
 import styles from "./chat-sheet.module.css";
 
@@ -81,36 +82,23 @@ export function PullHandle({
   );
 }
 
-/** While the chat is full screen, the way back to the page the person left, by name. */
-function ReturnPill({
-  title,
-  version,
-  onReturn,
-}: {
-  title: string;
-  version?: string | undefined;
-  onReturn: (event: MouseEvent<HTMLButtonElement>) => void;
-}) {
-  return (
-    <Pill as="button" aria-label={copy.chat.backTo(title)} onClick={onReturn}>
-      <ArrowLeft size={14} aria-hidden="true" />
-      <span className={styles.returnTitle}>{title}</span>
-      {version === undefined ? null : (
-        <span className={styles.returnVersion}>{version}</span>
-      )}
-    </Pill>
-  );
-}
-
-export type ChatSheetState = "closed" | "open" | "full";
+export type ChatSheetState = "closed" | "open";
 
 export type ChatSheetProps = {
   /** What is happening, in the pill above the box; null while nothing is. */
   status: StatusPillContent | null;
+  /**
+   * Whether the pill says what is running even with nothing to press: over the project, where the
+   * conversation that says so is out of sight. Absent, the conversation is in sight.
+   */
+  saysWork?: boolean | undefined;
   /** The conversation, oldest first; the sheet scrolls to its end. Absent, there is nothing to pull up. */
   children?: ReactNode;
-  /** The page the chat opened over, named on the way back from full screen. */
-  returnTo?: { title: string; version?: string | undefined } | undefined;
+  /**
+   * Takes the chat full screen: the room puts away what the sheet was pulled up over, and its own
+   * conversation fills the page. Absent, the sheet offers no full screen.
+   */
+  onFullScreen?: (() => void) | undefined;
   /** Where the sheet starts. The sheet is its own after that. */
   defaultState?: ChatSheetState | undefined;
   /** A pull held this far up, in pixels, as if the pointer were still down; a story draws a pull with it. */
@@ -120,60 +108,38 @@ export type ChatSheetProps = {
    * carries on typing; absent, it goes to the pill or handle that opens the chat again.
    */
   putBackTo?: RefObject<HTMLElement | null> | undefined;
+  /** Told when the chat is pulled up or put back, so the view under it leaves Escape to the chat. */
+  onUpChange?: ((up: boolean) => void) | undefined;
 };
 
 const reducedMotion = () =>
   typeof matchMedia === "function" &&
   matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-/** Skipped, as when another transition starts or the tab is hidden, the sheet has simply changed. */
-async function readyUnlessSkipped(transition: ViewTransition) {
-  try {
-    await transition.ready;
-  } catch (error) {
-    const skipped =
-      error instanceof DOMException &&
-      (error.name === "AbortError" || error.name === "InvalidStateError");
-    if (!skipped) throw error;
-  }
-}
-
-async function clearMorph(
-  transition: ViewTransition,
-  sheet: HTMLElement,
-  root: HTMLElement,
-) {
-  try {
-    await transition.finished;
-  } finally {
-    delete sheet.dataset.morph;
-    delete root.dataset.chatSheet;
-  }
-}
-
 /**
  * Grows up around the prompt box. `box` is the box itself, which never moves: the sheet reaches
  * past it by an even inset, so opening the chat changes nothing about where the person types.
  *
- * At rest the sheet is closed, open at the conversation's own height, or full screen. Between
- * closed and open it is moving: a pull or a spring sets the history's height straight on the
+ * At rest the sheet is closed or open at the conversation's own height; full screen is the
+ * room's own conversation, which `onFullScreen` goes back to. Between closed and open it is moving: a pull or a spring sets the history's height straight on the
  * element each frame, and the conversation is pinned to the box, so the newest line shows first
  * and anything taller fades out under the top edge rather than being cut.
  */
 export function ChatSheet({
   status,
+  saysWork = false,
   children,
-  returnTo,
+  onFullScreen,
   defaultState = "closed",
   defaultPull,
   putBackTo,
+  onUpChange,
   box,
 }: ChatSheetProps & { box: ReactNode }) {
   const historyId = useId();
   const [state, setState] = useState<ChatSheetState>(defaultState);
   const [moving, setMoving] = useState(defaultPull !== undefined);
   const [held, setHeld] = useState(defaultPull !== undefined);
-  const sheetRef = useRef<HTMLDivElement>(null);
   const edgeRef = useRef<HTMLDivElement>(null);
   const historyRef = useRef<HTMLDivElement>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
@@ -187,6 +153,9 @@ export function ChatSheet({
 
   const shown = state !== "closed" || moving;
   const hasChat = children !== undefined && children !== null;
+  useEffect(() => {
+    onUpChange?.(shown);
+  }, [onUpChange, shown]);
 
   // Pinned to the box, the history overflows upward, which scrollHeight does not count; how far
   // its header starts above or below its top edge says how tall it wants to be.
@@ -207,9 +176,9 @@ export function ChatSheet({
     height.current = next;
     const history = historyRef.current;
     if (history === null) return;
-    history.style.height = `${String(next)}px`;
     // The fade stops short of the newest line, which is the one a short pull is for, unless that
-    // line is itself only partly in: then it comes in faded rather than cut.
+    // line is itself only partly in: then it comes in faded rather than cut. Measured before the new
+    // height is set, so no frame forces a layout; the fade trails the height by one frame.
     const newestTop =
       messagesRef.current?.lastElementChild?.getBoundingClientRect().top ?? 0;
     const room = newestTop - history.getBoundingClientRect().top;
@@ -217,6 +186,7 @@ export function ChatSheet({
       0,
       Math.min(FADE_PX, overflow(history), room > 0 ? room : FADE_PX),
     );
+    history.style.height = `${String(next)}px`;
     history.style.setProperty("--fade", `${String(fade)}px`);
     // The edge comes in as the sheet leaves the box and goes as it comes back, so the sheet never
     // sits empty around the box, nor lingers faintly through the spring's last few pixels. A pill
@@ -230,10 +200,8 @@ export function ChatSheet({
   };
 
   /** Past the conversation's height the sheet gives less and less, rather than stopping dead. */
-  const resist = (next: number) => {
-    const top = openHeight();
-    return next > top ? top + Math.sqrt(next - top) * 4 : Math.max(0, next);
-  };
+  const resist = (next: number, top = openHeight()) =>
+    next > top ? top + Math.sqrt(next - top) * 4 : Math.max(0, next);
 
   const stopSpring = () => {
     if (spring.current !== null) cancelAnimationFrame(spring.current);
@@ -255,7 +223,8 @@ export function ChatSheet({
     let v = velocity;
     let last = performance.now();
     const step = (now: number) => {
-      const target = to === "open" ? openHeight() : 0;
+      const top = openHeight();
+      const target = to === "open" ? top : 0;
       const dt = Math.min(64, now - last) / 1000;
       last = now;
       // In small fixed steps: one long step after a slow frame would overshoot and ring.
@@ -268,7 +237,7 @@ export function ChatSheet({
         next += v * (dt / steps);
       }
       if (Math.abs(next - target) < 0.5 && Math.abs(v) < 20) return settle(to);
-      paint(resist(next));
+      paint(resist(next, top));
       spring.current = requestAnimationFrame(step);
     };
     spring.current = requestAnimationFrame(step);
@@ -282,36 +251,18 @@ export function ChatSheet({
     glide(to);
   };
 
-  /**
-   * Between the sheet and full screen, the sheet's edge travels to its new place over the page,
-   * which fades under it; the box and the newest lines stay where they are. From the keyboard it
-   * changes at once.
-   */
-  const morph = (to: ChatSheetState, animate: boolean) => {
-    if (to === "closed") refocus.current = "grip";
-    const apply = () =>
-      flushSync(() => {
-        settle(to === "closed" ? "closed" : "open");
-        if (to === "full") setState("full");
-      });
-    const sheet = sheetRef.current;
-    if (
-      !animate ||
-      reducedMotion() ||
-      sheet === null ||
-      !("startViewTransition" in document)
-    )
-      return apply();
-    // The direction goes on the root, where the transition's layers are styled from.
-    const root = document.documentElement;
-    sheet.dataset.morph = "";
-    root.dataset.chatSheet = to;
-    const transition = document.startViewTransition(apply);
-    void readyUnlessSkipped(transition);
-    void clearMorph(transition, sheet, root);
+  // The pull in progress; aborting it removes its window listeners.
+  const pull = useRef<AbortController>(null);
+  const stopAll = () => {
+    pull.current?.abort();
+    stopSpring();
   };
+  useEffect(() => stopAll, []);
 
-  useEffect(() => stopSpring, []);
+  // With no chat to hold, such as once the room's own conversation is back in sight, it is put away.
+  useLayoutEffect(() => {
+    if (!hasChat) settle("closed");
+  }, [hasChat]);
 
   // The first frame of a motion is painted before the history is shown and can be measured, so it
   // is painted again once it is. What a motion left on the elements is cleared in the same commit
@@ -331,7 +282,12 @@ export function ChatSheet({
     const active = document.activeElement;
     // Only when the control that had focus is gone, so a person typing keeps their place. A press
     // springs the sheet first, its control still in place, so the way back waits for it to settle.
-    if (active !== null && active !== document.body) {
+    // A control the sheet has hidden keeps focus until the browser next draws, so it is gone too.
+    if (
+      active !== null &&
+      active !== document.body &&
+      !(active instanceof HTMLElement && !active.checkVisibility())
+    ) {
       if (!moving) refocus.current = null;
       return;
     }
@@ -359,7 +315,6 @@ export function ChatSheet({
     const onKey = (event: globalThis.KeyboardEvent) => {
       if (event.key !== "Escape" || event.defaultPrevented) return;
       event.preventDefault();
-      if (state === "full") return setState("open");
       const active = document.activeElement;
       const inside = [historyRef, handleRef].some((ref) =>
         ref.current?.contains(active),
@@ -374,7 +329,7 @@ export function ChatSheet({
   // A pull follows the pointer from wherever the sheet is, even mid-spring. Letting go settles it
   // the way a flick was going, or, slower, past the threshold open and short of it closed.
   const startPull = (event: PointerEvent<HTMLButtonElement>) => {
-    if (event.button !== 0 || state === "full") return;
+    if (event.button !== 0) return;
     const pointer = event.pointerId;
     const startY = event.clientY;
     const from = moving ? height.current : state === "open" ? openHeight() : 0;
@@ -412,9 +367,7 @@ export function ChatSheet({
     };
     const end = (next: globalThis.PointerEvent) => {
       if (next.pointerId !== pointer) return;
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", end);
-      window.removeEventListener("pointercancel", end);
+      listening.abort();
       setHeld(false);
       if (!moved) return;
       // Held still before letting go, the pull has no speed left to hand on.
@@ -431,9 +384,13 @@ export function ChatSheet({
       refocus.current = opens ? "handle" : "grip";
       glide(opens ? "open" : "closed", velocity * 1000);
     };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", end);
-    window.addEventListener("pointercancel", end);
+    pull.current?.abort();
+    const listening = new AbortController();
+    pull.current = listening;
+    const { signal } = listening;
+    window.addEventListener("pointermove", move, { signal });
+    window.addEventListener("pointerup", end, { signal });
+    window.addEventListener("pointercancel", end, { signal });
   };
 
   const press = (event: MouseEvent<HTMLButtonElement>) => {
@@ -450,7 +407,7 @@ export function ChatSheet({
         : event.key === "ArrowDown" || event.key === "Home"
           ? "closed"
           : null;
-    if (to === null || state === "full") return;
+    if (to === null) return;
     event.preventDefault();
     if ((to === "open") !== shown) go(to, false);
   };
@@ -461,21 +418,25 @@ export function ChatSheet({
     onPointerDown: startPull,
     onKeyDown: keyPull,
   };
+  const handle = hasChat ? <PullHandle {...pullProps} onPress={press} /> : null;
+  // A pill with an action of its own does that when pressed, and is not the chat's control, so
+  // the handle stays beneath it: the chat never waits on the person pressing through actions.
+  const pill =
+    status === null || (status.onAction === undefined && !saysWork)
+      ? null
+      : status;
   const grip =
-    status === null ? (
-      hasChat ? (
-        <PullHandle {...pullProps} onPress={press} />
-      ) : null
-    ) : status.onAction !== undefined ? (
-      // A pill with an action of its own does that when pressed, and is not the chat's control, so
-      // the handle stays beneath it: the chat never waits on the person pressing through actions.
+    pill === null ? (
+      handle
+    ) : pill.onAction !== undefined ? (
       <>
-        <StatusPill {...status} onPress={status.onAction} />
-        {hasChat ? <PullHandle {...pullProps} onPress={press} /> : null}
+        <StatusPill {...pill} onPress={pill.onAction} />
+        {handle}
       </>
     ) : (
+      // With nothing of its own to do, the pill stands in for the handle and opens the chat.
       <StatusPill
-        {...status}
+        {...pill}
         {...(hasChat ? { ...pullProps, onPress: press } : {})}
       />
     );
@@ -483,28 +444,23 @@ export function ChatSheet({
   const sheetState = moving ? "moving" : state;
   return (
     <div
-      ref={sheetRef}
       className={styles.sheet}
       data-slot="chat-sheet"
       data-state={sheetState}
       data-held={held ? "" : undefined}
     >
-      <div ref={edgeRef} className={styles.edge} aria-hidden="true" />
-      {grip === null || (shown && !(moving && status !== null)) ? null : (
-        <div ref={gripRef} className={styles.grip}>
+      <div
+        ref={edgeRef}
+        className={styles.edge}
+        data-slot="chat-sheet-edge"
+        aria-hidden="true"
+      />
+      {grip === null || (shown && !(moving && pill !== null)) ? null : (
+        <div ref={gripRef} className={styles.grip} data-slot="chat-grip">
           {grip}
         </div>
       )}
-      {state === "full" && returnTo !== undefined ? (
-        <div className={styles.returnTo}>
-          <ReturnPill
-            title={returnTo.title}
-            version={returnTo.version}
-            onReturn={(event) => morph("closed", event.detail !== 0)}
-          />
-        </div>
-      ) : null}
-      {shown && state !== "full" ? (
+      {shown ? (
         <div ref={handleRef} className={styles.handleRow}>
           <PullHandle
             {...pullProps}
@@ -521,13 +477,13 @@ export function ChatSheet({
         hidden={!shown}
       >
         <header className={styles.header}>
-          {state === "full" ? null : (
+          {onFullScreen === undefined ? null : (
             <button
               type="button"
               className={styles.icon}
               aria-label={copy.chat.fullScreen}
               title={copy.chat.fullScreen}
-              onClick={(event) => morph("full", event.detail !== 0)}
+              onClick={onFullScreen}
             >
               <Maximize2 size={16} aria-hidden="true" />
             </button>
@@ -538,7 +494,6 @@ export function ChatSheet({
             aria-label={copy.chat.putBack}
             title={copy.chat.putBack}
             onClick={(event) => {
-              if (state === "full") return morph("closed", event.detail !== 0);
               refocus.current = "grip";
               go("closed", event.detail !== 0);
             }}
@@ -555,7 +510,9 @@ export function ChatSheet({
           {children}
         </div>
       </div>
-      <div className={styles.box}>{box}</div>
+      <div className={styles.box} data-slot="chat-sheet-box">
+        {box}
+      </div>
     </div>
   );
 }

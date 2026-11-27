@@ -464,7 +464,7 @@ test("a coder whose call returned is starting until its own run says otherwise, 
     ],
   });
   expect(deployed.status.state).toBe("starting");
-  expect(deployed.label).toBe("Coder · Changing the code");
+  expect(deployed.label).toBe("Changing the code");
 });
 
 test("a call that started a specialist stays with the words it led to when the next run starts first", () => {

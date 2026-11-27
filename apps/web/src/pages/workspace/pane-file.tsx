@@ -6,7 +6,7 @@
  */
 import JSZip from "jszip";
 import { useEffect, useRef } from "react";
-import { Download, Share } from "lucide-react";
+import { Download, Share2 } from "lucide-react";
 import { toast } from "sonner";
 import { wording } from "../../config.ts";
 import type { PaneBarGroup } from "./pane-bar.tsx";
@@ -88,7 +88,7 @@ async function builtOrReported(prepared: Prepared): Promise<Built | null> {
   }
 }
 
-type Built = { file: File; note?: string; stale?: boolean };
+type Built = { file: File; note: string; stale?: boolean };
 
 export type PaneFile = {
   type: string;
@@ -105,6 +105,40 @@ export type PaneFile = {
   build: () => Promise<Built>;
 };
 
+/**
+ * A file the pane already holds, given away as it is shown. Its toast names it by `title`, as the
+ * person knows it: the file's own name carries the whole project name and can run for lines.
+ */
+export const shownFile = (
+  file: File,
+  title: { name: string; version: number },
+  download: string,
+  share: string,
+): PaneFile => ({
+  type: file.type,
+  download,
+  share,
+  key: file.name,
+  prepare: "shown",
+  build: () =>
+    Promise.resolve({
+      file,
+      note: wording.paneFile.downloaded(title.name, title.version),
+    }),
+});
+
+/** A written document as the Markdown file the bar downloads and shares. */
+export const documentFile = (
+  file: File,
+  title: { name: string; version: number },
+) =>
+  shownFile(
+    file,
+    title,
+    wording.paneFile.downloadDocument,
+    wording.paneFile.shareDocument,
+  );
+
 // A file built on intent is reused only this long, so what a press gives away is never older.
 const INTENT_FRESH_MS = 30_000;
 
@@ -115,7 +149,11 @@ type Prepared = {
   ready?: Built;
 };
 
-export function useFileGroup(source: PaneFile | null): PaneBarGroup {
+/** `named` gives each action its short word too, for a place that shows it beside the icon. */
+export function useFileGroup(
+  source: PaneFile | null,
+  named = false,
+): PaneBarGroup {
   const prepared = useRef<Prepared | null>(null);
   const prepare = (file: PaneFile): Prepared => {
     const held = prepared.current;
@@ -144,9 +182,7 @@ export function useFileGroup(source: PaneFile | null): PaneBarGroup {
     const built = await builtOrReported(prepare(file));
     if (built === null) return;
     save(built.file);
-    (built.stale === true ? toast.warning : toast.success)(
-      built.note ?? wording.paneFile.downloaded(built.file.name),
-    );
+    (built.stale === true ? toast.warning : toast.success)(built.note);
   };
   // The build outlived the press, so sharing needs a press of its own.
   const offerShare = async (held: Prepared) => {
@@ -167,6 +203,7 @@ export function useFileGroup(source: PaneFile | null): PaneBarGroup {
     {
       id: "download",
       label: source.download,
+      ...(named ? { text: wording.paneFile.download } : {}),
       icon: <Download size={16} aria-hidden="true" />,
       onSelect: () => void download(source),
     },
@@ -175,7 +212,8 @@ export function useFileGroup(source: PaneFile | null): PaneBarGroup {
           {
             id: "share",
             label: source.share,
-            icon: <Share size={16} aria-hidden="true" />,
+            ...(named ? { text: wording.paneFile.share } : {}),
+            icon: <Share2 size={16} aria-hidden="true" />,
             onPrepare: () => {
               prepare(source);
             },

@@ -133,7 +133,7 @@ summary.checklistRow:hover {
 }
 
 /* Every state but the running app is one centred block in the empty pane, scrolling clear of the
-   floating bar when the pane is shorter than it. */
+   prompt box floating over its foot when the pane is shorter than it. */
 .state {
   display: flex;
   flex-direction: column;
@@ -142,13 +142,13 @@ summary.checklistRow:hover {
   width: min(100%, 40rem);
   margin: auto;
   padding: var(--space-6) var(--space-6)
-    calc(var(--space-6) + var(--pane-bar-height, 0px));
+    calc(var(--space-6) + var(--box-height, 0px));
   overflow: auto;
 }
 
 .app > [data-slot="sketching"] {
   justify-content: safe center;
-  padding-bottom: calc(var(--space-6) + var(--pane-bar-height, 0px));
+  padding-bottom: calc(var(--space-6) + var(--box-height, 0px));
   overflow: auto;
 }
 

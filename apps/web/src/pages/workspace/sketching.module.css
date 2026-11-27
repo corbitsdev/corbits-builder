@@ -1,4 +1,3 @@
-/* Drawn in the custom properties it is given, such as a concept's own theme, else the workspace's. */
 .sketching {
   display: flex;
   flex: 1;
@@ -8,7 +7,6 @@
   gap: var(--space-2);
   min-height: 0;
   padding: var(--space-6) var(--space-4);
-  font-family: var(--sketch-font, inherit);
   text-align: center;
 }
 
@@ -18,32 +16,23 @@
   width: min(22rem, 100%);
   margin-bottom: var(--space-3);
   padding: var(--space-4);
-  border: 1px solid
-    color-mix(in srgb, var(--sketch-primary, var(--wb-border)) 35%, transparent);
-  border-radius: var(--sketch-radius, var(--radius-panel));
-  background: var(--sketch-background, var(--wb-background));
+  border: 1px solid color-mix(in srgb, var(--wb-border) 35%, transparent);
+  border-radius: var(--radius-panel);
+  background: var(--wb-background);
 }
 
 .sketch > span,
 .sketchCards > span {
   display: block;
   height: 0.625rem;
-  border-radius: calc(var(--sketch-radius, 0.5rem) / 2);
-  background: color-mix(
-    in srgb,
-    var(--sketch-primary, var(--wb-muted-foreground)) 22%,
-    transparent
-  );
+  border-radius: 0.25rem;
+  background: color-mix(in srgb, var(--wb-muted-foreground) 22%, transparent);
   animation: sketch-pulse 1.8s ease-in-out infinite;
 }
 
 .sketch > .sketchBar {
   height: 1rem;
-  background: color-mix(
-    in srgb,
-    var(--sketch-primary, var(--wb-muted-foreground)) 45%,
-    transparent
-  );
+  background: color-mix(in srgb, var(--wb-muted-foreground) 45%, transparent);
 }
 
 .sketch > .sketchTitle {

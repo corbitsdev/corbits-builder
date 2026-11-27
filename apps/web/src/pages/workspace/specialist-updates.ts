@@ -11,7 +11,7 @@
 import { COORDINATOR_NOTE_LEAD } from "@corbits-builder/schemas/native-specialist";
 import { wording } from "../../config.ts";
 import type { ConversationThread } from "../../api/conversation.ts";
-import { roleLabel, roleOf } from "./roles.ts";
+import { roleOf } from "./roles.ts";
 import { visibleChatText } from "./visible-chat.ts";
 import { type } from "arktype";
 import { readJson } from "../../json.ts";
@@ -120,19 +120,23 @@ export function updateSubject(sender: string): string | undefined {
   return roleOf(sender)?.writesCode ? wording.buildSubject : undefined;
 }
 
-/** A group as the row the thread draws for it, named by its subject, else by who reported. */
+/**
+ * A group as the row the thread draws for it: named by its subject over the latest report's first
+ * line, else that line alone, never by who reported.
+ */
 export function updatesRow(
   group: UpdateGroup,
   subject: string | undefined,
 ): UpdatesRow {
   const latest = group.updates.at(-1);
+  const line = latest === undefined ? "" : summaryLine(latest.text);
   return {
     key: group.key,
-    title: wording.updates(
-      subject ?? roleLabel(group.sender),
-      group.updates.length,
-    ),
-    summary: latest === undefined ? null : summaryLine(latest.text),
+    title:
+      subject === undefined
+        ? line
+        : wording.updates(subject, group.updates.length),
+    summary: subject === undefined || latest === undefined ? null : line,
     reports: group.updates,
   };
 }

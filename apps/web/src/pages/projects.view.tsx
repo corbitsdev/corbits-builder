@@ -19,6 +19,9 @@ import { Dictated } from "../dictation.jsx";
 import { useShellReply } from "../flourish.tsx";
 import { Composer } from "../composer.tsx";
 import { HOME_COMPOSER_PLACEHOLDER } from "./home-view.ts";
+import { RoomSkeleton } from "./workspace/room-skeleton.tsx";
+import type { MarkWays } from "./workspace/sidebar-header.tsx";
+import { ProjectCards, type LibraryProject } from "./project-library.view.tsx";
 import styles from "./projects.module.css";
 
 /** A folder read as a project, in the words the page shows before importing it. */
@@ -42,9 +45,21 @@ export type FolderReading = {
 export type ProjectsViewProps = {
   /** What the page is busy with; the prompt and both imports wait until it is idle. */
   activity: "idle" | "starting" | "importing";
+  /**
+   * The sidebar as the person keeps it, for the room a starting project opens into. Leaving from
+   * its menu lets the project finish without opening it.
+   */
+  sidebar: MarkWays & {
+    open: boolean;
+    drawer: boolean;
+    onToggleSidebar: () => void;
+  };
   /** The idea in the prompt box. */
   idea: string;
   onIdeaChange: (idea: string) => void;
+  /** What is typed into the room's box while the project starts, for the room to send. */
+  followUp: string;
+  onFollowUpChange: (followUp: string) => void;
   onStart: () => void;
   /** The model profiles a project can start on; the picker is absent when there are none. */
   profiles: readonly PromptInputModelOption[];
@@ -52,6 +67,13 @@ export type ProjectsViewProps = {
   onProfileChange: (profile: string) => void;
   /** No model provider is connected, so the page offers to connect one first. */
   needsProvider: boolean;
+  /** The projects last worked on, latest first, as their cards show them; empty, none are listed. */
+  recent: readonly LibraryProject[];
+  /** A recent card's cover has come near the screen, so its mockup is read now. */
+  onCoverNear: (projectId: string) => void;
+  /** Opens the Projects page; absent when the recent cards already show every project. */
+  onOpenLibrary: (() => void) | undefined;
+  onOpenProject: (projectId: string) => void;
   onConnectProvider: () => void;
   onImportFile: (file: File) => void;
   /** Opens the browser's own folder picker; null where it has none, and the page lists a folder's files instead. */
@@ -75,13 +97,20 @@ export type ProjectsViewProps = {
 
 export function ProjectsView({
   activity,
+  sidebar,
   idea,
   onIdeaChange,
+  followUp,
+  onFollowUpChange,
   onStart,
   profiles,
   profile,
   onProfileChange,
   needsProvider,
+  recent,
+  onCoverNear,
+  onOpenLibrary,
+  onOpenProject,
   onConnectProvider,
   onImportFile,
   onPickFolder,
@@ -98,6 +127,21 @@ export function ProjectsView({
     if (shell.answers(idea)) return onIdeaChange("");
     onStart();
   };
+
+  // Once sent, the page becomes the room the project opens into: the sidebar beside it, the
+  // person's words at the top, the coordinator thinking under them, and the box at the foot.
+  if (starting)
+    return (
+      <div className={styles.starting} data-slot="starting-room">
+        <RoomSkeleton
+          title={idea.trim()}
+          opening={idea.trim()}
+          status={wording.newProject.starting}
+          draft={{ value: followUp, onValueChange: onFollowUpChange }}
+          sidebar={sidebar}
+        />
+      </div>
+    );
 
   return (
     <div className={styles.homePage} data-slot="home-page">
@@ -226,6 +270,36 @@ export function ProjectsView({
           </Banner>
         )}
         {folder === null ? null : <FolderBanner {...folder} busy={busy} />}
+        {/* With every project archived nothing is recent, but All projects is still the way to them. */}
+        {recent.length === 0 && onOpenLibrary === undefined ? null : (
+          <section
+            className={styles.recent}
+            aria-labelledby={recent.length === 0 ? undefined : "recent-title"}
+          >
+            <div className={styles.recentHead}>
+              {recent.length === 0 ? null : (
+                <h2 id="recent-title" className={styles.recentTitle}>
+                  {wording.shell.recentProjects}
+                </h2>
+              )}
+              {onOpenLibrary === undefined ? null : (
+                <Button variant="link" onClick={onOpenLibrary}>
+                  {wording.shell.allProjects}
+                </Button>
+              )}
+            </div>
+            {recent.length === 0 ? null : (
+              <ProjectCards
+                className={styles.recentCards}
+                projects={recent}
+                layout="grid"
+                stages={false}
+                onOpen={onOpenProject}
+                onCoverNear={onCoverNear}
+              />
+            )}
+          </section>
+        )}
       </section>
     </div>
   );

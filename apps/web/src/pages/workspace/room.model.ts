@@ -11,7 +11,6 @@ import type { AnswerOutcome } from "./question-outcome.tsx";
  * its room and starts its coordinator; `useRoom` works on the loaded snapshot.
  */
 import { wording } from "../../config.ts";
-import { useUnsent } from "../../unsent.ts";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   queryOptions,
@@ -21,12 +20,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import {
-  type AttachmentItem,
-  type AttachmentRejection,
-  type ConversationPart,
-  useAttachments,
-} from "@corbits/react-ui";
+import type { ConversationPart } from "@corbits/react-ui";
 import {
   heldOnApproval,
   projectActivityQuery,
@@ -38,10 +32,11 @@ import {
 import {
   dispatchLive,
   filedDispatches,
-  noteDispatch,
+  noteDispatches,
   partsDispatches,
   runDispatch,
   type DispatchRoom,
+  type Sighting,
   type RunEnd,
 } from "./dispatch-card.tsx";
 import { earlierDocumentRole, restartedWork } from "./earlier-document.ts";
@@ -51,8 +46,9 @@ import {
   type InFlightRun,
 } from "@corbits-builder/schemas/artifact";
 import { toast } from "sonner";
-import { sendMessage } from "../../api/conversation.ts";
-import { pluginSlots, type PluginSlots } from "./plugin-screens.tsx";
+import { inTab, pluginTabs, type SpaceScreenProps } from "./plugin-screens.tsx";
+import { useCommentDrafts, usePromptBox } from "./prompt-box.model.ts";
+import { acceptedMaterialsQuery, useComposer } from "./composer.model.ts";
 import { subscribeWorkflowRun } from "../../api/run-stream.ts";
 import {
   runStepsQuery,
@@ -65,14 +61,7 @@ import {
 import { stopRun } from "../../api/activity.ts";
 import { refusalBody } from "../../api/transport.ts";
 import {
-  acceptedMaterials,
   approveDocument,
-  attachMaterials,
-  declinePlanStep,
-  goAheadPlanStep,
-  restorePlanStep,
-  setPlanStepAskFirst,
-  removeMaterial,
   readArtifact,
   readProjectValues,
   runPluginAction,
@@ -88,9 +77,10 @@ import type { ChatMessage, Wait } from "../../api/types.ts";
 import {
   deliveredText,
   showsScreen,
+  type QuestionAnswer,
 } from "@corbits-builder/schemas/conversation";
 import { keys } from "../../queries/keys.ts";
-import { turnItemId } from "./transcript.tsx";
+import { turnItemId, type TranscriptTurn } from "./transcript.tsx";
 import { useQuestions } from "./questions.model.ts";
 import { useFiledVersions } from "./filed-versions.tsx";
 import { threadUpdates } from "./specialist-updates.ts";
@@ -102,9 +92,9 @@ import {
 } from "./typed-yes.tsx";
 import { chosenApproach } from "./approach-choice.ts";
 import {
-  DRAFT_TAB,
   followDeliverableId,
   LIVE_TAB,
+  MOCKUP_TAB,
   shownDeliverableId,
   type DocumentChoice,
 } from "./tab-follow.ts";
@@ -122,17 +112,12 @@ import {
   type LiveRun,
 } from "./live-run.ts";
 import { createRoomReloader } from "./room-reload.ts";
-import {
-  latestTurnAt,
-  SENDING,
-  withPendingSends,
-  type SentMessage,
-} from "./pending-sends.ts";
+import { withPendingSends } from "./pending-sends.ts";
 import { decideApproval, openDecisions } from "../../api/decisions.ts";
 import type { PaneDocument } from "./artifact-pane.tsx";
 import type { DeliverableState } from "./deliverable-block.tsx";
-import { formatPassageQuote, type PassageQuote } from "./passage-note.tsx";
-import { humanFault, humanFaultWithCode, responseCode } from "./human-fault.ts";
+import { formatPassageQuote, type PassageQuote } from "./passage-quote.ts";
+import { humanFault, humanFaultWithCode } from "./human-fault.ts";
 import { suggestedReplies } from "./suggested-replies.ts";
 import { visibleChatText } from "./visible-chat.ts";
 import {
@@ -143,10 +128,9 @@ import {
   roomSnapshotReady,
   type RoomSnapshot,
 } from "./load-room.ts";
-import { designDraftFiled, useDesignDraft } from "./design-preview.model.ts";
 import { useUserManual } from "./user-manual.model.ts";
 import { workUnitStanding } from "./work-unit-step.model.ts";
-import { conceptOfTab, conceptTab } from "./design-concept.ts";
+import { conceptTab } from "./design-concept.ts";
 import { designConcepts, DESIGN_OPTION } from "./design-concepts.model.ts";
 import { useLiveAppPresence } from "./live-app.model.ts";
 import { usePreference } from "../../queries/preferences.ts";
@@ -155,11 +139,6 @@ import {
   useSeenVersions,
   type SeenVersions,
 } from "./seen-versions.ts";
-import {
-  projectNextStepQuery,
-  useProjectNextStep,
-  type NextStepLineProps,
-} from "./next-step.model.ts";
 import { composerPlaceholder } from "./composer-placeholder.ts";
 import {
   needsModelSetup,
@@ -167,15 +146,21 @@ import {
 } from "../model-setup.model.ts";
 import { useModelCatalog } from "../settings/model-catalog.ts";
 import type { RoomContent, RoomDock } from "./room.view.tsx";
+import { useProjectSidebar } from "./project-sidebar.model.ts";
+import type { SettingsTab } from "../settings/settings.view.tsx";
+import type { MenuProject, ProjectMenuHost } from "../project-menu.model.ts";
 import { parseBundle } from "./design-bundle.ts";
+import { CommentCard } from "./comment-card.tsx";
 import { MockupFrame } from "./mockup-frame.tsx";
 import type {
   ChoosableConcept,
   HostSupplies,
+  ListedHostProps,
   ReviewedDesign,
-  ScreenQuestionProps,
   ShownDocument,
 } from "./screen-question.tsx";
+import type { RoomSession } from "./room-session.ts";
+import { useSessionMemory, withEntries } from "./session-memory.ts";
 import { inShort } from "@corbits-builder/schemas/in-short";
 import { roleOf, screenWords } from "./roles.ts";
 import { screensFor, selectionNames } from "./screens.ts";
@@ -196,15 +181,6 @@ const BIND_POLL_MS = 1_000;
 const BIND_WAIT_MS = 15_000;
 // After a run closes, the mirror's commit can trail its last frame.
 const SETTLE_RELOAD_MS = [1_000, 3_000, 7_000, 15_000];
-
-function acceptedMaterialsQuery(projectId: string) {
-  return queryOptions({
-    queryKey: keys.acceptedMaterials.of(projectId),
-    retry: false,
-    refetchOnWindowFocus: false,
-    queryFn: () => acceptedMaterials(projectId),
-  });
-}
 
 // Only an active project has a coordinator whose decisions can be open. The one room read never
 // shown from an earlier visit, saved or in memory: a card answered since would be offered again,
@@ -259,23 +235,6 @@ function askedOf(waits: readonly Wait[] | undefined): Map<string, string> {
   return asked;
 }
 
-function openingDraft(
-  projectId: string,
-  openingMessage: string | undefined,
-): SentMessage[] {
-  const text = openingMessage?.trim();
-  if (text === undefined || text.length === 0) return [];
-  return [
-    {
-      id: `opening:${projectId}`,
-      author: "me",
-      body: text,
-      at: new Date(0).toISOString(),
-      after: Number.NEGATIVE_INFINITY,
-    },
-  ];
-}
-
 // Every material shares one kind, but each file is its own tab, so the pane names it by its artifact.
 const MATERIAL = "material";
 const MATERIAL_TAB = `${MATERIAL}:`;
@@ -318,7 +277,6 @@ export function paneDocument(
         ? wording.documentStatus.drafted(item.version)
         : wording.documentStatus.approved(item.version),
     unread: seen[item.artifactId] !== item.version,
-    removable: item.kind.startsWith(MATERIAL_TAB),
     ...(isDocumentKind(item.kind)
       ? {
           approval: {
@@ -347,25 +305,6 @@ function shownDocument(
       ? inShort(state.document.content)
       : undefined;
   return summary === undefined ? item : { ...item, summary };
-}
-
-function rejectionText(
-  rejection: AttachmentRejection<File>,
-  limits: { maxFiles: number; maxFileBytes: number },
-): string {
-  if (rejection.reason === "too-many")
-    return wording.attach.tooMany(limits.maxFiles);
-  if (rejection.reason === "too-large")
-    return wording.attach.tooLarge(rejection.file.name, limits.maxFileBytes);
-  return wording.attach.duplicate(rejection.file.name);
-}
-
-async function attachFaultText(cause: unknown): Promise<string> {
-  const code = await responseCode(cause);
-  return (
-    (code === undefined ? undefined : wording.attach.fault[code]) ??
-    humanFault(cause, wording.attach.notSent)
-  );
 }
 
 const MODEL_CHOICE_REFUSALS: ReadonlySet<string> = new Set([
@@ -400,7 +339,11 @@ export type StageWorkspaceProps = {
   /** Whether the project list shows it archived, so an archive or restore made elsewhere is read again. */
   listedArchived?: boolean;
   onChanged: () => void;
-  onOpenSettings: () => void;
+  /** The project as its options menu reads it; absent until the project list has it. */
+  menuProject?: MenuProject;
+  onProjectError: (cause: unknown) => void;
+  onOpenSettings: (tab?: SettingsTab) => void;
+  onNewProject: () => void;
   /** The opening sentence the project was started with. It is not a stored
    *  artifact but the first conversation message, sent here once the
    *  coordinator binds. */
@@ -428,6 +371,15 @@ export type ReadyRoomProps = StageWorkspaceProps & LoadedRoom;
  * Reads the project and its room, and starts its coordinator, while the room shows its loading
  * or fault state; the room is ready only with a loaded snapshot.
  */
+const NO_STEPS: ReadonlyMap<number, readonly ConversationPart[]> = new Map();
+const NO_RUNS: ReadonlyMap<string, InFlightRun> = new Map();
+const NO_SIGHTINGS: ReadonlyMap<string, Sighting> = new Map();
+// A live run hands its steps over again on each render, as new arrays of the same parts.
+const sameParts = (
+  kept: readonly ConversationPart[],
+  next: readonly ConversationPart[],
+) => kept.length === next.length && kept.every((part, at) => part === next[at]);
+
 export function useRoomGate({
   projectId,
   listedArchived,
@@ -504,7 +456,6 @@ export function useRoomGate({
   // The room's other reads start with it, so the ready room mounts with them in hand.
   usePrefetchQuery(projectActivityQuery(projectId));
   usePrefetchQuery(projectRunStatesQuery(projectId));
-  usePrefetchQuery(projectNextStepQuery(projectId));
   usePrefetchQuery(acceptedMaterialsQuery(projectId));
   // A prefetch cannot wait on the project's status, so this read observes the decisions instead.
   useQuery(openDecisionsQuery(projectId, status === "active"));
@@ -564,7 +515,10 @@ export function useRoom({
   projectId,
   projectTitle,
   onChanged,
+  menuProject,
+  onProjectError,
   onOpenSettings,
+  onNewProject,
   openingMessage,
   status,
   runTenantId,
@@ -573,14 +527,13 @@ export function useRoom({
   refetchProject,
 }: ReadyRoomProps): {
   view: RoomContent;
-  /** The line above the conversation; null on an archived project, which has none. */
-  nextStep: NextStepLineProps | null;
+  /** The project's own menu, opened from its name in the sidebar; null until the list has it. */
+  projectMenu: ProjectMenuHost | null;
   enableAi: EnableAiDialogProps;
   /** The app the build plan builds, once one is filed. */
   liveApp: { projectId: string; builder: InFlightRun | undefined } | null;
-  pluginScreens: PluginSlots;
-  /** The coordinator's open question when its screen is placed over the whole room. */
-  pageScreen: ScreenQuestionProps | null;
+  /** The screen the plugin space shows; null while none waits. */
+  spaceScreen: SpaceScreenProps | null;
   questionOutcomes: ReadonlyMap<string, AnswerOutcome>;
 } {
   const queryClient = useQueryClient();
@@ -610,18 +563,6 @@ export function useRoom({
     () => screensFor(selection.data ?? {}),
     [selection.data],
   );
-  // The page screen the person closed to read the conversation, by its question's signal.
-  const [closedPage, setClosedPage] = useState<string | null>(null);
-  // What the open screen's decision sends back when the person presses Send, given what they typed.
-  const stagedSend = useRef<
-    ((message: string | undefined) => Promise<boolean>) | null
-  >(null);
-  // The items that send carries, such as "2 comments", which Send sends with nothing typed.
-  const [stagedItems, setStagedItems] = useState<string | null>(null);
-  const stagedReply =
-    stagedItems === null
-      ? undefined
-      : wording.questions.sendBackReply(stagedItems);
   // The coder's filed app source is the resume point for a later coder, not a document to read.
   const artifacts = snapshot.artifacts
     .filter((item) => item.kind !== "app")
@@ -641,6 +582,8 @@ export function useRoom({
   );
   const stakeholderApprovals =
     usePreference("experimental_approvals") === "yes" ? "on" : "off";
+  const documentGround =
+    usePreference("document_ground") === "grey" ? "grey" : "white";
   const seen = useSeenVersions();
   const [approvalBusy, setApprovalBusy] = useState(false);
   const [approvalError, setApprovalError] = useState<string | null>(null);
@@ -648,47 +591,25 @@ export function useRoom({
     null,
   );
   const [paneTab, setPaneTab] = useState<{ value: string } | null>(null);
+  // The tab the project view shows, which the sidebar marks while the view is open.
+  const [shownTab, setShownTab] = useState<string | null>(null);
   const documentPaneRef = useRef<HTMLElement>(null);
-  const composerRef = useRef<HTMLTextAreaElement>(null);
-  // Each committed reply's thinking and tool work, as this session watched it.
-  const stepsByAt = useRef(new Map<number, readonly ConversationPart[]>());
-  // When this session first saw each hand-off, so the document it files reads as its result.
-  const dispatchSeen = useRef<DispatchRoom["seen"]>(new Map());
-  // Every specialist run this session saw, so its card keeps its result after the run ends.
-  const runCards = useRef(new Map<string, InFlightRun>());
   // The runs the person stopped here, which read as stopped before they have wound down.
   const [stoppedHere, setStoppedHere] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
   // The project view open over the conversation.
   const [projectOpen, setProjectOpen] = useState(false);
-  const [sent, setSent] = useState<SentMessage[]>(() =>
-    openingDraft(projectId, openingMessage),
-  );
-  const [value, setValue] = useUnsent(`unsent:composer:${projectId}`);
-  const [sending, setSending] = useState(false);
-  const [sendFailed, setSendFailed] = useState(false);
-  const [sendFault, setSendFault] = useState<string | null>(null);
-  // When this session last sent the coordinator a message, until a run ends after it or it fails.
-  const [awaitingSince, setAwaitingSince] = useState<number | null>(null);
   const [enablingAi, setEnablingAi] = useState(false);
-  const accepted = useQuery(acceptedMaterialsQuery(projectId));
-  const limits = accepted.data;
-  const [files, setFiles] = useState<readonly AttachmentItem[]>([]);
-  const [attachFault, setAttachFault] = useState<string | null>(null);
-  const intake = useAttachments({
-    attachments: files,
-    ...(limits === undefined
-      ? {}
-      : { maxFiles: limits.maxFiles, maxFileBytes: limits.maxFileBytes }),
-  });
   const liveRunRef = useRef<LiveRun>(emptyLiveRun);
-  const committedAtRef = useRef<number | null>(null);
-  committedAtRef.current = latestAssistantAt(mirror);
+  // The stream folds each event against the latest committed reply, read once the render commits.
+  const committedAt = latestAssistantAt(mirror);
+  const committedAtRef = useRef(committedAt);
+  useEffect(() => {
+    committedAtRef.current = committedAt;
+  }, [committedAt]);
   const reportedFailure = useRef<number | null>(null);
   const rolesAtWork = useRolesAtWork(projectId);
-  // The line above the conversation is preference-gated; the placeholder is not.
-  const projectStatus = useProjectNextStep(projectId);
   const [gateDone, setGateDone] = useState(0);
   // The waits that belong to this project, from the open decisions.
   const decisions = useQuery(
@@ -727,7 +648,14 @@ export function useRoom({
       reloadRef.current = () => {};
     };
   }, [projectId, queryClient, status]);
-  const notSent = "That message was not sent.";
+  const composer = useComposer({
+    projectId,
+    openingMessage,
+    mirror,
+    onChanged,
+    reload: () => reloadRef.current(),
+  });
+  const { sending, setSending } = composer;
   const { questions, openQuestion, answer, outcomes } = useQuestions({
     projectId,
     runId,
@@ -737,35 +665,27 @@ export function useRoom({
     onChanged,
     setSending,
   });
-  const pageQuestion =
-    openQuestion !== undefined &&
-    showsScreen(openQuestion) &&
-    screenOf(openQuestion.asked)?.page === true
-      ? {
-          signalName: openQuestion.signalName,
-          asked: openQuestion.asked,
-        }
+  const screenQuestion =
+    openQuestion !== undefined && showsScreen(openQuestion)
+      ? openQuestion
       : undefined;
-  const pageOpen =
-    pageQuestion !== undefined && closedPage !== pageQuestion.signalName;
-
-  useEffect(() => {
-    setApprovalBusy(false);
-    setApprovalError(null);
-    setDocumentChoice(null);
-    setPaneTab(null);
-    setProjectOpen(false);
-    setSent(openingDraft(projectId, openingMessage));
-    setSendFailed(false);
-    setSendFault(null);
-    setAwaitingSince(null);
-    setFiles([]);
-    setAttachFault(null);
-    stepsByAt.current.clear();
-    dispatchSeen.current.clear();
-    runCards.current.clear();
-    setStoppedHere(new Set());
-  }, [projectId, openingMessage]);
+  // A screen asking the person to accept something takes their comments, as their typed words, as
+  // the changes they want in place of accepting.
+  const screenDecides =
+    screenQuestion !== undefined &&
+    screenWords(screenQuestion.asked.plugin, screenQuestion.asked.action)
+      ?.decides === true;
+  // A document opened from the screen waiting in the box, so the plan can say it waits on the
+  // person while that screen stays unanswered.
+  const [openedFromScreen, setOpenedFromScreen] = useState<{
+    signal: string;
+    id: string;
+  } | null>(null);
+  const waitsOn =
+    openedFromScreen !== null &&
+    screenQuestion?.signalName === openedFromScreen.signal
+      ? openedFromScreen.id
+      : null;
 
   // The durable mirror is the committed transcript. The stream fills the gap
   // while a message run is producing it, and says when to read the room
@@ -827,9 +747,6 @@ export function useRoom({
   // A dead run is not a quiet colleague. Say so once, and stop the thinking
   // mark, when the person is still waiting on a reply that will not come.
   useEffect(() => {
-    reportedFailure.current = null;
-  }, [projectId]);
-  useEffect(() => {
     if (!events || mirror.some((turn) => turn.role === "assistant")) return;
     const failure = [...events]
       .reverse()
@@ -838,19 +755,20 @@ export function useRoom({
       );
     if (!failure || reportedFailure.current !== null) return;
     reportedFailure.current = failure.seq;
-    setSendFailed(true);
     const detail = failure.body["message"];
     const visible = typeof detail === "string" ? visibleChatText(detail) : "";
     const message =
       visible.length > 0
         ? humanFault(new Error(visible), wording.message.coordinatorStopped)
         : wording.message.coordinatorStopped;
-    setSendFault(message);
+    composer.fail(message);
     toast.error(message);
   }, [events, mirror]);
 
-  for (const [at, parts] of committedSteps(liveRun, mirror))
-    stepsByAt.current.set(at, parts);
+  // Each committed reply's thinking and tool work, as this session watched it.
+  const stepsByAt = useSessionMemory(NO_STEPS, (known) =>
+    withEntries(known, committedSteps(liveRun, mirror), sameParts),
+  );
   // What this session watched the coordinator do wins; a reply from before it has its saved calls.
   const coordinatorSteps = useSavedRunSteps(runTenantId, runId);
   const turns = useMemo(() => {
@@ -858,9 +776,9 @@ export function useRoom({
       coordinatorSteps.steps,
       mirror.flatMap((turn) => (turn.role === "assistant" ? [turn.at] : [])),
     );
-    return withPendingSends(mirror, sent).map((turn) => {
+    return withPendingSends(mirror, composer.sent).map((turn) => {
       if (turn.parts !== undefined || turn.role !== "assistant") return turn;
-      const steps = stepsByAt.current.get(turn.at) ?? saved.get(turn.at);
+      const steps = stepsByAt.get(turn.at) ?? saved.get(turn.at);
       return steps === undefined
         ? turn
         : {
@@ -868,8 +786,7 @@ export function useRoom({
             parts: [...steps, { kind: "text" as const, text: turn.text }],
           };
     });
-    // The steps map only grows as the live run commits, which re-renders with a new mirror.
-  }, [mirror, sent, coordinatorSteps.steps]);
+  }, [mirror, composer.sent, coordinatorSteps.steps, stepsByAt]);
   // What each of the coordinator's calls returned, saved or as this session watched it.
   const coordinatorResults = new Map([
     ...savedResults(coordinatorSteps.steps),
@@ -898,10 +815,6 @@ export function useRoom({
         ),
     );
   const pendingApprovals = waits === undefined ? undefined : pendingFrom(waits);
-  const shownApprovals =
-    pendingApprovals === undefined
-      ? settledApprovals
-      : [...settledApprovals, ...pendingApprovals];
   const openApprovalIds = new Set(
     pendingApprovals?.map((approval) => approval.approvalId),
   );
@@ -943,7 +856,7 @@ export function useRoom({
   // the mirror is not a send. Passing it pins the old message and the reserve
   // grows without a bound.
   const sentId =
-    sent.length === 0
+    composer.sent.length === 0
       ? undefined
       : turns.reduce<string | undefined>((found, turn, index) => {
           return turn.role === "person" ? turnItemId(turn, index) : found;
@@ -969,130 +882,6 @@ export function useRoom({
     return documents[key];
   };
 
-  const mail = async (text: string) =>
-    (await sendMessage(projectId, text)).message;
-  const deliverMail = async (
-    body: string,
-    clearComposer = false,
-    post: (text: string) => Promise<ChatMessage> = mail,
-  ): Promise<boolean> => {
-    const text = body.trim();
-    if (text.length === 0 || sending) return false;
-    setSending(true);
-    setSendFailed(false);
-    setSendFault(null);
-    setAwaitingSince(Date.now());
-    // The person's words show the moment they send; the receipt replaces this stand-in.
-    const pending: SentMessage = {
-      id: `${SENDING}${String(Date.now())}`,
-      author: "me",
-      body: text,
-      at: new Date().toISOString(),
-      after: latestTurnAt(mirror),
-    };
-    setSent((previous) => [...previous, pending]);
-    if (clearComposer) setValue("");
-    try {
-      const message = await post(text);
-      setSent((previous) =>
-        previous.map((item) =>
-          item === pending ? { ...pending, ...message } : item,
-        ),
-      );
-      reloadRef.current();
-      onChanged();
-      return true;
-    } catch (cause) {
-      setAwaitingSince(null);
-      setSent((previous) => previous.filter((item) => item !== pending));
-      if (clearComposer)
-        setValue((current) => (current === "" ? text : current));
-      const message = await humanFaultWithCode(cause, notSent);
-      setSendFailed(true);
-      setSendFault(message);
-      toast.error(message);
-      return false;
-    } finally {
-      setSending(false);
-    }
-  };
-
-  const addFiles = (picked: ArrayLike<File>) => {
-    if (limits === undefined) return;
-    const { accepted: taken, rejected } = intake.add(picked);
-    let total = files.reduce((sum, item) => sum + item.size, 0);
-    const fitting = taken.filter((item) => {
-      if (total + item.size > limits.maxTotalBytes) return false;
-      total += item.size;
-      return true;
-    });
-    const refused = rejected[0];
-    if (refused !== undefined) setAttachFault(rejectionText(refused, limits));
-    else if (fitting.length < taken.length)
-      setAttachFault(wording.attach.tooLargeTotal(limits.maxTotalBytes));
-    else setAttachFault(null);
-    setFiles((current) => [...current, ...fitting]);
-  };
-
-  const deliverFiles = async (): Promise<boolean> => {
-    if (sending) return false;
-    const text = value.trim();
-    const attached = files;
-    setSending(true);
-    setSendFailed(false);
-    setSendFault(null);
-    setAwaitingSince(Date.now());
-    setAttachFault(null);
-    const pending: SentMessage = {
-      id: `${SENDING}${String(Date.now())}`,
-      author: "me",
-      body: text,
-      at: new Date().toISOString(),
-      after: latestTurnAt(mirror),
-      files: attached.map((item) => ({
-        kind: "file" as const,
-        name: item.name,
-        mediaType: item.mediaType,
-      })),
-    };
-    setSent((previous) => [...previous, pending]);
-    setValue("");
-    setFiles([]);
-    try {
-      await attachMaterials(
-        projectId,
-        attached.flatMap((item) =>
-          item.file === undefined ? [] : [item.file],
-        ),
-        text.length === 0 ? undefined : text,
-      );
-      // Without words the hub mails its own note naming the files, which the mirror shows.
-      if (text.length === 0)
-        setSent((previous) => previous.filter((item) => item !== pending));
-      reloadRef.current();
-      onChanged();
-      return true;
-    } catch (cause) {
-      setAwaitingSince(null);
-      setSent((previous) => previous.filter((item) => item !== pending));
-      setValue((current) => (current === "" ? text : current));
-      setFiles(attached);
-      setAttachFault(await attachFaultText(cause));
-      return false;
-    } finally {
-      setSending(false);
-    }
-  };
-
-  const addToComposer = (text: string) => {
-    setValue((current) =>
-      current.trim().length === 0 ? text : `${current.trimEnd()}\n\n${text}`,
-    );
-    composerRef.current?.focus();
-  };
-  const addToPrompt = (passage: PassageQuote) =>
-    addToComposer(formatPassageQuote(passage));
-
   // A park created moments after `inference.done` can already stand on the hub before the next
   // room reload lands; read once on demand when the cached list shows no open ask.
   const readPendingApprovals = async (): Promise<
@@ -1111,37 +900,18 @@ export function useRoom({
       return pendingApprovals;
     }
   };
+  const addToPrompt = (passage: PassageQuote) =>
+    composer.add(formatPassageQuote(passage));
   const chooseDocument = (id: string) =>
     setDocumentChoice({ id, filedCount: filed.length });
-  // An attached file taken back: its tab goes with the next room read, and the person hears so.
-  const removeAttachment = (id: string) => {
-    if (!id.startsWith(MATERIAL_TAB)) return;
-    const artifactId = id.slice(MATERIAL_TAB.length);
-    const item = paneDeliverables.find((entry) => entry.kind === id);
-    void takeBack(artifactId, item?.title);
-  };
-  const takeBack = async (artifactId: string, title: string | undefined) => {
-    try {
-      const removed = await removeMaterial(projectId, artifactId);
-      setDocumentChoice(null);
-      toast.success(
-        wording.removeAttachment.done(
-          title === undefined ? removed.title : title,
-          removed.told,
-        ),
-      );
-      reloadRef.current();
-      onChanged();
-    } catch (cause) {
-      toast.error(humanFault(cause, wording.removeAttachment.failed));
-    }
-  };
-  // The person approves the document they read; the next room read shows it approved.
+  // The person approves the document they read; the next room read shows it approved. Approved,
+  // it is done with, so the project view closes on the conversation.
   const approveRead = async (id: string, version: number) => {
     const item = paneDeliverables.find((entry) => entry.kind === id);
     if (item === undefined) return;
     try {
       await approveDocument(projectId, item.artifactId, version);
+      setProjectOpen(false);
       reloadRef.current();
       onChanged();
     } catch (cause) {
@@ -1154,10 +924,8 @@ export function useRoom({
     setPaneTab({ value: tab });
     setProjectOpen(true);
   };
-  const openDocument = (id: string) => {
-    openProject(id);
-    if (conceptOfTab(id) === undefined) chooseDocument(id);
-  };
+  // A link opens the page it names, so the design opens on its plan. Only the mockup's row opens the mockup.
+  const openDocument = (id: string) => openProject(id);
   // "settled" is a 409: someone already decided the ask, or its run moved on; the page reads
   // where it stands.
   const saveDecision = async (decision: {
@@ -1245,7 +1013,7 @@ export function useRoom({
         choice: "no",
         message: deliveredText(text),
       });
-      if (saved === "settled") return mail(text);
+      if (saved === "settled") return composer.post(text);
       if (typeof saved === "object") {
         // The composer reports the fault; the card keeps no second copy of it.
         setApprovalError(null);
@@ -1269,9 +1037,9 @@ export function useRoom({
     );
     return chooseApproachWithOpenApproval({
       openApprovalId: currentOpen?.approvalId,
-      deliver: () => deliverMail(message),
+      deliver: () => composer.mail(message),
       decline: (approvalId) =>
-        deliverMail(message, false, declineWith(approvalId)),
+        composer.mail(message, false, declineWith(approvalId)),
       notSent: wording.approaches.notSent,
     });
   };
@@ -1282,7 +1050,7 @@ export function useRoom({
       const sent = await answer(openQuestion.signalName, {
         reply: body.trim(),
       });
-      if (sent && clearComposer) setValue("");
+      if (sent && clearComposer) composer.setText("");
       return sent;
     }
     const currentApprovals = await readPendingApprovals();
@@ -1292,9 +1060,9 @@ export function useRoom({
     return deliverWithOpenApproval({
       openApprovalId: currentOpen?.approvalId,
       decide: onDecideApproval,
-      deliver: () => deliverMail(body, clearComposer),
+      deliver: () => composer.mail(body, clearComposer),
       decline: (approvalId) =>
-        deliverMail(body, clearComposer, declineWith(approvalId)),
+        composer.mail(body, clearComposer, declineWith(approvalId)),
     });
   };
   const sendFiles = async () => {
@@ -1306,41 +1074,30 @@ export function useRoom({
     return deliverWithOpenApproval({
       openApprovalId: currentOpen?.approvalId,
       decide: onDecideApproval,
-      deliver: deliverFiles,
+      deliver: composer.sendFiles,
     });
   };
-  const sendNow = () => void deliver(value, true);
-  const restoreToComposer = (message: string) =>
-    setValue((current) => (current.trim().length === 0 ? message : current));
   const undoTypedYes = async (message: string) => {
-    if (!(await deliver(message))) restoreToComposer(message);
+    if (!(await deliver(message))) composer.restore(message);
   };
   const typedYes = useTypedYes({
     pending: pendingApprovals?.map((approval) => approval.approvalId),
     onApprove: (approvalId) =>
       void onDecideApproval({ approvalId, choice: "yes" }),
     onUndo: (message) => void undoTypedYes(message),
-    onDropped: restoreToComposer,
+    onDropped: composer.restore,
   });
-  const sendStaged = async (
-    staged: (message: string | undefined) => Promise<boolean>,
-  ) => {
-    if (sending) return;
-    const message = value.trim();
-    if (await staged(message.length === 0 ? undefined : message)) setValue("");
-  };
   const send = () => {
-    if (stagedSend.current !== null) return void sendStaged(stagedSend.current);
-    if (files.length > 0) return void sendFiles();
-    if (typedYes.hold(value)) return setValue("");
-    sendNow();
+    if (composer.box.attachments.files.length > 0) return void sendFiles();
+    if (typedYes.hold(composer.text)) return composer.setText("");
+    void deliver(composer.text, true);
   };
   // Words that name a document work already builds from say, as they are typed, what sending
   // restarts; Send still sends at once. Without a read of who is at work there is nothing to say.
   const restarting =
-    rolesAtWork === undefined || value.trim() === ""
+    rolesAtWork === undefined || composer.text.trim() === ""
       ? undefined
-      : earlierDocumentRole(value, artifacts, rolesAtWork);
+      : earlierDocumentRole(composer.text, artifacts, rolesAtWork);
   // The composer is disabled while the decline saves, so the cursor goes there once it can take it.
   const [changesAsked, setChangesAsked] = useState(false);
   const requestChanges = () => {
@@ -1352,7 +1109,7 @@ export function useRoom({
   useEffect(() => {
     if (!changesAsked || composerDisabled) return;
     setChangesAsked(false);
-    composerRef.current?.focus();
+    composer.inputRef.current?.focus();
   }, [changesAsked, composerDisabled]);
 
   // A project that has talked before is between coordinators (an upgrade, a reopen): its thread
@@ -1395,14 +1152,19 @@ export function useRoom({
     (waits !== undefined &&
       waitingOnPerson(waits, openApprovalIds, runId, liveRun.running));
   const awaiting =
-    awaitingReply(awaitingSince, turns.at(-1)?.role, liveRun.endedAt, parked) &&
+    awaitingReply(
+      composer.awaitingSince,
+      turns.at(-1)?.role,
+      liveRun.endedAt,
+      parked,
+    ) &&
     !archived &&
     startFault === null &&
     modelNeeded === null;
   // The mark stays for the whole turn: between model calls and during long tool work the live
   // reply shows nothing moving.
   const thinking =
-    !sendFailed && (sending || awaiting || (working && !held) || between);
+    !composer.failed && (sending || awaiting || (working && !held) || between);
   // Each concept's option is its own tab beside the others, never an ordinary document.
   const options = artifacts.filter((item) => item.kind === DESIGN_OPTION);
   const paneDeliverables = documentsForPane(
@@ -1413,23 +1175,22 @@ export function useRoom({
     const item = paneDeliverables.find((entry) => entry.kind === id);
     if (item !== undefined) markSeen(seen, item.artifactId, item.version);
   };
-  const designDraft = useDesignDraft(
-    projectId,
-    designDraftFiled(
-      artifacts.some((item) => item.kind === "design"),
-      snapshot.inFlight,
-    ),
-  );
   const inFlight = snapshot.inFlight;
   const dispatches = shownTurns.flatMap((turn) =>
     turn.role === "assistant" && turn.parts !== undefined
       ? partsDispatches(turn.parts, coordinatorResults)
       : [],
   );
-  // A run with no hand-off in this session's view, such as after a reload, still gets its card.
-  for (const run of inFlight)
-    if (!runCards.current.has(run.runId)) runCards.current.set(run.runId, run);
-  const unseenRuns = [...runCards.current.values()]
+  // Every specialist run this session saw, so its card keeps its result after the run ends. A run
+  // with no hand-off in this session's view, such as after a reload, still gets its card.
+  const runCards = useSessionMemory(NO_RUNS, (known) =>
+    withEntries(
+      known,
+      inFlight.map((run) => [run.runId, run] as const),
+      () => true,
+    ),
+  );
+  const unseenRuns = [...runCards.values()]
     .filter(
       (run) =>
         !dispatches.some((dispatch) =>
@@ -1442,6 +1203,13 @@ export function useRoom({
       at: Date.parse(run.startedAt),
       dispatch: runDispatch(run),
     }));
+  // When this session first saw each hand-off, so the document it files reads as its result.
+  const dispatchSeen = useSessionMemory(NO_SIGHTINGS, (known) =>
+    noteDispatches(known, snapshot.artifacts, [
+      ...dispatches,
+      ...unseenRuns.map(({ dispatch }) => dispatch),
+    ]),
+  );
   // Every card with a run streams its steps and what it is producing from the moment the call that
   // started it returns, rather than once the room's next read lists it at work, and a step it takes
   // reads the room again so its state moves with it.
@@ -1479,7 +1247,7 @@ export function useRoom({
     artifacts: snapshot.artifacts,
     inFlight,
     failed: snapshot.failed,
-    seen: dispatchSeen.current,
+    seen: dispatchSeen,
     summaries: new Map(
       shownDocuments.flatMap(({ kind, summary }): [string, string][] =>
         summary === undefined ? [] : [[kind, summary]],
@@ -1502,14 +1270,6 @@ export function useRoom({
         kind.startsWith("concept:") ? conceptTab(kind.slice(8)) : kind,
       );
     },
-    onWatch: (dispatch) => {
-      if (roleOf(dispatch.role)?.writesCode) return openProject(LIVE_TAB);
-      openProject(
-        dispatch.concept === undefined
-          ? DRAFT_TAB
-          : conceptTab(dispatch.concept),
-      );
-    },
     onStop: async (stopped) => {
       try {
         await stopRun(projectId, stopped);
@@ -1520,12 +1280,9 @@ export function useRoom({
       }
     },
   };
-  for (const dispatch of dispatches) noteDispatch(dispatchRoom, dispatch);
-  for (const { dispatch } of unseenRuns) noteDispatch(dispatchRoom, dispatch);
   const cards = filedDispatches(dispatchRoom, dispatches, unseenRuns);
   const design = artifacts.find((item) => item.kind === "design");
-  // The design a review screen shows: the live draft while a designer works, else the newest design
-  // option, else the filed design. Only an option is approved there: the hub records the choice
+  // The design a review screen shows: the newest design option, else the filed design. Only an option is approved there: the hub records the choice
   // from the answer.
   const reviewed = options.at(-1) ?? design;
   const reviewedState =
@@ -1550,12 +1307,6 @@ export function useRoom({
     };
   };
   const reviewedDesign = (): ReviewedDesign | null => {
-    if (designDraft !== null)
-      return {
-        files: designDraft,
-        version: "draft",
-        approval: { unavailable: wording.designReview.draftNotApprovable },
-      };
     if (reviewed === undefined || reviewedFiles === null) return null;
     return {
       files: reviewedFiles,
@@ -1569,7 +1320,6 @@ export function useRoom({
       ? []
       : designConcepts(
           options,
-          inFlight,
           dispatches.flatMap(({ concept, direction }) =>
             concept === undefined || direction === undefined
               ? []
@@ -1586,25 +1336,21 @@ export function useRoom({
             : undefined,
         );
   // Filed concepts wait on the person's choice on the designer's choose screen.
-  const choosable = concepts.some((concept) => concept.chosen)
-    ? []
-    : concepts.filter((concept) => concept.option !== undefined);
+  const choosable = concepts.some((concept) => concept.chosen) ? [] : concepts;
   // Each filed concept's bundle, parsed once per version it is filed at rather than on every
   // render of the room; the key names exactly the contents parsed.
   const choosableKey = choosable
-    .map(
-      ({ option }) => `${option?.artifactId ?? ""}@${String(option?.version)}`,
-    )
+    .map(({ option }) => `${option.artifactId}@${String(option.version)}`)
     .join("\n");
   const choosableFiles = useMemo(
-    () => choosable.map((concept) => parseBundle(concept.content ?? "")),
+    () => choosable.map((concept) => parseBundle(concept.content)),
     [choosableKey],
   );
   const choosableConcepts = (): ChoosableConcept[] =>
     choosable.flatMap((concept, index) => {
       const files = choosableFiles[index];
       const filed = options.find(
-        (option) => option.artifactId === concept.option?.artifactId,
+        (option) => option.artifactId === concept.option.artifactId,
       );
       if (files === undefined || files === null || filed === undefined)
         return [];
@@ -1622,16 +1368,17 @@ export function useRoom({
     design: reviewedDesign(),
     designConcepts: choosableConcepts(),
     mockupFrame: MockupFrame,
+    commentCard: CommentCard,
     // The last round's answer on the same screen, so the person sees what they asked for before.
     earlierAnswer:
-      pageQuestion === undefined
+      screenQuestion === undefined
         ? undefined
         : questions
             .flatMap((question) =>
-              question.signalName !== pageQuestion.signalName &&
+              question.signalName !== screenQuestion.signalName &&
               showsScreen(question) &&
-              question.asked.plugin === pageQuestion.asked.plugin &&
-              question.asked.action === pageQuestion.asked.action &&
+              question.asked.plugin === screenQuestion.asked.plugin &&
+              question.asked.action === screenQuestion.asked.action &&
               question.status === "answered" &&
               "output" in question.answer
                 ? [question.answer.output]
@@ -1640,15 +1387,13 @@ export function useRoom({
             .at(-1),
     documents: {
       list: shownDocuments,
-      open: openDocument,
-    },
-    reply: {
-      drafted: value.trim().length > 0,
-      stage: (staged) => {
-        stagedSend.current = staged?.send ?? null;
-        setStagedItems(staged?.pending ?? null);
+      open: (id) => {
+        if (screenQuestion !== undefined)
+          setOpenedFromScreen({ signal: screenQuestion.signalName, id });
+        openDocument(id);
       },
     },
+    reply: { drafted: composer.text.trim().length > 0 },
     tenants:
       runTenantId === undefined || workspaceRead.data === undefined
         ? null
@@ -1656,19 +1401,24 @@ export function useRoom({
     asked: (signalName) =>
       snapshot.plan.asked.find((each) => each.signalName === signalName)?.data,
   };
-  const pluginScreens = pluginSlots({
+  const actFromScreen: ListedHostProps["act"] = async (
+    plugin,
+    action,
+    input,
+  ) => {
+    try {
+      await runPluginAction(projectId, plugin, action, input);
+    } catch (cause) {
+      return humanFault(cause, wording.questions.answerFault.refused);
+    }
+    reloadRef.current();
+    return undefined;
+  };
+  const pluginScreens = pluginTabs({
     screens: archived ? [] : snapshot.plan.screens,
     screenOf,
     supplies,
-    act: async (plugin, action, input) => {
-      try {
-        await runPluginAction(projectId, plugin, action, input);
-      } catch (cause) {
-        return humanFault(cause, wording.questions.answerFault.refused);
-      }
-      reloadRef.current();
-      return undefined;
-    },
+    act: actFromScreen,
   });
   // Each read times its own wake, so a screen counting down is read again as its clock says.
   const { rereadIn } = pluginScreens;
@@ -1677,9 +1427,6 @@ export function useRoom({
     const timer = setTimeout(() => reloadRef.current(), rereadIn);
     return () => clearTimeout(timer);
   }, [snapshot, rereadIn]);
-  const pageHost = {
-    close: () => setClosedPage(pageQuestion?.signalName ?? null),
-  };
   const appFiled = snapshot.artifacts.some((item) => item.kind === "app");
   const firstBuilder = appFiled ? undefined : inFlight.find(writesCode);
   // There is an app to preview once one is filed, built here or imported, or a coder is building
@@ -1742,14 +1489,78 @@ export function useRoom({
     paneDeliverables.find((item) => item.kind === shownId) ?? null;
   const selectedState = selected === null ? undefined : documentState(selected);
 
-  // Until the first document is filed, drafted, there is an app or a plugin lists a tab, the project
-  // view has nothing to show.
+  // Until the first document is filed or there is an app, the project view has nothing to show.
   const nothingYet =
-    paneDeliverables.length === 0 &&
-    designDraft === null &&
-    concepts.length === 0 &&
-    liveApp === null &&
-    pluginScreens.tabs.length === 0;
+    paneDeliverables.length === 0 && concepts.length === 0 && liveApp === null;
+  const projectShown = projectOpen && !nothingYet;
+  const session: RoomSession = {
+    projectId,
+    archived,
+    projectOpen: projectShown,
+    shown: projectShown ? shownTab : null,
+    openTab: openProject,
+    send: (message) => void deliver(message),
+    reload: () => reloadRef.current(),
+  };
+  // Comments go as an ordinary message, so they wait while a question or approval would take it,
+  // unless the question asks to accept something, which they answer by asking for changes.
+  const commentDrafts = useCommentDrafts(session, {
+    question: openQuestion !== undefined && !screenDecides,
+    approval: openApproval !== undefined,
+    sending: sending || approvalBusy,
+    approvalOpenNow: async () =>
+      (await readPendingApprovals())?.some(
+        (approval) => approval.packages === undefined,
+      ) ?? false,
+    mail: (message, clearBox) =>
+      screenDecides
+        ? deliver(message, clearBox)
+        : composer.mail(message, clearBox),
+  });
+  // Accepting what a screen asks closes the project view on the conversation, where the work
+  // carries on; asking for changes keeps the page open until the next version is filed.
+  const answerScreen = async (signalName: string, given: QuestionAnswer) => {
+    const accepted =
+      screenDecides &&
+      signalName === screenQuestion.signalName &&
+      "output" in given;
+    const sent = await answer(signalName, given);
+    if (sent && accepted) setProjectOpen(false);
+    return sent;
+  };
+  const promptBox = usePromptBox(session, {
+    openQuestion,
+    onAnswer: answerScreen,
+    sending,
+    approvals: pendingApprovals,
+    approvalBusy,
+    approvalError,
+    typedYes:
+      typedYes.held === null
+        ? null
+        : { held: typedYes.held, onUndo: typedYes.undo },
+    onDecide: onDecideApproval,
+    onRequestChanges: requestChanges,
+    plan: snapshot.plan.steps,
+    // A screen with a tab of its own waits there, not in the space.
+    screens: snapshot.plan.screens.filter((screen) => !inTab(screen)),
+    screenOf,
+    supplies,
+    projectValues,
+    act: actFromScreen,
+    restarts:
+      restarting === undefined
+        ? null
+        : wording.earlierDocument.restarts(restartedWork(restarting)),
+    thinking,
+    dispatches: [...dispatches, ...unseenRuns.map(({ dispatch }) => dispatch)],
+    dispatchRoom,
+    failed: snapshot.failed,
+    lastSentAt: lastSentAt(composer.awaitingSince, turns),
+    documents: paneDeliverables,
+    seen,
+    hasApp: liveApp !== null,
+  });
   const dock = (): RoomDock => {
     if (archived)
       return {
@@ -1778,52 +1589,65 @@ export function useRoom({
     }
     return {
       kind: "composer",
-      text: value,
-      onTextChange: setValue,
+      ...composer.box,
       onSend: send,
       placeholder: composerPlaceholder({
         approvalOpen: openApproval !== undefined,
         questionsOpen: openQuestion !== undefined,
         screenReply:
-          stagedReply ??
-          (openQuestion !== undefined && showsScreen(openQuestion)
+          openQuestion !== undefined && showsScreen(openQuestion)
             ? screenWords(
                 openQuestion.asked.plugin,
                 openQuestion.asked.action ?? "",
               )?.reply
-            : undefined),
-        status: projectStatus.data,
+            : undefined,
+        facts: promptBox.facts,
         nothingFiled: nothingYet,
       }),
-      inputRef: composerRef,
-      working: working || sending,
+      working: promptBox.working,
       busy: sending || approvalBusy,
       disabled: composerWaits,
       needsProvider: providerMissing,
       onEnableAi: () => setEnablingAi(true),
-      attachments: {
-        files,
-        accept:
-          limits === undefined || limits.mimeTypes.length === 0
-            ? null
-            : limits.mimeTypes.join(","),
-        fault: attachFault,
-        onAdd: addFiles,
-        onRemove: (id) =>
-          setFiles((current) => current.filter((held) => held.id !== id)),
-      },
-      sendFault:
-        questionFault(outcomes) ?? (sendFailed && sendFault ? sendFault : null),
-      restarts:
-        restarting === undefined
-          ? null
-          : wording.earlierDocument.restarts(restartedWork(restarting)),
+      restarts: promptBox.restarts,
+      status: promptBox.status,
+      onStop: promptBox.onStop,
       suggestedReplies: replies,
       onReply: (reply) => void deliver(reply),
+      // Words typed or comments beside a screen asking to approve something ask for changes instead.
       sendLabel:
-        stagedItems === null ? null : wording.questions.sendBack(stagedItems),
+        promptBox.decides &&
+        (composer.text.trim() !== "" || (commentDrafts.box?.count ?? 0) > 0)
+          ? wording.promptBox.waiting.makeChanges
+          : null,
+      ...(commentDrafts.box === null
+        ? {}
+        : {
+            comments: commentDrafts.box.count,
+            commentsBlocked: commentDrafts.box.blocked,
+            commentsSending: commentDrafts.box.sending,
+            onSendComments: commentDrafts.box.onSend,
+            onShowComments: commentDrafts.box.onShow,
+            onRemoveComments: commentDrafts.box.onRemove,
+          }),
     };
   };
+  const paneDocuments = paneDeliverables.map((item) =>
+    paneDocument(item, seen),
+  );
+  const { sidebar, projectMenu } = useProjectSidebar(session, {
+    title: projectTitle,
+    project: menuProject,
+    onProjectChanged: onChanged,
+    onProjectError,
+    onOpenSettings,
+    onNewProject,
+    plan: snapshot.plan.steps,
+    documents: paneDocuments,
+    appShown: liveApp !== null,
+    manualShown: userManual !== null,
+    waitsOn,
+  });
   const emptyConversation = () => {
     if (archived) return "archived";
     return shownTurns.length === 0 && !thinking ? "new" : null;
@@ -1835,11 +1659,14 @@ export function useRoom({
       layout: {
         projectReady: !nothingYet,
         // The view cannot be open once it has nothing to show, or the prompt box is placed in it unseen.
-        projectOpen: projectOpen && !nothingYet,
-        onProjectOpenChange: setProjectOpen,
-        pageOpen:
-          pageOpen ||
-          (pageQuestion === undefined && pluginScreens.page.length > 0),
+        projectOpen: projectShown,
+        documentGround,
+        waitedOnShown:
+          projectOpen &&
+          !nothingYet &&
+          waitsOn !== null &&
+          (shownTab === waitsOn || shownTab === documentTab(waitsOn)),
+        onCloseProject: () => setProjectOpen(false),
       },
       conversation: {
         thread: {
@@ -1851,71 +1678,40 @@ export function useRoom({
             title: item.title,
           })),
           onOpenDocument: openDocument,
-          approvals: shownApprovals,
+          approvals: settledApprovals,
           results: new Map([...coordinatorResults, ...runResults]),
           runs: cards,
           live: (dispatch) => dispatchLive(dispatch, dispatchRoom),
           standing: (unit) => workUnitStanding(unit, dispatchRoom),
-          onDecide: onDecideApproval,
-          onRequestChanges: requestChanges,
-          approvalDisabled: approvalBusy || archived,
-          ...(approvalError === null ? {} : { approvalError }),
-          ...(typedYes.held === null
-            ? {}
-            : {
-                typedYes: {
-                  held: typedYes.held,
-                  onUndo: typedYes.undo,
-                },
-              }),
           ...(sentId === undefined ? {} : { sentId }),
           questions,
-          onAnswerQuestion: answer,
-          questionsDisabled: sending || archived,
           projectValues,
           screenOf,
           screenSupplies: supplies,
-          onOpenPageScreen: () => setClosedPage(null),
         },
         empty: emptyConversation(),
       },
       dock: dock(),
-      plan: snapshot.plan.steps,
-      onDeclineStep: async (stepId, declined) => {
-        try {
-          await (declined ? declinePlanStep : restorePlanStep)(
-            projectId,
-            stepId,
-          );
-          reloadRef.current();
-        } catch (cause) {
-          toast.error(humanFault(cause, wording.conversation.plan.notChanged));
-        }
-      },
-      onGoAheadStep: async (stepId) => {
-        try {
-          await goAheadPlanStep(projectId, stepId);
-          reloadRef.current();
-        } catch (cause) {
-          toast.error(humanFault(cause, wording.conversation.plan.notChanged));
-        }
-      },
-      onAskFirstStep: async (stepId, askFirst) => {
-        try {
-          await setPlanStepAskFirst(projectId, stepId, askFirst);
-          reloadRef.current();
-        } catch (cause) {
-          toast.error(humanFault(cause, wording.conversation.plan.notChanged));
-        }
-      },
+      sidebar,
+      waiting: promptBox.waiting,
+      space:
+        promptBox.space === null
+          ? null
+          : {
+              ...promptBox.space,
+              shows:
+                promptBox.space.shows === null
+                  ? null
+                  : documentTab(promptBox.space.shows),
+            },
       documentPane: {
         projectId,
         projectTitle,
-        draft: designDraft,
         manual: userManual,
         concepts,
         openTab: paneTab,
-        documents: paneDeliverables.map((item) => paneDocument(item, seen)),
+        onShownChange: setShownTab,
+        documents: paneDocuments,
         selectedId: selected === null ? null : selected.kind,
         state: selected ? (selectedState ?? { status: "loading" }) : undefined,
         ...(selectedState?.status === "error" && selectedState.retryable
@@ -1927,7 +1723,6 @@ export function useRoom({
           : {}),
         onSelect: chooseDocument,
         onSeen: markDocumentSeen,
-        onRemove: removeAttachment,
         onReadVersion: async (version) => {
           if (selected === null) throw new Error("No artifact is selected.");
           const { content, filedAt, approaches } = await readArtifact(
@@ -1948,6 +1743,7 @@ export function useRoom({
           ? {}
           : {
               onAddToPrompt: addToPrompt,
+              comments: commentDrafts.comments,
               onDeliverMessage: (message: string) => deliver(message),
               onApprove: approveRead,
             }),
@@ -1960,46 +1756,23 @@ export function useRoom({
       ),
       paneRef: documentPaneRef,
     },
-    nextStep: archived
-      ? null
-      : {
-          projectId,
-          actions: {
-            reply: requestChanges,
-            resume_coordinator: () => void startCoordinator(),
-            ...(liveApp === null
-              ? {}
-              : {
-                  open_app: () => openProject(LIVE_TAB),
-                }),
-          },
-        },
+    projectMenu,
     enableAi: { open: enablingAi, onOpenChange: setEnablingAi },
     liveApp,
-    pluginScreens,
+    spaceScreen: promptBox.spaceScreen,
     questionOutcomes: outcomes,
-    pageScreen:
-      pageQuestion === undefined
-        ? null
-        : {
-            signalName: pageQuestion.signalName,
-            host: screenOf(pageQuestion.asked)?.host,
-            input: pageQuestion.asked.input,
-            projectValues,
-            answer: undefined,
-            disabled: sending || archived,
-            onAnswer: (given) => answer(pageQuestion.signalName, given),
-            supplies,
-            page: pageHost,
-          },
   };
 }
 
-function questionFault(
-  outcomes: ReadonlyMap<string, AnswerOutcome>,
-): string | null {
-  const latest = Array.from(outcomes.values()).at(-1);
-  if (latest !== undefined && "fault" in latest && latest.fault !== undefined)
-    return latest.fault;
-  return null;
+/** When the person last wrote: their latest turn, or a send this session has not seen land yet. */
+function lastSentAt(
+  awaitingSince: number | null,
+  turns: readonly TranscriptTurn[],
+): number | null {
+  const wrote = turns.findLast((turn) => turn.role === "person")?.at;
+  if (wrote === undefined) return awaitingSince;
+  return awaitingSince === null ? wrote : Math.max(wrote, awaitingSince);
 }
+
+// A screen that shows more of the design takes the mockup's place.
+const documentTab = (id: string) => (id === "design" ? MOCKUP_TAB : id);

@@ -863,6 +863,9 @@ export const defineTask = <In>(task: Task<In>) => task;
 
 export type Screen<In, Out, Data, Prepared> = {
   render?: ScreenRender;
+  // The kind of filed artifact the screen shows more of, such as the design a review opens. While
+  // the screen waits, the room opens it in place of that artifact's own page.
+  shows?: string;
   // Run in the hub for a screen shown without a question; undefined while it should not show.
   state?: (project: ProjectRead) => Prepared | undefined;
   // When, in the hub's milliseconds since the epoch, the clock alone next changes what state

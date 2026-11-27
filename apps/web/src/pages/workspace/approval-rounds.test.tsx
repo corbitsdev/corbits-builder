@@ -12,7 +12,6 @@ import type {
 } from "@corbits-builder/schemas/approval-round";
 import * as actualArtifacts from "../../api/artifacts.ts";
 import * as actualConversation from "../../api/conversation.ts";
-import { WhatsNewDialog } from "../../App.view.tsx";
 import { wording } from "../../config.ts";
 import { preferencesQuery } from "../../queries/preferences.ts";
 import { queryClient } from "../../queries/client.ts";
@@ -1126,35 +1125,6 @@ describe("approval rounds panel", () => {
       writeWorkspaceReviewers([]);
       readWorkspaceReviewers();
     }
-  });
-
-  test("renders WhatsNewDialog with Slide Decks and Approvals tabs, where Slide Decks is built-in and only Approvals is Experimental", () => {
-    const slideDecksHtml = renderToStaticMarkup(
-      <WhatsNewDialog
-        open
-        initialTab="slideDecks"
-        onClose={() => {}}
-        onOpenPreferences={() => {}}
-      />,
-    );
-    expect(slideDecksHtml).toContain("What&#x27;s new");
-    expect(slideDecksHtml).toContain('role="tablist"');
-    expect(slideDecksHtml).toContain("Slide decks");
-    expect(slideDecksHtml).toContain("Approvals");
-    expect(slideDecksHtml).not.toContain("Experimental");
-    expect(slideDecksHtml).not.toContain("Enable in Settings");
-
-    const approvalsHtml = renderToStaticMarkup(
-      <WhatsNewDialog
-        open
-        initialTab="approvals"
-        onClose={() => {}}
-        onOpenPreferences={() => {}}
-      />,
-    );
-    expect(approvalsHtml).toContain("Approvals");
-    expect(approvalsHtml).toContain("Experimental — off by default");
-    expect(approvalsHtml).toContain("Enable in Settings");
   });
 
   test("opens Settings directly to the Preferences tab and renders Approval packages from the hub", () => {

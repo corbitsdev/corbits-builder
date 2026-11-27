@@ -6,7 +6,7 @@ import {
 import { wording } from "../../config.ts";
 import type { ScreenViewProps } from "@corbits-builder/plugin-ui/screen";
 /**
- * A plugin's screen as the conversation hosts it, in each state a person can meet it, for the
+ * A plugin's screen as the room hosts it, in each state a person can meet it, for the
  * screens' stories: the real host around the real view, with the project's values, the host's
  * supplies and the hub's answer stood in by plain values.
  */
@@ -21,11 +21,11 @@ import {
 } from "@corbits-builder/plugin";
 import type { ReadyPlanOffer } from "@corbits-builder/schemas/project";
 import type { QuestionAnswer } from "@corbits-builder/schemas/conversation";
+import { CommentCard } from "./comment-card.tsx";
 import { MockupFrame } from "./mockup-frame.tsx";
 import { ClosedQuestions } from "./questions-card.tsx";
 import { sampleDesign } from "./sample-design.ts";
 import {
-  PageScreenCard,
   ScreenQuestion,
   screenHost,
   type HostSupplies,
@@ -50,6 +50,7 @@ export const storySupplies: HostSupplies = {
     approval: { option: "design-option-2" },
   },
   mockupFrame: MockupFrame,
+  commentCard: CommentCard,
   earlierAnswer: undefined,
   documents: {
     list: [
@@ -58,8 +59,12 @@ export const storySupplies: HostSupplies = {
         title: "Build plan",
         artifactId: "artifact-plan",
         version: 2,
-        summary:
-          "A web app for a small bakery to take Saturday orders, built in two weeks.",
+        // As a document's own In short section reads: a few points, each a line or two.
+        summary: [
+          "- A web app for a small bakery to take **Saturday orders** online, built in two weeks.",
+          "- Customers pick cakes, choose a **pickup time** and pay a deposit; the shop sees every order in **one list**.",
+          "- Not in the first version: delivery, loyalty points, or more than one shop.",
+        ].join("\n"),
       },
     ],
     open: () => undefined,
@@ -80,7 +85,7 @@ export const storySupplies: HostSupplies = {
       approval: { option: "design-option-2" },
     },
   ],
-  reply: { drafted: false, stage: () => undefined },
+  reply: { drafted: false },
   tenants: { project: "tenant-project", workspace: "tenant-workspace" },
   asked: () => undefined,
 };
@@ -138,9 +143,10 @@ export function ScreenStory({
   project,
   draft,
   output,
-  placed = "conversation",
   plan = [],
   plans = () => [],
+  inSpace = false,
+  loading = false,
 }: {
   screen: ReturnType<typeof storyScreen>;
   state: ScreenState;
@@ -150,14 +156,16 @@ export function ScreenStory({
   draft?: Record<string, unknown>;
   /** What they chose, in the "answered" state. */
   output?: Record<string, unknown>;
-  /** A screen placed on the page shows a card in the conversation that opens it. */
-  placed?: "conversation" | "page";
   /** The project's plan steps a screen that prepares from the project reads. */
   plan?: readonly PlanStepRead[];
   /** The installed ready-made plans a screen that prepares from the project reads. */
   plans?: (group: string) => readonly ReadyPlanOffer[];
+  /** Drawn in the plugin space, as the room draws a screen for the page, not as a thread entry. */
+  inSpace?: boolean;
+  /** The project read never resolves, to show the screen's loading state. */
+  loading?: boolean;
 }) {
-  const signalName = `story-${state}-${placed}`;
+  const signalName = `story-${state}`;
   const [ready, setReady] = useState(false);
   useLayoutEffect(() => {
     const key = `unsent:screen:${signalName}`;
@@ -167,7 +175,6 @@ export function ScreenStory({
     else sessionStorage.setItem(key, JSON.stringify(draft));
     setReady(true);
   }, [signalName, draft, state]);
-  const [onPage, setOnPage] = useState(placed === "page");
   // An answer the hub took settles the question, as the room does.
   const [outcomes, setOutcomes] = useState<ReadonlyMap<string, AnswerOutcome>>(
     new Map(),
@@ -185,7 +192,10 @@ export function ScreenStory({
       signalName={signalName}
       host={state === "missing" ? undefined : screen.host}
       input={input}
-      projectValues={{ read: () => Promise.resolve(project) }}
+      projectValues={{
+        read: () =>
+          loading ? new Promise<never>(() => {}) : Promise.resolve(project),
+      }}
       answer={given ?? answers[state]}
       disabled={state === "sending"}
       // Refused stories fail every send, so the fault shows once something is sent.
@@ -210,27 +220,20 @@ export function ScreenStory({
       }}
       supplies={{
         ...storySupplies,
-        asked: () => screen.asked(input, storyRead(project, plan, plans)),
+        asked: () =>
+          loading
+            ? undefined
+            : screen.asked(input, storyRead(project, plan, plans)),
       }}
-      page={onPage ? { close: () => setOnPage(false) } : undefined}
     />
   );
-  const pagePending =
-    placed === "page" && given === undefined && answers[state] === undefined;
   return (
     <QuestionOutcomes value={outcomes}>
-      <QuestionEntry signalName={signalName}>
-        {pagePending ? (
-          <PageScreenCard onOpen={() => setOnPage(true)} />
-        ) : (
-          question
-        )}
-      </QuestionEntry>
-      {pagePending ? (
-        <div hidden={!onPage} data-slot="story-page">
-          {question}
-        </div>
-      ) : null}
+      {inSpace ? (
+        question
+      ) : (
+        <QuestionEntry signalName={signalName}>{question}</QuestionEntry>
+      )}
     </QuestionOutcomes>
   );
 }

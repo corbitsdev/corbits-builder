@@ -12,6 +12,19 @@
 
 /* The prompt is the page: centred in the pane's height, a reading width
    wide, with the question above it. */
+/* The page's prompt box is carried into the room as the project starts; see the room skeleton. */
+.newProject [data-slot="composer-box"] {
+  view-transition-name: prompt-box;
+}
+
+/* Starting a project, the page is the room it is opening, filling the window. */
+.starting {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
 .newProject {
   display: flex;
   flex-direction: column;
@@ -61,6 +74,47 @@
 .actions [role="status"] {
   font-size: 0.8125rem;
   color: var(--wb-muted-foreground);
+}
+
+/* The projects last worked on, as the Projects page's cards, in a row as wide as the prompt, with a
+   link to the rest. */
+.recent {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+  gap: var(--space-2);
+  margin-top: var(--space-6);
+}
+
+.recentHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.recentHead [data-slot="button"] {
+  font-size: 0.75rem;
+  color: var(--wb-muted-foreground);
+}
+
+.recentTitle {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--wb-muted-foreground);
+}
+
+/* Four across beside a wide prompt; two on a narrow screen, where four would cut every name short. */
+.recent .recentCards {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+@media (width < 48rem) {
+  .recent .recentCards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .importActions {

@@ -34,8 +34,8 @@ const build: UpdatesRow = {
 
 const review: UpdatesRow = {
   key: "updates:reviewer:5",
-  title: "Reviewer",
-  summary: "The requirements cover every constraint.",
+  title: "The requirements cover every constraint.",
+  summary: null,
   reports: [{ at: 5, text: "The requirements cover every constraint." }],
 };
 
@@ -67,5 +67,10 @@ export const SeveralReports: StoryObj = {
 
 /** A long run of rows under one line, each still there to open. */
 export const Folded: StoryObj = {
-  render: () => <FoldedUpdatesView rows={[constraints, build, review]} />,
+  render: () => (
+    <FoldedUpdatesView
+      rows={[constraints, build, review]}
+      startHidden={false}
+    />
+  ),
 };

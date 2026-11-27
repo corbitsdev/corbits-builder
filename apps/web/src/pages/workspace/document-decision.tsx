@@ -36,6 +36,17 @@ function settledTitle(approval: DocumentApproval): string | undefined {
   return undefined;
 }
 
+/**
+ * What a pending approval asks in the prompt box, in one line. Only a shell run's subject is a
+ * command line, so only it reads as one; any other tool's subject is said under its ask.
+ */
+function approvalAsk(approval: DocumentApproval): string {
+  if (approval.packages) return text.packages(approval.packages.join(", "));
+  return runsShell(approval.toolName) && approval.subject !== undefined
+    ? text.run
+    : approvalQuestion(approval.toolName);
+}
+
 export function DocumentDecision({
   approval,
   disabled = false,
@@ -59,12 +70,11 @@ export function DocumentDecision({
   const slot = useContext(ActionsSlot);
   // Waiting in the prompt box, the ask heads the card with Not yet beside it, what would run sits
   // beneath, and Yes stands where Send is. The library's card keeps its buttons inside it, so the
-  // box draws the ask itself. Only a shell run's subject is a command line, so only it reads as
-  // one; any other tool's subject is what it would touch, said plainly under the tool's ask.
+  // box draws the ask itself.
   if (place === "box" && approval.outcome === undefined) {
     const shell =
       runsShell(approval.toolName) && approval.subject !== undefined;
-    const ask = shell ? text.run : approvalQuestion(approval.toolName);
+    const ask = approvalAsk(approval);
     const yes = (
       <div className={styles.answers} inert={disabled}>
         <Button type="button" size="sm" onClick={onYes}>

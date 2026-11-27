@@ -92,15 +92,16 @@ const archived: LibraryProject = {
 
 const menu: Omit<ProjectMenuViewProps, "trigger"> = {
   align: "end",
+  side: "bottom",
+  sideOffset: 4,
   archived: false,
   shipped: false,
-  onShowInfo: fn(),
   onRename: fn(),
   onExport: fn(),
   onToggleShipped: fn(),
   onToggleArchived: fn(),
   onDelete: fn(),
-  infoDialog: null,
+  renameDialog: null,
   exportDialog: null,
 };
 
@@ -154,6 +155,14 @@ export const LongTitles: Story = {
       },
       { ...recipes, title: "RecipeBox".repeat(40) },
     ],
+  },
+};
+
+/** Stages with nothing in them are dimmed in the filters, and can still be pressed. */
+export const EmptyStages: Story = {
+  args: {
+    counts: { idea: 2, building: 2, shipped: 0, archived: 0 },
+    projects: [bakery, tracker, invoices, recipes],
   },
 };
 

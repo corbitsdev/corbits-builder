@@ -1,6 +1,9 @@
 .composer {
   padding: var(--space-2) var(--space-4) var(--space-4);
-  display: grid;
+  /* A flex column, so at the cap the notes and the chat history shrink. A grid's rows grow to fit
+     what is in them and push the box out of the bottom. */
+  display: flex;
+  flex-direction: column;
   gap: var(--space-2);
   flex: none;
   position: relative;
@@ -69,6 +72,10 @@
   }
 }
 
+.panel[hidden] {
+  display: none;
+}
+
 /* The box is the frame, so a question card, a plugin's screen or an approval drops its own and
    takes the box's width; it keeps its own padding. */
 .panel :is([data-gate-kind], [data-slot="tool-approval-card"]) {
@@ -130,7 +137,7 @@
 /* The card's one action stands where Send would, so Send gives way while it does. */
 .box
   [data-slot="composer-actions"]:not([hidden], :empty)
-  ~ :is([data-slot="prompt-input-submit"], [data-slot="send-label"]) {
+  ~ [data-slot="prompt-input-submit"] {
   display: none;
 }
 
@@ -303,6 +310,29 @@
   transition:
     background-color var(--duration-micro),
     scale var(--duration-micro) var(--ease-out);
+}
+
+/* Send that says what it carries, as "Make changes" or the answers going back: a pill with its
+   words before the arrow. The library draws only the arrow, so the words come from its label. */
+.box
+  [data-slot="prompt-input"]
+  [data-slot="prompt-input-submit"][data-label]:not([data-status="streaming"]) {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  width: auto;
+  padding-inline: 14px 10px;
+  border-radius: 9999px;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.box
+  [data-slot="prompt-input-submit"][data-label]:not(
+    [data-status="streaming"]
+  )::before {
+  content: attr(data-label);
 }
 
 /* Over the library's fill, so the app's muted disabled look still wins here. */

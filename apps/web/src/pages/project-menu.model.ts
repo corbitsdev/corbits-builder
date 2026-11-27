@@ -19,7 +19,7 @@ import {
 import type { NoticeAction } from "../notice.ts";
 import type {
   ExportDialogViewProps,
-  ProjectInfoDialogViewProps,
+  RenameDialogViewProps,
   ProjectMenuViewProps,
 } from "./project-menu.view.tsx";
 
@@ -42,14 +42,12 @@ export type ProjectMenuHost = {
     complete?: boolean,
     action?: NoticeAction,
   ) => void;
-  /** The project is gone; a host showing it should leave. */
-  onDeleted?: () => void;
+  /** The project was archived or deleted; a host showing it should leave. */
+  onGone?: () => void;
 };
 
-export type ProjectInfoDialogProps = {
+export type RenameDialogProps = {
   project: MenuProject;
-  /** Open with the name field focused (the menu's Rename). */
-  focusName?: boolean;
   onClose: () => void;
   onChanged: () => void;
   onError: (cause: unknown) => void;
@@ -87,20 +85,23 @@ export function useProjectMenu({
   onChanged,
   onError,
   onNotice,
-  onDeleted,
+  onGone,
 }: ProjectMenuHost): {
   view: Omit<
     ProjectMenuViewProps,
-    "trigger" | "align" | "infoDialog" | "exportDialog"
+    | "trigger"
+    | "align"
+    | "side"
+    | "sideOffset"
+    | "renameDialog"
+    | "exportDialog"
   >;
-  /** What the project info dialog needs while it is open. */
-  infoDialog: ProjectInfoDialogProps | null;
+  /** What the rename dialog needs while it is open. */
+  renameDialog: RenameDialogProps | null;
   /** What the export dialog needs while it is open. */
   exportDialog: ExportDialogProps | null;
 } {
-  const [infoOpen, setInfoOpen] = useState(false);
-  // Rename opens the same dialog with the name field focused.
-  const [focusName, setFocusName] = useState(false);
+  const [renaming, setRenaming] = useState(false);
   // Export asks which parts to put in the zip.
   const [exporting, setExporting] = useState(false);
 
@@ -124,37 +125,30 @@ export function useProjectMenu({
     }
   };
 
-  const openInfo = (withName = false) => {
-    setFocusName(withName);
-    setInfoOpen(true);
-  };
-
   return {
     view: {
       archived: Boolean(project.archivedAt),
       shipped: Boolean(project.shippedAt),
-      onShowInfo: () => openInfo(),
-      onRename: () => openInfo(true),
+      onRename: () => setRenaming(true),
       onExport: () => setExporting(true),
       onToggleShipped: () =>
         void act(() => shipProject(project.id, !project.shippedAt)),
       onToggleArchived: () =>
-        void act(() =>
-          project.archivedAt
-            ? restoreProject(project.id)
-            : archiveProject(project.id),
-        ),
+        void act(async () => {
+          if (project.archivedAt) return restoreProject(project.id);
+          await archiveProject(project.id);
+          onGone?.();
+        }),
       onDelete: () =>
         void act(async () => {
           await archiveProject(project.id);
-          onDeleted?.();
+          onGone?.();
         }),
     },
-    infoDialog: infoOpen
+    renameDialog: renaming
       ? {
           project,
-          focusName,
-          onClose: () => setInfoOpen(false),
+          onClose: () => setRenaming(false),
           onChanged,
           onError,
         }
@@ -224,22 +218,14 @@ export function useExportDialog({
   };
 }
 
-function stateOf(project: MenuProject): ProjectInfoDialogViewProps["state"] {
-  if (project.archivedAt) return "archived";
-  if (project.shippedAt) return "shipped";
-  return "active";
-}
-
-export function useProjectInfoDialog({
+export function useRenameDialog({
   project,
-  focusName = false,
   onClose,
   onChanged,
   onError,
-}: ProjectInfoDialogProps): ProjectInfoDialogViewProps {
+}: RenameDialogProps): RenameDialogViewProps {
   const [name, setName] = useState(project.title);
   const [saving, setSaving] = useState(false);
-  const [archiving, setArchiving] = useState(false);
 
   const act = async (work: () => Promise<unknown>) => {
     try {
@@ -263,32 +249,12 @@ export function useProjectInfoDialog({
     setSaving(false);
     if (ok) onClose();
   };
-  const toggleArchived = async () => {
-    setArchiving(true);
-    const ok = await act(() =>
-      project.archivedAt
-        ? restoreProject(project.id)
-        : archiveProject(project.id),
-    );
-    setArchiving(false);
-    if (ok) onClose();
-  };
-
   return {
-    title: project.title,
     name,
     onNameChange: setName,
-    focusName,
-    created:
-      project.createdAt === undefined
-        ? null
-        : new Date(project.createdAt).toLocaleString(),
-    state: stateOf(project),
     canSave: dirty,
     saving,
-    archiving,
     onSave: () => void save(),
-    onToggleArchived: () => void toggleArchived(),
     onClose,
   };
 }

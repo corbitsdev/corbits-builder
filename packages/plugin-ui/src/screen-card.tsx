@@ -38,15 +38,19 @@ export function ScreenCard({
 
 /**
  * A question that takes no more answers, or one this interface cannot draw: a heading that says
- * which, then what was asked and answered.
+ * which, then what was asked and answered. Untitled, what was asked and answered says it alone.
  */
 export function SettledFrame({
   title,
+  untitled = false,
   ended,
   focus,
   children,
 }: {
+  /** What the frame is, as its heading and as its name to assistive technology. */
   title: string;
+  /** Leaves the heading off the page, where it would only repeat what the frame shows. */
+  untitled?: boolean;
   ended: "answered" | "closed" | "waiting";
   /**
    * The person answered from the card this replaces, so focus, which went with the card, comes
@@ -68,18 +72,20 @@ export function SettledFrame({
       aria-label={title}
       data-slot="question-settled"
     >
-      <p className={styles.settledTitle}>
-        {ended === "answered" ? (
-          <Check className={styles.settledMark} data-ok="" aria-hidden />
-        ) : null}
-        {ended === "closed" ? (
-          <CirclePause className={styles.settledMark} aria-hidden />
-        ) : null}
-        {ended === "waiting" ? (
-          <CircleHelp className={styles.settledMark} aria-hidden />
-        ) : null}
-        {title}
-      </p>
+      {untitled ? null : (
+        <p className={styles.settledTitle}>
+          {ended === "answered" ? (
+            <Check className={styles.settledMark} data-ok="" aria-hidden />
+          ) : null}
+          {ended === "closed" ? (
+            <CirclePause className={styles.settledMark} aria-hidden />
+          ) : null}
+          {ended === "waiting" ? (
+            <CircleHelp className={styles.settledMark} aria-hidden />
+          ) : null}
+          {title}
+        </p>
+      )}
       <div className={styles.settledBody}>{children}</div>
     </section>
   );
@@ -112,4 +118,9 @@ export function ScreenSettled({
   answer: string;
 }) {
   return <SettledAnswers answers={[{ asked, answer }]} />;
+}
+
+/** An answered screen whose outcome reads as one sentence, where there was no question to repeat. */
+export function ScreenSettledLine({ children }: { children: string }) {
+  return <p className={styles.settledLine}>{children}</p>;
 }

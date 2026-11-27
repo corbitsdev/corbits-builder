@@ -11,7 +11,18 @@ import {
   LibraryPageHeader,
   type BadgeTone,
 } from "@corbits/react-ui";
-import { Ellipsis, LayoutGrid, List, Plus } from "lucide-react";
+import { clsx } from "clsx";
+import {
+  Archive,
+  Ellipsis,
+  FolderPlus,
+  Hammer,
+  LayoutGrid,
+  Lightbulb,
+  List,
+  Plus,
+  Rocket,
+} from "lucide-react";
 import {
   useEffect,
   useRef,
@@ -76,6 +87,33 @@ const STAGE_TONE: Record<LibraryFilter, BadgeTone> = {
   shipped: "success",
   archived: "neutral",
 };
+const STAGE_ICON: Record<LibraryFilter, ReactNode> = {
+  idea: <Lightbulb />,
+  building: <Hammer />,
+  shipped: <Rocket />,
+  archived: <Archive />,
+};
+
+/**
+ * Where an empty stage points next: a new project, or the stage a project comes to it from (null
+ * is All). Shipped points at the projects in Building, the ones that get shipped.
+ */
+function nextFromEmpty(
+  filter: LibraryFilter,
+  counts: Readonly<Record<LibraryFilter, number>>,
+): LibraryFilter | null | "new" {
+  switch (filter) {
+    case "idea":
+      return "new";
+    case "building":
+      return counts.idea > 0 ? "idea" : "new";
+    case "shipped":
+      return counts.building > 0 ? "building" : null;
+    case "archived":
+      return null;
+  }
+}
+
 const COVER_TOKENS = [
   "--chart-1",
   "--chart-2",
@@ -136,10 +174,11 @@ function ViewToggle({
 }) {
   const text = wording.library.view;
   return (
-    <div className={styles.view} role="group" aria-label={text.label}>
+    <div className={styles.track} role="group" aria-label={text.label}>
       <Button
-        variant={mode === "grid" ? "outline" : "ghost"}
+        variant="ghost"
         size="icon"
+        className={styles.viewButton}
         aria-pressed={mode === "grid"}
         aria-label={text.grid}
         onClick={() => onChange("grid")}
@@ -147,8 +186,9 @@ function ViewToggle({
         <LayoutGrid aria-hidden="true" />
       </Button>
       <Button
-        variant={mode === "rows" ? "outline" : "ghost"}
+        variant="ghost"
         size="icon"
+        className={styles.viewButton}
         aria-pressed={mode === "rows"}
         aria-label={text.rows}
         onClick={() => onChange("rows")}
@@ -156,6 +196,86 @@ function ViewToggle({
         <List aria-hidden="true" />
       </Button>
     </div>
+  );
+}
+
+export type ProjectCardsProps = {
+  projects: readonly LibraryProject[];
+  layout: ViewMode;
+  onOpen: (projectId: string) => void;
+  /** A card's cover has come within a screen of the viewport, which is when its mockup is worth reading. */
+  onCoverNear: (projectId: string) => void;
+  /** A card's options menu, opened by the trigger given; without it a card has no menu. */
+  menu?: ((projectId: string, trigger: ReactElement) => ReactNode) | undefined;
+  /** Whether each card shows its stage; the Projects page filters by it, elsewhere it is noise. */
+  stages?: boolean | undefined;
+  className?: string | undefined;
+};
+
+/** The projects as cards, tiles or a list: each opens its project, and offers its menu when there is one. */
+export function ProjectCards({
+  projects,
+  layout,
+  onOpen,
+  onCoverNear,
+  menu,
+  stages = true,
+  className,
+}: ProjectCardsProps) {
+  return (
+    <ul
+      className={
+        className === undefined ? styles.grid : `${styles.grid} ${className}`
+      }
+      data-view={layout}
+      // Without a menu, a card's last line has the corner the menu would take.
+      data-menu={menu === undefined ? undefined : ""}
+    >
+      {projects.map((project) => {
+        const cover = coverOf(project.id);
+        return (
+          <li key={project.id} className={styles.card}>
+            <button
+              type="button"
+              className={styles.cardOpen}
+              data-card-open=""
+              onClick={() => onOpen(project.id)}
+            >
+              <ProjectCoverView
+                pattern={cover.pattern}
+                style={cover.style}
+                mockup={project.mockup}
+                onNear={() => onCoverNear(project.id)}
+              />
+              <span className={styles.cardBody}>
+                <span className={styles.cardTitle}>{project.title}</span>
+                <span className={styles.cardMeta}>
+                  {stages ? (
+                    <Badge tone={STAGE_TONE[project.stage]}>
+                      {wording.library.filter[project.stage]}
+                    </Badge>
+                  ) : null}
+                  <time dateTime={project.lastActivityAt}>
+                    {wording.library.lastActivity(project.lastActive)}
+                  </time>
+                </span>
+              </span>
+            </button>
+            {menu?.(
+              project.id,
+              <Button
+                variant="ghost"
+                size="icon"
+                className={styles.cardMenu}
+                aria-label={wording.shell.projectOptions(project.title)}
+              >
+                <Ellipsis aria-hidden="true" />
+              </Button>,
+            )}
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
@@ -185,6 +305,47 @@ export function ProjectLibraryView({
     next?.focus();
   }, [focusAfterChange]);
 
+  const newProject = (
+    <Button
+      variant="primary"
+      className={styles.newProject}
+      onClick={onNewProject}
+    >
+      <Plus aria-hidden="true" />
+      {wording.shell.newProject}
+    </Button>
+  );
+  const show = (next: LibraryFilter | null) => (
+    <Button
+      variant="outline"
+      className={styles.show}
+      onClick={() => {
+        // The button goes with the empty stage, so focus moves to the filter it presses.
+        section.current
+          ?.querySelectorAll<HTMLElement>("[data-filters] button")
+          [next === null ? 0 : FILTERS.indexOf(next) + 1]?.focus();
+        onFilterChange(next);
+      }}
+    >
+      {next === null ? wording.library.show.all : wording.library.show[next]}
+    </Button>
+  );
+  const empty = (
+    icon: ReactNode,
+    title: string,
+    lead: string,
+    actions: ReactNode,
+  ) => (
+    <div className={styles.emptyPanel}>
+      <EmptyState
+        icon={icon}
+        title={title}
+        description={lead}
+        action={<div className={styles.emptyActions}>{actions}</div>}
+      />
+    </div>
+  );
+
   // With nothing under All, either there are no projects or every one is archived.
   const allArchived = counts.archived > 0;
   let body: ReactNode;
@@ -194,89 +355,52 @@ export function ProjectLibraryView({
         {status === "failed" ? wording.library.failed : wording.library.loading}
       </p>
     );
-  else if (projects.length === 0)
-    body =
-      filter === null ? (
-        <EmptyState
-          title={
-            allArchived
-              ? wording.library.allArchivedTitle
-              : wording.library.emptyTitle
-          }
-          description={
-            allArchived
-              ? wording.library.allArchivedLead
-              : wording.library.emptyLead
-          }
-          action={
-            <Button variant="primary" onClick={onNewProject}>
-              {wording.shell.newProject}
-            </Button>
-          }
-        />
-      ) : (
-        <EmptyState
-          title={wording.library.emptyFilterTitle(
-            wording.library.filter[filter],
-          )}
-          description={wording.library.emptyFilterLead}
-        />
-      );
-  else
+  else if (projects.length > 0)
     body = (
-      <ul className={styles.grid} data-view={layout}>
-        {projects.map((project) => {
-          const cover = coverOf(project.id);
-          return (
-            <li key={project.id} className={styles.card}>
-              <button
-                type="button"
-                className={styles.cardOpen}
-                data-card-open=""
-                onClick={() => onOpen(project.id)}
-              >
-                <ProjectCoverView
-                  pattern={cover.pattern}
-                  style={cover.style}
-                  mockup={project.mockup}
-                  onNear={() => onCoverNear(project.id)}
-                />
-                <span className={styles.cardBody}>
-                  <span className={styles.cardTitle}>{project.title}</span>
-                  <span className={styles.cardMeta}>
-                    <Badge tone={STAGE_TONE[project.stage]}>
-                      {wording.library.filter[project.stage]}
-                    </Badge>
-                    <time dateTime={project.lastActivityAt}>
-                      {wording.library.lastActivity(project.lastActive)}
-                    </time>
-                  </span>
-                </span>
-              </button>
-              {menu(
-                project.id,
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className={styles.cardMenu}
-                  aria-label={wording.shell.projectOptions(project.title)}
-                >
-                  <Ellipsis aria-hidden="true" />
-                </Button>,
-              )}
-            </li>
-          );
-        })}
-      </ul>
+      <ProjectCards
+        projects={projects}
+        layout={layout}
+        onOpen={onOpen}
+        onCoverNear={onCoverNear}
+        menu={menu}
+      />
     );
+  else if (filter === null)
+    body = allArchived
+      ? empty(
+          STAGE_ICON.archived,
+          wording.library.allArchivedTitle,
+          wording.library.allArchivedLead,
+          <>
+            {show("archived")}
+            {newProject}
+          </>,
+        )
+      : empty(
+          <FolderPlus />,
+          wording.library.emptyTitle,
+          wording.library.emptyLead,
+          newProject,
+        );
+  else {
+    const next = nextFromEmpty(filter, counts);
+    body = empty(
+      STAGE_ICON[filter],
+      wording.library.emptyFilter[filter].title,
+      wording.library.emptyFilter[filter].lead,
+      next === "new" ? newProject : show(next),
+    );
+  }
   return (
     <section className={styles.page} ref={section}>
       <LibraryPageHeader
+        className={styles.header}
         title={wording.library.title}
         subtitle={wording.library.subtitle}
-      >
+      />
+      <div className={styles.toolbar}>
         <div
-          className={styles.filters}
+          className={styles.track}
           data-filters=""
           role="group"
           aria-label={wording.library.filterLabel}
@@ -291,21 +415,26 @@ export function ProjectLibraryView({
           {FILTERS.map((item) => (
             <FilterChip
               key={item}
-              className={styles.filter}
+              className={clsx(
+                styles.filter,
+                status === "ready" && counts[item] === 0 && styles.empty,
+              )}
               selected={filter === item}
-              {...(status === "ready" ? { count: counts[item] } : {})}
               onClick={() => onFilterChange(item)}
             >
               {wording.library.filter[item]}
+              {/* The chip's own count turns brand orange when pressed. */}
+              {status === "ready" ? (
+                <span className={styles.count}>{counts[item]}</span>
+              ) : null}
             </FilterChip>
           ))}
         </div>
-        <ViewToggle mode={layout} onChange={onLayoutChange} />
-        <Button variant="primary" onClick={onNewProject}>
-          <Plus aria-hidden="true" />
-          {wording.shell.newProject}
-        </Button>
-      </LibraryPageHeader>
+        <div className={styles.actions}>
+          <ViewToggle mode={layout} onChange={onLayoutChange} />
+          {newProject}
+        </div>
+      </div>
       {body}
     </section>
   );

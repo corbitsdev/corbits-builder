@@ -3,12 +3,10 @@
  * in a frame that allows scripts (hash navigation and the state switcher) but stays cross-origin,
  * so it cannot reach the workspace or the session.
  */
-import { StatusDot } from "@corbits/react-ui";
 import { MenuGroup, MenuItem, MenuLabel } from "@corbits/react-ui/ui/menu";
-import { Check, ChevronDown, Palette, SunMoon } from "lucide-react";
+import { Check, Layers, Palette, PanelsTopLeft, SunMoon } from "lucide-react";
 import {
   useCallback,
-  useContext,
   useEffect,
   useMemo,
   useRef,
@@ -16,14 +14,12 @@ import {
   type ReactNode,
 } from "react";
 import { wording } from "../../config.ts";
-import { DocumentView } from "@corbits-builder/plugin-ui/markdown";
 import { InlineNote, MenuItemLabel } from "../../components.jsx";
 import {
   FrameScreens,
   FrameShown,
   fromFrame,
   INDEX_PAGE,
-  MAX_QUOTE_CHARS,
   MAX_SCREEN_CHARS,
   screenPage,
   type DesignFiles,
@@ -32,8 +28,7 @@ import {
 import { DevicePreview, type PreviewDevice } from "./device-preview.tsx";
 import { mockupLook, tweakCss, type LookTweaks } from "./mockup-look.ts";
 import type { TweakPanelProps } from "./mockup-tweaks.view.tsx";
-import type { PaneBarGroup } from "./pane-bar.tsx";
-import { QuoteOffer } from "./passage-note.tsx";
+import type { PaneBarAction, PaneBarGroup } from "./pane-bar.tsx";
 import styles from "./design-preview.module.css";
 
 const spoken = (name: string) =>
@@ -49,16 +44,83 @@ const stateName = (state: string | null) =>
 const stateHash = (screen: string, state: string | null) =>
   state === null ? `#/${screen}` : `#/${screen}/${state}`;
 
-/** The unfiled draft's badge, whose dot moves only while its designer is mid-turn. */
-export const draftBadge = (working: boolean): PaneBarGroup => [
-  {
-    id: "draft",
-    label: working ? wording.design.draftInProgress : wording.design.draftIdle,
-    text: wording.design.draftBadge,
-    icon: <StatusDot label="" size="xs" tone="emphasis" live={working} />,
-    note: true,
-  },
-];
+/**
+ * The bar's menu of the mockup's screens and the shown screen's states, once the page has listed
+ * more than one; `goto` takes the place's hash and `previewOf` the preview the menu fits within.
+ */
+export function screenActions(
+  screens: FrameScreens,
+  shown: FrameShown | null,
+  goto: (hash: string) => void,
+  previewOf: () => Element | null | undefined,
+): PaneBarAction[] {
+  const current = screens.find((entry) => entry.screen === shown?.screen);
+  // Portaled outside the pane, so the grid reads the pane's width when it opens to wrap within it.
+  const fitPane = (grid: HTMLDivElement | null) => {
+    const pane = previewOf();
+    if (grid !== null && pane)
+      grid.style.maxWidth = `min(${String(pane.clientWidth)}px, var(--radix-dropdown-menu-content-available-width, 100vw) - 0.75rem)`;
+  };
+  return [
+    ...(screens.length > 1 || (screens[0]?.states.length ?? 0) > 1
+      ? [
+          {
+            id: "screen",
+            label: wording.preview.screen,
+            // An icon, not the screen's name: the bar stands up the pane's edge, where a name
+            // would widen it. The menu ticks the screen shown.
+            icon: <PanelsTopLeft size={16} aria-hidden="true" />,
+            menu: (
+              <div className={styles.screenMenu} ref={fitPane}>
+                {screens.map((entry) => (
+                  <MenuGroup
+                    key={entry.screen}
+                    className={styles.screenColumn}
+                    aria-label={spoken(entry.screen)}
+                  >
+                    <MenuLabel aria-hidden="true">
+                      {spoken(entry.screen)}
+                    </MenuLabel>
+                    {(entry.states.length === 0 ? [null] : entry.states).map(
+                      (state) => (
+                        <MenuItem
+                          key={String(state)}
+                          onSelect={() => goto(stateHash(entry.screen, state))}
+                        >
+                          <MenuItemLabel>
+                            {stateName(state)}
+                            {entry === current && shown?.state === state ? (
+                              <Check size={14} aria-label="Shown" />
+                            ) : null}
+                          </MenuItemLabel>
+                        </MenuItem>
+                      ),
+                    )}
+                  </MenuGroup>
+                ))}
+              </div>
+            ),
+          },
+        ]
+      : []),
+    ...(current !== undefined && current.states.length > 1
+      ? [
+          {
+            id: "states",
+            label: wording.preview.states(spoken(current.screen)),
+            icon: <Layers size={16} aria-hidden="true" />,
+            row: current.states.map((state) => ({
+              id: `state:${state}`,
+              label: stateName(state),
+              text: stateName(state),
+              active: shown?.state === state,
+              onSelect: () => goto(stateHash(current.screen, state)),
+            })),
+          },
+        ]
+      : []),
+  ];
+}
 
 export type MockupFrameViewProps = {
   files: DesignFiles;
@@ -160,30 +222,6 @@ export function MockupFrameView({
     window.addEventListener("message", keep);
     return () => window.removeEventListener("message", keep);
   }, []);
-  const offer = useContext(QuoteOffer);
-  useEffect(() => {
-    if (offer === null) return;
-    // Only the inline frame: an offer under the modal expanded view could not be clicked.
-    const quote = (event: MessageEvent) => {
-      const owner = frame.current;
-      if (owner === null || event.source !== owner.contentWindow) return;
-      const data = event.data as { designQuote?: unknown; at?: unknown } | null;
-      const text = data?.designQuote;
-      const at = data?.at;
-      if (typeof text !== "string" || text.length > MAX_QUOTE_CHARS) return;
-      if (
-        !Array.isArray(at) ||
-        at.length !== 2 ||
-        !at.every((n) => typeof n === "number")
-      )
-        return;
-      const box = owner.getBoundingClientRect();
-      const [x, y] = at as [number, number];
-      offer(text, new DOMRect(box.left + x, box.top + y, 0, 0));
-    };
-    window.addEventListener("message", quote);
-    return () => window.removeEventListener("message", quote);
-  }, [offer]);
   // Rebuilt only when the files change or a link opens another page, so an unchanged refresh
   // leaves the frame alone.
   const snapshot = JSON.stringify(files);
@@ -204,75 +242,13 @@ export function MockupFrameView({
   );
   const tell = (message: object) =>
     frame.current?.contentWindow?.postMessage(message, "*");
-  const current = screens.find((entry) => entry.screen === shown?.screen);
-  // Portaled outside the pane, so the grid reads the pane's width when it opens to wrap within it.
-  const fitPane = (grid: HTMLDivElement | null) => {
-    const pane = frame.current?.closest('[data-slot="device-preview"]');
-    if (grid !== null && pane)
-      grid.style.maxWidth = `min(${String(pane.clientWidth)}px, var(--radix-dropdown-menu-content-available-width, 100vw) - 0.75rem)`;
-  };
   const screenGroup: PaneBarGroup = [
-    ...(screens.length > 1 || (screens[0]?.states.length ?? 0) > 1
-      ? [
-          {
-            id: "screen",
-            label: wording.preview.screen,
-            text:
-              current === undefined
-                ? wording.preview.screen
-                : spoken(current.screen),
-            icon: <ChevronDown size={12} aria-hidden="true" />,
-            menu: (
-              <div className={styles.screenMenu} ref={fitPane}>
-                {screens.map((entry) => (
-                  <MenuGroup
-                    key={entry.screen}
-                    className={styles.screenColumn}
-                    aria-label={spoken(entry.screen)}
-                  >
-                    <MenuLabel aria-hidden="true">
-                      {spoken(entry.screen)}
-                    </MenuLabel>
-                    {(entry.states.length === 0 ? [null] : entry.states).map(
-                      (state) => (
-                        <MenuItem
-                          key={state ?? ""}
-                          onSelect={() =>
-                            tell({ designGoto: stateHash(entry.screen, state) })
-                          }
-                        >
-                          <MenuItemLabel>
-                            {stateName(state)}
-                            {entry === current && shown?.state === state ? (
-                              <Check size={14} aria-label="Shown" />
-                            ) : null}
-                          </MenuItemLabel>
-                        </MenuItem>
-                      ),
-                    )}
-                  </MenuGroup>
-                ))}
-              </div>
-            ),
-          },
-        ]
-      : []),
-    ...(current !== undefined && current.states.length > 1
-      ? [
-          {
-            id: "states",
-            label: wording.preview.states(spoken(current.screen)),
-            row: current.states.map((state) => ({
-              id: `state:${state}`,
-              label: stateName(state),
-              text: stateName(state),
-              active: shown?.state === state,
-              onSelect: () =>
-                tell({ designGoto: stateHash(current.screen, state) }),
-            })),
-          },
-        ]
-      : []),
+    ...screenActions(
+      screens,
+      shown,
+      (hash) => tell({ designGoto: hash }),
+      () => frame.current?.closest('[data-slot="device-preview"]'),
+    ),
     {
       id: "tweak",
       label: wording.tweak.open,
@@ -336,6 +312,11 @@ export type DesignPreviewViewProps = {
   tweakPanel: (panel: TweakPanelProps) => ReactNode;
 };
 
+// The written plan as the document page reads it: without the file's front matter (its settings
+// block).
+export const planPage = (notes: string) =>
+  notes.replace(/^\s*---\n[\s\S]*?\n---\n+/, "");
+
 export function DesignPreviewView({
   files,
   part,
@@ -358,10 +339,6 @@ export function DesignPreviewView({
         tweakPanel={tweakPanel}
       />
     );
-  const notes = files["DESIGN.md"];
-  return notes === undefined ? (
-    <InlineNote>{wording.design.noPlan}</InlineNote>
-  ) : (
-    <DocumentView source={notes.replace(/^\s*# [^\n]*\n+/, "")} />
-  );
+  // A written plan opens on the document page, so a plan reaches here only when there is none.
+  return <InlineNote>{wording.design.noPlan}</InlineNote>;
 }

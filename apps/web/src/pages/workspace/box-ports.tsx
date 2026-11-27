@@ -1,8 +1,8 @@
 /**
  * What a screen can reach in the prompt box from wherever it is drawn: the slot where Send stands,
  * the box's placeholder and what Send sends. A card waiting inside the box hands over its whole row
- * of buttons; a screen covering the page hands over only its forward action, since its way back
- * stays with the page.
+ * of buttons; a screen in the plugin space beside the box hands over its row and its forward action
+ * alike, whichever it draws, so the box keeps the one main action.
  */
 import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
@@ -11,7 +11,7 @@ import {
   PromptAction,
   PromptPlaceholder,
   PromptSend,
-  type PromptTake,
+  type PromptOffer,
 } from "@corbits-builder/plugin-ui/screen-actions";
 
 export type BoxPorts = {
@@ -21,47 +21,49 @@ export type BoxPorts = {
   /** What the screen asks the words to be, while it says. */
   placeholder: string | undefined;
   setPlaceholder: (placeholder: string | undefined) => void;
-  /** What takes the words Send sends, while a screen offers to. */
-  take: PromptTake | undefined;
-  setTake: (take: PromptTake | undefined) => void;
+  /** The offer a screen in the box made for Send, if any. */
+  offer: PromptOffer | undefined;
+  setOffer: (offer: PromptOffer | undefined) => void;
 };
 
 export function useBoxPorts(): BoxPorts {
   const [actionsAt, setActionsAt] = useState<HTMLDivElement | null>(null);
   const [placeholder, setPlaceholder] = useState<string>();
-  const [take, setTakeState] = useState<PromptTake>();
-  // A function held in state is set through an updater, or React would call it.
-  const setTake = useCallback(
-    (next: PromptTake | undefined) => setTakeState(() => next),
-    [],
-  );
+  const [offer, setOffer] = useState<PromptOffer>();
   const toRow = useCallback(
     (buttons: ReactNode) =>
       actionsAt === null ? null : createPortal(buttons, actionsAt),
     [actionsAt],
   );
   return useMemo(
-    () => ({ setActionsAt, toRow, placeholder, setPlaceholder, take, setTake }),
-    [toRow, placeholder, take, setTake],
+    () => ({
+      setActionsAt,
+      toRow,
+      placeholder,
+      setPlaceholder,
+      offer,
+      setOffer,
+    }),
+    [toRow, placeholder, offer],
   );
 }
 
-/** Connects what it holds to the box: as the card waiting in it, as the page over it, or not. */
+/** Connects what it holds to the box: as the card waiting in it, as the screen beside it, or not. */
 export function InBox({
   ports,
   as,
   children,
 }: {
   ports: BoxPorts;
-  as: "card" | "page" | null;
+  as: "card" | "space" | null;
   children: ReactNode;
 }) {
   const on = as !== null;
   return (
-    <ActionsSlot value={as === "card" ? ports.toRow : null}>
-      <PromptAction value={as === "page" ? ports.toRow : null}>
+    <ActionsSlot value={on ? ports.toRow : null}>
+      <PromptAction value={as === "space" ? ports.toRow : null}>
         <PromptPlaceholder value={on ? ports.setPlaceholder : null}>
-          <PromptSend value={on ? ports.setTake : null}>{children}</PromptSend>
+          <PromptSend value={on ? ports.setOffer : null}>{children}</PromptSend>
         </PromptPlaceholder>
       </PromptAction>
     </ActionsSlot>

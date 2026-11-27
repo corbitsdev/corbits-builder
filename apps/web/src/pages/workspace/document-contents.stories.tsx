@@ -6,8 +6,10 @@ const meta = {
   title: "Components/Workspace/DocumentContents",
   component: DocumentContents,
   args: {
-    title: "Problem brief",
+    id: "contents",
+    open: true,
     sections: [
+      { id: "section-in-short", title: "In short", commented: false },
       { id: "section-who-has-it", title: "Who has it", commented: true },
       {
         id: "section-what-it-must-do",
@@ -28,10 +30,10 @@ const meta = {
     current: "section-who-has-it",
     onOpen: fn(),
   },
-  // The contents sit on the window's backdrop, where the open section lifts onto the page colour.
+  // The contents sit on the room's ground, where the open section is shaded.
   decorators: [
     (Story) => (
-      <div style={{ padding: 24, background: "var(--wb-frame)" }}>
+      <div style={{ padding: 24, background: "var(--wb-background)" }}>
         <Story />
       </div>
     ),
@@ -46,3 +48,6 @@ export const WithComments: Story = {};
 
 /** At the top of the page no section is open yet. */
 export const AtTheTop: Story = { args: { current: null } };
+
+/** Folded, the list has closed up into the row above it. */
+export const Folded: Story = { args: { open: false } };

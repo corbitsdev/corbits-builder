@@ -18,24 +18,23 @@ import { ConceptMockupView } from "./design-concepts.view.tsx";
 import liveApp from "./live-app.stories.tsx";
 import { LiveAppView } from "./live-app.view.tsx";
 import { TweakPanelView } from "./mockup-tweaks.view.tsx";
-import { sampleDesign, sampleDraft } from "./sample-design.ts";
-import { WithPictures as manual } from "./user-manual.stories.tsx";
+import { sampleDesign } from "./sample-design.ts";
+import writtenDocument, { SAMPLE_MANUAL } from "./written-document.stories.tsx";
+import { WrittenDocumentView } from "./written-document.view.tsx";
 
 const brief: PaneDocument = {
   id: "problem_brief",
   title: "Problem brief",
   status: wording.documentStatus.approved(2),
   unread: false,
-  removable: false,
 };
 
-// Filed since the person last looked, so its tab is marked.
+// Filed since the person last looked; opening it marks it seen.
 const requirements: PaneDocument = {
   id: "product_requirements",
   title: "Product requirements",
   status: wording.documentStatus.drafted(1),
   unread: true,
-  removable: false,
 };
 
 const plan: PaneDocument = {
@@ -43,7 +42,6 @@ const plan: PaneDocument = {
   title: "Build plan",
   status: wording.documentStatus.drafted(1),
   unread: false,
-  removable: false,
 };
 
 const approvalPackage: PaneDocument = {
@@ -51,7 +49,6 @@ const approvalPackage: PaneDocument = {
   title: "Approval package",
   status: wording.documentStatus.drafted(1),
   unread: false,
-  removable: false,
 };
 
 const BRIEF_V1 = `# Problem brief
@@ -123,15 +120,10 @@ const meta = {
     onSelect: fn(),
     onSeen: fn(),
     open: true,
-    onClose: fn(),
     onRetry: fn(),
     onAddToPrompt: fn(),
-    conceptMockup: (concept, frame) => (
-      <ConceptMockupView
-        {...designConcept.args}
-        label={concept.label}
-        {...frame}
-      />
+    conceptMockup: (_concept, frame) => (
+      <ConceptMockupView {...designConcept.args} {...frame} />
     ),
     // The bar's Add new reviewer opens the rounds' own form.
     approvalRounds: ({ shareOpen, onShareOpenChange }) => (
@@ -145,6 +137,8 @@ const meta = {
     tweakPanel: (panel) => (
       <TweakPanelView {...panel} onSave={onSave} saving={false} />
     ),
+    // The page the brief reads as, drawn from its own story's args.
+    writtenDocument: () => <WrittenDocumentView {...writtenDocument.args} />,
   },
   render: (args) => <Pane {...args} />,
 } satisfies Meta<typeof ArtifactPane>;
@@ -185,17 +179,13 @@ export const HtmlDesign: Story = {
   },
 };
 
-/** The live designer's unfiled mockup has a tab of its own until a design is filed. */
-export const DesignDraft: Story = {
-  args: { documents: [], selectedId: null, draft: sampleDraft },
-};
-
-/** Each design concept the person compares is a tab of its own. */
+/** Each design concept the person compares is shown on its own. */
 export const Concepts: Story = {
   args: {
-    concepts: ["Paper", "Quiet"].map((label) => ({
+    concepts: ["Paper", "Quiet"].map((label, index) => ({
       label,
       content: JSON.stringify(sampleDesign),
+      option: { artifactId: `option-${String(index + 1)}`, version: 1 },
     })),
   },
 };
@@ -203,13 +193,13 @@ export const Concepts: Story = {
 /** Once a build plan is filed, the app it builds and its manual sit beside the plan. */
 export const AppAndManual: Story = {
   args: {
-    ...manual.args,
+    manual: SAMPLE_MANUAL,
     documents: [brief, plan],
     liveApp: <LiveAppView {...liveApp.args} />,
   },
 };
 
-/** An approval package's tab is its rounds: who was asked to sign off and what each decided. */
+/** An approval package shows its rounds: who was asked to sign off and what each decided. */
 export const ApprovalPackage: Story = {
   args: {
     documents: [brief, approvalPackage],

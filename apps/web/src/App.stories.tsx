@@ -1,80 +1,46 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { fn } from "storybook/test";
+import { expect, fn, userEvent, within } from "storybook/test";
 import {
   AppView,
   BootView,
   NoProjectOpen,
   ProjectLoadFailure,
-  WhatsNewDialog,
-  type RailProject,
 } from "./App.view.tsx";
-import {
-  ProjectMenuView,
-  type ProjectMenuViewProps,
-} from "./pages/project-menu.view.tsx";
-import { WorkspaceMenuView } from "./workspace-menu.view.tsx";
-
-const project = (id: string, title: string, open = false): RailProject => ({
-  id,
-  title,
-  open,
-});
-
-const projects = [
-  project("bakery", "Bakery orders"),
-  project("clinic", "Clinical trial intake"),
-  project("dispatch", "Field service dispatch"),
-  project("habits", "Habit tracker"),
-];
-
-const menu: Omit<ProjectMenuViewProps, "trigger"> = {
-  align: "start",
-  archived: false,
-  shipped: false,
-  onShowInfo: fn(),
-  onRename: fn(),
-  onExport: fn(),
-  onToggleShipped: fn(),
-  onToggleArchived: fn(),
-  onDelete: fn(),
-  infoDialog: null,
-  exportDialog: null,
-};
+import projects from "./pages/projects.stories.tsx";
+import { ProjectsView } from "./pages/projects.view.tsx";
+import library from "./pages/project-library.stories.tsx";
+import { ProjectLibraryView } from "./pages/project-library.view.tsx";
+import { productName } from "./config.ts";
+import settings from "./pages/settings/settings.stories.tsx";
+import { SettingsView } from "./pages/settings/settings.view.tsx";
 
 const meta = {
   title: "Screens/Shell/App",
   component: AppView,
   parameters: { layout: "fullscreen" },
   args: {
-    current: "newProject",
-    rail: {
-      collapsed: false,
-      onToggleCollapsed: fn(),
+    current: null,
+    roomOpen: false,
+    sidebar: {
+      name: "Acme product team",
+      open: true,
+      drawer: false,
+      needsProvider: false,
+      recent: [
+        { id: "bakery", title: "Bakery orders" },
+        { id: "walks", title: "Dog walking bookings" },
+        { id: "rota", title: "Café staff rota" },
+      ],
+      onToggleSidebar: fn(),
       onNewProject: fn(),
-      onLibrary: fn(),
-      onBack: fn(),
-      onSettings: fn(),
-      projects,
+      onConnectModel: fn(),
       onOpenProject: fn(),
+      onSettings: fn(),
+      onPreferences: fn(),
     },
-    workspaceMenu: (
-      <WorkspaceMenuView
-        name="Acme product team"
-        workspaces={[
-          { id: "acme", name: "Acme product team", open: true },
-          { id: "side", name: "Side projects", open: false },
-        ]}
-        onOpen={fn()}
-        onCreate={fn()}
-      />
-    ),
-    projectMenu: (_projectId, trigger) => (
-      <ProjectMenuView {...menu} trigger={trigger} />
-    ),
     hub: { state: "answering" },
     setupFault: null,
     page: <p>The page on screen.</p>,
-    onOpenPreferences: fn(),
   },
 } satisfies Meta<typeof AppView>;
 
@@ -83,45 +49,143 @@ type Story = StoryObj<typeof meta>;
 
 export const SignedIn: Story = {};
 
-/** An empty workspace, and any workspace whose list is unread or could not be read: the rail draws them the same. */
-export const NoProjects: Story = {
-  args: { rail: { ...meta.args.rail, projects: [] } },
-};
-
-export const ProjectOpen: Story = {
+/**
+ * The new project page stands alone: no sidebar, the product's mark and name in one top corner,
+ * and Settings in the other. Its own recent projects list sits under the
+ * prompt.
+ */
+export const Home: Story = {
   args: {
-    current: "project",
-    rail: {
-      ...meta.args.rail,
-      projects: [
-        project("bakery", "Bakery orders", true),
-        ...projects.slice(1),
-      ],
-    },
+    current: "newProject",
+    page: <ProjectsView {...projects.args} />,
+  },
+  play: async ({ args, canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText(productName)).toBeVisible();
+    await expect(
+      canvas.queryByRole("complementary", { name: "Workspace" }),
+    ).toBeNull();
+    await userEvent.click(canvas.getByRole("button", { name: "Settings" }));
+    await expect(args.sidebar.onSettings).toHaveBeenCalled();
   },
 };
 
-export const Library: Story = { args: { current: "library" } };
-
-/** Settings adds a way back to where it was opened from. */
-export const Settings: Story = { args: { current: "settings" } };
-
-export const RailCollapsed: Story = {
-  args: { rail: { ...meta.args.rail, collapsed: true } },
+export const HomeDark: Story = {
+  args: { current: "newProject" },
+  globals: { mode: "dark" },
 };
 
-/** A phone-width window starts with the icon rail, so the page keeps the screen. */
+/**
+ * The Projects page has no sidebar either, and the new project page's corner. Its covers have no
+ * mockups: the action logger throws reading a click's window when mockup frames are on the page.
+ */
+export const Library: Story = {
+  args: {
+    current: "library",
+    page: (
+      <ProjectLibraryView
+        {...library.args}
+        projects={library.args.projects.map((project) => ({
+          ...project,
+          mockup: null,
+        }))}
+      />
+    ),
+  },
+  play: async ({ args, canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText(productName)).toBeVisible();
+    await expect(
+      canvas.queryByRole("complementary", { name: "Workspace" }),
+    ).toBeNull();
+    await userEvent.click(canvas.getByRole("button", { name: "Settings" }));
+    await expect(args.sidebar.onSettings).toHaveBeenCalled();
+  },
+};
+
+export const LibraryDark: Story = {
+  ...Library,
+  globals: { mode: "dark" },
+};
+
+export const SignedInDark: Story = { globals: { mode: "dark" } };
+
+/** No model is connected yet, so the sidebar offers to connect one. */
+export const NeedsModel: Story = {
+  args: { sidebar: { ...meta.args.sidebar, needsProvider: true } },
+};
+
+/**
+ * A project's room on the page draws its own sidebar, so the workspace's steps aside and the
+ * canvas is only the ground the room stands on.
+ */
+export const RoomOpen: Story = {
+  args: { current: "project", roomOpen: true },
+};
+
+/**
+ * Settings keeps the new project page's header: no sidebar, the product's mark and name in one
+ * top corner and Settings, marked as the page on screen, in the other. Its way back stands
+ * beside its title.
+ */
+export const Settings: Story = {
+  args: {
+    current: "settings",
+    page: <SettingsView {...settings.args} />,
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText(productName)).toBeVisible();
+    await expect(
+      canvas.queryByRole("complementary", { name: "Workspace" }),
+    ).toBeNull();
+    await expect(
+      canvas.getByRole("button", { name: "Settings" }),
+    ).toHaveAttribute("aria-current", "page");
+    await expect(
+      canvas.getByRole("button", { name: "Back to Bakery orders" }),
+    ).toBeVisible();
+  },
+};
+
+export const SettingsDark: Story = {
+  ...Settings,
+  globals: { mode: "dark" },
+};
+
+/** Put away, the sidebar leaves only its name, and the page starts below it. */
+export const SidebarClosed: Story = {
+  args: { sidebar: { ...meta.args.sidebar, open: false } },
+};
+
+/** A narrow window: the sidebar waits as a drawer behind its name. */
 export const Narrow: Story = {
-  ...RailCollapsed,
-  globals: { viewport: "mobile1" },
+  args: { sidebar: { ...meta.args.sidebar, open: false, drawer: true } },
+  globals: { viewport: { value: "mobile1" } },
 };
 
-/** Opened at phone width, the full rail lies over the page. */
-export const NarrowRailOpen: Story = {
-  globals: { viewport: "mobile1" },
+/** Opened in a narrow window, the sidebar lies over the page. */
+export const NarrowDrawer: Story = {
+  args: { sidebar: { ...meta.args.sidebar, open: true, drawer: true } },
+  globals: { viewport: { value: "mobile1" } },
 };
 
-/** The hub stopped answering; the rail keeps the list it last read. */
+/** A recent project opens from the sidebar. */
+export const OpensRecentProject: Story = {
+  play: async ({ args, canvasElement }) => {
+    await userEvent.click(
+      within(canvasElement).getByRole("button", { name: "Café staff rota" }),
+    );
+    await expect(args.sidebar.onOpenProject).toHaveBeenCalledWith("rota");
+  },
+};
+
+/** A new workspace has no projects yet, so there is nothing to list. */
+export const NoRecentProjects: Story = {
+  args: { sidebar: { ...meta.args.sidebar, recent: [] } },
+};
+
+/** The hub stopped answering. */
 export const HubNotAnswering: Story = {
   args: { hub: { state: "notAnswering" } },
 };
@@ -146,20 +210,6 @@ export const ProjectLoadFailed: Story = {
       />
     ),
   },
-};
-
-export const WhatsNew: Story = {
-  render: () => <WhatsNewDialog onClose={fn()} onOpenPreferences={fn()} />,
-};
-
-export const WhatsNewApprovals: Story = {
-  render: () => (
-    <WhatsNewDialog
-      initialTab="approvals"
-      onClose={fn()}
-      onOpenPreferences={fn()}
-    />
-  ),
 };
 
 /** Before the hub has said who is signed in. */

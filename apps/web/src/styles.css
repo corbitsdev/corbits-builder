@@ -51,13 +51,11 @@
   /* Surfaces are the page colour; the rail alone keeps the library's grey.
      Grey cards on a white canvas read as disabled panels, not content. */
   --wb-card: var(--background);
+  /* The grey a written page lies on, raised as a sheet; dark mode below. */
+  --wb-frame: var(--muted);
   --wb-canvas: color-mix(in srgb, var(--muted) 40%, var(--background));
   --wb-shadow: 0 1px 2px color-mix(in srgb, var(--foreground) 6%, transparent);
-  /* The rail sits on the page ground and the main pane is a raised sheet on
-     it. Corbits brand palette: Paper White ground, Pure White sheet, a
-     Bedrock Charcoal hairline; dark mode below. */
-  --wb-frame: #f2f4f5;
-  --wb-pane: #ffffff;
+  /* What floats over the room, edged in a Bedrock Charcoal hairline; dark mode below. */
   --wb-pane-shadow:
     0 0 0 1px color-mix(in srgb, #5c5555 10%, transparent),
     0 1px 3px color-mix(in srgb, #000000 6%, transparent);
@@ -65,19 +63,17 @@
   --wb-muted-foreground: var(--muted-foreground);
   --wb-border: var(--border);
   --wb-border-strong: var(--border-strong);
+  /* The brand orange, read here on the root before `body` turns the library's primary blue. */
   --wb-primary: var(--primary);
-  /* The library's orange as shipped, read here on the root before `body`
-     lightens it below. */
-  --brand-primary: var(--primary);
-  --brand-primary-active: var(--primary-active);
-  --wb-ring: var(--ring);
+  /* Focus is drawn in the action blue, the library's own included; orange is the brand's alone. */
+  --wb-ring: var(--wb-action);
   --wb-okay: var(--ok);
   --wb-destructive: var(--destructive);
   /* White on the destructive fill in both themes; the library's own turns black in dark, which
      made the Stop square read as a hole. */
   --wb-destructive-foreground: #ffffff;
-  /* Sending what the person typed, such as Send once there are words. Blue, so it never reads as
-     the brand orange or as a yes; dark below. */
+  /* Sending, links, focus, selection and chosen options. Blue, so it never reads as the brand
+     orange or as a yes; dark below. */
   --wb-action: #2370d6;
   --wb-action-foreground: #ffffff;
   /* Every yes or move-forward button: Yes, go ahead; Approve; Continue; Use Concept B. */
@@ -111,47 +107,42 @@
   --space-6: 24px;
   --space-8: 32px;
   --space-12: 48px;
+  /* The written page's title, and the controls beside it, are laid from these: the 28px contents
+     toggle, Download, Share and close button are centred on the title's line. */
+  --document-page-inset: 14px;
+  --document-page-gutter: 64px;
+  --document-title-top: 60px;
+  --document-title-line: 1.875rem;
+  --document-title-centre: calc(
+    var(--document-title-top) + var(--document-title-line) / 2
+  );
+  --document-controls-top: calc(var(--document-title-centre) - 14px);
   --target: 44px;
   --section-max: 1320px;
   font-family: var(--wb-font-ui);
 }
 
-/* The brand orange carries dark grey text, and dark grey on that orange is
-   legible on paper and hard on the eye. It is lightened here: towards the
-   page in light mode, towards the text colour in dark, so the text stays
-   dark on it either way and the ratio roughly doubles. Mixed from the
-   library's value rather than copied, so the library's next orange still
-   comes through. Set on `body`, under the root the library writes to. */
+/* The library's primary is the action blue, so every primary button, and anything else the
+   library fills with its primary, is blue without a class of its own. Orange is left to the brand,
+   as --wb-primary. Set on `body`, under the root the library writes to. */
 body {
-  --primary: color-mix(in srgb, var(--brand-primary) 68%, var(--background));
+  --primary: var(--wb-action);
   --primary-active: color-mix(
-    in srgb,
-    var(--brand-primary-active) 76%,
-    var(--background)
-  );
-  /* What the person has picked, in every question and screen alike; stronger on dark, where a
-     faint tint of the lightened orange disappears into the ground. */
-  --wb-selected: color-mix(
     in oklab,
-    var(--primary-emphasis) 16%,
-    var(--background)
+    var(--wb-action) 85%,
+    var(--wb-foreground)
   );
+  --primary-foreground: var(--wb-action-foreground);
+  --ring: var(--wb-ring);
+  /* What the person has picked, in every question and screen alike; stronger on dark, where a
+     faint tint of the blue disappears into the ground. */
+  --wb-selected: color-mix(in oklab, var(--wb-action) 16%, var(--background));
   /* Every question and screen in the conversation fills the message column, open or settled. */
   --wb-question-width: 100%;
 }
 
 :root.dark body {
-  --primary: color-mix(in srgb, var(--brand-primary) 68%, var(--foreground));
-  --primary-active: color-mix(
-    in srgb,
-    var(--brand-primary-active) 76%,
-    var(--foreground)
-  );
-  --wb-selected: color-mix(
-    in oklab,
-    var(--primary-emphasis) 30%,
-    var(--background)
-  );
+  --wb-selected: color-mix(in oklab, var(--wb-action) 30%, var(--background));
 }
 
 /* Night: a Pure Black ground under the theme's own page colour, edged in
@@ -160,7 +151,9 @@ body {
   --wb-frame: #000000;
   --wb-action: #6aa0f0;
   --wb-proceed: #5cb573;
-  --wb-pane: var(--background);
+  /* White on these lighter fills is under 3:1 contrast, so the labels are black. */
+  --wb-action-foreground: #000000;
+  --wb-proceed-foreground: #000000;
   --wb-pane-shadow: 0 0 0 1px color-mix(in srgb, #e4d5bc 12%, transparent);
 }
 
@@ -190,6 +183,27 @@ body {
   }
 }
 
+/* Selected text keeps the colour the person's system gives it; the library tints it the brand
+   orange in its fields. */
+::selection {
+  background-color: Highlight;
+  color: HighlightText;
+}
+
+/* The library's dialog body scrolls flush with its fields, which cut a focused field's ring down
+   to its top edge; the body takes the ring's reach as padding and gives it back as margin. Its
+   footer's wash and rule stop short of the dialog's edges and read as a grey box, so they go. */
+[data-slot="dialog-body"] {
+  margin: -5px;
+  padding: 5px;
+}
+
+[data-slot="dialog-footer"] {
+  border-top: 0;
+  background: none;
+  padding-top: 0;
+}
+
 /* Clickable controls show a hand. UA styles leave `button` at default, and the
    design-system Button ships no cursor either — so every primary, ghost, crumb,
    disclosure, and role=button tile used to look inert on hover. */
@@ -206,6 +220,19 @@ input[type="checkbox"]:not(:disabled),
 input[type="radio"]:not(:disabled),
 input[type="file"]:not(:disabled) {
   cursor: pointer;
+}
+
+/* A link in a document or a message reads as one at rest: blue and underlined, the line
+   thickening under the pointer. */
+[data-slot="prose"] a[href] {
+  color: var(--wb-action);
+  text-decoration-line: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+[data-slot="prose"] a[href]:hover {
+  text-decoration-thickness: 2px;
 }
 
 :focus-visible {
@@ -383,4 +410,9 @@ button[aria-disabled="true"] {
     height: auto !important;
     overflow: visible !important;
   }
+}
+
+/* A sheet on the grey ground has a top edge of its own, so the controls line up with that. */
+[data-ground="grey"] {
+  --document-controls-top: var(--document-page-inset);
 }

@@ -1,0 +1,42 @@
+/* The sections stand at the foot of what holds them, whatever scrolls above, ruled off from it. */
+.sections {
+  flex: none;
+  margin: 0;
+  padding: var(--space-2) 0 0;
+  border-block-start: 1px solid var(--wb-border);
+  list-style: none;
+}
+
+/* A row starts at the files' left edge and stands as tall as theirs, so the files and the sections
+   read as one column. */
+.row {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  width: 100%;
+  height: var(--sidebar-row-height);
+  padding-block: 0;
+  border: 0;
+  background: transparent;
+  color: var(--wb-foreground);
+  font-family: inherit;
+  text-align: start;
+}
+
+.row[aria-current] {
+  background: var(--wb-selected);
+  font-weight: 500;
+}
+
+.row:focus-visible {
+  outline: 2px solid var(--wb-action);
+  outline-offset: -2px;
+}
+
+.status {
+  color: var(--wb-muted-foreground);
+  font-weight: 400;
+}
+
+.status[data-tone="destructive"] {
+  color: var(--destructive);
+}

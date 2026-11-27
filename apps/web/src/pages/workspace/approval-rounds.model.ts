@@ -41,7 +41,7 @@ import type {
   Round,
 } from "./approval-rounds.view.tsx";
 import { humanFault, responseCode } from "./human-fault.ts";
-import type { PassageQuote } from "./passage-note.tsx";
+import type { PassageQuote } from "./passage-quote.ts";
 import type { SharePackageProps } from "./share-package.model.ts";
 
 const roundText = wording.approvalRound;
@@ -429,7 +429,9 @@ function reviewerRow(
       );
       const file = await filterZipArchiveEntries(rawFile, state.excludedPaths);
       triggerBrowserDownload(file);
-      toast.success(wording.paneFile.downloaded(file.name));
+      toast.success(
+        roundText.downloadedZip(fields.name.trim() || reviewer.name),
+      );
       set({ downloadOpen: false });
     } catch (error) {
       set({ fault: humanFault(error, roundText.failed) });

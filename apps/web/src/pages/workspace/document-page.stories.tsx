@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { DocumentView } from "@corbits-builder/plugin-ui/markdown";
-import { Download } from "lucide-react";
-import { fn } from "storybook/test";
+import { Download, Share2 } from "lucide-react";
+import { expect, fn, userEvent, within } from "storybook/test";
 import { wording } from "../../config.ts";
 import {
   DocumentPage,
@@ -10,10 +10,14 @@ import {
 } from "./document-page.tsx";
 import type { PaneBarGroup } from "./pane-bar.tsx";
 import { splitLeadingHeading } from "./reading-selection.ts";
-import { versionGroup } from "./version-menu.tsx";
 
 /** The Problem brief as the hi-fi page shows it. */
 export const PROBLEM_BRIEF = `# Problem brief
+
+## In short
+
+- **Cake orders get lost** between the phone and the paper
+- The first version **takes orders online** and nothing else
 
 Small bakeries take cake orders by phone and on paper, and lose some of them on busy days.
 
@@ -75,15 +79,17 @@ ${Array.from(
 - What happens to an order nobody collects
 `;
 
-const COMMENTED: readonly { id: string; quote: string; note: string }[] = [
+const COMMENTED: readonly (MarginPassage & { note: string })[] = [
   {
     id: "texts",
     quote: "Counter staff who answer the phone mid-shift",
+    occurrence: 0,
     note: "Some regulars text their order to the counter. Should texts count too?",
   },
   {
     id: "allergy",
     quote: "Flag allergies and dietary needs",
+    occurrence: 0,
     note: "Should the cake label show the allergy as well?",
   },
 ];
@@ -99,7 +105,9 @@ const STATES: readonly (MarginPassage & { note: string })[] = COMMENTED.map(
  * drawn elsewhere; this only shows where the page places them.
  */
 function MarginStandIn({ place }: { place: PassagePlace }) {
-  const note = STATES.find((item) => item.id === place.id)?.note;
+  const note =
+    STATES.find((item) => item.id === place.id)?.note ??
+    `Not on this page: “${place.quote}”`;
   return (
     <div
       style={{
@@ -117,27 +125,23 @@ function MarginStandIn({ place }: { place: PassagePlace }) {
   );
 }
 
-const download: PaneBarGroup = [
+/** Download and Share above the contents, as a written document gives them. */
+const files: PaneBarGroup = [
   {
     id: "download",
     label: wording.paneFile.downloadDocument,
+    text: wording.paneFile.download,
     icon: <Download aria-hidden="true" />,
     onSelect: fn(),
   },
+  {
+    id: "share",
+    label: wording.paneFile.shareDocument,
+    text: wording.paneFile.share,
+    icon: <Share2 aria-hidden="true" />,
+    onSelect: fn(),
+  },
 ];
-
-/** The version menu with versions 1 to `latest` kept, reading `viewing`. */
-const versions = (viewing: number, latest = 2): PaneBarGroup =>
-  versionGroup({
-    versions: Array.from({ length: latest }, (_, at) => ({
-      version: latest - at,
-    })),
-    viewing,
-    pending: false,
-    canCompare: viewing === latest && latest > 1,
-    onView: fn(),
-    onComparePrevious: fn(),
-  });
 
 function body(source: string) {
   return <DocumentView source={splitLeadingHeading(source).body} />;
@@ -146,21 +150,21 @@ function body(source: string) {
 const meta = {
   title: "Screens/Workspace/DocumentPage",
   component: DocumentPage,
-  // The fade's story reads the same document.
+  // The written document's stories read the same document.
   excludeStories: ["PROBLEM_BRIEF"],
-  parameters: { layout: "fullscreen" },
+  // The ground the room lays a written page on, from the person's preference.
+  parameters: { layout: "fullscreen", ground: "white" },
   args: {
-    project: "Bakery orders",
     title: "Problem brief",
-    meta: wording.documentViewer.filedOn("2026-11-18T10:00:00.000Z"),
-    groups: [versions(2), download],
+    files,
     passages: COMMENTED,
     margin: (place) => <MarginStandIn place={place} />,
     children: body(PROBLEM_BRIEF),
   },
   decorators: [
-    (Story) => (
+    (Story, { parameters }) => (
       <div
+        data-ground={parameters.ground}
         style={{ display: "flex", flexDirection: "column", height: "100vh" }}
       >
         <Story />
@@ -175,24 +179,36 @@ type Story = StoryObj<typeof meta>;
 /** A filed document with two commented passages, their notes level with them in the margin. */
 export const Filed: Story = {};
 
+/** The same document on the grey ground, raised on it as a sheet. */
+export const GreyGround: Story = { parameters: { ground: "grey" } };
+
 /** A passage in each state its comment can be in: saved, and selected while it is written. */
 export const PassageStates: Story = { args: { passages: STATES } };
+
+/** A passage a later version rewrote heads the margin, above the one still on the page. */
+export const PassageNotOnPage: Story = {
+  args: {
+    passages: [
+      ...COMMENTED.slice(0, 1),
+      {
+        id: "rewritten",
+        quote:
+          "Small bakeries take cake orders by phone and lose some of them.",
+        occurrence: 0,
+      },
+    ],
+  },
+};
 
 export const PassageStatesDark: Story = {
   args: { passages: STATES },
   globals: { mode: "dark" },
 };
 
-export const ZoomedOut: Story = {
-  args: { children: body(LONG_BRIEF), initialZoom: 0.75 },
-};
-
 /** Still being written: an orange caret ends the last line so far. */
 export const Writing: Story = {
   args: {
-    meta: wording.documentViewer.writing(1),
     writing: "live",
-    groups: [versions(1, 1), download],
     passages: [],
     children: body(PROBLEM_BRIEF_SO_FAR),
   },
@@ -201,16 +217,14 @@ export const Writing: Story = {
 /** The writing stopped before the end: a note where it stopped, with the way to start it again. */
 export const WritingStopped: Story = {
   args: {
-    meta: wording.documentViewer.filedOn("2026-11-18T10:00:00.000Z"),
     writing: "stopped",
     onResume: fn(),
-    groups: [versions(1, 1), download],
     passages: [],
     children: body(PROBLEM_BRIEF_SO_FAR),
   },
 };
 
-/** A document that runs over several pages, scrolled part way: the bar counts the page being read. */
+/** A document that runs over several pages, scrolled part way: the contents follow the section read. */
 export const LongScrolled: Story = {
   args: { children: body(LONG_BRIEF) },
   play: async ({ canvasElement }) => {
@@ -221,7 +235,18 @@ export const LongScrolled: Story = {
   },
 };
 
-/** A document with no sections: the contents name the document alone. */
+/** The toggle beside Download and Share folds the contents away, and its chevron turns with it. */
+export const ContentsFolded: Story = {
+  play: async ({ canvasElement }) => {
+    const toggle = within(canvasElement).getByRole("button", {
+      name: wording.documentViewer.contentsToggle,
+    });
+    await userEvent.click(toggle);
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  },
+};
+
+/** A document with no sections: no contents and no toggle beside Download and Share. */
 export const NoSections: Story = {
   args: {
     title: "Interview notes",
@@ -233,3 +258,14 @@ export const NoSections: Story = {
 };
 
 export const Dark: Story = { globals: { mode: "dark" } };
+
+/** Where the pane is too narrow for the contents, Download and Share head the page instead. */
+export const Narrow: Story = {
+  decorators: [
+    (Story) => (
+      <div style={{ width: 760, height: "100vh", display: "flex" }}>
+        <Story />
+      </div>
+    ),
+  ],
+};

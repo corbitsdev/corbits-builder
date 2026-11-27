@@ -1,0 +1,128 @@
+/* The group gives way to what stands after it, and its list scrolls inside it, without a bar that
+   would narrow its rows. */
+.files {
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-height: 0;
+}
+
+.files > .tree {
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.files > .tree::-webkit-scrollbar {
+  display: none;
+}
+
+.head {
+  margin: 0;
+  padding: var(--space-2) var(--space-2) 0;
+  color: var(--wb-foreground);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  line-height: var(--text-sm--line-height);
+}
+
+.tree {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* The heading folds the group; its arrow points down while the files show. */
+.fold {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.fold:focus-visible {
+  outline: 2px solid var(--wb-action);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.arrow {
+  width: 12px;
+  height: 12px;
+  color: var(--wb-muted-foreground);
+  transition: rotate var(--duration-micro) var(--ease-out);
+}
+
+:is(.fold[aria-expanded="true"], .file[aria-expanded="true"] > .row) .arrow {
+  rotate: 90deg;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .arrow {
+    transition: none;
+  }
+}
+
+/* A compact row from the card's own edge: the chevron's space, then the icon and the name, at
+   normal weight. Hover and the file on the page take a faint fill, not a tinted block. */
+.file:focus-visible {
+  outline: none;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: var(--sidebar-row-height);
+  box-sizing: border-box;
+  padding-inline-end: var(--space-2);
+  border-radius: var(--radius-sm);
+  color: var(--wb-foreground);
+  font-size: var(--text-sm);
+  line-height: var(--text-sm--line-height);
+  cursor: default;
+}
+
+.row[data-opens] {
+  cursor: pointer;
+}
+
+.row[data-opens]:hover {
+  background: color-mix(in oklab, var(--wb-foreground) 5%, transparent);
+}
+
+.file[aria-current] > .row[data-opens] {
+  background: color-mix(in oklab, var(--wb-foreground) 9%, transparent);
+}
+
+.file:focus-visible > .row {
+  outline: 2px solid var(--wb-action);
+  outline-offset: -2px;
+}
+
+.arrowBox {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+}
+
+.arrowBox > .arrow {
+  width: 14px;
+  height: 14px;
+}
+
+.icon {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  color: var(--wb-muted-foreground);
+}

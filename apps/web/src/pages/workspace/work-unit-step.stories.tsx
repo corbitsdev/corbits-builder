@@ -24,14 +24,13 @@ const done = STEPS.map((item) => step(item.toolCallId, item.name));
 const args: WorkUnitStepViewProps = {
   unitKey: "call-writer",
   status: { state: "starting" },
-  label: "Writer · Writing the constraints",
+  label: "Writing the constraints",
   steps: [],
   preview: undefined,
   instruction: undefined,
   report: undefined,
   document: undefined,
   onOpenDocument: fn(),
-  watch: undefined,
   stop: undefined,
   // The thread draws the steps as its own list of them; the library's list stands in for it here.
   run: (steps) => (
@@ -64,16 +63,26 @@ export const Working: Story = {
   },
 };
 
-/** A designer at work offers to open its draft as it takes shape, beside its name. */
-export const WatchingADesigner: Story = {
+/** A designer making its first mockup shows its one working row and offers nothing to open. */
+export const DesignerMakingTheMockup: Story = {
   args: {
     status: {
       state: "working",
       since: new Date(Date.now() - 95_000).toISOString(),
     },
-    label: "Designer · Making a mockup",
+    label: "Making a mockup",
     steps: STEPS,
-    watch: { label: "Watch the draft", open: fn() },
+    preview: { kind: "waiting" },
+  },
+};
+
+/** The first mockup is filed: the row offers to open it, as it does for a ready document. */
+export const DesignerMockupReady: Story = {
+  args: {
+    status: { state: "ready", title: "Design", version: 1, kind: "design" },
+    label: "Made the mockup",
+    steps: done,
+    onOpenDocument: fn(),
   },
 };
 
@@ -94,7 +103,7 @@ export const Ready: Story = {
       version: 1,
       kind: "constraints",
     },
-    label: "Writer · Wrote the constraints",
+    label: "Wrote the constraints",
     steps: done,
     document: {
       kind: "constraints",
@@ -148,7 +157,7 @@ export const PausedOnALongRequest: Story = {
       state: "approval",
       asked: "installing zod, exceljs, date-fns and @tanstack/react-table",
     },
-    label: "Coder · Building the order screen",
+    label: "Building the order screen",
     steps: STEPS,
   },
 };

@@ -91,6 +91,35 @@
   color: var(--wb-destructive);
 }
 
+.keyHint {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.keys {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  opacity: 0.75;
+}
+
+/* Drawn from the words' own colour, so a key reads on any tooltip, light or dark. */
+.key {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  padding-inline: 0.3125rem;
+  border: 1px solid color-mix(in oklab, currentColor 22%, transparent);
+  border-radius: 0.3125rem;
+  background: color-mix(in oklab, currentColor 8%, transparent);
+  font: inherit;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  line-height: 1;
+}
+
 .menuItemLabel {
   display: flex;
   flex: 1;
@@ -135,4 +164,36 @@ button.quietControl {
 .quietControl:focus-visible {
   outline: 2px solid var(--wb-ring);
   outline-offset: 2px;
+}
+
+.menuPanel {
+  min-width: 14rem;
+  padding: 6px;
+  border-radius: var(--radius-lg);
+  box-shadow:
+    var(--wb-pane-shadow),
+    0 8px 24px rgb(0 0 0 / 0.16);
+}
+
+.menuPanel > [role="menuitem"] {
+  padding: 8px 10px;
+}
+
+.menuPanel > [role="separator"] {
+  margin: 6px 4px;
+}
+
+/* ShimmerText draws its sweep from these two variables and, without motion, shows the first. */
+.working {
+  --muted-foreground: var(--wb-foreground);
+  /* Toward the page colour, so the band is lighter on white and darker on black. */
+  --foreground: color-mix(
+    in oklab,
+    var(--wb-foreground) 35%,
+    var(--wb-background)
+  );
+}
+
+.working .sweep {
+  animation-duration: 2.2s;
 }

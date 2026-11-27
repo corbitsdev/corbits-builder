@@ -1,10 +1,8 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState, type ReactNode } from "react";
 import { expect, fn, userEvent, waitFor, within } from "storybook/test";
-import writer from "@plugins/writer/package.json";
-import approveDefinition from "@plugins/writer/src/approve/definition.ts";
-import ApproveView from "@plugins/writer/src/approve/view.tsx";
 import { wording } from "../../config.ts";
+import { ScreenCard, StepCard } from "./box-cards.tsx";
 import { DocumentDecision } from "./document-decision.tsx";
 import {
   composer,
@@ -14,35 +12,18 @@ import {
 } from "./prompt-box.fixtures.ts";
 import { QuestionsCard } from "./questions-card.tsx";
 import { RoomDockView } from "./room.view.tsx";
-import { ScreenStory, storyScreen } from "./screen-story.tsx";
 
-const approveDocuments = storyScreen(
-  "@corbits-builder/writer approve",
-  writer.builder.actions["approve"],
-  { screen: approveDefinition, view: ApproveView, data: undefined },
-);
-
-/**
- * What waits on the person, each the very card the conversation shows it in: the box only frames
- * it.
- */
+/** What waits on the person, one card at a time: the box only frames it. */
 const waits = {
   question: () => (
     <QuestionsCard
-      place="box"
       question={question}
       disabled={false}
       onAnswer={fn(() => Promise.resolve(true))}
     />
   ),
-  documents: () => (
-    <ScreenStory
-      screen={approveDocuments}
-      state="open"
-      input={{ kinds: ["build_plan"] }}
-      project={{}}
-    />
-  ),
+  step: () => <StepCard title="Build the app" busy={false} onGoAhead={fn()} />,
+  screen: () => <ScreenCard title="Approve documents" onOpen={fn()} />,
   tool: () => (
     <DocumentDecision
       place="box"
@@ -205,6 +186,17 @@ export const QuestionLater: Story = {
 export const QuestionPicked: Story = {
   args: asking,
   beforeEach: questionAt(1, ["Freelancers"]),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    // Enter in the empty box goes on, as Continue's tooltip says.
+    await userEvent.click(canvas.getByRole("textbox", { name: "Message" }));
+    await userEvent.keyboard("{Enter}");
+    await waitFor(() =>
+      expect(canvas.getByRole("heading")).toHaveTextContent(
+        "Where will people order from?",
+      ),
+    );
+  },
 };
 
 /**
@@ -253,25 +245,54 @@ export const QuestionOwnAnswer: Story = {
 };
 
 /**
- * Approving a document: what is asked, the document's summary in a line, the document as a chip
- * that opens it, and Approve where Send stands.
+ * A step the person asked to be consulted on: the ask heads the box, and Yes, go ahead, green,
+ * stands where Send is.
  */
-const approving = {
-  dock: {
-    ...composer,
-    placeholder:
-      approveDefinition.describe?.says?.reply ?? composer.placeholder,
-  },
-  waiting: "documents",
-} satisfies Args;
-
-export const ApproveDocuments: Story = { args: approving };
-
-/** Typing says what should change instead: Send, blue, takes Approve's place. */
-export const ApproveDocumentsTyping: Story = {
+export const StepGoAhead: Story = {
   args: {
-    ...approving,
-    dock: { ...approving.dock, text: "Move the launch to the second Saturday" },
+    dock: {
+      ...composer,
+      placeholder: wording.promptBox.waiting.stepPlaceholder,
+    },
+    waiting: "step",
+  },
+};
+
+/** Typing says what to do instead: Send, blue, takes the go-ahead's place. */
+export const StepGoAheadTyping: Story = {
+  args: {
+    dock: { ...composer, text: "Wait until the menu is final" },
+    waiting: "step",
+  },
+};
+
+/**
+ * A plugin's screen waits in the plugin space: the box names it, with Open to go to it. Its own
+ * forward action reaches the box from the space.
+ */
+export const ScreenWaiting: Story = { args: { waiting: "screen" } };
+
+/**
+ * Typing over a document's approval asks for changes, so Send says so on itself: one blue pill,
+ * Make changes before the arrow, with no words beside it.
+ */
+export const ScreenWaitingTyping: Story = {
+  args: {
+    dock: {
+      ...composer,
+      text: "Make the summary shorter",
+      sendLabel: wording.promptBox.waiting.makeChanges,
+    },
+    waiting: "screen",
+  },
+  play: async ({ canvasElement }) => {
+    const send = within(canvasElement).getByRole("button", {
+      name: wording.promptBox.waiting.makeChanges,
+    });
+    await expect(send).toHaveAttribute(
+      "data-label",
+      wording.promptBox.waiting.makeChanges,
+    );
   },
 };
 
@@ -320,9 +341,83 @@ export const ChangingEarlierDocument: Story = {
   },
 };
 
-/** Comments wait to be made: they ride in the row as a token, and Send makes them, with or without words. */
+const commenting = {
+  ...composer,
+  comments: 3,
+  onSendComments: fn(),
+  onShowComments: fn(),
+  onRemoveComments: fn(),
+} satisfies ComposerDock;
+
+const submit = (canvasElement: HTMLElement) => {
+  const button = canvasElement.querySelector<HTMLElement>(
+    '[data-slot="prompt-input-submit"]',
+  );
+  if (button === null) throw new Error("No Send in the box");
+  return button;
+};
+
+/**
+ * Comments wait in the row as a token: the count opens the page they are on, the cross removes
+ * them, and Send in the empty box sends them as one message.
+ */
 export const CommentsWaiting: Story = {
-  args: { dock: { ...composer, comments: 3 } },
+  args: { dock: commenting },
+  play: async ({ args, canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(
+      canvas.getByRole("button", {
+        name: wording.promptBox.showComments(3),
+      }),
+    );
+    await expect(args.dock.onShowComments).toHaveBeenCalledOnce();
+    await expect(args.dock.onSendComments).not.toHaveBeenCalled();
+    await userEvent.click(
+      canvas.getByRole("button", {
+        name: wording.promptBox.removeComments(3),
+      }),
+    );
+    await expect(args.dock.onRemoveComments).toHaveBeenCalledOnce();
+    await userEvent.click(submit(canvasElement));
+    await expect(args.dock.onSendComments).toHaveBeenCalledWith();
+  },
+};
+
+/** Words typed beside the comments: Send sends them together, the words after the comments. */
+export const CommentsWithWords: Story = {
+  args: { dock: { ...commenting, text: typed } },
+  play: async ({ args, canvasElement }) => {
+    await userEvent.click(submit(canvasElement));
+    await expect(args.dock.onSendComments).toHaveBeenCalledWith(typed);
+  },
+};
+
+/**
+ * A question is open, so a message now would answer it: Send leaves the comments alone, and a
+ * line under the card says what to do first. The token still opens their page.
+ */
+export const CommentsWaitOnQuestion: Story = {
+  args: {
+    ...asking,
+    dock: {
+      ...commenting,
+      placeholder: wording.questions.composerPlaceholder,
+      commentsBlocked: wording.promptBox.commentsAfterQuestion,
+    },
+  },
+  play: async ({ args, canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(
+      canvasElement.querySelector('[data-slot="comments-blocked"]'),
+    ).toHaveTextContent(wording.promptBox.commentsAfterQuestion);
+    await userEvent.click(
+      canvas.getByRole("button", {
+        name: wording.promptBox.showComments(3),
+      }),
+    );
+    await expect(args.dock.onShowComments).toHaveBeenCalledOnce();
+    await expect(args.dock.onSendComments).not.toHaveBeenCalled();
+  },
 };
 
 /** Long words wrap in their own column beside the controls; the box grows, up to a point, then scrolls. */
@@ -360,8 +455,13 @@ export const DarkQuestionPicked: Story = {
   globals: { mode: "dark" },
 };
 
-export const DarkApproveDocuments: Story = {
-  ...ApproveDocuments,
+export const DarkStepGoAhead: Story = {
+  ...StepGoAhead,
+  globals: { mode: "dark" },
+};
+
+export const DarkScreenWaiting: Story = {
+  ...ScreenWaiting,
   globals: { mode: "dark" },
 };
 
@@ -372,6 +472,11 @@ export const DarkToolApproval: Story = {
 
 export const DarkCommentsWaiting: Story = {
   ...CommentsWaiting,
+  globals: { mode: "dark" },
+};
+
+export const DarkCommentsWaitOnQuestion: Story = {
+  ...CommentsWaitOnQuestion,
   globals: { mode: "dark" },
 };
 

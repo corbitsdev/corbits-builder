@@ -78,6 +78,9 @@ const PlanViewChild = StoredPlanChild.merge({
   "endedAt?": "string > 0",
   "runId?": "string > 0",
   "checkId?": "string > 0",
+  // What the step makes, as its action's returns name it for its input: the kinds of document it
+  // files, and "app" for the app.
+  "makes?": "string[]",
 });
 export type PlanViewChild = typeof PlanViewChild.infer;
 

@@ -8,20 +8,15 @@
   min-width: 0;
 }
 
-/* The conversation map's rail sits over the column's left edge; the turns start clear of it. */
-.thread[data-mapped]
+/* The turns keep a chat's reading measure in the middle of a wide canvas, 48rem as the usual chat
+   apps hold theirs, the width of a document's page; the prompt box runs to their text's edges. */
+.thread
   > [data-slot="conversation-content"]
   > [data-slot="conversation-column"] {
-  padding-inline-start: 2.5rem;
-}
-
-/* What the agents produced reads as an indented entry under the person's message that led to it:
-   its tick starts further in, and keeps the rail's own states and colours. */
-.thread
-  [data-slot="conversation-map-tick"]:not([data-turn-id^="person:"])
-  > span {
-  margin-inline-start: 0.5rem;
-  width: 1rem;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 48rem;
+  margin-inline: auto;
 }
 
 /* The log scrolls inside the room. flex-shrink 0 made its height follow the
@@ -53,8 +48,8 @@
 
 /* A turn arriving. The newest row rises into place. The reserve under a
    settled turn is not a turn; animating it moves the measurement the
-   reserve is computed from. A specialist's row is an item too, for the map to jump to, but rises
-   only with the turn that holds it. */
+   reserve is computed from. A specialist's row is an item too, but rises only with the turn
+   that holds it. */
 .log
   > [data-slot="conversation-column"]
   > [data-slot="conversation-item"]:last-child {
@@ -93,6 +88,40 @@
    so the turn's end does not move what is below it. */
 .footer {
   min-height: 2rem;
+}
+
+/* Once the turn is done, its copy action goes at the end of the last line, in a narrow column
+   beside the words, not on a row of its own under them. */
+[data-slot="message"]:has(> .footer [data-slot="message-actions"]) {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+[data-slot="message"]:has(> .footer [data-slot="message-actions"]) > .footer {
+  grid-row: 1;
+  grid-column: 2;
+  align-self: end;
+  min-height: 0;
+}
+
+.footer [data-slot="message-action"] > svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* The copy action keeps its place and shows when the pointer is over the message or focus is in
+   it, or while it says copied. Faded rather than hidden, so it stays in the tab order and for
+   screen readers; a screen with no hover has no way to reveal it, so it stays shown there. */
+@media (hover: hover) {
+  .footer [data-slot="message-actions"] {
+    opacity: 0;
+    transition: opacity var(--duration-micro) var(--ease-out);
+  }
+
+  [data-slot="message"]:hover .footer [data-slot="message-actions"],
+  [data-slot="message"]:focus-within .footer [data-slot="message-actions"],
+  .footer [data-slot="message-actions"]:has([data-copied]) {
+    opacity: 1;
+  }
 }
 
 /* The trigger's inline padding (px-1) hangs outside, so its words start under

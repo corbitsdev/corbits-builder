@@ -1,402 +1,102 @@
-.card {
-  position: relative;
-  max-width: var(--wb-question-width);
-  min-width: 0;
-}
-
-/* GateBlock's "Needs you · form" label: the heading and the thread say what the card is. */
-.card > p:first-child {
-  display: none;
-}
-
-.card > h3 {
-  margin-top: 0;
-  padding-right: 4rem;
-}
-
-/* Beside GateBlock's heading, which renders it no slot of its own. */
-.position {
-  position: absolute;
-  top: 0.75rem;
-  right: 0.875rem;
-  margin: 0;
-  font-size: 0.75rem;
-  line-height: 1.25rem;
-  color: var(--muted-foreground);
-}
-
-/* While the card takes no input its choices fade back, as a screen's do. */
-:global([inert]) > .thread {
-  opacity: 0.55;
-}
-
-.thread {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  transition: opacity var(--duration-micro) var(--ease-out);
-}
-
-.row {
-  position: relative;
-  display: grid;
-  grid-template-columns: 1rem minmax(0, 1fr);
-  column-gap: var(--space-3);
-  align-items: start;
-}
-
-/* Joins this row's mark to the next one's, so the path starts and ends on a mark. */
-.row:not(:last-child)::before {
-  content: "";
-  position: absolute;
-  top: 1.125rem;
-  bottom: calc(-1 * var(--space-2) - 0.125rem);
-  left: calc(0.5rem - 1px);
-  width: 2px;
-  background: var(--border);
-}
-
-.mark {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1rem;
-  height: 1rem;
-  margin-top: 0.125rem;
-  border: 1.5px solid var(--border);
-  border-radius: 999px;
-  background: var(--background);
-}
-
-.mark[data-mark="done"] {
-  border-color: var(--foreground);
-  background: var(--foreground);
-  color: var(--background);
-}
-
-.mark[data-mark="done"] svg {
-  width: 0.625rem;
-  height: 0.625rem;
-  stroke-width: 3;
-}
-
-.mark[data-mark="current"] {
-  border-color: var(--wb-foreground);
-}
-
-.mark[data-mark="current"]::after {
-  content: "";
-  width: 0.375rem;
-  height: 0.375rem;
-  border-radius: 999px;
-  background: var(--wb-foreground);
-}
-
-.mark[data-mark="folded"] {
-  border-style: dashed;
-}
-
-.answered,
-.fold {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-width: 0;
-  min-height: 1.25rem;
-  padding: 0;
-  border: 0;
-  background: none;
-  font-size: 0.75rem;
-  color: var(--muted-foreground);
-  text-align: left;
-  cursor: pointer;
-}
-
-.answered:disabled,
-.fold:disabled {
-  cursor: default;
-}
-
-.answeredPrompt {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.answeredValue {
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  font-weight: 600;
-  color: var(--foreground);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.answeredEdit,
-.fold svg {
-  flex: none;
-  width: 0.875rem;
-  height: 0.875rem;
-}
-
-.fold[aria-expanded="true"] svg {
-  transform: rotate(180deg);
-}
-
-.question {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  min-width: 0;
-  margin: 0;
-  padding: 0;
-  border: 0;
-}
-
-.prompt {
-  float: left;
-  width: 100%;
-  padding: 0;
-  font-size: 0.875rem;
-  font-weight: 600;
-}
-
-.rule {
-  margin: calc(-1 * var(--space-1)) 0 0;
-  font-size: 0.75rem;
-  color: var(--muted-foreground);
-}
-
-.ruleCount {
-  color: var(--wb-foreground);
-}
-
-.ruleCount::before {
-  content: " · ";
-  color: var(--muted-foreground);
-}
-
-.choices {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.choice {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  min-height: 2.25rem;
-  padding: var(--space-1) var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-control);
-  background: var(--background);
-  font-size: 0.875rem;
-  cursor: pointer;
-}
-
-.choice:hover {
-  border-color: color-mix(in oklab, var(--wb-action) 35%, var(--border));
-}
-
-.choice[data-checked] {
-  border-color: var(--wb-action);
-  background: color-mix(in oklab, var(--wb-action) 8%, var(--wb-background));
-}
-
-.choiceText {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.choiceDescription {
-  font-size: 0.8125rem;
-  color: var(--muted-foreground);
-}
-
-/* A row with a description keeps its box on the label's line, not between the two. */
-.choice:has(.choiceDescription) {
-  align-items: flex-start;
-  padding-block: var(--space-2);
-}
-
-/* The hidden radio or checkbox and the borderless own-words field show focus on their row. */
-.choice:has(input:focus-visible) {
-  outline: 2px solid var(--wb-action);
-  outline-offset: 1px;
-}
-
-.question:disabled .choice {
-  opacity: 0.6;
-  cursor: default;
-}
-
-/* The native radio stays for keyboards and screen readers; the box beside it shows its state. */
-.choice input[type="radio"] {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
-  pointer-events: none;
-}
-
-.box {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  justify-content: center;
-  width: 1.125rem;
-  height: 1.125rem;
-  border: 1px solid var(--border);
-  border-radius: 0.25rem;
-  font-size: 0.6875rem;
-  color: var(--muted-foreground);
-}
-
-.choices[data-kind="single"] .box {
-  border-radius: 999px;
-}
-
-.box svg {
-  width: 0.75rem;
-  height: 0.75rem;
-}
-
-.choice[data-checked] .box {
-  border-color: var(--wb-action);
-  background: var(--wb-action);
-  color: var(--wb-action-foreground);
-}
-
-.own {
-  flex: 1 1 auto;
-  min-width: 0;
-  padding: 0;
-  border: 0;
-  background: none;
-  font: inherit;
-  color: inherit;
-  outline: none;
-}
-
-.own::placeholder {
-  color: var(--muted-foreground);
-}
-
-.upcoming {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--space-2);
-  min-width: 0;
-  font-size: 0.75rem;
-  color: color-mix(in oklab, var(--muted-foreground) 70%, transparent);
-}
-
-.footer {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin-top: var(--space-3);
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--wb-border);
-}
-
-/* Continue and Send answers move the work forward, so they are the proceed green. */
-.footer .next {
-  background: var(--wb-proceed);
-  color: var(--wb-proceed-foreground);
-}
-
-.footer .next:hover {
-  background: color-mix(in oklab, var(--wb-proceed) 85%, var(--wb-foreground));
-}
-
-/* Its buttons drawn elsewhere, such as in the prompt box, leave no rule behind. */
-.footer:empty {
-  display: none;
-}
-
-/* The buttons where the host draws them, in the row they keep in the card. */
-.hosted {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-/* Why the answers did not send, just above the buttons that send them again. */
-.fault {
-  margin-top: var(--space-3);
-}
-
-.cancel {
-  margin-left: auto;
-}
-
-.next[aria-disabled="true"] {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.back svg,
-.next svg {
-  width: 0.875rem;
-  height: 0.875rem;
-}
-
-.reply {
-  margin: 0;
-  font-size: 0.875rem;
-  overflow-wrap: anywhere;
-  white-space: pre-wrap;
-}
-
-/* In the prompt box: the open question heads the card with Back and where it stands beside it,
-   and each answer is a row on a rail, marked once picked by the rail turning the action blue. */
+/* What the question is about heads the card, with how far through the questions the person is and
+   the way out beside it; the question itself is the heading beneath, and each answer a tile led by
+   its checkbox, or its radio where only one may be picked. */
 .inBox {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
-  padding: var(--space-4) var(--space-4) var(--space-2);
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4) var(--space-2);
 }
 
 .boxHeader {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  min-height: 24px;
+  gap: var(--space-3);
+  min-height: 28px;
+}
+
+.topic {
+  display: flex;
+  flex: 1 1 0;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1rem;
+  color: var(--wb-muted-foreground);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.topic svg {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  color: var(--wb-action);
 }
 
 .boxQuestion {
-  flex: 1 1 0;
-  min-width: 0;
-  margin: 0;
-  font-size: 0.75rem;
-  font-weight: 400;
-  line-height: 1rem;
+  margin: 0 0 var(--space-1);
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.5rem;
+  letter-spacing: -0.005em;
   color: var(--wb-foreground);
+  text-wrap: pretty;
 }
 
 .step {
   display: flex;
   flex: none;
   align-items: center;
-  gap: var(--space-1);
-  font-size: 0.75rem;
-  color: var(--wb-muted-foreground);
+  gap: var(--space-2);
 }
 
-.step p {
+/* One segment per question: those answered and the one open in the action blue, those ahead
+   faint. */
+.progress {
+  display: flex;
+  gap: 4px;
   margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.progress li {
+  width: 18px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--wb-border);
+  transition: background-color 200ms var(--ease-out);
+}
+
+.progress li[data-state="done"] {
+  background: color-mix(in oklab, var(--wb-action) 45%, var(--wb-border));
+}
+
+.progress li[data-state="open"] {
+  background: var(--wb-action);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progress li {
+    transition: none;
+  }
+}
+
+/* Read out, not shown: the segments show it. */
+.said {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .stepBack {
@@ -427,66 +127,172 @@
   height: 14px;
 }
 
+/* While the card takes no input its choices fade back, as a screen's do. */
+:global([inert]) > .thread {
+  opacity: 0.55;
+}
+
+.thread {
+  transition: opacity var(--duration-micro) var(--ease-out);
+}
+
+.question {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
 /* The heading asks the question, so the legend and the rule are read out only. */
-[data-place="box"] :is(.prompt, .rule) {
+.prompt,
+.rule {
   position: absolute;
   width: 1px;
   height: 1px;
+  padding: 0;
   overflow: hidden;
   clip-path: inset(50%);
   white-space: nowrap;
 }
 
-/* Rail rows: in the prompt box, and for a pick-any question anywhere. */
-.choices[data-rail] {
-  gap: 0;
+.ruleCount::before {
+  content: " · ";
 }
 
-.choices[data-rail] .choice,
-.choices[data-rail] .choice:has(.choiceDescription) {
+.choices {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Each answer is a tile of its own, so the choices read apart at a glance; a picked one takes the
+   action blue on its edge and a wash of it inside. */
+.choice {
+  display: flex;
   align-items: flex-start;
-  gap: var(--space-2);
-  min-height: 0;
-  padding: var(--space-2) 40px var(--space-2) 15px;
-  border: 0;
-  border-left: 1px solid var(--wb-border);
-  border-radius: 0;
-  background: none;
-  font-size: 0.75rem;
-  line-height: 1rem;
+  gap: var(--space-3);
+  padding: 10px var(--space-3);
+  border: 1px solid var(--wb-border);
+  border-radius: 10px;
+  background: var(--wb-card);
+  font-size: 0.875rem;
+  line-height: 1.25rem;
   color: var(--wb-foreground);
+  cursor: pointer;
+  transition:
+    border-color 120ms ease,
+    background-color 120ms ease;
 }
 
-.choices[data-rail] .choice:hover,
-.choices[data-rail] .choice[data-checked] {
-  background: color-mix(in oklab, var(--wb-foreground) 2.5%, transparent);
+.choice:hover {
+  border-color: var(--wb-border-strong);
+  background: color-mix(in oklab, var(--wb-foreground) 2%, var(--wb-card));
 }
 
-.choices[data-rail] .choice[data-checked] {
-  padding-left: 14px;
-  border-left: 2px solid var(--wb-action);
+.choice[data-checked] {
+  border-color: color-mix(in oklab, var(--wb-action) 60%, var(--wb-border));
+  background: color-mix(in oklab, var(--wb-action) 6%, var(--wb-card));
 }
 
-.choices[data-rail] .choice[data-checked] .choiceLabel {
+.choice[data-checked] .choiceLabel {
   font-weight: 500;
 }
 
-.choices[data-rail] .choice input[type="checkbox"] {
+/* The radio or checkbox shows focus on its whole tile. */
+.choice:has(input:focus-visible) {
+  outline: 2px solid var(--wb-ring);
+  outline-offset: 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .choice {
+    transition: none;
+  }
+}
+
+.question:disabled .choice {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* The control itself, drawn to the label's first line: a box that fills with the action blue and
+   takes a white tick, or a ring whose centre the blue closes in on. */
+.mark {
+  position: relative;
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  /* Centred on the label's first line. */
+  margin-top: 2px;
+}
+
+.mark input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  border: 1px solid var(--wb-border-strong);
+  background: var(--wb-background);
+  appearance: none;
+  transition:
+    border-color 120ms ease,
+    background-color 120ms ease,
+    border-width 120ms ease;
+}
+
+.mark input[type="checkbox"] {
+  border-radius: 4px;
+}
+
+.mark input[type="radio"] {
+  border-radius: 50%;
+}
+
+.mark input:focus-visible {
+  outline: none;
+}
+
+.mark input[type="checkbox"]:checked {
+  border-color: var(--wb-action);
+  background: var(--wb-action);
+}
+
+.mark input[type="radio"]:checked {
+  border: 5px solid var(--wb-action);
+}
+
+.mark svg {
   position: absolute;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
+  width: 12px;
+  height: 12px;
+  color: var(--wb-action-foreground);
+  stroke-width: 3;
   pointer-events: none;
+  scale: 0;
+  transition: scale 120ms ease;
 }
 
-.choices[data-rail] .choice:has(input:focus-visible) {
-  outline: 2px solid var(--wb-action);
-  outline-offset: -2px;
+.mark input:checked + svg {
+  scale: 1;
 }
 
-.choices[data-rail] .choiceDescription {
-  font-size: 0.75rem;
-  color: var(--wb-muted-foreground);
+@media (prefers-reduced-motion: reduce) {
+  .mark input,
+  .mark svg {
+    transition: none;
+  }
+}
+
+.choiceText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
 }
 
 .choiceLabel {
@@ -495,12 +301,38 @@
   gap: var(--space-2);
 }
 
+.choiceDescription {
+  font-size: 0.8125rem;
+  line-height: 1.125rem;
+  color: var(--wb-muted-foreground);
+}
+
+/* The coordinator's pick, in the green of going ahead. */
 .recommended {
-  padding: 2px var(--space-2);
+  padding: 1px var(--space-2);
   border-radius: 999px;
-  background: var(--wb-muted);
+  background: color-mix(in oklab, var(--wb-proceed) 12%, transparent);
   font-size: 11px;
   font-weight: 500;
   line-height: 1rem;
-  color: var(--wb-muted-foreground);
+  color: var(--wb-proceed);
+}
+
+/* Why the answers did not send, just above the buttons that send them again. */
+.fault {
+  margin-top: var(--space-3);
+}
+
+/* Continue where the host draws it, in the row where Send stands. */
+.hosted {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.reply {
+  margin: 0;
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }

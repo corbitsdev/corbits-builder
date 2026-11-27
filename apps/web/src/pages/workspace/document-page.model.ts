@@ -1,0 +1,172 @@
+/**
+ * What a written document's page does: read the version asked for, compare it with the one before,
+ * download or share it and comment on its passages. The room's read of the document and the
+ * versions the hub keeps become the page's title, file and text, so the view sees none of the
+ * hub's shapes.
+ */
+import type { ApproachChoice } from "./approach-choice.ts";
+import { documentDrafts, type CommentDraft } from "./comments.ts";
+import type { PageComments } from "./page-comments.tsx";
+import {
+  documentFile,
+  fileStem,
+  markdownFile,
+  useFileGroup,
+} from "./pane-file.tsx";
+import { splitLeadingHeading } from "./reading-selection.ts";
+import {
+  useVersionReading,
+  type VersionReadingInput,
+} from "./version-reading.ts";
+import type { WrittenDocumentViewProps } from "./written-document.view.tsx";
+
+export type DocumentPageProps = VersionReadingInput & {
+  /** The project's name, which names the file the page gives away. */
+  project: string;
+  /** The document's name as the pane gives it, which names the file it gives away. */
+  name: string;
+  /** The person's pick of a filed approach, and how to make it. */
+  approachChoice?: ApproachChoice | undefined;
+  /** The project's comment drafts, and this document's place among them; absent where it takes none. */
+  comments?: DocumentComments | undefined;
+};
+
+/** The comment drafts of the project the document is in, which the room keeps. */
+export type ProjectComments = {
+  drafts: readonly CommentDraft[];
+  onSave: (draft: CommentDraft) => void;
+  onDelete: (id: string) => void;
+};
+
+export type DocumentComments = ProjectComments & {
+  /** The document, by the room's id for it, which stays the same across its versions. */
+  document: string;
+};
+
+const newDraftId = () =>
+  `comment:${String(Date.now())}:${Math.random().toString(36).slice(2, 8)}`;
+
+/**
+ * The page's comments: this document's drafts, and saving one. A new comment names the version
+ * read; an edit keeps the document and version its passage was quoted from, unless it moves the
+ * passage.
+ */
+export function pageComments(
+  comments: DocumentComments,
+  reading: { title: string; version: number },
+  newId: () => string = newDraftId,
+): PageComments {
+  const drafts = documentDrafts(comments.drafts, comments.document);
+  return {
+    drafts,
+    onSave: ({ id, quote, occurrence, comment }) => {
+      const was = drafts.find((draft) => draft.id === id);
+      const quoted = {
+        title: reading.title,
+        version: reading.version,
+        quote,
+        occurrence,
+      };
+      // A passage moved while editing is quoted again from the version on show.
+      const moved =
+        was !== undefined &&
+        (was.quote !== quote || was.occurrence !== occurrence);
+      comments.onSave(
+        was === undefined
+          ? { id: newId(), document: comments.document, ...quoted, comment }
+          : moved
+            ? { ...was, ...quoted, comment }
+            : { ...was, comment },
+      );
+    },
+    onDelete: comments.onDelete,
+  };
+}
+
+export function useDocumentPage({
+  project,
+  name,
+  approachChoice,
+  comments,
+  ...reading
+}: DocumentPageProps): WrittenDocumentViewProps {
+  const { document, changesOpen } = reading;
+  const versions = useVersionReading(reading);
+  const { viewing, shown, afterText, beforeText, compareWith } = versions;
+  const filed =
+    document.versions.find((item) => item.version === viewing)?.title ??
+    document.title;
+  const files = useFileGroup(
+    afterText === null
+      ? null
+      : documentFile(
+          markdownFile(
+            fileStem(project, name, `v${String(viewing)}`),
+            afterText,
+          ),
+          { name: filed, version: viewing },
+        ),
+    true,
+  );
+  const lifted = afterText === null ? null : splitLeadingHeading(afterText);
+  // The page's title already shows the heading both versions share; a heading that changed stays
+  // in the comparison so the change can be seen.
+  const liftedBefore =
+    beforeText === null ? null : splitLeadingHeading(beforeText);
+  const sameHeading =
+    liftedBefore !== null &&
+    lifted !== null &&
+    liftedBefore.heading === lifted.heading;
+  const comparing =
+    changesOpen &&
+    compareWith !== null &&
+    beforeText !== null &&
+    afterText !== null;
+  const approaches = shown?.approaches;
+  const filedAt = shown?.filedAt ?? document.filedAt;
+  const choose =
+    viewing === document.version ? approachChoice?.choose : undefined;
+
+  return {
+    title: lifted?.heading ?? filed,
+    files,
+    notes: {
+      viewing,
+      newest: document.version,
+      reading: versions.pendingVersion,
+      readError: versions.readError,
+      historyError: document.historyError,
+      readingForComparison:
+        changesOpen && compareWith !== null && beforeText === null
+          ? compareWith
+          : null,
+    },
+    body: comparing
+      ? {
+          kind: "comparison",
+          before: sameHeading ? liftedBefore.body : beforeText,
+          after: sameHeading ? lifted.body : afterText,
+          beforeVersion: compareWith,
+          afterVersion: viewing,
+          onClose: versions.stopComparing,
+        }
+      : lifted === null
+        ? { kind: "reading" }
+        : {
+            kind: "text",
+            source: lifted.body,
+            approaches:
+              approaches === undefined
+                ? undefined
+                : {
+                    meta: approaches,
+                    chosen: approachChoice?.chosen(approaches, filedAt),
+                    onChoose: choose,
+                  },
+          },
+    comments:
+      comments === undefined
+        ? undefined
+        : pageComments(comments, { title: filed, version: viewing }),
+  };
+}

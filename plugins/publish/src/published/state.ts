@@ -18,6 +18,9 @@ import {
 } from "@corbits-builder/publish-contract";
 import { PUBLISH_ASKED, PUBLISH_GROUP, PublishAsked } from "../go-ahead.ts";
 
+// The fact the hub records once an app is filed, which the coder does only after its checks pass.
+const APP_FILED = "app_exists";
+
 /**
  * How long the project still counts as busy after work last moved on: a run ended, or the person
  * asked. A publish or a take-down is a chain of hand-offs, and between one step ending and the
@@ -186,7 +189,7 @@ function askHolds(
 }
 
 /**
- * Where publishing stands; undefined while there is no saved app to publish or nowhere to publish
+ * Where publishing stands; undefined while there is no filed app to publish or nowhere to publish
  * it. The keep link and the holding are not states: each shows over whichever state applies while
  * it is recorded, because a person who misses the keep link's deadline loses their app, and a
  * holding costs money whatever else is true. When both a release and a holding are recorded, a
@@ -198,6 +201,14 @@ export function publishState(project: ProjectRead): Publishing | undefined {
   const records = recordsOf(project);
   if (records === null) return undefined;
   const { release, holding } = records;
+  // The coder pushes the app while it builds, so a saved app alone can be half written. Publishing
+  // waits for one filed after its checks passed, unless something already went out.
+  if (
+    !project.facts.has(APP_FILED) &&
+    release === undefined &&
+    holding === undefined
+  )
+    return undefined;
   const state = standing(records);
   const keep = keepNotice(records, project);
   const target = holding?.target ?? release?.target;

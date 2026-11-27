@@ -624,6 +624,52 @@ test("a step held with no input is done once its run files what the run was give
   expect(view?.state).toBe("done");
 });
 
+test("a step says what it makes, as its action's returns name it for its input", () => {
+  const records = {
+    facts: new Set<string>(),
+    personFacts: new Set<string>(),
+    asksApprovals: true,
+    checks: [],
+    runs: [],
+    questions: [],
+  };
+  const step = (id: string, action: string, input: Record<string, unknown>) =>
+    planState(
+      CATALOG,
+      [{ id, title: id, plugin: "writer", action, input, askFirst: false }],
+      records,
+    )[0];
+  const makes = (view: ReturnType<typeof step>) =>
+    view && "makes" in view ? view.makes : undefined;
+  expect(makes(step("requirements", "write-requirements", {}))).toEqual([
+    "product_requirements",
+  ]);
+  expect(makes(step("manual", "write", { kind: "user_manual" }))).toEqual([
+    "user_manual",
+  ]);
+  expect(makes(step("review", "review", { kind: "user_manual" }))).toBe(
+    undefined,
+  );
+  expect(
+    makes(
+      planState(
+        CATALOG,
+        [
+          {
+            id: "build",
+            title: "Build the app",
+            plugin: "coder",
+            action: "build",
+            input: {},
+            askFirst: false,
+          },
+        ],
+        records,
+      )[0],
+    ),
+  ).toEqual(["app"]);
+});
+
 test("taking the plan's group out stops the project following it", async () => {
   const following = project([]);
   await following.plan({ operation: "add", plan: "build-web-app" });

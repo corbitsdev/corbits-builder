@@ -1,11 +1,20 @@
-.room {
+/* The frame's main pane, beside the sidebar: the conversation, the project view over it, the
+   plugin sheet over both and the prompt box at its foot over them all. What each holds is centred
+   in it. Its own stacking context, so what covers it stays under the sidebar's drawer. */
+.main {
+  /* The prompt box's width: the turns' text measure inside their 48rem column, so the box's edges
+     line up with the words above it, and a document's page runs a little wider either side. */
+  --box-measure: 46rem;
+
   position: relative;
+  isolation: isolate;
   display: flex;
-  flex-direction: row;
-  flex: 1 1 auto;
-  min-height: 0;
+  flex-direction: column;
+  flex: 1;
   min-width: 0;
+  min-height: 0;
   overflow: hidden;
+  background: var(--wb-background);
 }
 
 .conversationPane {
@@ -17,106 +26,66 @@
   min-height: 0;
   overflow: hidden;
   background: var(--wb-background);
-  /* What layers inside the conversation, such as its map, stays under the plan drawer. */
+  /* What layers inside the conversation stays inside it. */
   isolation: isolate;
 }
 
-/* The room's top bar: the next-step line on the left, the plan and project controls on the right,
-   on the page's own background above one full-width hairline. With neither, there is no bar. */
+/* The plugin tabs' controls float in the conversation's top corner, where the project view's
+   close button stands, clear of the scrollbar, so the turns scroll the pane's full height. Without a
+   control, there is nothing. */
 .top {
+  position: absolute;
+  top: var(--space-4);
+  right: var(--space-4);
+  z-index: 1;
   display: flex;
-  flex-shrink: 0;
   align-items: center;
-  min-width: 0;
-  min-height: 2.75rem;
-  padding-inline-end: var(--space-2);
-  border-bottom: 1px solid var(--wb-border);
-  background: var(--wb-background);
 }
 
 .top:empty {
   display: none;
 }
 
-.top > :not(.controls) {
-  flex: 1;
-  min-width: 0;
-}
-
 .controls {
   display: flex;
   flex: none;
   align-items: center;
-  gap: var(--space-1);
-  margin-inline-start: auto;
+  gap: var(--space-2);
 }
 
-/* Quiet like the project view's bar: muted until hovered or pressed. */
+/* Boxed like the close button and a page's Download and Share. It opens the tab, so its words are
+   at full strength like any button's; one that needs the person carries a dot, one that failed
+   reads red. */
 .control {
-  color: var(--wb-muted-foreground);
-}
-
-.control:hover,
-.control[aria-pressed="true"] {
+  height: 1.75rem;
+  padding-inline: 10px;
+  border: 1px solid var(--wb-border);
+  border-radius: var(--radius-control);
+  background: var(--wb-background);
   color: var(--wb-foreground);
+  font-size: 0.8125rem;
+  font-weight: 500;
 }
 
-/* The plan's progress: a segment per step, done in green, the rest neutral, and a step that
-   failed or waits on the person in its own colour. */
-.meter {
-  display: inline-flex;
-  gap: 2px;
-  width: max-content;
-  max-width: 4rem;
+.control:hover {
+  background: var(--wb-muted);
 }
 
-.meter > span,
-.alert {
-  background: var(--wb-border);
-}
-
-.meter > span {
-  flex: 0 1 0.625rem;
-  min-width: 2px;
-  height: 4px;
-  border-radius: 999px;
-}
-
-.meter > span[data-mark="running"] {
-  background: var(--wb-muted-foreground);
-}
-
-.meter > span[data-mark="done"],
-.alert[data-mark="done"] {
-  background: var(--wb-okay);
-}
-
-.meter > [data-mark="failed"],
-.alert[data-mark="failed"] {
-  background: var(--wb-destructive);
-}
-
-.meter > [data-mark="needs_you"],
-.alert[data-mark="needs_you"] {
-  background: var(--wb-primary);
-}
-
-.count {
-  font-size: 0.75rem;
-  font-variant-numeric: tabular-nums;
-}
-
-.alert {
+.control[data-mark="needs_you"]::before {
+  content: "";
   width: 6px;
   height: 6px;
-  border-radius: 999px;
+  border-radius: 50%;
+  background: var(--wb-action);
 }
 
-/* On a phone the project control keeps only its icon; its name stays its accessible name. */
-@media (max-width: 480px) {
-  .label {
-    display: none;
-  }
+.control[data-mark="failed"] {
+  color: var(--wb-destructive);
+}
+
+/* With controls in the corner, the turns start below them, where the row that held them ended. */
+.conversation:has(> .top .control) [role="log"] {
+  padding-top: calc(var(--space-4) + 1.75rem + var(--space-5));
 }
 
 .conversation {
@@ -127,34 +96,45 @@
   position: relative;
 }
 
-.conversation > :last-child {
-  flex: none;
+/* A plugin's screen for the page takes the page over the conversation down to the prompt box and
+   what stands on it, as an app does over the project view. */
+.page > [data-slot="plugin-space"] {
+  --box-height: 0px;
+
+  flex: 1 1 auto;
+  margin-bottom: var(--dock-height, 0px);
 }
 
-/* The composer keeps a reading measure in a wide pane. */
-.conversation > [data-slot="composer"] {
+/* The status pill floats 8px above the box where the way back to the latest message stands; while
+   the pill shows, that button stands clear above it. */
+.main:has(> .dock [data-slot="pill"]) [data-slot="conversation-scroll-button"] {
+  bottom: calc(var(--space-2) + 32px + var(--space-3));
+}
+
+/* The prompt box, and what stands in its place, at the pane's foot on the box's measure in its
+   middle. In the flow beneath the conversation, so its last turn ends above it; over whatever
+   covers the conversation and what that lays over itself, its bar's popovers and panels among
+   them. */
+.dock {
+  position: relative;
+  z-index: 11;
   box-sizing: border-box;
   width: 100%;
-  max-width: 46rem;
+  max-width: calc(var(--box-measure) + 2 * var(--space-4));
   margin-inline: auto;
 }
 
-/* The archived line sits where the composer would, on the same measure and padding. */
+/* The archived line sits where the composer would, on the same measure and padding. Unlike the box
+   it has no card of its own, so it covers what a page scrolls beneath it. */
 .archived {
-  box-sizing: border-box;
-  width: 100%;
-  max-width: 46rem;
-  margin-inline: auto;
   padding: var(--space-2) var(--space-4) var(--space-4);
+  background: var(--wb-background);
 }
 
-/* The chat taken full screen stands in for the project view or page it was pulled up over; that
-   stays mounted, only hidden. */
-.page:has(
-    > [data-slot="composer"] > [data-slot="chat-sheet"][data-state="full"]
-  )
-  > :not([data-slot="composer"]) {
-  display: none;
+/* Why there is no box yet, or none at all: the box's measure, clear of the window's foot. */
+.notice {
+  padding: var(--space-2) var(--space-4) var(--space-4);
+  background: var(--wb-background);
 }
 
 /* A quiet line on an archived project, with its way on beside it. */
@@ -174,6 +154,12 @@
 }
 
 /* In the prompt box, one quiet line just above the words it is about: no band, no rule under it. */
+/* What waits in the box, as its panel lays it; kept mounted while hidden so its buttons stay in the
+   row. */
+.card:not([hidden]) {
+  display: contents;
+}
+
 .restarts {
   display: flex;
   align-items: center;
@@ -193,15 +179,28 @@
   border-bottom: 0;
 }
 
-/* Comments waiting to be made, carried with whatever is typed after them. */
+/* A folded card's title, as bold as on its card and inset like the words below. */
+.cardAsk {
+  margin: 0;
+  padding: 10px var(--space-4) 0 17px;
+  color: var(--wb-foreground);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  line-height: 20px;
+  overflow-wrap: anywhere;
+}
+
+[data-slot="composer-panel"]:has(> .cardAsk:last-child) {
+  border-bottom: 0;
+}
+
+/* Comments waiting to be sent: the count opens the page they are on, the cross removes them. */
 .commentsToken {
   display: inline-flex;
   flex: none;
   align-items: center;
-  gap: var(--space-1);
   align-self: center;
   height: 22px;
-  padding: 0 6px;
   border-radius: 6px;
   background: var(--wb-muted);
   color: var(--wb-foreground);
@@ -210,11 +209,51 @@
   white-space: nowrap;
 }
 
-/* Says what Send carries while a screen has feedback staged, so the one send control names its load. */
-.sendLabel {
+.commentsShow,
+.commentsRemove {
+  display: inline-flex;
+  align-items: center;
+  height: 100%;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
+}
+
+.commentsShow {
+  gap: var(--space-1);
+  padding: 0 4px 0 6px;
+  border-radius: 6px 0 0 6px;
+}
+
+.commentsRemove {
+  justify-content: center;
+  width: 20px;
+  border-radius: 0 6px 6px 0;
   color: var(--wb-muted-foreground);
-  font-size: 0.8125rem;
-  white-space: nowrap;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .commentsShow:hover,
+  .commentsRemove:hover:not(:disabled) {
+    background: var(--wb-selected);
+    color: var(--wb-foreground);
+  }
+}
+
+.commentsRemove:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.commentsShow:focus-visible,
+.commentsRemove:focus-visible {
+  outline: 2px solid var(--wb-action);
+  outline-offset: -2px;
 }
 
 .replies {
@@ -224,32 +263,39 @@
   padding-bottom: var(--space-2);
 }
 
-/* A screen placed on the page, or the project view, covers the room, the prompt box at its foot. */
+/* The project view, or the plugin sheet on a narrow room, fills the canvas edge to edge, the prompt
+   box at its foot. */
 .page {
+  --close-size: 2.25rem;
+  --controls-right: calc(var(--space-4) + var(--close-size) + var(--space-2));
+
   position: absolute;
   inset: 0;
   z-index: 10;
   display: flex;
   flex-direction: column;
+  container-type: inline-size;
   background: var(--wb-background);
-  /* It fades and grows in as it opens and back out as it closes; display waits for the fade. */
+  /* The one way a view comes and goes over the conversation, however it was opened or closed: it
+     rises into place as it shows, and runs the same motion backwards as it hides. Display waits
+     for it. */
   transition:
-    opacity var(--duration-standard) var(--ease-out),
-    scale var(--duration-standard) var(--ease-out),
-    display var(--duration-standard) allow-discrete;
+    opacity var(--duration-large) var(--ease-out),
+    scale var(--duration-large) var(--ease-out),
+    display var(--duration-large) var(--ease-out) allow-discrete;
 }
 
 .page[hidden] {
   display: none;
   opacity: 0;
-  scale: 0.985;
+  scale: 0.98;
   pointer-events: none;
 }
 
 @starting-style {
   .page {
     opacity: 0;
-    scale: 0.985;
+    scale: 0.98;
   }
 }
 
@@ -259,18 +305,129 @@
   }
 }
 
-.pageScreen {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-height: 0;
+/* The project view's way back to the chat, in its top corner on the floating rail's look so it
+   reads as a control over the view rather than part of the page beneath. */
+.close {
+  position: absolute;
+  top: var(--space-4);
+  right: var(--space-4);
+  z-index: 5;
+  border: 1px solid var(--wb-border);
+  border-radius: var(--radius-control);
+  background: var(--wb-background);
+  color: var(--wb-muted-foreground);
 }
 
-.page > [data-slot="composer"] {
-  box-sizing: border-box;
-  width: 100%;
-  max-width: 46rem;
-  margin-inline: auto;
+.close:hover {
+  color: var(--wb-foreground);
+}
+
+/* A written page on the grey ground ends above the prompt box, which stands on the same grey. */
+.page[data-ground="grey"]:has(
+    > [data-slot="artifact-pane"]
+      [data-slot="panel-pane"][data-state="active"]
+      [data-slot="document-page"]
+  ) {
+  background: var(--wb-frame);
+}
+
+/* Over a written page it stands just beyond the page's top right corner, so it reads as closing
+   the page, at the size of the page's own Download and Share. The page is 768px at the pane's middle, as the document lays it; where the pane leaves
+   no room beside it, the button keeps to the corner. */
+.page:has(
+  > [data-slot="artifact-pane"]
+    [data-slot="panel-pane"][data-state="active"]
+    [data-slot="document-page"]
+) {
+  --close-size: 1.75rem;
+  --close-left: min(
+    50% + min(768px, 100% - 2 * var(--space-4)) / 2 + var(--space-3),
+    100% - var(--close-size) - var(--space-4)
+  );
+  --controls-right: calc(100% - var(--close-left) + var(--space-2));
+}
+
+/* On the white ground no sheet edge shows, so the button goes just past the text instead, inside
+   the page's side padding. */
+.page[data-ground="white"]:has(
+    > [data-slot="artifact-pane"]
+      [data-slot="panel-pane"][data-state="active"]
+      [data-slot="document-page"]
+  ) {
+  --close-left: min(
+    50% + min(768px, 100% - 2 * var(--space-4)) / 2 -
+      var(--document-page-gutter) + var(--space-3),
+    100% - var(--close-size) - var(--space-4)
+  );
+}
+
+.page:has(
+    > [data-slot="artifact-pane"]
+      [data-slot="panel-pane"][data-state="active"]
+      [data-slot="document-page"]
+  )
+  > .close {
+  right: auto;
+  left: var(--close-left);
+  width: var(--close-size);
+  height: var(--close-size);
+}
+
+/* The tabs' status goes just left of the close button and moves with it. */
+.pageControls {
+  position: absolute;
+  top: var(--space-4);
+  right: var(--controls-right);
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: var(--close-size);
+}
+
+.page:has(
+    > [data-slot="artifact-pane"]
+      [data-slot="panel-pane"][data-state="active"]
+      [data-slot="document-page"]
+  )
+  > .close
+  > svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Where the written page lays its contents beside it, the button is level with Download and
+   Share; narrower, they stand above the title and the button keeps to the corner. */
+@container (width >= 74rem) {
+  .page:has(
+      > [data-slot="artifact-pane"]
+        [data-slot="panel-pane"][data-state="active"]
+        [data-slot="document-page"]
+    )
+    > .close {
+    top: var(--document-controls-top);
+  }
+
+  /* Next to the button it would cover a long title, so it goes in the corner, where the chat has it. */
+  .page:has(
+      > [data-slot="artifact-pane"]
+        [data-slot="panel-pane"][data-state="active"]
+        [data-slot="document-page"]
+    )
+    > .pageControls {
+    --controls-right: var(--space-4);
+  }
+}
+
+/* Pulled up, the chat covers the view's foot and, on a narrow canvas, its edge where the view's
+   floating bar stands, so the bar steps aside until the chat is put away. */
+.main:has(
+    > .dock
+      [data-slot="chat-sheet"]:is([data-state="open"], [data-state="moving"])
+  )
+  > .page
+  :is([data-slot="pane-bar"][data-floating], [data-slot="pane-bar-handle"]) {
+  visibility: hidden;
 }
 
 /* The pane is a side panel by make, which a narrow container lays over everything; over the room

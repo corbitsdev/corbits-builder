@@ -1,37 +1,32 @@
 import { describe, expect, test } from "bun:test";
-import type { ProjectStatus } from "@corbits-builder/schemas/project-status";
 import { wording } from "../../config.ts";
 import { composerPlaceholder } from "./composer-placeholder.ts";
+import type { RoomStatusFacts } from "./room-status.ts";
 
-function standing(input: {
-  working?: ProjectStatus["working"];
-  app?: ProjectStatus["app"];
-  failedSpecialist?: NonNullable<ProjectStatus["failedSpecialist"]>;
-}): ProjectStatus {
-  return {
-    working: input.working ?? [],
-    now: "Standing.",
-    app: input.app ?? { state: "not_started" },
-    next: { text: "Reply to the coordinator" },
-    ...(input.failedSpecialist === undefined
-      ? {}
-      : { failedSpecialist: input.failedSpecialist }),
-  };
-}
+type Facts = Pick<RoomStatusFacts, "thinking" | "working" | "failed" | "app">;
+
+const atWork = (doing: string) => ({ runId: `run:${doing}`, doing });
+const failure = (doing: string) => ({ doing, endedAt: 1 });
 
 function placeholder(input: {
   approvalOpen?: boolean;
   questionsOpen?: boolean;
   screenReply?: string;
   nothingFiled?: boolean;
-  status?: ProjectStatus;
+  facts?: Partial<Facts>;
 }): string {
   return composerPlaceholder({
     approvalOpen: input.approvalOpen ?? false,
     questionsOpen: input.questionsOpen ?? false,
     screenReply: input.screenReply,
     nothingFiled: input.nothingFiled ?? false,
-    status: input.status,
+    facts: {
+      thinking: false,
+      working: [],
+      failed: [],
+      app: null,
+      ...input.facts,
+    },
   });
 }
 
@@ -39,84 +34,53 @@ describe("composer placeholder", () => {
   test("work under way beats a running app and a failure, and names no one", () => {
     expect(
       placeholder({
-        status: standing({
-          working: [
-            { role: "writer", state: "starting" },
-            { role: "reviewer", state: "working" },
-          ],
-          app: { state: "running" },
-          failedSpecialist: "coder",
-        }),
+        facts: {
+          working: [atWork("Writing the brief")],
+          app: "running",
+          failed: [failure("Building the app")],
+        },
       }),
     ).toBe("What do you want to say…");
   });
 
-  test("work that is only starting counts as under way", () => {
-    expect(
-      placeholder({
-        nothingFiled: true,
-        status: standing({
-          working: [{ role: "designer", state: "starting" }],
-          app: { state: "failed" },
-        }),
-      }),
-    ).toBe("What do you want to say…");
+  test("the coordinator mid-turn is work under way too", () => {
+    expect(placeholder({ facts: { thinking: true, app: "running" } })).toBe(
+      "What do you want to say…",
+    );
   });
 
   test("a running app beats a failure", () => {
     expect(
       placeholder({
         nothingFiled: true,
-        status: standing({
-          app: { state: "running" },
-          failedSpecialist: "writer",
-        }),
+        facts: { app: "running", failed: [failure("Writing the brief")] },
       }),
     ).toBe("What needs to change…");
   });
 
   test("a failed app beats an empty project", () => {
-    expect(
-      placeholder({
-        nothingFiled: true,
-        status: standing({ app: { state: "failed" } }),
-      }),
-    ).toBe("What needs fixing…");
+    expect(placeholder({ nothingFiled: true, facts: { app: "failed" } })).toBe(
+      "What needs fixing…",
+    );
   });
 
   test("a failed specialist beats an empty project", () => {
     expect(
       placeholder({
         nothingFiled: true,
-        status: standing({
-          app: { state: "stopped" },
-          failedSpecialist: "designer",
-        }),
+        facts: { app: "stopped", failed: [failure("Drawing concepts")] },
       }),
     ).toBe("What needs fixing…");
   });
 
   test("an empty project beats the fallback", () => {
-    expect(
-      placeholder({
-        nothingFiled: true,
-        status: standing({
-          working: [{ role: "writer", state: "unknown" }],
-          app: { state: "not_started" },
-        }),
-      }),
-    ).toBe("What are you making…");
+    expect(placeholder({ nothingFiled: true })).toBe("What are you making…");
   });
 
   test("anything else asks for a reply", () => {
-    expect(
-      placeholder({
-        status: standing({
-          working: [{ role: "coder", state: "unknown" }],
-          app: { state: "stopped" },
-        }),
-      }),
-    ).toBe("What do you want to say…");
+    expect(placeholder({ facts: { app: "stopped" } })).toBe(
+      "What do you want to say…",
+    );
   });
 
   test("an open approval keeps the approval placeholder", () => {
@@ -124,22 +88,22 @@ describe("composer placeholder", () => {
       placeholder({
         approvalOpen: true,
         nothingFiled: true,
-        status: standing({
-          working: [{ role: "coder", state: "working" }],
-          app: { state: "failed", reason: "crashed" },
-          failedSpecialist: "coder",
-        }),
+        facts: {
+          working: [atWork("Building the app")],
+          app: "failed",
+          failed: [failure("Building the app")],
+        },
       }),
     ).toBe(wording.approval.composerPlaceholder);
   });
 
   test("open questions point at the card, after an open approval", () => {
-    const status = standing({ working: [{ role: "coder", state: "working" }] });
-    expect(placeholder({ questionsOpen: true, status })).toBe(
+    const facts = { working: [atWork("Building the app")] };
+    expect(placeholder({ questionsOpen: true, facts })).toBe(
       wording.questions.composerPlaceholder,
     );
     expect(
-      placeholder({ approvalOpen: true, questionsOpen: true, status }),
+      placeholder({ approvalOpen: true, questionsOpen: true, facts }),
     ).toBe(wording.approval.composerPlaceholder);
   });
 });

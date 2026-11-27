@@ -1,5 +1,5 @@
-/* The reading view is its own scroller on the window's backdrop, so the bar and the contents stay
-   put while the page moves under them. */
+/* The reading view is its own scroller on the room's ground, so the bar and the contents stay put
+   while the page moves under them. */
 .reader {
   position: relative;
   display: flex;
@@ -8,23 +8,20 @@
   min-height: 0;
   overflow: auto;
   overscroll-behavior: contain;
-  background: var(--wb-frame);
+  background: var(--wb-background);
   container-type: inline-size;
   /* As wide as the conversation's turns, so the page and the chat read at one measure. */
   --sheet-width: 768px;
-  /* A section opened from the contents stops clear of the bar: the 18px above it and its 32px.
-     The heading's own scroll margin adds the gap below. */
-  scroll-padding-top: 50px;
+  /* A section opened from the contents stops a little below the top; the heading's own scroll
+     margin adds the gap below. */
+  scroll-padding-top: 16px;
   scroll-behavior: smooth;
 }
 
-/* On dark the backdrop is pure black and so is the theme's page colour, so the sheet, the bar, the
-   contents' open section and the margin's cards would all sink into it. They take the theme's first
-   raised step instead, and the backdrop stays black around them. A card opened from its passage
-   is drawn outside the reader, so it takes the same step itself. */
-:global(.dark) .reader,
-:global(.dark) .card {
-  --wb-pane: var(--muted);
+/* On dark the theme's page colour is the ground's, so the margin's cards would sink into it. They
+   take the theme's first raised step instead. A card opened from its passage is drawn outside the
+   reader, so it takes the same step itself. */
+:global(.dark) :is(.margin, .card) {
   --wb-background: var(--muted);
 }
 
@@ -39,31 +36,40 @@
   flex-shrink: 0;
 }
 
-/* The bar heads the page it controls, held in sight as the page scrolls under it. */
-.reader > [data-slot="pane-bar"] {
-  top: 18px;
-  bottom: auto;
-  margin-top: 18px;
-}
-
-/* The page sits on the midline; contents and margin share what is left either side, the contents
-   against the page's left edge as the margin's cards are against its right, not out at the
-   canvas's. */
+/* The page stands at the reader's middle, as the chat does. The contents stand against the page's
+   left edge as the margin's cards do against its right, not out at the reader's. */
 .layout {
+  --page-width: min(var(--sheet-width), 100cqi - 2 * var(--space-4));
+
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-  padding: 14px 0 96px;
+  grid-template-columns:
+    minmax(0, calc((100% - var(--page-width)) / 2))
+    auto minmax(0, 1fr);
+  padding: var(--document-page-inset) 0 96px;
 }
 
 .side {
   grid-column: 1;
-  justify-self: end;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-3);
   box-sizing: border-box;
-  max-width: 100%;
+  min-width: 0;
   position: sticky;
-  top: 64px;
   align-self: start;
-  padding: var(--space-4) var(--space-8) 0 var(--space-4);
+  /* At rest and held there as the page scrolls past. */
+  margin-top: calc(var(--document-controls-top) - var(--document-page-inset));
+  top: var(--document-controls-top);
+  padding: 0 var(--space-8) 0 var(--space-4);
+}
+
+/* Download and Share and the contents share one width where there is room, so they start and end
+   together; else they take what is left beside the page. */
+.side > * {
+  box-sizing: border-box;
+  width: 240px;
+  max-width: 100%;
 }
 
 .column {
@@ -83,36 +89,153 @@
   gap: var(--space-1);
 }
 
-/* A sheet of paper, A4 and a page tall at the least, raised on the backdrop as the workspace's main
-   pane is. The page's height is a minimum, not an aspect ratio: a sheet narrowed by its max-width
-   would hold an aspect ratio's height and let a long text run off its foot. */
+/* Notes that come to nothing take no room, so the page stays level with the margin's head. */
+.notes:empty {
+  display: none;
+}
+
 .sheet {
   box-sizing: border-box;
-  width: var(--sheet-width);
-  max-width: calc(100cqi - 2 * var(--space-4));
-  min-height: calc(
-    min(var(--sheet-width), 100cqi - 2 * var(--space-4)) * 1.4142
-  );
-  padding: 40px 64px 120px;
-  border-radius: 2px;
-  background: var(--wb-pane);
-  box-shadow: var(--wb-pane-shadow);
+  width: var(--page-width);
+  padding: calc(var(--document-title-top) - var(--document-page-inset))
+    var(--document-page-gutter) 120px;
   color: var(--wb-foreground);
-  zoom: var(--page-zoom);
 }
 
-.head {
+/* The grey ground is drawn on screen only; a printed page is plain. */
+@media screen {
+  /* On the grey ground the page is a sheet of paper raised on it. On dark the ground is black, as
+     the page colour is, so the sheet takes the first raised step. */
+  [data-ground="grey"] .reader {
+    background: var(--wb-frame);
+  }
+
+  :global(.dark) [data-ground="grey"] .reader {
+    --wb-background: var(--muted);
+  }
+
+  /* The contents' open section is shaded in the ground's grey, so it lifts onto the sheet's colour
+     instead. */
+  [data-ground="grey"] .side {
+    --wb-muted: var(--wb-background);
+  }
+
+  /* A4 and a page tall at the least. The height is a minimum, not an aspect ratio: a sheet
+     narrowed by its max-width would hold an aspect ratio's height and let a long text run off its
+     foot. */
+  [data-ground="grey"] .sheet {
+    min-height: calc(var(--page-width) * 1.4142);
+    border-radius: 2px;
+    background: var(--wb-background);
+    box-shadow: var(--wb-pane-shadow);
+  }
+}
+
+/* The ends of the passage being written about, as a text selection's own handles are drawn: a bar
+   the height of the line, its round knob above the start and below the end, in the passage's
+   underline colour. Each takes a finger's width around it. */
+.handle {
+  position: absolute;
+  z-index: 1;
+  width: 2px;
+  margin-inline-start: -1px;
+  background: var(--wb-action);
+  cursor: grab;
+  touch-action: none;
+}
+
+.handle::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--wb-action);
+  translate: -50% 0;
+}
+
+.handle[data-side="start"]::before {
+  bottom: 100%;
+}
+
+.handle[data-side="end"]::before {
+  top: 100%;
+}
+
+.handle::after {
+  content: "";
+  position: absolute;
+  inset: -12px -11px;
+}
+
+/* While a handle is held, the text under it is what is aimed at, and nothing on the page selects. */
+.column[data-resizing] {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.column[data-resizing] .handle {
+  pointer-events: none;
+}
+
+/* The contents' toggle, then Download and Share, in one row that stays put whether the contents
+   are open or folded. They never take the selection's highlight with the text around them. */
+.bar,
+.files {
   display: flex;
-  justify-content: space-between;
-  gap: var(--space-4);
-  padding-bottom: 32px;
-  color: var(--wb-muted-foreground);
-  font-size: 0.75rem;
-  line-height: 1rem;
+  align-items: center;
+  gap: var(--space-2);
+  user-select: none;
 }
 
-.sheet[data-writing="live"] .head > :last-child {
-  color: var(--wb-primary);
+/* Three labelled buttons overrun the column, so the toggle is a disclosure arrow, named for a
+   screen reader: right while the list is folded, down while it is open, turning as the list moves.
+   Only the arrow shows, without the outline Download and Share have. */
+.contentsToggle {
+  padding-inline: 0;
+  aspect-ratio: 1;
+}
+
+.file.contentsToggle {
+  border-color: transparent;
+}
+
+.contentsToggle > svg {
+  transition: rotate var(--duration-standard) var(--ease-out);
+}
+
+.contentsToggle[aria-expanded="true"] > svg {
+  rotate: 90deg;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .contentsToggle > svg {
+    transition: none;
+  }
+}
+
+/* Small and quiet: outlined as lightly as the prompt box, so it reads as something to press
+   without pulling the eye from the page. */
+.file {
+  gap: 6px;
+  height: 1.75rem;
+  padding-inline: 10px;
+  border: 1px solid var(--wb-border);
+  background: transparent;
+  color: var(--wb-muted-foreground);
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
+.file:hover,
+.file:focus-visible {
+  color: var(--wb-foreground);
+}
+
+.file > svg {
+  width: 14px;
+  height: 14px;
 }
 
 /* The document set on the page: the sheet sets the measure, and every block keeps the same small
@@ -146,6 +269,12 @@
 
 .sheet [data-slot="prose"] > :first-child {
   margin-top: 0;
+}
+
+/* A section heading that opens the text keeps its step above, so under the title every section
+   is set off the same. */
+.sheet [data-slot="prose"] > :is(h2, h3, h4):first-child {
+  margin-top: 24px;
 }
 
 .sheet [data-slot="prose"] li {
@@ -193,7 +322,7 @@
 
 .title {
   margin: 0 0 10px;
-  font-size: 1.875rem;
+  font-size: var(--document-title-line);
   font-weight: 600;
   line-height: 1;
   letter-spacing: -0.025em;
@@ -218,8 +347,9 @@
   width: var(--card-width);
 }
 
-/* With no room for cards beside the page, a passage's card opens from its underline. The mark's
-   button is there for the keyboard alone: the underline already shows the passage to the eye. */
+/* A passage's underline takes up its comment, so it reads as something to press. Without room for
+   cards beside the page, the card opens from the underline. The mark's button is there for the
+   keyboard alone: the underline already shows the passage to the eye. */
 .sheet[data-pointing] {
   cursor: pointer;
 }
@@ -229,7 +359,7 @@
   right: 4px;
   width: 24px;
   height: 24px;
-  color: var(--wb-primary);
+  color: var(--wb-action);
   opacity: 0;
   pointer-events: none;
 }
@@ -272,22 +402,45 @@
   outline: none;
 }
 
-/* Every passage something is said about is underlined in the attention orange; the one whose
+/* Every passage something is said about is underlined in the action blue; the one whose
    comment is being written is tinted too. */
 .sheet ::highlight(document-passage),
-.sheet ::highlight(document-passage-selected) {
-  text-decoration: underline 2px var(--wb-primary);
+.sheet ::highlight(document-passage-selected),
+.sheet ::highlight(document-passage-pointed) {
+  text-decoration: underline 2px var(--wb-action);
   text-underline-offset: 5px;
 }
 
 .sheet ::highlight(document-passage-selected) {
-  background-color: color-mix(in oklab, var(--wb-primary) 20%, transparent);
+  background-color: color-mix(in oklab, var(--wb-action) 20%, transparent);
 }
 
-/* Without room for the contents beside the page, they give way to it. */
-@container (width < 1120px) {
+/* The passage whose comment is pointed at, lighter than the one being written about. */
+.sheet ::highlight(document-passage-pointed) {
+  background-color: color-mix(in oklab, var(--wb-action) 10%, transparent);
+}
+
+/* The contents need 10rem to read without breaking a word; with the side's 3rem of padding on each
+   side of the 48rem page, that is a 74rem reader. Narrower, they give way, and Download and Share
+   stand above the page instead. */
+@container (width < 74rem) {
   .side {
+    grid-column: 2;
+    grid-row: 1;
+    position: static;
+    align-items: flex-start;
+    margin-top: 0;
+    padding: 0 0 var(--space-3);
+  }
+
+  .side > [data-slot="document-contents"],
+  .contentsToggle {
     display: none;
+  }
+
+  .column,
+  .margin {
+    grid-row: 2;
   }
 }
 
@@ -304,7 +457,6 @@
     background: none;
   }
 
-  .reader > [data-slot="pane-bar"],
   .side,
   .margin {
     display: none;
@@ -313,9 +465,6 @@
   .sheet {
     width: auto;
     max-width: none;
-    min-height: 0;
     padding: 0;
-    box-shadow: none;
-    zoom: 1;
   }
 }

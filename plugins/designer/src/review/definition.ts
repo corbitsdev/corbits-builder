@@ -3,6 +3,7 @@ import { Input, Output } from "./schema.ts";
 
 export default defineScreen({
   render: "main-page",
+  shows: "design",
   input: Input,
   output: Output,
   // The host draws a screen once it is prepared; this one needs nothing past its input.

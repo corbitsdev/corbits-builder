@@ -1,20 +1,21 @@
 /**
- * A written document read as a printed page: a sheet on the window's backdrop with a small running
- * header, the document's title and its body. The pane's one bar heads it with the version, the page
- * being read, the zoom and the download; the document's sections sit to the left; the right margin
- * holds whatever is placed beside a passage, level with it.
+ * A written document read as a printed page on the room's ground: its title and body, with
+ * Download and Share and its sections in a column to the left. The right margin holds whatever is
+ * placed beside a passage, level with it.
  */
 import { Button, useDismissablePopover } from "@corbits/react-ui";
-import { MessageSquare, Minus, Plus } from "lucide-react";
+import { ChevronRight, MessageSquare } from "lucide-react";
 import {
   useCallback,
   useEffect,
+  useEffectEvent,
   useId,
   useLayoutEffect,
   useRef,
   useState,
   type CSSProperties,
   type MouseEvent,
+  type PointerEvent,
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
@@ -24,29 +25,57 @@ import {
   DocumentContents,
   type DocumentSection,
 } from "./document-contents.tsx";
-import { PaneBar, type PaneBarGroup } from "./pane-bar.tsx";
+import type { PaneBarGroup } from "./pane-bar.tsx";
 import styles from "./document-page.module.css";
 
 /** Where a passage's comment stands, beyond being saved: selected while it is written. */
 export type PassageState = "selected";
 
-/** A passage something is said about, by the words it quotes from the page. */
-export type MarginPassage = { id: string; quote: string; state?: PassageState };
+/**
+ * A passage something is said about, by the words it quotes from the page's text and which run of
+ * them it is, counted from 0, since short words recur.
+ */
+export type MarginPassage = {
+  id: string;
+  quote: string;
+  occurrence: number;
+  state?: PassageState;
+};
 
-/** Where a passage sits: its top, from the top of the margin, and the section it is in. */
+/**
+ * Where a passage sits: its top, from the top of the margin, and the section it is in. A passage
+ * whose words are not on the page, such as one a later version rewrote, sits at the top of the
+ * margin in no section.
+ */
 export type PassagePlace = MarginPassage & {
   top: number;
   section: string | null;
+  found: boolean;
 };
+
+/** Where one end of the passage being written about sits, from the top left of the page's column. */
+type PassageEnd = { x: number; y: number; height: number };
+
+/** The two ends of the passage being written about, which its handles move. */
+type PassageEnds = { id: string; start: PassageEnd; end: PassageEnd };
+
+/** The text position under a point, by whichever of the two ways the browser offers. */
+function caretAt(x: number, y: number): { node: Node; offset: number } | null {
+  if (typeof document.caretPositionFromPoint === "function") {
+    const caret = document.caretPositionFromPoint(x, y);
+    return caret === null
+      ? null
+      : { node: caret.offsetNode, offset: caret.offset };
+  }
+  const range = document.caretRangeFromPoint(x, y);
+  return range === null
+    ? null
+    : { node: range.startContainer, offset: range.startOffset };
+}
 
 /** How the document's writing stands, while it is not yet filed whole. */
 export type PageWriting = "live" | "stopped";
 
-const ZOOMS = [0.5, 0.75, 1, 1.25, 1.5, 2] as const;
-export type PageZoom = (typeof ZOOMS)[number];
-// Where the reader's eye rests, as a share of the view's height: the page it is in is the one
-// being read.
-const READING_LINE = 0.4;
 // A heading a jump landed on reads as reached though it rests a pixel or two short of the line.
 const LANDING_SLACK = 4;
 // A jump has settled once the view has not moved for this long.
@@ -72,9 +101,12 @@ const MARGIN_INSET = 32 + 24;
 // The underline sits below the line's box, so a press just under the words still reaches it.
 const UNDERLINE_REACH = 8;
 // Each state is its own highlight, named as the stylesheet paints it.
-const HIGHLIGHTS: Readonly<Record<PassageState | "commented", string>> = {
+const HIGHLIGHTS: Readonly<
+  Record<PassageState | "commented" | "pointed", string>
+> = {
   commented: "document-passage",
   selected: "document-passage-selected",
+  pointed: "document-passage-pointed",
 };
 
 type Painted = { highlight: string; range: Range };
@@ -94,11 +126,36 @@ function paint(owner: object, marks: readonly Painted[]) {
   }
 }
 
+/** Where each run of a quote starts in a text, in order. */
+function quoteRuns(text: string, quote: string): number[] {
+  const runs: number[] = [];
+  if (quote.length === 0) return runs;
+  for (
+    let at = text.indexOf(quote);
+    at !== -1;
+    at = text.indexOf(quote, at + 1)
+  )
+    runs.push(at);
+  return runs;
+}
+
+/** Which run of a quote starts at a place in a text: a passage names its run by this. */
+export const occurrenceAt = (text: string, quote: string, start: number) =>
+  quoteRuns(text, quote).indexOf(start);
+
+/** Where a passage starts in a text, or -1 when its run of the quote is not there. */
+export const passageStart = (
+  text: string,
+  passage: Pick<MarginPassage, "quote" | "occurrence">,
+) => quoteRuns(text, passage.quote)[passage.occurrence] ?? -1;
+
 /**
- * Finds quotes in the page's text, across inline elements: each quote is its first run there.
- * The text is read once, so every passage on the page is found from one pass over it.
+ * Finds passages in the document's text, across inline elements. The text is read once, so every
+ * passage on the page is found from one pass over it.
  */
-function quoteFinder(root: HTMLElement): (quote: string) => Range | null {
+function passageFinder(
+  root: HTMLElement,
+): (passage: MarginPassage) => Range | null {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   const nodes: { node: Text; start: number }[] = [];
   let text = "";
@@ -107,10 +164,10 @@ function quoteFinder(root: HTMLElement): (quote: string) => Range | null {
     nodes.push({ node: run, start: text.length });
     text += run.data;
   }
-  return (quote) => {
-    const at = quote.length === 0 ? -1 : text.indexOf(quote);
+  return (passage) => {
+    const at = passageStart(text, passage);
     if (at === -1) return null;
-    const end = at + quote.length;
+    const end = at + passage.quote.length;
     const from = nodes.findLast((entry) => entry.start <= at);
     const to = nodes.findLast((entry) => entry.start < end);
     if (from === undefined || to === undefined) return null;
@@ -163,35 +220,36 @@ function readSections(body: HTMLElement): HTMLElement[] {
 }
 
 export function DocumentPage({
-  project,
   title,
-  meta,
   writing,
   onResume,
-  groups,
+  files,
   notes,
   passages = [],
   margin,
-  initialZoom = 1,
+  onResize,
+  onPassagePress,
   children,
 }: {
-  /** The project the document belongs to, which the running header names. */
-  project: string;
   title: string;
-  /** The running header's right side: when it was filed, or how its writing stands. */
-  meta: string;
   writing?: PageWriting | undefined;
   /** Starts the writing again where it stopped. */
   onResume?: (() => void) | undefined;
-  /** The bar's own groups; the page puts its page count and zoom between the first and the last. */
-  groups: readonly PaneBarGroup[];
+  /** Download and Share, for the file the document is given away as. */
+  files: PaneBarGroup;
   /** Short notes about the view, such as an older version being read, above the page. */
   notes?: ReactNode;
   /** Passages something is said about; each is underlined and given a place in the margin. */
   passages?: readonly MarginPassage[] | undefined;
-  /** What sits in the right margin beside a passage, such as its comment. */
-  margin?: ((passage: PassagePlace) => ReactNode) | undefined;
-  initialZoom?: PageZoom;
+  /**
+   * What sits in the right margin beside a passage, such as its comment. `pointed` is true while
+   * the pointer is on the passage or on the item itself.
+   */
+  margin?: ((passage: PassagePlace, pointed: boolean) => ReactNode) | undefined;
+  /** The passage being written about was dragged wider or narrower by one of its handles. */
+  onResize?: ((id: string, range: Range) => void) | undefined;
+  /** A passage's underline was pressed, to take up what is said about it. */
+  onPassagePress?: ((id: string) => void) | undefined;
   /** The document's body, drawn at the page's type scale. */
   children: ReactNode;
 }) {
@@ -199,8 +257,11 @@ export function DocumentPage({
   const scroller = useRef<HTMLDivElement>(null);
   const sheet = useRef<HTMLElement>(null);
   const marginColumn = useRef<HTMLDivElement>(null);
+  const pageColumn = useRef<HTMLDivElement>(null);
+  const [ends, setEnds] = useState<PassageEnds | null>(null);
+  const contentsId = `contents-${useId()}`;
+  const [contentsOpen, setContentsOpen] = useState(true);
   const marginItems = useRef<(HTMLDivElement | null)[]>([]);
-  const [zoom, setZoom] = useState<PageZoom>(initialZoom);
   // The page's headings as the last measure found them, so scrolling need not look again.
   const headingsRef = useRef<HTMLElement[]>([]);
   const [sections, setSections] = useState<
@@ -212,41 +273,37 @@ export function DocumentPage({
   // the next, are not what they asked for. Undefined while the view follows the scroll.
   const chosen = useRef<string | null | undefined>(undefined);
   const jumping = useRef<number | null>(null);
-  const [page, setPage] = useState({ current: 1, total: 1 });
   const [places, setPlaces] = useState<readonly PassagePlace[]>([]);
   const [roomy, setRoomy] = useState(true);
   const ranges = useRef(new Map<string, Range>());
+  // The passage the pointer is on, on the page or by its margin item: each shows the other.
+  const [pointed, setPointed] = useState<string | null>(null);
+  const pointedOwner = useRef({});
   const cardId = useId();
-  const [card, setCard] = useState<{
-    place: PassagePlace;
-    line: DOMRect;
-  } | null>(null);
+  // A card opened from its passage, by the passage's id and the line it opened from. Its passage is
+  // read from the page as it stands now, so whether it is being written is said in one place.
+  const [card, setCard] = useState<{ id: string; line: DOMRect } | null>(null);
+  const writtenId = places.find((place) => place.state === "selected")?.id;
+  const cardPlace = places.find((place) => place.id === card?.id);
+  /**
+   * A card opened from its passage closes on a press or focus elsewhere, except one being written:
+   * its field decides, putting away a comment with nothing written and keeping one with words.
+   */
+  const putAway = (was: typeof card) => (was?.id === writtenId ? was : null);
   const { rootRef: cardRef, triggerRef: cardTrigger } = useDismissablePopover<
     HTMLDivElement,
     HTMLButtonElement
   >({
     open: card !== null,
     onOpenChange: (open) => {
-      if (!open) setCard(null);
+      if (!open) setCard(putAway);
     },
   });
 
   const follow = useCallback(() => {
     const view = scroller.current;
-    const paper = sheet.current;
-    if (view === null || paper === null) return;
+    if (view === null) return;
     const frame = view.getBoundingClientRect();
-    const box = paper.getBoundingClientRect();
-    const line = frame.top + frame.height * READING_LINE;
-    // A page is A4 at the sheet's width, so a page count reads as it would on paper.
-    const height = box.width * Math.SQRT2;
-    const total = Math.max(1, Math.ceil(box.height / height - 0.01));
-    const reading = Math.floor((line - box.top) / height) + 1;
-    const current = Math.min(total, Math.max(1, reading));
-    // Scrolling within a page changes nothing on screen, so it leaves the page as it was.
-    setPage((was) =>
-      was.current === current && was.total === total ? was : { current, total },
-    );
     if (chosen.current !== undefined) {
       setCurrent(chosen.current);
       return;
@@ -293,7 +350,10 @@ export function DocumentPage({
   };
 
   const passageKey = passages
-    .map((passage) => `${passage.id}:${passage.state ?? ""}:${passage.quote}`)
+    .map(
+      (passage) =>
+        `${passage.id}:${passage.state ?? ""}:${String(passage.occurrence)}:${passage.quote}`,
+    )
     .join("\n");
   const measure = useCallback(() => {
     const paper = sheet.current;
@@ -318,15 +378,27 @@ export function DocumentPage({
         : headings.map(({ id, title }) => ({ id, title })),
     );
     const origin = column?.getBoundingClientRect().top ?? 0;
-    const find = quoteFinder(paper);
-    const found = passages.flatMap((passage) => {
-      const range = find(passage.quote);
-      if (range === null) return [];
-      const top = range.getBoundingClientRect().top;
-      const section =
-        headings.findLast((heading) => heading.top <= top)?.id ?? null;
-      return [{ range, place: { ...passage, top: top - origin, section } }];
-    });
+    // A passage's run is counted in the document's text alone, as it was selected, not the title.
+    const text = paper.querySelector<HTMLElement>('[data-slot="prose"]');
+    const find = text === null ? () => null : passageFinder(text);
+    const found = passages
+      .flatMap((passage) => {
+        const range = find(passage);
+        if (range === null) return [];
+        const top = range.getBoundingClientRect().top;
+        const section =
+          headings.findLast((heading) => heading.top <= top)?.id ?? null;
+        return [
+          {
+            range,
+            place: { ...passage, top: top - origin, section, found: true },
+          },
+        ];
+      })
+      .sort((a, b) => a.place.top - b.place.top);
+    const missing = passages
+      .filter((passage) => !found.some((hit) => hit.place.id === passage.id))
+      .map((passage) => ({ ...passage, top: 0, section: null, found: false }));
     paint(
       paper,
       found.map((hit) => ({
@@ -335,18 +407,61 @@ export function DocumentPage({
       })),
     );
     ranges.current = new Map(found.map((hit) => [hit.place.id, hit.range]));
+    // The passage being written about gets a handle at each end, at its first and last line.
+    const writing = found.find((hit) => hit.place.state === "selected");
+    const lines = [...(writing?.range.getClientRects() ?? [])].filter(
+      (line) => line.width > 0,
+    );
+    const first = lines[0];
+    const last = lines.at(-1);
+    const frame = pageColumn.current?.getBoundingClientRect();
+    const next =
+      writing === undefined ||
+      first === undefined ||
+      last === undefined ||
+      frame === undefined
+        ? null
+        : {
+            id: writing.place.id,
+            start: {
+              x: first.left - frame.left,
+              y: first.top - frame.top,
+              height: first.height,
+            },
+            end: {
+              x: last.right - frame.left,
+              y: last.top - frame.top,
+              height: last.height,
+            },
+          };
+    setEnds((was) =>
+      was !== null &&
+      next !== null &&
+      was.id === next.id &&
+      (["start", "end"] as const).every(
+        (side) =>
+          was[side].x === next[side].x &&
+          was[side].y === next[side].y &&
+          was[side].height === next[side].height,
+      )
+        ? was
+        : next,
+    );
+    // Passages not on the page head the margin, above those level with their lines.
+    const now = [...missing, ...found.map((hit) => hit.place)];
     setPlaces((was) =>
       same(
         was,
-        found.map((hit) => hit.place),
+        now,
         (a, b) =>
           a.id === b.id &&
           a.state === b.state &&
           a.top === b.top &&
-          a.section === b.section,
+          a.section === b.section &&
+          a.found === b.found,
       )
         ? was
-        : found.map((hit) => hit.place),
+        : now,
     );
     setRoomy(
       column === null || column.clientWidth - MARGIN_INSET >= CARD_WIDTH,
@@ -366,15 +481,17 @@ export function DocumentPage({
   );
 
   // The body's words change as it is written or another version is read, and its lines move as
-  // the page or the pane changes size; either moves the passages.
+  // the page or the pane changes size; either moves the passages. Dragging a handle changes the
+  // passages but not the page, so the observers keep their subscription through a drag.
+  const remeasure = useEffectEvent(measure);
   useEffect(() => {
     const paper = sheet.current;
     const view = scroller.current;
     if (paper === null || view === null) return;
-    const resized = new ResizeObserver(() => measure());
+    const resized = new ResizeObserver(() => remeasure());
     resized.observe(paper);
     resized.observe(view);
-    const rewritten = new MutationObserver(() => measure());
+    const rewritten = new MutationObserver(() => remeasure());
     rewritten.observe(paper, {
       childList: true,
       characterData: true,
@@ -385,7 +502,21 @@ export function DocumentPage({
       rewritten.disconnect();
       paint(paper, []);
     };
-  }, [measure]);
+  }, []);
+
+  // A passage pointed at from its margin item is tinted; one being written is tinted already.
+  useEffect(() => {
+    const owner = pointedOwner.current;
+    const place = places.find((item) => item.id === pointed);
+    const range = pointed === null ? undefined : ranges.current.get(pointed);
+    paint(
+      owner,
+      place === undefined || place.state === "selected" || range === undefined
+        ? []
+        : [{ highlight: HIGHLIGHTS.pointed, range }],
+    );
+    return () => paint(owner, []);
+  }, [pointed, places]);
 
   // A card opened from its passage sits under the line, or above it when the view ends first.
   useLayoutEffect(() => {
@@ -406,8 +537,86 @@ export function DocumentPage({
     }
   }, [card, cardRef, cardTrigger]);
 
+  // A handle drags its end of the passage to the text under the pointer, measured from the line it
+  // took hold of, so the words move with the finger rather than with the knob above or below them.
+  // The drag in progress; aborting it removes its window listeners.
+  const drag = useRef<AbortController>(null);
+  useEffect(() => () => drag.current?.abort(), []);
+  const resizeFrom = (side: "start" | "end", event: PointerEvent) => {
+    const column = pageColumn.current;
+    // Passages are counted in the document's text, not its title, so a handle can't reach the title.
+    const prose =
+      sheet.current?.querySelector<HTMLElement>('[data-slot="prose"]') ?? null;
+    const range = ends === null ? undefined : ranges.current.get(ends.id);
+    if (
+      ends === null ||
+      onResize === undefined ||
+      column === null ||
+      prose === null ||
+      range === undefined
+    )
+      return;
+    event.preventDefault();
+    const { id } = ends;
+    const held =
+      side === "start"
+        ? { node: range.endContainer, offset: range.endOffset }
+        : { node: range.startContainer, offset: range.startOffset };
+    const line = ends[side];
+    const lift =
+      event.clientY -
+      (column.getBoundingClientRect().top + line.y + line.height / 2);
+    column.dataset.resizing = "";
+    const pointer = event.pointerId;
+    const move = (moved: globalThis.PointerEvent) => {
+      if (moved.pointerId !== pointer) return;
+      const caret = caretAt(moved.clientX, moved.clientY - lift);
+      if (caret === null || !prose.contains(caret.node)) return;
+      const next = document.createRange();
+      next.setStart(held.node, held.offset);
+      if (next.comparePoint(caret.node, caret.offset) < 0)
+        next.setStart(caret.node, caret.offset);
+      else next.setEnd(caret.node, caret.offset);
+      if (!next.collapsed) onResize(id, next);
+    };
+    const stop = (ended: globalThis.PointerEvent) => {
+      if (ended.pointerId !== pointer) return;
+      delete column.dataset.resizing;
+      listening.abort();
+    };
+    drag.current?.abort();
+    const listening = new AbortController();
+    drag.current = listening;
+    const { signal } = listening;
+    window.addEventListener("pointermove", move, { signal });
+    window.addEventListener("pointerup", stop, { signal });
+    window.addEventListener("pointercancel", stop, { signal });
+  };
+
   const narrow = margin !== undefined && !roomy;
   const inMargin = margin !== undefined && !narrow;
+
+  // Without room beside the page, a passage just selected to write about opens its card from its
+  // line at once, since there is no margin for it to appear in. Each opens once, so closing it
+  // leaves it closed until its underline is pressed.
+  const opened = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    // A card whose passage is gone, such as one just saved under a new name, closes with it.
+    setCard((was) =>
+      was === null || places.some((place) => place.id === was.id) ? was : null,
+    );
+    const writing = places.find((place) => place.state === "selected");
+    if (!narrow || writing === undefined) {
+      opened.current = writing?.id ?? null;
+      return;
+    }
+    if (opened.current === writing.id) return;
+    opened.current = writing.id;
+    const line = ranges.current.get(writing.id)?.getClientRects()[0];
+    if (line === undefined) return;
+    cardTrigger.current = null;
+    setCard({ id: writing.id, line });
+  }, [places, narrow, cardTrigger]);
 
   // Items too close to fit level with their passages stack below one another, in page order.
   // Every height is read before any top is written, so placing them costs one layout. An item
@@ -419,7 +628,7 @@ export function DocumentPage({
       const heights = items.map((item) => item?.offsetHeight ?? 0);
       let floor = -Infinity;
       places.forEach((place, index) => {
-        const top = Math.max(place.top - MARGIN_LEAD, floor);
+        const top = Math.max(place.found ? place.top - MARGIN_LEAD : 0, floor);
         const item = items[index];
         if (item !== null && item !== undefined)
           item.style.top = `${String(top)}px`;
@@ -448,85 +657,50 @@ export function DocumentPage({
     return null;
   };
 
-  // With the margin too narrow for its cards, a passage's underline opens its card instead.
+  const pressable = narrow || onPassagePress !== undefined;
+
+  // A passage's underline takes up its comment; with the margin too narrow for its cards, it opens
+  // the card from the line as well.
   const openFromMark = (event: MouseEvent) => {
-    if (!narrow || window.getSelection()?.isCollapsed === false) return;
+    if (!pressable || window.getSelection()?.isCollapsed === false) return;
     const hit = passageAt(event.clientX, event.clientY);
     if (hit === null) return;
-    // The card takes this press; quoting the passage into a message is not offered as well.
+    // The comment takes this press; quoting the passage into a message is not offered as well.
     event.stopPropagation();
+    if (hit.place.state !== "selected") onPassagePress?.(hit.place.id);
+    if (!narrow) return;
     cardTrigger.current = null;
-    setCard(hit);
+    setCard({ id: hit.place.id, line: hit.line });
   };
 
   const pointAtMark = (event: MouseEvent<HTMLElement>) => {
-    if (!narrow) return;
+    const hit = passageAt(event.clientX, event.clientY);
+    setPointed(hit?.place.id ?? null);
     event.currentTarget.toggleAttribute(
       "data-pointing",
-      passageAt(event.clientX, event.clientY) !== null,
+      pressable && hit !== null,
     );
   };
 
   const openFromKeys = (place: PassagePlace, button: HTMLButtonElement) => {
-    const line = ranges.current.get(place.id)?.getClientRects()[0];
-    if (line === undefined) return;
+    // A passage not on the page opens its card from its mark.
+    const line =
+      ranges.current.get(place.id)?.getClientRects()[0] ??
+      button.getBoundingClientRect();
     cardTrigger.current = button;
-    setCard({ place, line });
+    setCard({ id: place.id, line });
   };
 
-  // The reader's scroll padding keeps a section clear of the bar; its scroll behaviour is smooth
-  // unless the person asks for less motion.
-  const open = (id: string | null) => {
+  // The reader's scroll behaviour is smooth unless the person asks for less motion.
+  const open = (id: string) => {
     chosen.current = id;
     setCurrent(id);
     settleJump();
-    if (id === null) scroller.current?.scrollTo({ top: 0 });
-    else
-      headingsRef.current
-        .find((heading) => heading.id === id)
-        ?.scrollIntoView({ block: "start" });
+    headingsRef.current
+      .find((heading) => heading.id === id)
+      ?.scrollIntoView({ block: "start" });
   };
 
-  const zoomAt = ZOOMS.indexOf(zoom);
-  const percent = Math.round(zoom * 100);
-  const step = (by: number) => {
-    const next = ZOOMS[zoomAt + by];
-    if (next !== undefined) setZoom(next);
-  };
-  const pageGroups: readonly PaneBarGroup[] = [
-    [
-      {
-        id: "page",
-        label: words.page(page.current, page.total),
-        text: words.page(page.current, page.total),
-        note: true,
-      },
-    ],
-    [
-      {
-        id: "zoom-out",
-        label: words.zoomOut,
-        icon: <Minus aria-hidden="true" />,
-        disabled: zoomAt <= 0,
-        onSelect: () => step(-1),
-      },
-      {
-        id: "zoom",
-        label: words.zoomReset(percent),
-        text: words.zoom(percent),
-        onSelect: () => setZoom(1),
-      },
-      {
-        id: "zoom-in",
-        label: words.zoomIn,
-        icon: <Plus aria-hidden="true" />,
-        disabled: zoomAt >= ZOOMS.length - 1,
-        onSelect: () => step(1),
-      },
-    ],
-  ];
-  const leading = groups.slice(0, -1);
-  const trailing = groups.slice(-1);
   const commented = new Set(places.map((place) => place.section));
   const contents: readonly DocumentSection[] = sections.map((section) => ({
     ...section,
@@ -537,19 +711,20 @@ export function DocumentPage({
     <div
       ref={scroller}
       className={styles.reader}
-      style={
-        {
-          "--page-zoom": zoom,
-          "--card-width": `${String(CARD_WIDTH)}px`,
-        } as CSSProperties
-      }
+      style={{ "--card-width": `${String(CARD_WIDTH)}px` } as CSSProperties}
       data-slot="document-page"
       onScroll={() => {
         // Moving after a jump has settled is the person scrolling on.
         if (jumping.current === null) chosen.current = undefined;
         else settleJump();
         follow();
-        setCard(null);
+        // A comment being written rides along with its line rather than closing on its words.
+        setCard((was) => {
+          const kept = putAway(was);
+          if (kept === null) return null;
+          const line = ranges.current.get(kept.id)?.getClientRects()[0];
+          return line === undefined ? kept : { id: kept.id, line };
+        });
       }}
       onWheel={scrollOn}
       onTouchMove={scrollOn}
@@ -557,20 +732,37 @@ export function DocumentPage({
         if (SCROLL_KEYS.has(event.key)) scrollOn();
       }}
     >
-      <PaneBar
-        label={wording.documentBar}
-        groups={[...leading, ...pageGroups, ...trailing]}
-      />
       <div className={styles.layout}>
         <div className={styles.side}>
-          <DocumentContents
-            title={title}
-            sections={contents}
-            current={current}
-            onOpen={open}
-          />
+          <div className={styles.bar}>
+            {contents.length === 0 ? null : (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className={`${styles.file} ${styles.contentsToggle}`}
+                aria-label={words.contentsToggle}
+                title={words.contentsToggle}
+                aria-expanded={contentsOpen}
+                aria-controls={contentsId}
+                onClick={() => setContentsOpen(!contentsOpen)}
+              >
+                <ChevronRight aria-hidden="true" />
+              </Button>
+            )}
+            <FileActions files={files} />
+          </div>
+          {contents.length === 0 ? null : (
+            <DocumentContents
+              id={contentsId}
+              open={contentsOpen}
+              sections={contents}
+              current={current}
+              onOpen={open}
+            />
+          )}
         </div>
-        <div className={styles.column}>
+        <div ref={pageColumn} className={styles.column}>
           {notes === undefined || notes === null ? null : (
             <div className={styles.notes}>{notes}</div>
           )}
@@ -580,17 +772,32 @@ export function DocumentPage({
             data-writing={writing}
             onClickCapture={openFromMark}
             onPointerMove={pointAtMark}
+            onPointerLeave={() => setPointed(null)}
           >
-            <header className={styles.head}>
-              <span>{project}</span>
-              <span>{meta}</span>
-            </header>
             <h1 className={styles.title}>{title}</h1>
             {children}
             {writing === "stopped" ? (
               <Fault onRetry={onResume}>{words.stopped}</Fault>
             ) : null}
           </article>
+          {/* Pointer only, as a text selection's own handles are: the keyboard selects again. */}
+          {ends === null || onResize === undefined
+            ? null
+            : (["start", "end"] as const).map((side) => (
+                <span
+                  key={side}
+                  className={styles.handle}
+                  data-side={side}
+                  data-slot="passage-handle"
+                  aria-hidden="true"
+                  style={{
+                    left: ends[side].x,
+                    top: ends[side].y,
+                    height: ends[side].height,
+                  }}
+                  onPointerDown={(event) => resizeFrom(side, event)}
+                />
+              ))}
           {narrow
             ? places.map((place) => (
                 <Button
@@ -601,10 +808,8 @@ export function DocumentPage({
                   style={{ top: place.top }}
                   aria-label={words.passageNote(place.quote)}
                   aria-haspopup="dialog"
-                  aria-expanded={card?.place.id === place.id}
-                  aria-controls={
-                    card?.place.id === place.id ? cardId : undefined
-                  }
+                  aria-expanded={card?.id === place.id}
+                  aria-controls={card?.id === place.id ? cardId : undefined}
                   onClick={(event) => openFromKeys(place, event.currentTarget)}
                 >
                   <MessageSquare aria-hidden="true" />
@@ -623,13 +828,15 @@ export function DocumentPage({
                   }}
                   className={styles.marginItem}
                   data-slot="document-margin-item"
+                  onPointerEnter={() => setPointed(place.id)}
+                  onPointerLeave={() => setPointed(null)}
                 >
-                  {margin(place)}
+                  {margin(place, pointed === place.id)}
                 </div>
               ))}
         </div>
       </div>
-      {card === null || margin === undefined
+      {cardPlace === undefined || margin === undefined
         ? null
         : createPortal(
             <div
@@ -641,20 +848,54 @@ export function DocumentPage({
               id={cardId}
               data-slot="document-margin-card"
               role="dialog"
-              aria-label={words.passageNote(card.place.quote)}
+              aria-label={words.passageNote(cardPlace.quote)}
               tabIndex={-1}
+              onPointerEnter={() => setPointed(cardPlace.id)}
+              onPointerLeave={() => setPointed(null)}
               onBlur={(event) => {
                 if (
                   event.relatedTarget !== null &&
                   !event.currentTarget.contains(event.relatedTarget)
                 )
-                  setCard(null);
+                  setCard(putAway);
               }}
             >
-              {margin(card.place)}
+              {margin(cardPlace, pointed === cardPlace.id)}
             </div>,
             document.body,
           )}
+    </div>
+  );
+}
+
+/** Download and Share, each an outlined button named in words beside its icon. */
+function FileActions({ files }: { files: PaneBarGroup }) {
+  if (files.length === 0) return null;
+  return (
+    <div
+      className={styles.files}
+      role="group"
+      aria-label={wording.documentViewer.file}
+    >
+      {files.map((action) => (
+        <Button
+          key={action.id}
+          type="button"
+          variant="outline"
+          size="sm"
+          className={styles.file}
+          title={action.label}
+          aria-label={action.label}
+          disabled={action.disabled}
+          onClick={action.onSelect}
+          {...(action.onPrepare === undefined
+            ? {}
+            : { onPointerEnter: action.onPrepare, onFocus: action.onPrepare })}
+        >
+          {action.icon}
+          <span>{action.text}</span>
+        </Button>
+      ))}
     </div>
   );
 }

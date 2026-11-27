@@ -1,0 +1,84 @@
+/* The title row: the mark and the name, each opening its own menu, and the toggle at its end,
+   across the card's width. */
+.head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-2);
+  height: 2.5rem;
+  padding: 0 var(--space-1) 0 var(--space-2);
+  color: var(--wb-foreground);
+  white-space: nowrap;
+}
+
+/* Collapsed, the title row is a filled pill of its own. */
+.head:not([data-open]) {
+  border-radius: var(--radius-lg);
+  background: var(--card);
+}
+
+.toggle {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  margin-inline-start: auto;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-md);
+  color: var(--wb-muted-foreground);
+  background: transparent;
+  cursor: pointer;
+  transition:
+    background-color var(--duration-micro) var(--ease-out),
+    color var(--duration-micro) var(--ease-out);
+}
+
+.head[data-instant] .toggle {
+  transition: none;
+}
+
+.toggle:hover {
+  background: var(--wb-muted);
+  color: var(--wb-foreground);
+}
+
+.toggle:active {
+  background: var(--wb-selected);
+}
+
+.toggle:focus-visible {
+  outline: 2px solid var(--wb-action);
+  outline-offset: -2px;
+}
+
+.toggle > svg {
+  width: 16px;
+  height: 16px;
+}
+
+.mark {
+  flex: none;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: none;
+}
+
+.project {
+  min-width: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  background: none;
+  color: inherit;
+  font-family: inherit;
+  text-align: start;
+  font-size: var(--wb-text-control);
+  font-weight: 600;
+  line-height: var(--wb-text-control--line-height);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

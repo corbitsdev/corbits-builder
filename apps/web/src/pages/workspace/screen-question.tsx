@@ -12,6 +12,7 @@ import {
   useRef,
   useState,
   type ComponentType,
+  type ReactNode,
 } from "react";
 import { type, type ArkErrors, type Type } from "arktype";
 import {
@@ -19,23 +20,26 @@ import {
   validateOutput,
   type Decision,
   type Offer,
-  type PageControls,
   type ProjectValues,
   type Screen,
   type ScreenActionBuilder,
 } from "@corbits-builder/plugin";
 import { QuestionAnswer } from "@corbits-builder/schemas/conversation";
-import { Button } from "@corbits/react-ui";
 import {
   ActionsSlot,
+  PromptAction,
   ScreenDecision,
   ScreenRow,
+  usePromptPlaceholder,
+  usePromptSend,
   type DecisionControls,
+  type PromptTake,
 } from "@corbits-builder/plugin-ui/screen-actions";
 import { SettledFrame } from "@corbits-builder/plugin-ui/screen-card";
 import { wording } from "../../config.ts";
 import { Fault, InlineNote } from "../../components.jsx";
 import type { DesignFiles } from "./design-bundle.ts";
+import type { CommentCardProps } from "./comment-card.tsx";
 import type { MockupFrameProps } from "./mockup-frame.tsx";
 import { SettledReply, useAnswer } from "./questions-card.tsx";
 import styles from "./screen-question.module.css";
@@ -53,7 +57,7 @@ export type ProjectValuesStore = {
 /** The design a screen reviews, and the design option an approval of it chooses, if any. */
 export type ReviewedDesign = {
   files: DesignFiles;
-  version: number | "draft";
+  version: number;
   approval: { option: string } | { unavailable: string };
 };
 
@@ -74,13 +78,15 @@ export type HostSupplies = {
   design: ReviewedDesign | null;
   /** A design bundle drawn in the design pane's own sandboxed frame. */
   mockupFrame: ComponentType<MockupFrameProps>;
+  /** The card a comment is written and kept in on the project's pages. */
+  commentCard: ComponentType<CommentCardProps>;
   /** The output of the latest question the coordinator asked with the same screen, if answered. */
   earlierAnswer: unknown;
   /** The project's filed documents, and a way to open one over the room by its kind. */
   documents: { list: readonly ShownDocument[]; open(kind: string): void };
   /** The filed design concepts the person has yet to choose between, in the order they were asked about. */
   designConcepts: readonly ChoosableConcept[];
-  /** The room's prompt box, which a screen's decision sends back through; the host's own, no view's. */
+  /** The room's prompt box, as a screen's decision sees it. Only the host reads it, never a view. */
   reply: ReplyBox;
   /** The project's and its workspace's tenants, where a credential is saved; null until both are read. */
   tenants: Tenants | null;
@@ -96,26 +102,43 @@ export type Tenants = { project: string; workspace: string };
 export type ViewResources = {
   design: HostSupplies["design"];
   mockupFrame: HostSupplies["mockupFrame"];
+  commentCard: HostSupplies["commentCard"];
   earlierAnswer: unknown;
   documents: { list: readonly ShownDocument[] };
   designConcepts: readonly ChoosableConcept[];
   tenants: Tenants;
 };
 
-/** What the prompt box sends in place of the person's words while a screen has feedback staged. */
-export type Staged = {
-  /** Sends the feedback with what was typed, if anything; whether it reached the hub. */
-  send: (message: string | undefined) => Promise<boolean>;
-  /** The items it carries, such as "2 comments", which Send sends with nothing typed; null while none. */
-  pending: string | null;
-};
-
-/** The room's prompt box as a screen's decision reads and stages it. */
+/** The room's prompt box, as a screen's decision sees it. */
 export type ReplyBox = {
   /** The box holds more than whitespace. */
   drafted: boolean;
-  stage(staged: Staged | null): void;
 };
+
+/**
+ * Send in the prompt box while a decision has feedback pending. It sends the feedback, with any
+ * typed words as a note, and its label names the feedback. With no words and no feedback there's
+ * nothing to send.
+ */
+function sendBackOffer(
+  staging: boolean,
+  pending: string | null,
+  sendBack: { current: (message: string | undefined) => Promise<boolean> },
+): {
+  take: PromptTake | undefined;
+  label: string | null;
+  placeholder: string | undefined;
+} {
+  if (!staging) return { take: undefined, label: null, placeholder: undefined };
+  return {
+    take: (words) =>
+      words === "" && pending === null
+        ? false
+        : sendBack.current(words === "" ? undefined : words),
+    label: pending === null ? null : text.sendBack(pending),
+    placeholder: pending === null ? undefined : text.sendBackReply(pending),
+  };
+}
 
 /** A filed design concept, and the design option choosing it approves, if any. */
 export type ChoosableConcept = {
@@ -129,6 +152,7 @@ export type ChoosableConcept = {
 const SUPPLIED: ReadonlySet<string> = new Set<keyof HostSupplies>([
   "design",
   "mockupFrame",
+  "commentCard",
   "earlierAnswer",
   "documents",
   "designConcepts",
@@ -217,7 +241,6 @@ export type ScreenHostProps = {
   disabled: boolean;
   onAnswer: (answer: QuestionAnswer) => Promise<boolean>;
   host: HostSupplies;
-  page?: PageControls | undefined;
 };
 
 /** One plugin's screen action, by its name such as "designer pick-fonts", typed end to end, behind props every screen shares. */
@@ -254,10 +277,10 @@ export function screenHost<In, Out, Data, Prepared>(
     disabled,
     onAnswer,
     host,
-    page,
   }) {
     const outcome = useQuestionOutcome(signalName);
     const slot = useContext(ActionsSlot);
+    const action = useContext(PromptAction);
     const [project, setProject] = useState<ProjectValues>();
     const [unreadable, setUnreadable] = useState(false);
     const answering = useAnswer(
@@ -276,18 +299,12 @@ export function screenHost<In, Out, Data, Prepared>(
       !settled &&
       decision?.sendBack !== undefined &&
       offer?.sendBack !== undefined;
-    // The room hands a new prompt box and this render a new answer each time; staging follows what is pending.
-    const box = useRef(host.reply);
-    box.current = host.reply;
     const sendBack = useRef<(message: string | undefined) => Promise<boolean>>(
       () => Promise.resolve(false),
     );
-    useEffect(() => {
-      if (!staging) return;
-      const reply = box.current;
-      reply.stage({ send: (message) => sendBack.current(message), pending });
-      return () => reply.stage(null);
-    }, [staging, pending]);
+    const back = sendBackOffer(staging, pending, sendBack);
+    usePromptSend(back.take, back.label);
+    usePromptPlaceholder(back.placeholder);
 
     useEffect(() => {
       if (settled) return;
@@ -314,8 +331,7 @@ export function screenHost<In, Out, Data, Prepared>(
     // Once answered, the project already holds the answer, so the settled screen draws from it alone.
     const shown: ProjectValues | undefined = settled ? {} : project;
     const { tenants } = host;
-    if (shown === undefined || tenants === null)
-      return <InlineNote>{text.screenLoading}</InlineNote>;
+    if (shown === undefined || tenants === null) return <ScreenLoading />;
     const checked = validateInput(handle, screen, input, data, shown);
     const answered =
       output === undefined ? undefined : validateOutput(handle, screen, output);
@@ -327,12 +343,10 @@ export function screenHost<In, Out, Data, Prepared>(
         ? checked.prepared
         : (host.asked(signalName) as Prepared | undefined);
     if (prepared === undefined)
-      return (
-        <InlineNote>
-          {screen.fromProject === undefined
-            ? text.screenUnavailable
-            : text.screenLoading}
-        </InlineNote>
+      return screen.fromProject === undefined ? (
+        <InlineNote>{text.screenUnavailable}</InlineNote>
+      ) : (
+        <ScreenLoading />
       );
 
     const answerWith = (chosen: Type<Out>["infer"]) => {
@@ -358,6 +372,7 @@ export function screenHost<In, Out, Data, Prepared>(
           resources: {
             design: host.design,
             mockupFrame: host.mockupFrame,
+            commentCard: host.commentCard,
             earlierAnswer: host.earlierAnswer,
             documents: { list: host.documents.list },
             designConcepts: host.designConcepts,
@@ -379,7 +394,7 @@ export function screenHost<In, Out, Data, Prepared>(
         submit={submit}
         submitting={busy}
         answer={answered?.output}
-        place={page === undefined ? "card" : "page"}
+        place="card"
         fault={
           outcome !== undefined && "fault" in outcome
             ? outcome.fault
@@ -395,12 +410,24 @@ export function screenHost<In, Out, Data, Prepared>(
       return (
         <SettledFrame
           title={text.screenAnswered}
+          untitled
           ended="answered"
           focus={answering.sending}
         >
           {view}
         </SettledFrame>
       );
+    // Buttons drawn elsewhere, such as in the prompt box, leave the screen's inert hold, so they
+    // take it again there.
+    const held = (place: ((buttons: ReactNode) => ReactNode) | null) =>
+      place === null
+        ? null
+        : (buttons: ReactNode) =>
+            place(
+              <div className={styles.screen} inert={busy}>
+                {buttons}
+              </div>,
+            );
     return (
       <ScreenRow
         value={{
@@ -417,41 +444,27 @@ export function screenHost<In, Out, Data, Prepared>(
             outcome !== undefined && "fault" in outcome ? (
               <Fault>{outcome.fault}</Fault>
             ) : null,
-          back:
-            page === undefined
-              ? null
-              : { label: text.pageScreenClose, onBack: page.close },
+          back: null,
         }}
       >
-        {/* Buttons drawn elsewhere, such as in the prompt box, leave the screen's inert hold, so
-            they take it again there. */}
-        <ActionsSlot
-          value={
-            slot === null
-              ? null
-              : (buttons) =>
-                  slot(
-                    <div className={styles.screen} inert={busy}>
-                      {buttons}
-                    </div>,
-                  )
-          }
-        >
-          <ScreenDecision
-            value={
-              decision === undefined
-                ? null
-                : decisionControls(decision, offer, {
-                    drafted: host.reply.drafted,
-                    accept: (chosen) => void submit(chosen),
-                  })
-            }
-          >
-            {/* While an answer is on its way the whole screen takes no input, whatever it draws. */}
-            <div className={styles.screen} inert={busy}>
-              {view}
-            </div>
-          </ScreenDecision>
+        <ActionsSlot value={held(slot)}>
+          <PromptAction value={held(action)}>
+            <ScreenDecision
+              value={
+                decision === undefined
+                  ? null
+                  : decisionControls(decision, offer, {
+                      drafted: host.reply.drafted,
+                      accept: (chosen) => void submit(chosen),
+                    })
+              }
+            >
+              {/* While an answer is on its way the whole screen takes no input, whatever it draws. */}
+              <div className={styles.screen} inert={busy}>
+                {view}
+              </div>
+            </ScreenDecision>
+          </PromptAction>
         </ActionsSlot>
       </ScreenRow>
     );
@@ -467,6 +480,25 @@ export type ListedHostProps = {
   ) => Promise<string | undefined>;
   host: HostSupplies;
 };
+
+/**
+ * Placeholder rows at a screen card's inset, so the box opens near the card's size before the view
+ * loads. The heading is a row too, because some screens word it from the data being loaded.
+ */
+function ScreenLoading() {
+  return (
+    <div
+      className={styles.loading}
+      data-slot="screen-loading"
+      role="status"
+      aria-label={text.screenLoading}
+    >
+      <span aria-hidden="true" />
+      <span aria-hidden="true" />
+      <span aria-hidden="true" />
+    </div>
+  );
+}
 
 type Click =
   | { is: "idle" }
@@ -484,7 +516,7 @@ export function listedHost(
     const [click, setClick] = useState<Click>({ is: "idle" });
     const [draft, setDraft] = useState({});
     const { tenants } = host;
-    if (tenants === null) return <InlineNote>{text.screenLoading}</InlineNote>;
+    if (tenants === null) return <ScreenLoading />;
     const run = async (action: string, input: Record<string, unknown> = {}) => {
       setClick({ is: "acting" });
       const reason = await act(plugin, action, input);
@@ -502,6 +534,7 @@ export function listedHost(
           resources: {
             design: host.design,
             mockupFrame: host.mockupFrame,
+            commentCard: host.commentCard,
             earlierAnswer: undefined,
             documents: { list: host.documents.list },
             designConcepts: host.designConcepts,
@@ -536,7 +569,6 @@ export type ScreenQuestionProps = {
   disabled: boolean;
   onAnswer: ScreenHostProps["onAnswer"];
   supplies: HostSupplies | undefined;
-  page?: PageControls | undefined;
 };
 
 /** The screen, or a plain notice when it has no view or no project to read. */
@@ -549,7 +581,6 @@ export function ScreenQuestion({
   disabled,
   onAnswer,
   supplies,
-  page,
 }: ScreenQuestionProps) {
   if (answer !== undefined && "reply" in answer)
     return <SettledReply reply={answer.reply} sent={false} />;
@@ -574,19 +605,6 @@ export function ScreenQuestion({
       disabled={disabled}
       onAnswer={onAnswer}
       host={supplies}
-      page={page}
     />
-  );
-}
-
-/** In the conversation, a screen open over the room: the way back to it after it was closed. */
-export function PageScreenCard({ onOpen }: { onOpen: () => void }) {
-  return (
-    <InlineNote>
-      {text.pageScreenOpen}{" "}
-      <Button type="button" size="sm" variant="outline" onClick={onOpen}>
-        {text.pageScreenReopen}
-      </Button>
-    </InlineNote>
   );
 }

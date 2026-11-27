@@ -9,6 +9,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  type ClipboardEvent,
   type ReactNode,
 } from "react";
 import { flushSync } from "react-dom";
@@ -79,17 +80,7 @@ async function settleAfter(fade: Animation, settle: () => void) {
   settle();
 }
 
-export function CommentCard({
-  state,
-  comment,
-  paired = false,
-  saving = false,
-  saveFailed = false,
-  onSave,
-  onCancel,
-  onEdit,
-  onDelete,
-}: {
+export type CommentCardProps = {
   state: CommentState;
   /** While writing, what the field starts with. */
   comment: string;
@@ -101,7 +92,22 @@ export function CommentCard({
   onCancel?: () => void;
   onEdit?: () => void;
   onDelete?: () => void;
-}) {
+  /** The person copies from the card or from its field. */
+  onCopy?: (event: ClipboardEvent<HTMLElement>) => void;
+};
+
+export function CommentCard({
+  state,
+  comment,
+  paired = false,
+  saving = false,
+  saveFailed = false,
+  onSave,
+  onCancel,
+  onEdit,
+  onDelete,
+  onCopy,
+}: CommentCardProps) {
   const cardRef = useRef<HTMLElement>(null);
   const wasWriting = useRef(state === "writing");
   // A card that first shows as a field is a comment just started; one shown saved was already there.
@@ -127,6 +133,7 @@ export function CommentCard({
       data-entering={entering ? "" : undefined}
       data-paired={paired ? "" : undefined}
       tabIndex={-1}
+      onCopy={onCopy}
     >
       {state === "writing" ? (
         <CommentField
@@ -199,6 +206,41 @@ function CommentField({
   const fieldRef = useRef<HTMLTextAreaElement>(null);
   const empty = draft.trim().length === 0;
 
+  // The card opens beside the passage the person is looking at, but takes its place there only
+  // once the page has measured it; focus that scrolled to it would carry the page off to where it
+  // first sat. The cursor goes after any words it opens with.
+  useEffect(() => {
+    const field = fieldRef.current;
+    if (field === null) return;
+    field.focus({ preventScroll: true });
+    field.setSelectionRange(field.value.length, field.value.length);
+  }, []);
+
+  // A press anywhere else puts the comment away, and its passage with it, while doing so loses
+  // nothing: the field is empty, or still holds the comment it opened with. Words written stay.
+  // The passage's own handles are part of writing it, so taking hold of one keeps the card.
+  const latest = useRef({ draft, onCancel });
+  useLayoutEffect(() => {
+    latest.current = { draft, onCancel };
+  });
+  useEffect(() => {
+    const away = (event: PointerEvent) => {
+      const card =
+        fieldRef.current?.closest('[data-slot="comment-card"]') ?? null;
+      if (
+        card === null ||
+        (event.target instanceof Node && card.contains(event.target)) ||
+        (event.target instanceof Element &&
+          event.target.closest('[data-slot="passage-handle"]') !== null)
+      )
+        return;
+      const { draft: now, onCancel: cancel } = latest.current;
+      if (now.trim() === "" || now === initial) cancel?.();
+    };
+    document.addEventListener("pointerdown", away, true);
+    return () => document.removeEventListener("pointerdown", away, true);
+  }, [initial]);
+
   useLayoutEffect(() => {
     const field = fieldRef.current;
     if (field === null) return;
@@ -232,7 +274,6 @@ function CommentField({
           aria-invalid={saveFailed ? true : undefined}
           enterKeyHint="done"
           autoCapitalize="sentences"
-          autoFocus
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={(event) => {
             const intent = commentKey({

@@ -27,6 +27,8 @@ export type SettingsProps = {
   requestedTab?: SettingsTab;
   focusPreference?: string;
   focusSeq?: number;
+  /** Where Settings was opened, to return to. */
+  back?: { to: string; onBack: () => void };
 };
 
 function isSettingsTab(value: string | null): value is SettingsTab {
@@ -110,6 +112,7 @@ export function useSettings({
   requestedTab,
   focusPreference,
   focusSeq = 0,
+  back,
 }: SettingsProps): {
   view: Omit<SettingsViewProps, keyof SettingsSlots>;
   /** The preference the person was sent to, for the working preferences section to jump to. */
@@ -159,6 +162,7 @@ export function useSettings({
         documentTips: tips === "on",
         onDocumentTipsChange: (on) => writeDocumentTips(on ? "on" : "off"),
       },
+      ...(back !== undefined ? { back } : {}),
       account: user && {
         name: user.name,
         email: user.email,

@@ -7,17 +7,6 @@
 export const keys = {
   workspaces: ["workspaces"] as const,
   workspaceTenant: ["workspaceTenant"] as const,
-  designDraft: {
-    all: ["designDraft"] as const,
-    of: (projectId: string, concept?: string) =>
-      ["designDraft", projectId, concept] as const,
-  },
-  designThemes: {
-    all: ["designThemes"] as const,
-    of: (projectId: string) => ["designThemes", projectId] as const,
-    theme: (projectId: string, themeId: string | undefined) =>
-      ["designThemes", projectId, themeId] as const,
-  },
   acceptedMaterials: {
     all: ["acceptedMaterials"] as const,
     of: (projectId: string) => ["acceptedMaterials", projectId] as const,
@@ -61,10 +50,6 @@ export const keys = {
   openDecisions: {
     all: ["openDecisions"] as const,
     of: (projectId: string) => ["openDecisions", projectId] as const,
-  },
-  projectNextStep: {
-    all: ["projectNextStep"] as const,
-    of: (projectId: string) => ["projectNextStep", projectId] as const,
   },
   /** The calls one run made, from its saved conversation. */
   runSteps: (tenantId: string, runId: string) =>

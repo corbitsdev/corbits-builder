@@ -111,7 +111,7 @@
 }
 
 .input:focus {
-  border-color: var(--primary);
+  border-color: var(--wb-action);
 }
 
 .input[data-size="token"] {

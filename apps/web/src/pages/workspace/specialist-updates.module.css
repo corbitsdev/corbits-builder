@@ -2,30 +2,55 @@
   align-items: flex-start;
 }
 
+/* One line each: what it was about, or the report's own first line, cut short. Opening the row reads
+   the whole report. */
 .names {
   display: block;
-  font-weight: 500;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   color: var(--wb-foreground);
 }
 
-/* The row's summary uses the column's width and wraps to a second line before it cuts off. */
 .summary {
-  display: -webkit-box;
+  display: block;
   overflow: hidden;
-  white-space: normal;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   color: var(--wb-muted-foreground);
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
+  font-size: 0.8125rem;
 }
 
-.fold > summary {
-  cursor: pointer;
-  padding: var(--space-1);
-  font-size: 0.875rem;
+/* The header's inline label holds the two lines as blocks, which leaves an empty line under them
+   unless the label is a block itself; its empty slot for a call's input goes too. */
+.row > span:first-of-type > span:first-child {
+  display: block;
+}
+
+.row code:empty {
+  display: none;
+}
+
+/* A report reads from its words, so the row carries no tick beside them. */
+.row > svg:first-child {
+  display: none;
+}
+
+/* The reports read as prose in the interface's own face, not as a call's output in a code box. */
+[data-slot="tool-output"] > [role="group"]:has(> .turn) {
+  max-height: none;
+  padding: 0;
+  background: none;
+  font-family: var(--wb-font-ui);
+  white-space: normal;
+}
+
+.turn [data-slot="prose"] {
   color: var(--wb-muted-foreground);
+  font-size: 0.8125rem;
+  line-height: 1.5;
 }
 
 .turn + .turn {
-  margin-top: var(--space-3);
+  margin-top: var(--space-2);
 }

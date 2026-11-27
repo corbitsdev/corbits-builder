@@ -1,14 +1,14 @@
 /**
  * One quiet line just above the prompt box saying what is happening now, and what pressing it
  * does. While work runs it stands where the pull handle was and does the handle's job: drag it up
- * or press it to see the chat. It never adds a progress bar; the thinking dots say work is running.
+ * or press it to see the chat. It never adds a progress bar; the ring of dots at its start says work is running.
  */
 import type {
+  CSSProperties,
   KeyboardEventHandler,
   MouseEvent,
   PointerEventHandler,
 } from "react";
-import { TypingIndicator } from "@corbits/react-ui";
 import { Pill } from "./pill.tsx";
 import styles from "./status-pill.module.css";
 
@@ -31,6 +31,35 @@ export type StatusPillContent = {
   onAction?: () => void;
 };
 
+/**
+ * What leads the line: while work runs, a light running round a ring of ink dots; while the app is
+ * up, a ring of green dots, the green the sidebar marks it with, that gathers into one and opens
+ * again. Any other state's words already say it, so a tick or a still dot would only repeat them.
+ */
+export function StatusMark({ state }: { state: StatusPillState }) {
+  if (state === "working" || state === "commentsWorking")
+    return <Ring kind="orbit" dots={8} />;
+  if (state === "running") return <Ring kind="bloom" dots={6} />;
+  return null;
+}
+
+function Ring({ kind, dots }: { kind: "orbit" | "bloom"; dots: number }) {
+  return (
+    <span className={styles.lead} aria-hidden="true">
+      <span
+        className={styles.ring}
+        data-kind={kind}
+        data-slot={`${kind}-ring`}
+        style={{ "--dots": dots } as CSSProperties}
+      >
+        {Array.from({ length: dots }, (_, index) => (
+          <span key={index} style={{ "--i": index } as CSSProperties} />
+        ))}
+      </span>
+    </span>
+  );
+}
+
 export function StatusPill({
   state,
   label,
@@ -52,13 +81,7 @@ export function StatusPill({
 }) {
   const content = (
     <>
-      {/* Only running work leads with a mark, the dots the chat shows; any other state's words
-          already say it, so a tick or a dot would only repeat them. */}
-      {state === "working" || state === "commentsWorking" ? (
-        <span className={styles.lead} aria-hidden="true">
-          <TypingIndicator />
-        </span>
-      ) : null}
+      <StatusMark state={state} />
       <span className={styles.label} data-state={state} role="status">
         {label}
       </span>

@@ -1,22 +1,20 @@
 /**
  * The project room as it looks: the conversation with the coordinator across the page, the dock
- * beneath it (the composer, or a banner saying why there is none), and the project view that opens
- * over it from a card or the project control and closes back to the conversation.
+ * beneath it (the composer, or a banner saying why there is none), the project view that opens
+ * over it from a card or the sidebar and closes back to the conversation, and the plugin
+ * space beside them both, where every plugin screen opens.
  */
 import {
+  useCallback,
   useEffect,
+  useEffectEvent,
+  useLayoutEffect,
   useRef,
   useState,
   type ReactNode,
   type RefObject,
 } from "react";
-import {
-  FolderOpen,
-  MessageSquare,
-  Plus,
-  Sparkles,
-  TriangleAlert,
-} from "lucide-react";
+import { MessageSquare, Plus, Sparkles, TriangleAlert, X } from "lucide-react";
 import {
   Attachment,
   type AttachmentItem,
@@ -35,7 +33,10 @@ import {
   PromptInputToolbar,
 } from "@corbits/react-ui";
 import type { ScreenStatus } from "@corbits-builder/plugin";
-import type { PlanView } from "@corbits-builder/schemas/plan";
+import type {
+  PromptQuestion,
+  QuestionAnswer,
+} from "@corbits-builder/schemas/conversation";
 import { wording } from "../../config.ts";
 import { Banner, BannerAction, Fault } from "../../components.jsx";
 import { Composer } from "../../composer.tsx";
@@ -47,9 +48,28 @@ import {
   type ArtifactPaneSlots,
 } from "./artifact-pane.tsx";
 import { InBox, useBoxPorts, type BoxPorts } from "./box-ports.tsx";
+import { ScreenCard, StepCard } from "./box-cards.tsx";
+import { submit } from "./box-submit.ts";
+import { DocumentDecision, PackageDecision } from "./document-decision.tsx";
+import { PluginSpace } from "./plugin-space.tsx";
+import { QuestionsCard } from "./questions-card.tsx";
+import type { DocumentApproval } from "./transcript.tsx";
+import { TypedYesCountdown, type TypedYes } from "./typed-yes.tsx";
 import { pastedFiles } from "./pasted-files.ts";
 import { ChatSheet, type ChatSheetProps } from "./chat-sheet.tsx";
-import { PlanPanel, planProgress, usePlanCollapsed } from "./plan-panel.tsx";
+import {
+  choiceOnGone,
+  choiceOnTab,
+  coverOf,
+  NO_CHOICE,
+  type SpaceChoice,
+} from "./overlay.ts";
+import {
+  ProjectSidebarView,
+  type ProjectSidebarViewProps,
+} from "./project-sidebar.view.tsx";
+import { RoomFrame } from "./room-frame.tsx";
+import { SketchingShown } from "./sketching.tsx";
 import type { StatusPillContent } from "./status-pill.tsx";
 import { StageView } from "./stage-view.tsx";
 import { RoomThread, type RoomThreadContent } from "./transcript.tsx";
@@ -57,20 +77,21 @@ import styles from "./index.module.css";
 
 /** The parts of the room that read the hub for themselves, which the page fills. */
 export type RoomSlots = {
-  /** The line above the conversation saying where the project stands and the person's next step. */
-  nextStep: ReactNode;
   /** The reading pane's own such parts. */
   paneParts: ArtifactPaneSlots;
-  /** The coordinator's open question drawn over the whole room; null while there is none. */
-  page: ReactNode;
-  /** Plugin screens meant for the chat, under the conversation. */
-  chatScreens: ReactNode;
+  /**
+   * The plugin screen waiting first, drawn where its plugin says: in the plugin space, or inside
+   * the box's card; null while none does.
+   */
+  pluginSpace: ReactNode;
   /**
    * The conversation for the chat sheet that pulls up around the prompt box over the project view
-   * or a page. The room's own conversation already shows the thread, so its box has no sheet.
+   * or a page. The room's own conversation already shows the thread, so over it the box has none.
    * Absent, no box has a handle.
    */
   chat?: ReactNode;
+  /** The project's own menu, opened from its name in the sidebar; absent, the name is just shown. */
+  projectMenu?: ProjectSidebarViewProps["menu"];
 };
 
 /** The box the person writes to the coordinator in. */
@@ -81,7 +102,7 @@ export type RoomComposer = {
   placeholder: string;
   /** The box itself, which the room puts the cursor in. */
   inputRef: RefObject<HTMLTextAreaElement | null>;
-  /** The coordinator is mid-turn, so Stop stands where Send is while the box is empty. */
+  /** A specialist is at work, so Stop stands where Send is while the box is empty. */
   working: boolean;
   /** A message or a decision is on its way to the hub, so the box waits. */
   busy: boolean;
@@ -110,11 +131,57 @@ export type RoomComposer = {
   sendLabel: string | null;
   /** What is happening, in the pill above the box; null or absent while nothing is. */
   status?: StatusPillContent | null;
-  /** Comments on a document waiting to be made, as a token in the typing row; Send makes them, with or without words. */
+  /**
+   * Comment drafts waiting to be sent, as a token in the typing row. The token opens the page
+   * they are on and its cross removes them; Send sends them as one message, with any words typed
+   * after them.
+   */
   comments?: number;
-  /** Stops the work in progress; Stop stands in for Send while the box is empty. */
+  onSendComments?: (words?: string) => void;
+  onShowComments?: () => void;
+  onRemoveComments?: () => void;
+  /** Why the comments cannot be sent now, naming what to deal with first; null while they can. */
+  commentsBlocked?: string | null;
+  /** The comments are on their way. */
+  commentsSending?: boolean;
+  /** Stops the specialists at work; Stop stands in for Send while the box is empty. */
   onStop?: () => void;
 };
+
+/**
+ * The one thing the prompt box holds for the person to deal with, the first of what waits on them:
+ * the coordinator's question, an approval, a step held for their go-ahead, or a plugin's screen
+ * waiting in the plugin space.
+ */
+export type BoxWaiting =
+  | {
+      kind: "question";
+      question: PromptQuestion;
+      disabled: boolean;
+      onAnswer: (answer: QuestionAnswer) => Promise<boolean>;
+    }
+  | {
+      kind: "approval";
+      approval: DocumentApproval;
+      disabled: boolean;
+      /** Why the last decision was not saved. */
+      error: string | null;
+      /** A typed yes counting down to approve it. */
+      typedYes: { held: TypedYes; onUndo: () => void } | null;
+      onDecide: (choice: "yes" | "always" | "no") => void;
+    }
+  | {
+      kind: "step";
+      title: string;
+      busy: boolean;
+      onGoAhead: () => void;
+    }
+  | {
+      kind: "screen";
+      title: string;
+      /** It asks the person to accept what it is about, such as a document to approve. */
+      decides: boolean;
+    };
 
 /** What sits under the conversation: the composer, or why the person cannot write yet. */
 export type RoomDock =
@@ -150,9 +217,11 @@ export type RoomContent = {
     projectReady: boolean;
     /** The project view covers the room, with the prompt box beneath it; closed, it waits hidden. */
     projectOpen: boolean;
-    onProjectOpenChange: (open: boolean) => void;
-    /** The page slot covers the room, with the prompt box beneath it; closed, it waits hidden. */
-    pageOpen: boolean;
+    /** What a written page lies on: grey, raised as a sheet, or plain white. */
+    documentGround: "grey" | "white";
+    /** The page open is the document the person opened from what waits in the box. */
+    waitedOnShown: boolean;
+    onCloseProject: () => void;
   };
   conversation: {
     thread: RoomThreadContent;
@@ -160,14 +229,22 @@ export type RoomContent = {
     empty: "archived" | "new" | null;
   };
   dock: RoomDock;
-  /** The project's plan, top-level steps first; empty while it has none, and then nothing shows it. */
-  plan: PlanView["steps"];
-  /** The person declines an optional plan step, or brings back one they declined. */
-  onDeclineStep: (stepId: string, declined: boolean) => Promise<void>;
-  /** The person gives the go-ahead on a step they asked to be consulted on. */
-  onGoAheadStep: (stepId: string) => Promise<void>;
-  /** The person turns "ask me first" on or off for a step that has not started. */
-  onAskFirstStep: (stepId: string, askFirst: boolean) => Promise<void>;
+  /** The project's sidebar: its plan, its app and the ways out of the room. */
+  sidebar: ProjectSidebarViewProps;
+  /** What the prompt box holds for the person to deal with; null while nothing waits. */
+  waiting: BoxWaiting | null;
+  /**
+   * The plugin screen waiting first, by this name, and where its plugin draws it: a screen for the
+   * page opens in the plugin space, any other inside the box's card. Null while none does, and
+   * then there is no space. Its key changes when another screen takes its place. It may show more
+   * of what a project view tab shows, such as a mockup to review; null when it shows none.
+   */
+  space: {
+    key: string;
+    title: string;
+    place: "page" | "box";
+    shows: string | null;
+  } | null;
   documentPane: ArtifactPaneContent;
   /** Where each plugin tab that says so stands, beside the plan, each opening its tab. */
   tabStatus: readonly TabStatus[];
@@ -177,9 +254,6 @@ export type RoomContent = {
 
 export type TabStatus = ScreenStatus & { tab: string; onOpen: () => void };
 
-/** Below this width of the room, the plan is a drawer over the conversation. */
-const NARROW_ROOM_PX = 900;
-
 export type RoomViewProps = RoomContent & RoomSlots;
 
 export function RoomView({
@@ -187,42 +261,138 @@ export function RoomView({
   layout,
   conversation,
   dock,
-  plan,
-  onDeclineStep,
-  onGoAheadStep,
-  onAskFirstStep,
+  sidebar,
+  waiting,
+  space,
   documentPane,
   tabStatus,
   paneRef,
-  nextStep,
   paneParts,
-  page,
-  chatScreens,
+  pluginSpace,
   chat,
+  projectMenu,
 }: RoomViewProps) {
-  const { projectReady, projectOpen, onProjectOpenChange, pageOpen } = layout;
+  const {
+    projectReady,
+    projectOpen,
+    documentGround,
+    waitedOnShown,
+    onCloseProject: closeProject,
+  } = layout;
   const conversationRef = useRef<HTMLElement>(null);
   const shell = useShellReply(conversationRef);
-  const closeProject = () => onProjectOpenChange(false);
-  // The plan sits beside the conversation; in a room too narrow for that it is a drawer, shut
-  // until the person opens it.
-  const roomRef = useRef<HTMLDivElement>(null);
-  const [narrow, setNarrow] = useState(false);
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [planFolded, setPlanFolded] = usePlanCollapsed();
-  useEffect(() => {
-    const room = roomRef.current;
-    if (room === null) return;
-    const observer = new ResizeObserver(() =>
-      setNarrow(room.clientWidth < NARROW_ROOM_PX),
-    );
-    observer.observe(room);
-    return () => observer.disconnect();
+  const mainRef = useRef<HTMLDivElement>(null);
+  // The box floats over the foot of the project view and of a screen over the conversation, so
+  // each keeps what it must reach clear of it by the box's height, which grows as the person writes.
+  const dockRef = useRef<HTMLDivElement>(null);
+  // Set before paint, so the page's first frame already keeps clear of the box.
+  useLayoutEffect(() => {
+    const main = mainRef.current;
+    const box = dockRef.current;
+    if (main === null || box === null) return;
+    // The pill or handle standing above the box, which a view that fills the pane ends above too,
+    // so nothing of it shows beneath them.
+    let grip: HTMLElement | null = null;
+    // The box at rest: while the chat is pulled up over the view, the view keeps the foot it had.
+    const measure = () => {
+      if (
+        box.querySelector('[data-slot="chat-sheet"]:not([data-state="closed"])')
+      )
+        return;
+      main.style.setProperty("--box-height", `${String(box.offsetHeight)}px`);
+      const top = box.getBoundingClientRect().top;
+      const reach =
+        grip === null ? 0 : Math.max(0, top - grip.getBoundingClientRect().top);
+      main.style.setProperty(
+        "--dock-height",
+        `${String(Math.ceil(box.offsetHeight + reach))}px`,
+      );
+    };
+    const observer = new ResizeObserver(measure);
+    observer.observe(box);
+    // The grip comes and goes, and the sheet opens and closes, without the box resizing, so those
+    // changes look for the grip again and measure.
+    const follow = () => {
+      const found = box.querySelector<HTMLElement>('[data-slot="chat-grip"]');
+      if (found !== grip) {
+        if (grip !== null) observer.unobserve(grip);
+        if (found !== null) observer.observe(found);
+        grip = found;
+      }
+      measure();
+    };
+    follow();
+    // Words streaming into the chat's history move neither the grip nor the box, so those changes
+    // measure nothing.
+    const changes = new MutationObserver((records) => {
+      if (records.every((record) => inHistory(record.target))) return;
+      follow();
+    });
+    changes.observe(box, {
+      childList: true,
+      subtree: true,
+      attributeFilter: ["data-state"],
+    });
+    return () => {
+      observer.disconnect();
+      changes.disconnect();
+    };
   }, []);
-  const planShown = plan.length > 0 && (narrow ? drawerOpen : !planFolded);
-  const setPlanShown = (shown: boolean) =>
-    narrow ? setDrawerOpen(shown) : setPlanFolded(!shown);
-  const progress = planProgress(plan);
+  // Only a screen its plugin draws for the page has a space; any other is in the box. Over the
+  // conversation it takes the whole page, the box beneath it, since a mockup or a set of designs
+  // needs the width. Over the project view it waits for Open in the box. Answering it puts it away;
+  // so does closing it, which leaves it waiting in the box to open again.
+  const side = space?.place === "page" ? space : null;
+  const [choice, setChoice] = useState<SpaceChoice>(NO_CHOICE);
+  const [paneShown, setPaneShown] = useState<string | null>(null);
+  // Pulled up over a view, the chat puts itself back on Escape before the view closes.
+  const [chatUp, setChatUp] = useState(false);
+  const cover = coverOf({ projectOpen, space: side, choice, paneShown });
+  const opening = (tab: string) => {
+    if (side !== null) setChoice((current) => choiceOnTab(current, side, tab));
+  };
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const inputRef = dock.kind === "composer" ? dock.inputRef : null;
+  const openSpace = () => {
+    if (choice.kind !== "opened") setChoice({ kind: "opened" });
+    else headingRef.current?.focus();
+  };
+  // Closing takes away the control that had the cursor, so it goes back to the box.
+  const refocusBox = useRef(false);
+  // Closed over the tab it stands in for, it goes back to the conversation, as it does from there.
+  const closeSheet = () => {
+    if (side !== null) setChoice({ kind: "closed", key: side.key });
+    if (cover.kind === "space" && cover.over === "tab") closeProject();
+    refocusBox.current = true;
+  };
+  // A space the person opened from the box takes focus to its heading; one that comes of its own
+  // accord leaves the cursor where it is.
+  const opened = choice.kind === "opened";
+  useEffect(() => {
+    if (opened) headingRef.current?.focus();
+  }, [opened]);
+  // Once a screen is submitted the next takes its place, or the space closes; either way the
+  // person carries on in the prompt box, with what they had typed still there.
+  const spaceKey = space?.key ?? null;
+  const shownKey = useRef(spaceKey);
+  useEffect(() => {
+    const before = shownKey.current;
+    shownKey.current = spaceKey;
+    if (before === null || before === spaceKey) return;
+    if (spaceKey === null) setChoice(choiceOnGone);
+    const active = document.activeElement;
+    const lost =
+      active === null ||
+      active === document.body ||
+      (active instanceof HTMLElement &&
+        active.closest('[data-slot="plugin-space"]') !== null);
+    if (lost) refocusBox.current = true;
+  }, [spaceKey]);
+  useEffect(() => {
+    if (!refocusBox.current) return;
+    refocusBox.current = false;
+    inputRef?.current?.focus();
+  });
   // Focus goes into the project view as it opens and back to what opened it as it closes.
   useEffect(() => {
     if (!projectOpen) return;
@@ -232,176 +402,222 @@ export function RoomView({
       if (opener instanceof HTMLElement) opener.focus();
     };
   }, [projectOpen]);
-  // A menu inside the view closes on Escape first, and marks the key as used; a screen placed on
-  // the page sits over the view, so the key is not the view's while it is open.
+  // Escape puts away what covers the conversation, the space before the view. A menu inside the
+  // view closes on Escape first and marks the key as used; a chat pulled up puts itself back first.
+  const putAway = useEffectEvent(() => {
+    if (chatUp) return;
+    if (cover.kind === "space") closeSheet();
+    else closeProject();
+  });
+  const covered = cover.kind !== "chat";
   useEffect(() => {
-    if (!projectOpen || pageOpen) return;
+    if (!covered) return;
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.defaultPrevented) return;
-      // An open chat sheet takes the key to put itself back, whichever listener hears it first;
-      // the view closes on the next one.
-      const sheet =
-        roomRef.current?.querySelector(
-          '[data-slot="chat-sheet"]:not([data-state="closed"])',
-        ) ?? null;
-      if (sheet === null) closeProject();
+      putAway();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [projectOpen, pageOpen]);
-  // The prompt box stays in reach under whatever covers the conversation.
-  const dockInProject = projectOpen && !pageOpen;
-  const dockInConversation = !projectOpen && !pageOpen;
-  // A screen over the page reaches the box beneath it: its forward action, placeholder and Send.
+  }, [covered]);
+  // How many sketches at work are on the project's page.
+  const [sketches, setSketches] = useState(0);
+  const showSketch = useCallback(() => {
+    setSketches((count) => count + 1);
+    return () => setSketches((count) => count - 1);
+  }, []);
+  const projectShown = cover.kind === "project";
+  const sheetShown = cover.kind === "space";
+  // A screen in the plugin space reaches the box: its forward action, placeholder and Send.
   const ports = useBoxPorts();
-  const conversationDock = (
-    <RoomDockView dock={dock} ports={ports} answersShell={shell.answers} />
+  const card = waitingCard(
+    waiting,
+    sheetShown ? undefined : openSpace,
+    space?.place === "box" ? pluginSpace : null,
   );
-  const roomDock = (
-    <RoomDockView
-      dock={dock}
-      ports={ports}
-      chat={chat}
-      answersShell={shell.answers}
-    />
-  );
+  // Over the document it asks the person to accept, the card folds to its title above the typing
+  // row and action, since the rest would repeat the page. Over a mockup or another document the
+  // person would see Approve without knowing what it approves, so the card shows. A screen open over
+  // the page already shows the question, so the card folds to the typing row alone then.
+  const askOverPage =
+    projectShown && waitedOnShown && decides(waiting) ? waiting.title : null;
+  const decidesPage =
+    askOverPage !== null || (sheetShown && waiting?.kind === "screen");
+  // Covered, the conversation is out of sight, so the box has the chat to pull up and its pill says
+  // what is running. Full screen is the room's own conversation: what the chat was pulled up over
+  // is put away.
+  const fullScreen = () => {
+    if (sheetShown) closeSheet();
+    closeProject();
+  };
+  // The screen the box lists is the one that hands its action to the box; any other keeps its own.
+  const spaceScreen =
+    side === null ? null : (
+      <InBox ports={ports} as={waiting?.kind === "screen" ? "space" : null}>
+        {pluginSpace}
+      </InBox>
+    );
   return (
     <StageView aria-label={`Conversation for ${title}`}>
-      <div ref={roomRef} className={styles.room}>
-        <section
-          ref={conversationRef}
-          className={styles.conversationPane}
-          aria-label="Project conversation"
-        >
-          <div className={styles.conversation}>
-            <div className={styles.top}>
-              {nextStep}
-              {projectReady || progress !== null ? (
-                <div className={styles.controls}>
-                  {progress === null ? null : (
-                    <UiButton
-                      type="button"
-                      size="sm"
-                      variant={planShown ? "secondary" : "ghost"}
-                      className={styles.control}
-                      aria-pressed={planShown}
-                      aria-label={wording.conversation.plan.progressLabel(
-                        progress.done,
-                        progress.total,
-                        progress.alert,
-                      )}
-                      title={
-                        planShown
-                          ? wording.conversation.plan.hide
-                          : wording.conversation.plan.show
-                      }
-                      onClick={() => setPlanShown(!planShown)}
-                    >
-                      <span>{wording.conversation.plan.title}</span>
-                      <span className={styles.meter} aria-hidden="true">
-                        {progress.marks.map(({ id, mark }) => (
-                          <span key={id} data-mark={mark} />
-                        ))}
-                      </span>
-                      <span className={styles.count}>
-                        {wording.conversation.plan.progress(
-                          progress.done,
-                          progress.total,
-                        )}
-                      </span>
-                      {progress.alert === null ? null : (
-                        <span
-                          className={styles.alert}
-                          data-mark={progress.alert}
-                        />
-                      )}
-                    </UiButton>
-                  )}
-                  {tabStatus.map(({ tab, label, mark, onOpen }) => (
-                    <UiButton
-                      key={tab}
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      className={styles.control}
-                      aria-label={wording.conversation.tabStatus(tab, label)}
-                      title={wording.conversation.openTab(tab)}
-                      onClick={onOpen}
-                    >
-                      <span>{label}</span>
-                      {mark === undefined ? null : (
-                        <span className={styles.alert} data-mark={mark} />
-                      )}
-                    </UiButton>
-                  ))}
-                  {projectReady ? (
-                    <UiButton
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      className={styles.control}
-                      aria-label={wording.conversation.openProject}
-                      title={wording.conversation.openProjectHint}
-                      onClick={() => onProjectOpenChange(true)}
-                    >
-                      <FolderOpen size={16} aria-hidden="true" />
-                      <span className={styles.label}>
-                        {wording.conversation.openProject}
-                      </span>
-                    </UiButton>
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
-            <RoomThread {...conversation.thread}>
-              <EmptyConversation empty={conversation.empty} />
-            </RoomThread>
-            {chatScreens}
-            {dockInConversation ? conversationDock : null}
-          </div>
-        </section>
-        {planShown ? (
-          <PlanPanel
-            steps={plan}
-            drawer={narrow}
-            onHide={() => setPlanShown(false)}
-            onDecline={onDeclineStep}
-            onGoAhead={onGoAheadStep}
-            onAskFirst={onAskFirstStep}
+      <RoomFrame
+        sidebar={
+          <ProjectSidebarView
+            {...openingFrom(sidebar, opening)}
+            menu={projectMenu}
           />
-        ) : null}
-        {projectReady ? (
-          // Kept while closed, so its tabs, previews and drafts keep their place.
-          <div
-            className={styles.page}
-            data-slot="room-project"
-            hidden={!projectOpen}
+        }
+      >
+        <div ref={mainRef} className={styles.main} data-slot="room-main">
+          <section
+            ref={conversationRef}
+            className={styles.conversationPane}
+            aria-label="Project conversation"
           >
-            <ArtifactPane
-              {...documentPane}
-              {...paneParts}
-              paneRef={paneRef}
-              open={projectOpen}
-              onClose={closeProject}
-            />
-            {dockInProject ? roomDock : null}
-          </div>
-        ) : null}
-        {page === null ? null : (
-          // Kept while closed, so the screen's draft and the page it shows wait for the person.
-          <div className={styles.page} data-slot="room-page" hidden={!pageOpen}>
-            <div className={styles.pageScreen}>
-              <InBox ports={ports} as={pageOpen ? "page" : null}>
-                {page}
-              </InBox>
+            <div className={styles.conversation}>
+              <div className={styles.top}>
+                {projectReady && !projectOpen ? (
+                  <TabStatusControls
+                    tabStatus={tabStatus}
+                    className={styles.controls}
+                  />
+                ) : null}
+              </div>
+              <RoomThread {...conversation.thread}>
+                <EmptyConversation empty={conversation.empty} />
+              </RoomThread>
             </div>
-            {pageOpen ? roomDock : null}
+          </section>
+          {projectReady ? (
+            // Kept while closed, so its panes, previews and drafts keep their place.
+            <div
+              className={styles.page}
+              data-slot="room-project"
+              data-ground={documentGround}
+              hidden={!projectOpen}
+            >
+              <BackToChat onClose={closeProject} />
+              {/* Open, the view covers the chat's corner, so the tabs' status moves next to its close button. */}
+              {projectOpen ? (
+                <TabStatusControls
+                  tabStatus={tabStatus}
+                  className={styles.pageControls}
+                />
+              ) : null}
+              <SketchingShown value={showSketch}>
+                <ArtifactPane
+                  {...documentPane}
+                  onShownChange={(tab) => {
+                    setPaneShown(tab);
+                    documentPane.onShownChange?.(tab);
+                  }}
+                  {...paneParts}
+                  paneRef={paneRef}
+                  open={projectOpen}
+                />
+              </SketchingShown>
+            </div>
+          ) : null}
+          {sheetShown && side !== null ? (
+            <div className={styles.page} data-slot="room-space-sheet">
+              <BackToChat onClose={closeSheet} />
+              <PluginSpace title={side.title} headingRef={headingRef}>
+                {spaceScreen}
+              </PluginSpace>
+            </div>
+          ) : null}
+          {/* One box over the conversation and whatever covers it, so opening or closing a view
+              never moves it or starts it over. */}
+          <div ref={dockRef} className={styles.dock} data-slot="room-dock">
+            <RoomDockView
+              dock={projectShown && sketches > 0 ? sketchingDock(dock) : dock}
+              ports={ports}
+              waiting={card}
+              cardHidden={decidesPage}
+              cardAsk={askOverPage}
+              chat={covered ? chat : undefined}
+              chatStart={
+                covered
+                  ? {
+                      saysWork: true,
+                      onFullScreen: fullScreen,
+                      onUpChange: setChatUp,
+                    }
+                  : { onUpChange: setChatUp }
+              }
+              answersShell={shell.answers}
+            />
           </div>
-        )}
-      </div>
+        </div>
+      </RoomFrame>
       {shell.reply}
     </StageView>
   );
+}
+
+/**
+ * What waits on the person as the card the prompt box holds. A screen for the page has a card,
+ * with Open while the space is not in sight; any other screen is the card, its actions in the box's
+ * row as every card's are.
+ */
+function waitingCard(
+  waiting: BoxWaiting | null,
+  openSpace: (() => void) | undefined,
+  screen: ReactNode,
+): ReactNode {
+  if (waiting === null) return undefined;
+  switch (waiting.kind) {
+    case "question":
+      return (
+        <QuestionsCard
+          question={waiting.question}
+          disabled={waiting.disabled}
+          onAnswer={waiting.onAnswer}
+        />
+      );
+    case "approval": {
+      const { approval, typedYes, error, onDecide } = waiting;
+      const countdown =
+        typedYes !== null &&
+        typedYes.held.approvalId === approval.approvalId ? (
+          <TypedYesCountdown held={typedYes.held} onUndo={typedYes.onUndo} />
+        ) : undefined;
+      return approval.packages ? (
+        <PackageDecision
+          approvalId={approval.approvalId}
+          packages={approval.packages}
+          disabled={waiting.disabled}
+          {...(error === null ? {} : { error })}
+          onYes={() => onDecide("yes")}
+          onAlways={() => onDecide("always")}
+          onNo={() => onDecide("no")}
+          countdown={countdown}
+        />
+      ) : (
+        <DocumentDecision
+          place="box"
+          approval={approval}
+          disabled={waiting.disabled}
+          {...(error === null ? {} : { error })}
+          onYes={() => onDecide("yes")}
+          onAlways={() => onDecide("always")}
+          onNo={() => onDecide("no")}
+          countdown={countdown}
+        />
+      );
+    }
+    case "step":
+      return (
+        <StepCard
+          title={waiting.title}
+          busy={waiting.busy}
+          onGoAhead={waiting.onGoAhead}
+        />
+      );
+    case "screen":
+      if (screen !== null) return screen;
+      return <ScreenCard title={waiting.title} onOpen={openSpace} />;
+    default:
+      return waiting satisfies never;
+  }
 }
 
 function EmptyConversation({ empty }: { empty: "archived" | "new" | null }) {
@@ -422,22 +638,124 @@ function EmptyConversation({ empty }: { empty: "archived" | "new" | null }) {
   return null;
 }
 
+/**
+ * A sketch at work on the page already says work is under way, so the box over it does not say it
+ * again; a status with something to press, such as Try again, still shows.
+ */
+function sketchingDock(dock: RoomDock): RoomDock {
+  return dock.kind === "composer" && dock.status?.onAction === undefined
+    ? { ...dock, status: null }
+    : dock;
+}
+
+/** Shuts the view over the conversation like a full-screen modal, in the corner people look for. */
+function BackToChat({ onClose }: { onClose: () => void }) {
+  return (
+    <UiButton
+      type="button"
+      size="icon"
+      variant="ghost"
+      className={styles.close}
+      aria-label={wording.conversation.backToChat}
+      title={wording.conversation.backToChatHint}
+      onClick={onClose}
+    >
+      <X size={18} aria-hidden="true" />
+    </UiButton>
+  );
+}
+
+/** Each plugin tab's status, as a button that opens the tab. */
+function TabStatusControls({
+  tabStatus,
+  className,
+}: {
+  tabStatus: readonly TabStatus[];
+  className: string | undefined;
+}) {
+  if (tabStatus.length === 0) return null;
+  return (
+    <div className={className}>
+      {tabStatus.map(({ tab, label, mark, onOpen }) => (
+        <UiButton
+          key={tab}
+          type="button"
+          size="sm"
+          variant="outline"
+          className={styles.control}
+          data-mark={mark}
+          aria-label={wording.conversation.tabStatus(tab, label)}
+          title={wording.conversation.openTab(tab)}
+          onClick={() => onOpen()}
+        >
+          {label}
+        </UiButton>
+      ))}
+    </div>
+  );
+}
+
+/** The sidebar, telling the room which tab each of its steps, files and rows opens before it opens it. */
+function openingFrom(
+  sidebar: ProjectSidebarViewProps,
+  opening: (tab: string) => void,
+): ProjectSidebarViewProps {
+  const { files, plan, sections } = sidebar;
+  return {
+    ...sidebar,
+    sections:
+      sections === undefined
+        ? undefined
+        : {
+            ...sections,
+            onOpen: (tab) => {
+              opening(tab);
+              sections.onOpen(tab);
+            },
+          },
+    plan: {
+      ...plan,
+      onOpenStep: (id, tab) => {
+        opening(tab);
+        plan.onOpenStep(id, tab);
+      },
+    },
+    files:
+      files === undefined
+        ? undefined
+        : {
+            ...files,
+            onOpen: (tab) => {
+              opening(tab);
+              files.onOpen(tab);
+            },
+          },
+  };
+}
+
+const decides = (
+  waiting: BoxWaiting | null,
+): waiting is Extract<BoxWaiting, { kind: "screen" }> =>
+  waiting?.kind === "screen" && waiting.decides;
+
 /** Takes a shell request typed into the composer, so it is answered rather than sent. */
 type AnswersShell = (text: string) => boolean;
 
 /** Where the chat sheet starts, before the person moves it. */
 type ChatStart = Pick<
   ChatSheetProps,
-  "defaultState" | "defaultPull" | "returnTo"
+  "defaultState" | "defaultPull" | "onFullScreen" | "saysWork" | "onUpChange"
 >;
 
 /**
- * What sits under the conversation: the prompt box with its pill, handle and chat sheet, or the
+ * What sits under the conversation: the prompt box with its handle and chat sheet, or the
  * banner saying why there is none. Stories draw the dock's states with it.
  */
 export function RoomDockView({
   dock,
   waiting,
+  cardHidden = false,
+  cardAsk = null,
   chat,
   chatStart,
   ports,
@@ -451,6 +769,10 @@ export function RoomDockView({
    * question card, a plugin's screen or an approval. Absent while nothing does.
    */
   waiting?: ReactNode;
+  /** What waits stays out of sight, its buttons still in the row, where the page shows it. */
+  cardHidden?: boolean;
+  /** The title of a hidden card, shown above the words so Approve says what it agrees to. */
+  cardAsk?: string | null;
   chat?: ReactNode;
   chatStart?: ChatStart | undefined;
   answersShell?: AnswersShell;
@@ -477,38 +799,58 @@ export function RoomDockView({
     );
   if (dock.kind === "modelNeeded")
     return (
-      <Banner tone="error" role="alert" title={dock.message}>
-        <BannerAction>
-          <UiButton type="button" size="sm" onClick={dock.onOpenSettings}>
-            {wording.action.openSettings}
-          </UiButton>
-          <UiButton
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={dock.onRetry}
-          >
-            {wording.action.retry}
-          </UiButton>
-        </BannerAction>
-      </Banner>
+      <div className={styles.notice}>
+        <Banner tone="error" role="alert" title={dock.message}>
+          <BannerAction>
+            <UiButton
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={dock.onOpenSettings}
+            >
+              {wording.action.openSettings}
+            </UiButton>
+            <UiButton
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={dock.onRetry}
+            >
+              {wording.action.retry}
+            </UiButton>
+          </BannerAction>
+        </Banner>
+      </div>
     );
   if (dock.kind === "starting")
-    return <Banner title={wording.conversation.startingCoordinator} />;
+    return (
+      <div className={styles.notice}>
+        <Banner title={wording.conversation.startingCoordinator} />
+      </div>
+    );
   if (dock.kind === "startFailed")
     return (
-      <Banner tone="error" role="alert" title={dock.message}>
-        <BannerAction>
-          <UiButton type="button" size="sm" onClick={dock.onRetry}>
-            {wording.action.retry}
-          </UiButton>
-        </BannerAction>
-      </Banner>
+      <div className={styles.notice}>
+        <Banner tone="error" role="alert" title={dock.message}>
+          <BannerAction>
+            <UiButton
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={dock.onRetry}
+            >
+              {wording.action.retry}
+            </UiButton>
+          </BannerAction>
+        </Banner>
+      </div>
     );
   return (
     <RoomComposerView
       {...dock}
       waiting={waiting}
+      cardHidden={cardHidden}
+      cardAsk={cardAsk}
       chat={chat}
       chatStart={chatStart}
       ports={ports}
@@ -536,14 +878,23 @@ function RoomComposerView({
   sendLabel,
   status = null,
   comments = 0,
+  onSendComments,
+  onShowComments,
+  onRemoveComments,
+  commentsBlocked = null,
+  commentsSending = false,
   onStop,
   waiting,
+  cardHidden,
+  cardAsk,
   chat,
   chatStart,
   ports: shared,
   answersShell,
 }: RoomComposer & {
   waiting: ReactNode;
+  cardHidden: boolean;
+  cardAsk: string | null;
   chat: ReactNode;
   chatStart?: ChatStart | undefined;
   ports?: BoxPorts | undefined;
@@ -558,14 +909,36 @@ function RoomComposerView({
   // mid-send; the drop zone, the attach button and a paste all follow this.
   const attaching = accept !== null && !busy;
   const typed = text.trim() !== "" || files.length > 0;
+  const commentsReady =
+    comments > 0 &&
+    onSendComments !== undefined &&
+    commentsBlocked === null &&
+    !commentsSending;
+  // Send names what a screen in the box sends, or else gets the room's label.
+  const label = ports.offer?.label ?? sendLabel;
+  // A screen in the box takes the words along with its pick, so the pick isn't lost. When the
+  // screen sends them later, the words stay in the box until they've gone.
+  const toScreen = (words: string) => {
+    const took = ports.offer?.take(words) ?? false;
+    if (took === true) onTextChange("");
+    else if (took !== false)
+      void took.then((went) => {
+        if (went) onTextChange("");
+      });
+    return took !== false;
+  };
   const send = () => {
-    if (files.length === 0 && answersShell?.(text) === true)
-      return onTextChange("");
-    // A screen in the box takes the words with what is picked in it, so the pick is not lost.
-    const words = text.trim();
-    if (files.length === 0 && words !== "" && ports.take?.(words) === true)
-      return onTextChange("");
-    onSend();
+    const sent = submit(text, {
+      files: files.length > 0,
+      comments: commentsReady ? onSendComments : null,
+      shell: answersShell,
+      screen:
+        ports.offer === undefined
+          ? undefined
+          : { take: toScreen, label: ports.offer.label },
+      message: onSend,
+    });
+    if (sent === "shell") onTextChange("");
   };
   const stopping = working && onStop !== undefined && !typed;
   const box = (
@@ -581,7 +954,7 @@ function RoomComposerView({
             onValueChange={onTextChange}
             onSubmit={send}
             // While a message is on its way only Send waits: the box and its words stay as they are.
-            canSubmit={!busy && (typed || sendLabel !== null || comments > 0)}
+            canSubmit={!busy && (typed || label !== null || commentsReady)}
             status={stopping ? "streaming" : "ready"}
             disabled={disabled || needsProvider}
           >
@@ -630,13 +1003,49 @@ function RoomComposerView({
               </>
             )}
             {comments > 0 ? (
-              <span className={styles.commentsToken}>
-                <MessageSquare size={12} aria-hidden="true" />
-                {wording.promptBox.comments(comments)}
+              // The count opens the page the comments are on; the cross removes them all.
+              <span className={styles.commentsToken} data-slot="comments-token">
+                <button
+                  type="button"
+                  className={styles.commentsShow}
+                  aria-label={wording.promptBox.showComments(comments)}
+                  title={wording.promptBox.showComments(comments)}
+                  aria-busy={commentsSending || undefined}
+                  onClick={onShowComments}
+                >
+                  <MessageSquare size={12} aria-hidden="true" />
+                  {wording.promptBox.comments(comments)}
+                </button>
+                <button
+                  type="button"
+                  className={styles.commentsRemove}
+                  aria-label={wording.promptBox.removeComments(comments)}
+                  title={wording.promptBox.removeComments(comments)}
+                  disabled={commentsSending}
+                  onClick={onRemoveComments}
+                >
+                  <X size={12} aria-hidden="true" />
+                </button>
               </span>
             ) : null}
             <PromptInputTextarea
               ref={inputRef}
+              // Enter on an empty box goes to what waits in it, as Continue's tooltip says: a pick
+              // goes forward as Continue would take it.
+              onKeyDown={(event) => {
+                if (
+                  event.key !== "Enter" ||
+                  event.shiftKey ||
+                  event.altKey ||
+                  event.ctrlKey ||
+                  event.metaKey ||
+                  event.nativeEvent.isComposing ||
+                  typed ||
+                  busy
+                )
+                  return;
+                if (toScreen("")) event.preventDefault();
+              }}
               // A picture on the clipboard attaches like a chosen file, while attaching is
               // offered at all; text, and anything else, pastes as the browser would.
               onPaste={(event) => {
@@ -649,7 +1058,8 @@ function RoomComposerView({
               placeholder={
                 needsProvider
                   ? wording.conversation.enableAiFirst
-                  : comments > 0
+                  : // Words typed beside comments go with them, so the box asks for more, not instead.
+                    comments > 0
                     ? wording.promptBox.commentsPlaceholder
                     : (ports.placeholder ?? placeholder)
               }
@@ -669,26 +1079,20 @@ function RoomComposerView({
               ) : (
                 <>
                   {/* The row's one action: what waits on the person hands its buttons here, where
-                      they stand in for Send until the person types; Send stands while it is empty.
-                      Kept while the person types, only hidden, so its buttons keep their place
-                      and focus. */}
+                      they stand in for Send until the person types, or until comments wait that
+                      Send names as its own; Send stands while it is empty. Kept meanwhile, only
+                      hidden, so its buttons keep their place and focus. */}
                   <div
                     ref={ports.setActionsAt}
                     data-slot="composer-actions"
-                    hidden={typed}
+                    hidden={typed || (commentsReady && label !== null)}
                   />
-                  {sendLabel === null ? null : (
-                    <span
-                      className={styles.sendLabel}
-                      data-slot="send-label"
-                      aria-hidden="true"
-                    >
-                      {sendLabel}
-                    </span>
-                  )}
+                  {/* Where Send carries something of its own, it says so on itself, a pill
+                      with its words before the arrow. */}
                   <PromptInputSubmit
                     {...(stopping ? { onStop } : {})}
-                    aria-label={sendLabel ?? undefined}
+                    aria-label={label ?? undefined}
+                    data-label={label ?? undefined}
                     aria-busy={busy || undefined}
                   />
                 </>
@@ -701,12 +1105,28 @@ function RoomComposerView({
   );
   return (
     <Composer
+      // With nothing but the card to show, the box is its typing row alone.
+      bare={
+        cardHidden &&
+        cardAsk === null &&
+        restarts === null &&
+        (comments === 0 || commentsBlocked === null)
+      }
       panel={
-        restarts !== null || waiting !== undefined ? (
+        restarts !== null ||
+        waiting !== undefined ||
+        (comments > 0 && commentsBlocked !== null) ? (
           <>
-            <InBox ports={ports} as={waiting === undefined ? null : "card"}>
-              {waiting}
-            </InBox>
+            <div className={styles.card} hidden={cardHidden}>
+              <InBox ports={ports} as={waiting === undefined ? null : "card"}>
+                {waiting}
+              </InBox>
+            </div>
+            {cardHidden && cardAsk !== null ? (
+              <p className={styles.cardAsk} data-slot="card-ask">
+                {cardAsk}
+              </p>
+            ) : null}
             {/* Nearest the words it is about, after anything else that waits. */}
             {restarts === null ? null : (
               <p className={styles.restarts} role="status">
@@ -714,13 +1134,29 @@ function RoomComposerView({
                 {restarts}
               </p>
             )}
+            {comments === 0 || commentsBlocked === null ? null : (
+              <p
+                className={styles.restarts}
+                data-slot="comments-blocked"
+                role="status"
+              >
+                <MessageSquare size={14} aria-hidden="true" />
+                {commentsBlocked}
+              </p>
+            )}
           </>
         ) : undefined
       }
       // Always the sheet, even with nothing to pull up, so the box is never remounted (and never
-      // loses the cursor) when work starts and the pill appears.
+      // loses the cursor) when work starts and the pill appears. Putting the chat back returns the
+      // cursor to the words, where the person left them.
       around={(inner) => (
-        <ChatSheet {...chatStart} status={status} box={inner}>
+        <ChatSheet
+          {...chatStart}
+          status={status}
+          box={inner}
+          putBackTo={inputRef}
+        >
           {chat}
         </ChatSheet>
       )}
@@ -756,3 +1192,7 @@ function RoomComposerView({
     </Composer>
   );
 }
+
+const inHistory = (node: Node) =>
+  node instanceof Element &&
+  node.closest('[data-slot="chat-history"]') !== null;

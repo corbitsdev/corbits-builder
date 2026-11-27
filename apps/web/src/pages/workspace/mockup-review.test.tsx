@@ -1,6 +1,10 @@
 import { expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import { MockupReview } from "@plugins/designer/src/review/view.tsx";
+import {
+  keptPins,
+  MockupReview,
+  pinned,
+} from "@plugins/designer/src/review/view.tsx";
 
 type Props = Parameters<typeof MockupReview>[0];
 
@@ -47,6 +51,7 @@ test("comment edits use the current draft, including changes between two events 
             approval: { option: "design-option-1" },
           },
           earlierAnswer: undefined,
+          commentCard: () => null,
           mockupFrame: (props) => {
             tag = props.onTag;
             return null;
@@ -76,4 +81,27 @@ test("comment edits use the current draft, including changes between two events 
     "A new comment from the current draft",
     "",
   ]);
+});
+
+test("a kept comment is reworded in its own place, and words that are only spaces leave it be", () => {
+  const second = { text: "Darker header.", at: comment.at };
+  const kept = { ...keptPins([comment, second]), selected: 2 };
+  const reworded = pinned(kept, {
+    kind: "reword",
+    pin: 2,
+    words: " Lighter header. ",
+  });
+  expect(reworded.pins.map((pin) => pin.comment.text)).toEqual([
+    comment.text,
+    "Lighter header.",
+  ]);
+  expect(reworded.selected).toBe(2);
+  expect(pinned(kept, { kind: "reword", pin: 2, words: "  " })).toBe(kept);
+});
+
+test("closing a pin's card keeps its comment", () => {
+  const kept = { ...keptPins([comment]), selected: 1 };
+  const closed = pinned(kept, { kind: "close" });
+  expect(closed.selected).toBeNull();
+  expect(closed.pins).toEqual(kept.pins);
 });

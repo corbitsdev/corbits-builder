@@ -29,23 +29,8 @@
   pointer-events: none;
 }
 
-.sheet:is([data-state="open"], [data-state="full"]) > .edge {
+.sheet[data-state="open"] > .edge {
   opacity: 1;
-}
-
-/* Full screen, the chat is the page: no edge, no lift, the box at its foot. */
-.sheet[data-state="full"] {
-  flex: 1;
-  /* Out by its 1px edge, so the box and the lines above it keep the very
-     width and place they had in the sheet and nothing rewraps. */
-  margin: 0 -1px -1px;
-  padding: 56px 0 0;
-  border-radius: 0;
-}
-
-.sheet[data-state="full"] > .edge {
-  border-color: transparent;
-  box-shadow: none;
 }
 
 /* Above the box while the chat is put away: the handle on its top edge, or
@@ -138,6 +123,7 @@
 }
 
 .history {
+  position: relative;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -147,11 +133,6 @@
 
 .history[hidden] {
   display: none;
-}
-
-.sheet[data-state="full"] .history {
-  flex: 1;
-  max-height: none;
 }
 
 /* Between closed and open the history is given its height a frame at a time and is pinned to the
@@ -168,30 +149,31 @@
 }
 
 /* Over the history by 1px, as the handle above a closed sheet sits over the
-   box's edge, so the handle never steps as the sheet sets off or lands. */
+   box's edge, so the handle never steps as the sheet sets off or lands. Above the header's fill,
+   so the handle's focus ring is never cut by it. */
 .handleRow {
+  position: relative;
+  z-index: 2;
   display: flex;
   justify-content: center;
   flex: none;
   margin-bottom: -1px;
 }
 
-/* No heading: the messages under it are plainly the chat, so the header holds only its controls. */
+/* No heading: the messages under it are plainly the chat, so the header holds only its controls.
+   It lies over the thread's own top inset, which a full page keeps for reading, so the first line
+   starts right under it; lines scrolled up are hidden behind its fill rather than cut half way. */
 .header {
+  position: absolute;
+  inset: 0 0 auto;
+  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: var(--space-1);
   flex: none;
-  height: 44px;
-  margin-bottom: var(--space-2);
   padding: 0 var(--space-2) 0 var(--space-4);
-}
-
-.sheet[data-state="full"] :is(.header, .messages) {
-  max-width: 48rem;
-  width: 100%;
-  margin-inline: auto;
+  background: var(--wb-background);
 }
 
 .icon {
@@ -221,12 +203,6 @@
   }
 }
 
-/* Full screen, the conversation stays by the box, as it sits while pulled up,
-   and the room above it fills from the bottom. */
-.sheet[data-state="full"] .messages > :first-child {
-  margin-top: auto;
-}
-
 /* Level with the words in the box below: its 14px inset and 1px edge. */
 .messages {
   display: flex;
@@ -239,132 +215,10 @@
   overscroll-behavior: contain;
 }
 
+/* Held at its full height, so when the composer runs out of room the history gives way and what
+   waits in the box and the typing row under it stay on screen. */
 .box {
   display: flex;
+  flex: none;
   flex-direction: column;
-  min-height: 0;
-}
-
-.returnTo {
-  position: absolute;
-  top: var(--space-3);
-  left: 50%;
-  translate: -50% 0;
-}
-
-.returnTitle {
-  font-weight: var(--font-weight-semibold);
-}
-
-.returnVersion {
-  color: var(--wb-muted-foreground);
-}
-
-/* Going to or from full screen is one view transition: the edge travels and
-   reshapes, the newest lines and the box stay put, and the page under the
-   sheet fades. The parts are named only while it runs. */
-.sheet[data-morph] > .edge {
-  view-transition-name: chat-sheet;
-}
-
-.sheet[data-morph] .header {
-  view-transition-name: chat-sheet-header;
-}
-
-.sheet[data-morph] .messages {
-  view-transition-name: chat-sheet-messages;
-}
-
-.sheet[data-morph] > .box {
-  view-transition-name: chat-sheet-box;
-}
-
-.sheet[data-morph] > .returnTo {
-  view-transition-name: chat-sheet-return;
-}
-
-.sheet[data-morph] > .handleRow {
-  view-transition-name: chat-sheet-handle;
-}
-
-:root[data-chat-sheet]::view-transition-group(*),
-:root[data-chat-sheet]::view-transition-old(*),
-:root[data-chat-sheet]::view-transition-new(*) {
-  animation-duration: var(--duration-large);
-  animation-timing-function: var(--ease-out);
-}
-
-/* A snapshot of the edge would stretch its corners as it grows, so the edge
-   is drawn live on the layer that carries it instead. */
-:root[data-chat-sheet]::view-transition-old(chat-sheet),
-:root[data-chat-sheet]::view-transition-new(chat-sheet) {
-  animation: none;
-  opacity: 0;
-}
-
-:root[data-chat-sheet]::view-transition-image-pair(chat-sheet) {
-  border: 1px solid var(--wb-border);
-  border-radius: calc(var(--radius-xl) + 12px);
-  background: var(--wb-background);
-  box-shadow: var(--wb-pane-shadow);
-}
-
-/* The edge travels across the screen, so it eases in and out of the move rather than covering
-   most of it at once and drifting the rest; its corners and lift change in step with it. */
-:root[data-chat-sheet]::view-transition-group(chat-sheet) {
-  animation-timing-function: var(--wb-ease-in-out);
-}
-
-:root[data-chat-sheet="full"]::view-transition-image-pair(chat-sheet) {
-  animation: toPage var(--duration-large) var(--wb-ease-in-out) both;
-}
-
-:root[data-chat-sheet="closed"]::view-transition-image-pair(chat-sheet) {
-  animation: toBox var(--duration-large) var(--wb-ease-in-out) both;
-}
-
-@keyframes toPage {
-  to {
-    border-color: transparent;
-    border-radius: 0;
-    box-shadow: none;
-  }
-}
-
-/* Back down, it takes its corners and lift again and fades into the box as
-   it reaches it. */
-@keyframes toBox {
-  from {
-    border-color: transparent;
-    border-radius: 0;
-    box-shadow: none;
-  }
-  60% {
-    opacity: 1;
-  }
-  to {
-    opacity: 0;
-  }
-}
-
-/* The conversation is pinned to the box in both states, so each snapshot is
-   held at its foot, uncropped, and the two meet rather than slide. */
-:root[data-chat-sheet]::view-transition-old(chat-sheet-messages),
-:root[data-chat-sheet]::view-transition-new(chat-sheet-messages) {
-  height: 100%;
-  object-fit: none;
-  object-position: 50% 100%;
-}
-
-/* The handle has no place on the page, so it leaves as the edge sets off
-   rather than being swept under it. */
-:root[data-chat-sheet="full"]::view-transition-old(chat-sheet-handle) {
-  animation-duration: var(--duration-micro);
-}
-
-/* What does not come back down leaves quickly, ahead of the edge. */
-:root[data-chat-sheet="closed"]::view-transition-old(chat-sheet-messages),
-:root[data-chat-sheet="closed"]::view-transition-old(chat-sheet-header),
-:root[data-chat-sheet="closed"]::view-transition-old(chat-sheet-return) {
-  animation-duration: var(--duration-micro);
 }

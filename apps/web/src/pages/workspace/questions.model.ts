@@ -7,7 +7,8 @@ import { useRef, useState } from "react";
 import {
   answeredWith,
   type ConversationQuestion,
-  type QuestionAnswer,
+  type GivenQuestionAnswer,
+  deliveredAnswer,
 } from "@corbits-builder/schemas/conversation";
 import { ProductApiError } from "@corbits-builder/client";
 import { wording } from "../../config.ts";
@@ -35,7 +36,7 @@ export function useQuestions({
   outcomes: ReadonlyMap<string, AnswerOutcome>;
   questions: ConversationQuestion[];
   openQuestion: ConversationQuestion | undefined;
-  answer: (signalName: string, answer: QuestionAnswer) => Promise<boolean>;
+  answer: (signalName: string, answer: GivenQuestionAnswer) => Promise<boolean>;
 } {
   const [outcomes, setOutcomes] = useState<ReadonlyMap<string, AnswerOutcome>>(
     () => new Map(),
@@ -61,7 +62,7 @@ export function useQuestions({
   // Every entry point shares this outcome; no view infers delivery from its own callback.
   const deliverAnswer = async (
     signalName: string,
-    answer: QuestionAnswer,
+    answer: GivenQuestionAnswer,
   ): Promise<boolean> => {
     if (inFlight.current.has(signalName)) return false;
     inFlight.current.add(signalName);
@@ -71,7 +72,11 @@ export function useQuestions({
     try {
       await answerQuestion(projectId, signalName, answer);
       accepted = true;
-      record(signalName, { kind: "accepted", answer });
+      // The card settles on what the run received, as the hub's next read will show it.
+      record(signalName, {
+        kind: "accepted",
+        answer: deliveredAnswer(answer),
+      });
       reload();
       onChanged();
       return true;
@@ -96,7 +101,8 @@ export function useQuestions({
       }
       const kind = answerFailure(status, code, accepted);
       const fault = wording.questions.answerFault[kind];
-      if (kind === "accepted") record(signalName, { kind, answer, fault });
+      if (kind === "accepted")
+        record(signalName, { kind, answer: deliveredAnswer(answer), fault });
       else record(signalName, { kind, fault });
       const question = loaded.find(
         (question) => question.signalName === signalName,

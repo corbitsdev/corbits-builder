@@ -24,8 +24,11 @@ import type {
   StoredPlanChild,
   StoredPlanStep,
 } from "@corbits-builder/schemas/plan";
-import { holds, resolveFacts, unmet } from "./facts.ts";
+import { holds, patternFact, resolveFacts, unmet } from "./facts.ts";
 import { missingTexts, unfinishedText } from "./text.ts";
+
+// The fact that holds once the project has its app, which the work of the step that makes it returns.
+const APP_FACT = "app_exists";
 
 /**
  * The ready-made plans a project's catalog installs, in their manifests' words, each take-down with
@@ -178,6 +181,12 @@ export function planState(
     const ready = own.length === 0 && goAhead.length === 0;
     const returns = resolveFacts(action.builder.returns ?? [], step.input);
     const missing = returns.filter((fact) => !holds(fact, facts));
+    const makes = returns.flatMap((fact) => {
+      if (fact === APP_FACT) return ["app"];
+      const filed = patternFact(fact);
+      return filed?.state === "filed" ? [filed.kind] : [];
+    });
+    if (makes.length > 0) view.makes = makes;
     const done = run?.status === "completed" && missing.length === 0;
     const asked = records.questions.some(
       (each) => each.plugin === step.plugin && each.action === step.action,

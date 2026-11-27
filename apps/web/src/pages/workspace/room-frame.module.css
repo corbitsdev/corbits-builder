@@ -1,0 +1,45 @@
+/* The left zone's width, kept open or closed, and the main pane in the rest. The frame scrolls
+   nothing itself: the view in the main pane is the one scroller, so its scrollbar is at the
+   window's edge. */
+.frame {
+  --frame-edge: var(--space-2);
+  /* The sidebar's card, in from the window's edge, and a gap before the page. */
+  --frame-left: calc(var(--frame-edge) + var(--rail-width) + var(--space-4));
+
+  position: relative;
+  display: grid;
+  flex: 1;
+  grid-template-columns: var(--frame-left) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  min-height: 0;
+  overflow: hidden;
+  background: var(--wb-background);
+}
+
+.main {
+  display: flex;
+  grid-column: 2;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* Over its own column, and over the page where it is a drawer. */
+.left {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  z-index: 2;
+  display: flex;
+}
+
+/* Where the sidebar is a drawer over the page, the pane takes the whole window, and the sidebar's
+   title stands over the pane's top corner, so the pane starts below it. */
+.frame:has([data-drawer]) {
+  --frame-left: 0px;
+}
+
+.frame:has([data-drawer]) > .main {
+  /* Below the sidebar's 2.5rem title row and the edge either side of it. */
+  padding-block-start: calc(2.5rem + 2 * var(--frame-edge));
+}

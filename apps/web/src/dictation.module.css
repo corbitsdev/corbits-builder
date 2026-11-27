@@ -49,7 +49,7 @@
 }
 
 .dictate:hover:not(:disabled) {
-  border-color: var(--wb-primary);
+  border-color: var(--wb-action);
 }
 
 /* In a toolbar: a round, borderless icon like the toolbar's own. */

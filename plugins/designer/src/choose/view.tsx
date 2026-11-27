@@ -11,6 +11,7 @@ import { Button } from "@corbits/react-ui";
 import {
   PromptAction,
   ScreenActions,
+  ScreenRow,
   usePromptPlaceholder,
   usePromptSend,
 } from "@corbits-builder/plugin-ui/screen-actions";
@@ -107,13 +108,22 @@ function Choose({
     picked !== undefined && "option" in picked.approval
       ? (words) => {
           if (!("option" in picked.approval)) return false;
-          void choose(picked, picked.approval.option, words);
+          // Enter in an empty box sends the pick alone, with no comment to go with it.
+          const details = words.trim();
+          void choose(
+            picked,
+            picked.approval.option,
+            details === "" ? undefined : details,
+          );
           return true;
         }
       : undefined,
   );
   // With the prompt box beneath the page, the forward action stands where Send does.
   const toBox = useContext(PromptAction);
+  // The bar also says why a pick failed to send, even with the forward action in the box.
+  const row = useContext(ScreenRow);
+  const failed = row !== null && row.fault !== null && row.fault !== undefined;
 
   const choose = (concept: Concept, option: string, details?: string) =>
     submit({
@@ -141,6 +151,10 @@ function Choose({
   };
 
   const usable = picked !== undefined && "option" in picked.approval;
+  const note =
+    picked !== undefined && "unavailable" in picked.approval
+      ? picked.approval.unavailable
+      : undefined;
   const forward = (
     <Button
       type="button"
@@ -203,17 +217,15 @@ function Choose({
           }))}
         />
       </div>
-      <div className={styles.bar}>
-        <ScreenActions
-          note={
-            picked !== undefined && "unavailable" in picked.approval
-              ? picked.approval.unavailable
-              : undefined
-          }
-        >
-          {toBox === null ? forward : null}
-        </ScreenActions>
-      </div>
+      {/* With the forward action in the prompt box, the bar stands only to say why a pick can't
+          be used or wasn't sent, so no empty strip is left under the concepts. */}
+      {toBox === null || note !== undefined || failed ? (
+        <div className={styles.bar}>
+          <ScreenActions note={note}>
+            {toBox === null ? forward : null}
+          </ScreenActions>
+        </div>
+      ) : null}
       {/* In the box it stands only once it can be used; until then the box's own Send waits. */}
       {toBox?.(usable ? forward : null)}
     </section>

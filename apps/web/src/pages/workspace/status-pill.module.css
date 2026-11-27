@@ -6,9 +6,116 @@
   height: 16px;
 }
 
-/* The pill is the one loader, and it stays in ink: the brand orange is never a loader. */
-.lead [aria-hidden] {
-  background: var(--wb-foreground);
+/* Each dot sits on the ring by its turn round it; the dot itself is drawn before it, so it can
+   swell and fade where it sits. */
+.ring {
+  position: relative;
+  width: 14px;
+  height: 14px;
+}
+
+.ring > span {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  rotate: calc(var(--i) * 360deg / var(--dots));
+}
+
+.ring > span::before {
+  content: "";
+  position: absolute;
+  top: -1.25px;
+  left: -1.25px;
+  width: 2.5px;
+  height: 2.5px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+/* Work going on: a light runs clockwise round the ring, its head a touch larger and its tail
+   fading behind it. It stays in ink; the brand orange is never a loader. */
+.ring[data-kind="orbit"] {
+  color: var(--wb-foreground);
+}
+
+.ring[data-kind="orbit"] > span {
+  transform: translateY(-5px);
+}
+
+.ring[data-kind="orbit"] > span::before {
+  opacity: 0.18;
+  animation: orbit 960ms linear infinite;
+  animation-delay: calc(var(--i) * 960ms / var(--dots) - 960ms);
+}
+
+@keyframes orbit {
+  0% {
+    opacity: 1;
+    scale: 1.3;
+  }
+  70%,
+  100% {
+    opacity: 0.18;
+    scale: 1;
+  }
+}
+
+/* The app is up: the green ring breathes, gathering into one bright point and opening out again,
+   and turns a little with each breath, so it reads as alive rather than busy. */
+.ring[data-kind="bloom"] {
+  color: var(--wb-proceed);
+  animation: turn 6.4s linear infinite;
+}
+
+.ring[data-kind="bloom"] > span {
+  animation: bloom 3.2s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
+.ring[data-kind="bloom"] > span::before {
+  animation: glow 3.2s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
+@keyframes bloom {
+  0%,
+  100% {
+    transform: translateY(-5px);
+  }
+  50% {
+    transform: translateY(-1.5px);
+  }
+}
+
+@keyframes glow {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes turn {
+  to {
+    rotate: 360deg;
+  }
+}
+
+/* Without motion, the orbit stands as a ring fading round to its head, and the bloom stands open. */
+@media (prefers-reduced-motion: reduce) {
+  .ring,
+  .ring > span,
+  .ring > span::before {
+    animation: none;
+  }
+
+  .ring[data-kind="orbit"] > span::before {
+    opacity: calc(0.18 + var(--i) * 0.1);
+  }
+
+  .ring[data-kind="bloom"] > span {
+    transform: translateY(-5px);
+  }
 }
 
 .label[data-state="failed"] {

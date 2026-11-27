@@ -6,6 +6,7 @@
  * then a refresh, so what the interface shows is what the hub durably holds
  * rather than an optimistic guess.
  */
+import { formatRelativeTime } from "@corbits/react-ui";
 import { ProductApiError } from "@corbits-builder/client";
 import type { ModelProvider } from "@corbits-builder/schemas/models";
 import { useQuery } from "@tanstack/react-query";
@@ -18,12 +19,11 @@ import {
   type ComponentProps,
 } from "react";
 import { toast } from "sonner";
-import { wording } from "./config.ts";
+import { productName, wording } from "./config.ts";
 import { notify } from "./notice.ts";
 import {
   ensureWorkspace,
   getHubSession,
-  openWorkspace,
   signOutHub,
   workspaceTenantId,
   type HubUser,
@@ -35,12 +35,10 @@ import { queryClient } from "./queries/client.ts";
 import { keys } from "./queries/keys.ts";
 import { firstRunScreen, type HubAuthState } from "./first-run.ts";
 import {
-  clearModelSetupDeferral,
   modelSetupDeferred,
   needsModelSetup,
 } from "./pages/model-setup.model.ts";
 import type { ProjectLibraryProps } from "./pages/project-library.model.ts";
-import type { ProjectMenuHost } from "./pages/project-menu.model.ts";
 import type { ProjectsProps } from "./pages/projects.model.ts";
 import type { SettingsProps } from "./pages/settings/settings.model.ts";
 import type { SettingsTab } from "./pages/settings/settings.view.tsx";
@@ -53,6 +51,7 @@ import {
   writeProjectUrl,
 } from "./routes.ts";
 import { useSidebar } from "./sidebar-setting.ts";
+import { workspacesQuery } from "./queries/workspaces.ts";
 import { singleFlight } from "./single-flight.ts";
 import type {
   AppViewProps,
@@ -77,11 +76,7 @@ export type AppScreen =
   | { screen: "invite"; invitationId: string }
   | {
       screen: "shell";
-      view: Omit<AppViewProps, "workspaceMenu" | "projectMenu" | "page">;
-      /** What the options menu of a project in the rail needs. */
-      menuOf: (projectId: string) => ProjectMenuHost;
-      /** Makes another of the person's workspaces the open one. */
-      onOpenWorkspace: (workspaceId: string) => void;
+      view: Omit<AppViewProps, "page">;
       /** Null when the address names no page. */
       page: ShellPage | null;
     };
@@ -90,6 +85,21 @@ export type AppScreen =
 const FOLD_POLL_MS = 30_000;
 
 const NO_PROJECTS: ProjectSummary[] = [];
+
+/** How many of the projects last worked on are listed outside a project. */
+const RECENT_PROJECTS = 5;
+
+/** The projects still being worked on, the latest first, as many as are listed, each with when. */
+export const recentProjects = (projects: readonly ProjectSummary[]) =>
+  projects
+    .filter((project) => project.archivedAt === null)
+    .toSorted((a, b) => b.lastActivityAt.localeCompare(a.lastActivityAt))
+    .slice(0, RECENT_PROJECTS)
+    .map(({ id, title, lastActivityAt }) => ({
+      id,
+      title,
+      lastActive: formatRelativeTime(lastActivityAt),
+    }));
 const NO_PROVIDERS: ModelProvider[] = [];
 
 const readProjects = singleFlight(async () => ({
@@ -186,12 +196,12 @@ export function useApp(): AppScreen {
     writeProjectUrl(next === "project" ? selected : null);
     setShownView(next);
   };
-  // Where Settings was opened from, so its back control and the gear's
-  // toggle-to-close return there rather than always landing on the projects
-  // list.
-  const [settingsFrom, setSettingsFrom] = useState<View>("projects");
+  // Settings stands alone, so its Back returns to the page it was opened from.
+  const [settingsFrom, setSettingsFrom] = useState<
+    "projects" | "library" | "project"
+  >(() => (projectInUrl() ? "project" : "projects"));
   const openSettings = (tab?: SettingsTab, focusId?: string) => {
-    setSettingsFrom(view === "settings" ? settingsFrom : view);
+    if (view !== "settings" && view !== "invite") setSettingsFrom(view);
     setView("settings");
     if (typeof window !== "undefined" && tab !== undefined) {
       const url = new URL(window.location.href);
@@ -210,14 +220,25 @@ export function useApp(): AppScreen {
       setFocusSeq((seq) => seq + 1);
     }
   };
-  const navigate = (next: View) => {
-    if (next === "settings") openSettings();
-    else setView(next);
-  };
   const closeSettings = () => {
+    const url = new URL(window.location.href);
+    for (const key of ["view", "tab", "focus"]) url.searchParams.delete(key);
+    window.history.replaceState(window.history.state, "", url);
     setSettingsTab(undefined);
     setFocusPreference(undefined);
-    setView(settingsFrom === "settings" ? "projects" : settingsFrom);
+  };
+  const leaveSettings = () => {
+    closeSettings();
+    setView(settingsFrom);
+  };
+  const navigate = (next: View) => {
+    if (next === "settings") {
+      openSettings();
+      return;
+    }
+    // The header's mark leaves Settings too, and a reload should not open it again.
+    if (view === "settings") closeSettings();
+    setView(next);
   };
 
   const sidebar = useSidebar();
@@ -239,6 +260,11 @@ export function useApp(): AppScreen {
     queryKey: keys.projects,
     queryFn: readProjects,
     refetchInterval: FOLD_POLL_MS,
+    enabled: auth === "signed-in",
+  });
+  // The open workspace's name heads the sidebar outside a project.
+  const workspacesRead = useQuery({
+    ...workspacesQuery,
     enabled: auth === "signed-in",
   });
   const projects = projectsRead.data?.projects ?? NO_PROJECTS;
@@ -319,17 +345,6 @@ export function useApp(): AppScreen {
       ),
     );
   }, []);
-
-  // Another workspace is another tenant: nothing read under the last one
-  // holds, and its own first-run setup (a model key) is asked for again.
-  const switchWorkspace = (workspaceId: string) => {
-    openWorkspace(workspaceId);
-    clearModelSetupDeferral();
-    setSetupLater(false);
-    setSelected(null);
-    setView("projects");
-    void queryClient.resetQueries();
-  };
 
   useEffect(() => {
     const readSession = async () => {
@@ -463,34 +478,6 @@ export function useApp(): AppScreen {
   if (view === "invite" && urlInvite !== null)
     return { screen: "invite", invitationId: urlInvite };
 
-  const inProject = view === "project" && openProjectSummary !== null;
-  // A shipped project stays listed while open, so its options menu stays reachable. An archived
-  // one lives only under Projects; its workspace banner restores it.
-  const listed = projects
-    .filter(
-      (item) =>
-        !item.archivedAt &&
-        (item.stage !== "shipped" ||
-          (inProject && item.id === openProjectSummary.id)),
-    )
-    .sort((a, b) => b.lastActivityAt.localeCompare(a.lastActivityAt));
-
-  const menuOf = (projectId: string): ProjectMenuHost => ({
-    project: listed.find((item) => item.id === projectId)!,
-    onChanged: () => void refresh(),
-    onError: reportProjectError,
-    onNotice: notify,
-    ...(inProject && projectId === openProjectSummary.id
-      ? {
-          onDeleted: () => {
-            setSelected(null);
-            navigate("projects");
-            void refresh();
-          },
-        }
-      : {}),
-  });
-
   const page = (): ShellPage | null => {
     if (view === "projects")
       return {
@@ -498,8 +485,11 @@ export function useApp(): AppScreen {
         props: {
           onOpen: openProject,
           onChanged: refresh,
+          onOpenSettings: openSettings,
           needsProvider:
             providersRead.data !== undefined && needsModelSetup(providers),
+          projects,
+          onOpenLibrary: () => navigate("library"),
         },
       };
     if (view === "library")
@@ -527,6 +517,15 @@ export function useApp(): AppScreen {
           ...(settingsTab !== undefined ? { requestedTab: settingsTab } : {}),
           ...(focusPreference !== undefined ? { focusPreference } : {}),
           focusSeq,
+          back: {
+            to:
+              settingsFrom === "project"
+                ? (openProjectSummary?.title ?? wording.shell.untitledProject)
+                : settingsFrom === "library"
+                  ? wording.shell.projects
+                  : wording.shell.newProject,
+            onBack: leaveSettings,
+          },
         },
       };
     if (view !== "project") return null;
@@ -544,62 +543,69 @@ export function useApp(): AppScreen {
       name: "project",
       props: {
         projectId: selected,
+        // A project just started may not be listed yet; its first words stand for its name
+        // until it is, as they did while it started.
         projectTitle:
-          openProjectSummary?.title ?? wording.shell.untitledProject,
+          openProjectSummary?.title ??
+          openingMessage?.trim() ??
+          wording.shell.untitledProject,
         ...(openProjectSummary === null
           ? {}
-          : { listedArchived: openProjectSummary.archivedAt !== null }),
+          : {
+              listedArchived: openProjectSummary.archivedAt !== null,
+              menuProject: openProjectSummary,
+            }),
         onChanged: refresh,
+        onProjectError: reportProjectError,
         onOpenSettings: openSettings,
+        onNewProject: () => navigate("projects"),
         ...(openingMessage !== undefined ? { openingMessage } : {}),
       },
     };
   };
 
+  const shown = page();
   return {
     screen: "shell",
     view: {
       current: PLACES[view],
-      rail: {
-        collapsed: sidebar.collapsed,
-        onToggleCollapsed: sidebar.toggle,
+      roomOpen: shown?.name === "project",
+      sidebar: {
+        name:
+          workspacesRead.data?.list.find(
+            (workspace) => workspace.id === workspacesRead.data.openId,
+          )?.name ?? productName,
+        open: sidebar.open,
+        drawer: sidebar.drawer,
+        needsProvider:
+          providersRead.data !== undefined && needsModelSetup(providers),
+        recent: recentProjects(projects),
+        onToggleSidebar: sidebar.toggle,
         onNewProject: () => {
           sidebar.leave();
           navigate("projects");
         },
-        onLibrary: () => {
+        // Back to the first-run screen that connects a model.
+        onConnectModel: () => {
           sidebar.leave();
-          navigate("library");
+          setSetupLater(false);
         },
-        onBack: () => {
-          sidebar.leave();
-          closeSettings();
-        },
-        onSettings: () => {
-          sidebar.leave();
-          if (view === "settings") closeSettings();
-          else navigate("settings");
-        },
-        projects: listed.map((item) => ({
-          id: item.id,
-          title: item.title,
-          open: inProject && item.id === openProjectSummary.id,
-        })),
         onOpenProject: (projectId) => {
           sidebar.leave();
           openProject(projectId);
         },
+        onSettings: () => {
+          sidebar.leave();
+          openSettings();
+        },
+        onPreferences: () => {
+          sidebar.leave();
+          openSettings("preferences");
+        },
       },
       hub: { state: offline ? "notAnswering" : "answering" },
       setupFault: error,
-      onOpenPreferences: (preferenceId) =>
-        openSettings(
-          "preferences",
-          preferenceId ?? wording.whatsNew.features.approvals.id,
-        ),
     },
-    menuOf,
-    onOpenWorkspace: switchWorkspace,
-    page: page(),
+    page: shown,
   };
 }

@@ -121,6 +121,19 @@ export const PREFERENCES: readonly PreferenceEntry[] = [
     // Read by the interface only.
   },
   {
+    id: "document_ground",
+    label: "Document ground",
+    hint: "Behind a written document.",
+    group: "conversation",
+    topic: "Document ground",
+    options: [
+      { id: "white", label: "White", guidance: "" },
+      { id: "grey", label: "Grey", guidance: "" },
+    ],
+    default: "white",
+    // Read by the interface only.
+  },
+  {
     id: "agent_decides_approvals",
     label: "Documents",
     hint: "Whether each document waits for your approval before the next.",

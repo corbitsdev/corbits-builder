@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
-import { fn } from "storybook/test";
+import { expect, fn, userEvent, within } from "storybook/test";
 import { CollaboratorsView } from "./collaborators.view.tsx";
 import collaborators from "./collaborators.stories.tsx";
 import { ProfilesView } from "./profiles.view.tsx";
@@ -59,6 +59,7 @@ const meta = {
       onDocumentTipsChange: fn(),
     },
     account,
+    back: { to: "Bakery orders", onBack: fn() },
   },
   render: (args) => <Page {...args} />,
 } satisfies Meta<typeof SettingsView>;
@@ -67,6 +68,19 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const Providers: Story = {};
+
+/** The arrow returns to where Settings came from, and so does Escape. */
+export const Back: Story = {
+  play: async ({ args, canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(
+      canvas.getByRole("button", { name: "Back to Bakery orders" }),
+    );
+    await expect(args.back?.onBack).toHaveBeenCalledTimes(1);
+    await userEvent.keyboard("{Escape}");
+    await expect(args.back?.onBack).toHaveBeenCalledTimes(2);
+  },
+};
 
 export const Profiles: Story = { args: { tab: "profiles" } };
 

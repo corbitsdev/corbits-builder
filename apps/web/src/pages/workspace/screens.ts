@@ -34,8 +34,9 @@ export type ScreenFiles = {
 
 type Installed = {
   host: ComponentType<ScreenHostProps>;
-  page: boolean;
   listed: ComponentType<ListedHostProps>;
+  /** The plugin draws it for the page, so it opens beside the room; any other answers in the box. */
+  page: boolean;
 };
 
 let installed: ReadonlyMap<string, Installed> = new Map();
@@ -109,10 +110,10 @@ export function installScreens({
             data = screen.data.assert(shipped);
           }
           const host = screenHost(name, declared, { screen, view, data });
+          const listed = listedHost(name, handle, view);
           const page =
             screen.render !== undefined && SLOT[screen.render] === "page";
-          const listed = listedHost(name, handle, view);
-          return [[name, { host, page, listed }] as const];
+          return [[name, { host, listed, page }] as const];
         });
       },
     ),

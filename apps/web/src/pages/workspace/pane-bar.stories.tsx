@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { Copy, Download, Search, Share2 } from "lucide-react";
-import { fn } from "storybook/test";
+import { Copy, Download, Layers, Search, Share2 } from "lucide-react";
+import { expect, fn } from "storybook/test";
 import { PaneBar, type PaneBarGroup } from "./pane-bar.tsx";
 
 const GROUPS: readonly PaneBarGroup[] = [
@@ -57,5 +57,48 @@ export const WithScreens: Story = {
       ],
       ...GROUPS,
     ],
+  },
+};
+
+const tallPane: NonNullable<Story["decorators"]> = [
+  (Story) => (
+    <div data-slot="panel-pane" style={{ position: "relative", height: 440 }}>
+      <Story />
+    </div>
+  ),
+];
+
+/** Standing up the edge, the screens are one button naming the one shown, the others in its menu. */
+export const FloatingWithScreens: Story = {
+  args: { ...WithScreens.args, floating: true },
+  decorators: tallPane,
+};
+
+/** A strip with an icon of its own keeps to it standing up the edge, so its words never widen the bar. */
+export const FloatingWithScreensIcon: Story = {
+  args: {
+    floating: true,
+    groups: [
+      [
+        {
+          id: "screens",
+          label: "Screens",
+          icon: <Layers />,
+          row: ["Home", "Orders", "Order", "Settings"].map((name, index) => ({
+            id: name,
+            label: name,
+            text: name,
+            active: index === 1,
+            onSelect: fn(),
+          })),
+        },
+      ],
+      ...GROUPS,
+    ],
+  },
+  decorators: tallPane,
+  play: async ({ canvas }) => {
+    const screens = canvas.getByRole("button", { name: "Screens" });
+    await expect(screens).not.toHaveTextContent("Orders");
   },
 };
