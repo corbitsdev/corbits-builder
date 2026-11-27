@@ -3,7 +3,7 @@ import { createRef } from "react";
 import { fn } from "storybook/test";
 import { wording } from "../../config.ts";
 import type { PromptQuestion } from "@corbits-builder/schemas/conversation";
-import type { RoomComposer } from "./room.view.tsx";
+import type { RoomComposer } from "./prompt-box.view.tsx";
 
 export type ComposerDock = RoomComposer & { kind: "composer" };
 

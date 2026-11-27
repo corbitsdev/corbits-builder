@@ -5,7 +5,7 @@ import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 import { PullHandle } from "./chat-sheet.tsx";
 import { composer, working } from "./prompt-box.fixtures.ts";
 import room from "./index.module.css";
-import { RoomDockView } from "./room.view.tsx";
+import { RoomDockView } from "./prompt-box.view.tsx";
 
 /** The conversation behind the box, drawn with the thread's own message parts. */
 const conversation = (

@@ -7,7 +7,7 @@ import type { ComponentProps } from "react";
 import { wording } from "../../config.ts";
 import { InBox, useBoxPorts } from "./box-ports.tsx";
 import { composer } from "./prompt-box.fixtures.ts";
-import { RoomDockView } from "./room.view.tsx";
+import { RoomDockView } from "./prompt-box.view.tsx";
 import { ScreenStory, storyScreen } from "./screen-story.tsx";
 
 // Crisp is picked in the draft, so the forward button names it.

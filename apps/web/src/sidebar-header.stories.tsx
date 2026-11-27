@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, userEvent, within } from "storybook/test";
-import { wording } from "../../config.ts";
-import { ProjectMenuView } from "../project-menu.view.tsx";
+import { wording } from "./config.ts";
+import { ProjectMenuView } from "./pages/project-menu.view.tsx";
 import { SidebarHeader } from "./sidebar-header.tsx";
 
 const words = wording.projectShell;

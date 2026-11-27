@@ -13,7 +13,7 @@ import {
   type RepositoryImport,
   type SuggestedReason,
 } from "@corbits-builder/schemas/repository-import";
-import { wording } from "../config.ts";
+import { wording, type SettingsTab } from "../config.ts";
 import { ApiFailure, type ProjectSummary } from "../api/types.ts";
 import {
   createProject,
@@ -38,7 +38,6 @@ import { composerKey, moveUnsent, useUnsent } from "../unsent.ts";
 import { canStartProject } from "./home-view.ts";
 import { useNewProjectProfiles } from "./new-project-profiles.model.ts";
 import type { AddProviderDialogProps } from "./settings/add-provider-dialog.model.ts";
-import type { SettingsTab } from "./settings/settings.view.tsx";
 import type { FolderReading, ProjectsViewProps } from "./projects.view.tsx";
 import { useCoverPages } from "./project-cover.model.ts";
 import { libraryProject } from "./project-library.model.ts";

@@ -11,7 +11,7 @@ import {
   type ComposerDock,
 } from "./prompt-box.fixtures.ts";
 import { QuestionsCard } from "./questions-card.tsx";
-import { RoomDockView } from "./room.view.tsx";
+import { RoomDockView } from "./prompt-box.view.tsx";
 
 /** What waits on the person, one card at a time: the box only frames it. */
 const waits = {

@@ -2,7 +2,7 @@
  * What Settings does: keeps the open tab in `?tab=` beside `?view=settings`, so each one can be
  * linked, reads and writes the look this browser keeps, and signs the person out.
  */
-import { wording } from "../../config.ts";
+import { wording, type SettingsTab } from "../../config.ts";
 import { useTheme } from "@corbits/react-ui";
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -12,11 +12,7 @@ import {
   writeDocumentTips,
 } from "../../document-tips-setting.ts";
 import type { HubUser } from "../../api/auth.ts";
-import type {
-  SettingsSlots,
-  SettingsTab,
-  SettingsViewProps,
-} from "./settings.view.tsx";
+import type { SettingsSlots, SettingsViewProps } from "./settings.view.tsx";
 
 export type SettingsProps = {
   onChanged: () => void;

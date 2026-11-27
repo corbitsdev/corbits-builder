@@ -40,11 +40,11 @@ import {
   type DispatchRoom,
 } from "./dispatch-card.tsx";
 import { humanFault } from "./human-fault.ts";
-import { SLOT, type SpaceScreenProps } from "./plugin-screens.tsx";
+import type { SpaceScreenProps } from "./plugin-screens.tsx";
 import { screenWords } from "./roles.ts";
 import { roomStatus, type RoomStatusFacts } from "./room-status.ts";
-import type { BoxWaiting } from "./room.view.tsx";
-import type { ScreenLookup } from "./screens.ts";
+import type { BoxWaiting } from "./prompt-box.view.tsx";
+import { SLOT, type ScreenLookup } from "./screens.ts";
 import type {
   HostSupplies,
   ListedHostProps,

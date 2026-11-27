@@ -43,9 +43,9 @@ import {
   WrittenDocumentView,
   type WrittenDocumentViewProps,
 } from "./written-document.view.tsx";
+import type { RoomComposer } from "./prompt-box.view.tsx";
 import {
   RoomView,
-  type RoomComposer,
   type RoomContent,
   type RoomViewProps,
 } from "./room.view.tsx";

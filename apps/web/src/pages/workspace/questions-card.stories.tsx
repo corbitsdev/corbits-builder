@@ -6,7 +6,7 @@ import type { PromptQuestion } from "@corbits-builder/schemas/conversation";
 import { expect, fn, within } from "storybook/test";
 import { composer } from "./prompt-box.fixtures.ts";
 import { QuestionsCard } from "./questions-card.tsx";
-import { RoomDockView } from "./room.view.tsx";
+import { RoomDockView } from "./prompt-box.view.tsx";
 
 const ask: PromptQuestion["asked"] = {
   questions: [

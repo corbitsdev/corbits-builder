@@ -9,8 +9,8 @@ import { SidebarItem } from "@corbits/react-ui";
 import type { LucideIcon } from "lucide-react";
 import { useId, type ReactNode } from "react";
 import { wording } from "./config.ts";
-import { SidebarHeader } from "./pages/workspace/sidebar-header.tsx";
-import { SidebarShell } from "./pages/workspace/sidebar-shell.tsx";
+import { SidebarHeader } from "./sidebar-header.tsx";
+import { SidebarShell } from "./sidebar-shell.tsx";
 import styles from "./workspace-sidebar.module.css";
 
 export type WorkspaceSidebarViewProps = {

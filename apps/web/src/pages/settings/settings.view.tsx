@@ -9,7 +9,7 @@
  * other tabs' sections are the library's `Section`; their rows are
  * `SettingsRow`s. The sections that read the hub arrive as slots.
  */
-import { wording } from "../../config.ts";
+import { wording, type SettingsTab } from "../../config.ts";
 import {
   Button as UiButton,
   Section,
@@ -37,8 +37,6 @@ import {
 } from "../../components.jsx";
 import { openSourceNotices } from "../../open-source.ts";
 import styles from "./settings.module.css";
-
-export type SettingsTab = keyof typeof wording.settings.tab;
 
 const SETTINGS_TABS: readonly { id: SettingsTab; label: string }[] = [
   { id: "providers", label: wording.settings.tab.providers },

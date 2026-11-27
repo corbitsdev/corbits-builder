@@ -11,8 +11,8 @@ import {
   ScreenActionBuilder,
   SpecialistBuilder,
 } from "@corbits-builder/plugin";
+import type { ScreenRender } from "@corbits-builder/schemas/project";
 import { byAction, pluginFolder } from "./roles.ts";
-import { SLOT } from "./plugin-screens.tsx";
 import {
   listedHost,
   screenHost,
@@ -20,6 +20,12 @@ import {
   type ViewResources,
   type ScreenHostProps,
 } from "./screen-question.tsx";
+
+export const SLOT = {
+  "main-page": "page",
+  "inline-chat": "chat",
+  "plugin-bar": "tab",
+} as const satisfies Record<ScreenRender, "page" | "chat" | "tab">;
 
 /** The plugins' files the interface bundles, by path from this folder. */
 export type ScreenFiles = {

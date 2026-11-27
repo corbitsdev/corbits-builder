@@ -20,8 +20,15 @@ import { DevicePreview, type PreviewDevice } from "./device-preview.tsx";
 import type { RetainedVersion } from "./document-versions.ts";
 import type { PassageQuote } from "./passage-quote.ts";
 import { versionGroup } from "./version-menu.tsx";
-import { useVersionReading } from "./version-reading.ts";
-import { useApproveGroup } from "./approve-group.ts";
+import {
+  useVersionReading,
+  type LoadedDeliverable,
+  type ReadVersion,
+} from "./version-reading.ts";
+import {
+  useApproveGroup,
+  type DocumentApprovalControl,
+} from "./approve-group.ts";
 import { VersionNotes } from "./version-notes.tsx";
 import { PaneBar } from "./pane-bar.tsx";
 import {
@@ -33,7 +40,6 @@ import {
   ZIP_TYPE,
   zipFile,
 } from "./pane-file.tsx";
-import type { ApproachesMeta } from "@corbits-builder/schemas/approaches";
 import type { ApproachChoice } from "./approach-choice.ts";
 import type { TweakPanelProps } from "./mockup-tweaks.view.tsx";
 import type {
@@ -44,23 +50,6 @@ import { Fault, InlineNote } from "../../components.jsx";
 import styles from "./deliverable-block.module.css";
 
 export type { RetainedVersion };
-
-/** One version's text, when it was filed and, on an approaches document that filed them, its approaches. */
-export type ReadVersion = {
-  content: string;
-  filedAt: string;
-  approaches?: ApproachesMeta;
-};
-
-export type LoadedDeliverable = ReadVersion & {
-  title: string;
-  mediaType: string;
-  version: number;
-  sha256: string;
-  before: (ReadVersion & { version: number }) | null;
-  historyError?: string;
-  versions: readonly RetainedVersion[];
-};
 
 export type DeliverableState =
   | { status: "loading" }
@@ -153,16 +142,6 @@ export type PackageRounds = {
   onOpenSource?: ((kind: string, version: number) => void) | undefined;
   onAddToPrompt?: ((passage: PassageQuote) => void) | undefined;
   onDeliverMessage?: ((message: string) => Promise<boolean | void>) | undefined;
-};
-
-/**
- * The person's approval of the document they read, with no question asking for it: the version
- * approved and when, if any, and how to approve the version on show.
- */
-export type DocumentApprovalControl = {
-  approvedVersion: number | undefined;
-  approvedAt: string | undefined;
-  approve: (version: number) => Promise<void>;
 };
 
 /** The parts of a document that read the hub for themselves, which whoever draws it fills. */

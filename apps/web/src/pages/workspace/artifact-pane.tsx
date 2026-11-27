@@ -14,8 +14,8 @@ import {
   type DeliverableSlots,
   type DeliverableState,
   fillsPane,
-  type ReadVersion,
 } from "./deliverable-block.tsx";
+import type { ReadVersion } from "./version-reading.ts";
 import { type DesignPart } from "./design-preview.view.tsx";
 import type { SidebarFile } from "./files-list.tsx";
 import {
