@@ -55,7 +55,7 @@ export type ProjectsProps = {
 };
 
 /** How many of the projects last worked on show as cards under the prompt. */
-const RECENT_CARDS = 4;
+const RECENT_CARDS = 3;
 
 // Kept apart from every project's own box, since the project does not exist yet; a start that
 // fails leaves it here for the next.
