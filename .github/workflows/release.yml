@@ -46,7 +46,7 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           channel=latest
-          if [[ "$VERSION" == 0.* || "$VERSION" == *-* ]]; then
+          if [[ "$VERSION" == *-* ]]; then
             channel=rc
           fi
           for image in "$HUB_IMAGE" "$SIDECAR_IMAGE"; do
@@ -72,7 +72,7 @@ jobs:
           Choose a channel with \`BUILDER_VERSION\`: \`$VERSION\` pins this release, \`rc\` follows the newest release candidate, \`latest\` the newest stable release and \`main\` every merge. [docs/SELF_HOST.md](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/docs/SELF_HOST.md) covers self-hosting.
           EOF
           prerelease=()
-          if [[ "$VERSION" == 0.* || "$VERSION" == *-* ]]; then
+          if [[ "$VERSION" == *-* ]]; then
             prerelease=(--prerelease)
           fi
           gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag \
