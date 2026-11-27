@@ -51,7 +51,7 @@ import type {
   ProjectValuesStore,
 } from "./screen-question.tsx";
 import type { SeenVersions } from "./seen-versions.ts";
-import type { OpenApproval } from "./settled-approvals.ts";
+import type { OpenApproval } from "./collaboration.ts";
 import type { StatusPillContent } from "./status-pill.tsx";
 import type { TypedYes } from "./approval-reply.ts";
 import { workPhrase } from "./work-unit.ts";

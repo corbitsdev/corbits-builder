@@ -1,10 +1,14 @@
-import { expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import "./plugin-roles.testing.ts";
+import type { InFlightRun } from "@corbits-builder/schemas/artifact";
 import {
+  askedOf,
   dispatchLive,
   dispatchStatus,
   dispatchesOf,
+  endedRuns,
   noteDispatches,
+  unseenRuns,
   type Dispatch,
   type DispatchRoom,
   type RunEnd,
@@ -25,6 +29,14 @@ const room = (state: "working" | "waiting" | "approval"): DispatchRoom => ({
   failed: [],
   seen: new Map(),
 });
+
+const coderRun: InFlightRun = {
+  runId: "run-coder",
+  role: "coder",
+  startedAt: "2026-11-02T01:41:25.000Z",
+  status: "running",
+  state: "working",
+};
 
 const [coder] = dispatchesOf(
   {
@@ -138,4 +150,87 @@ test("a hand-off not noted yet counts as seen now, so what was filed before it i
     ended: new Map([["run-w", { status: "completed" }]]),
   };
   expect(dispatchStatus(writer, room).state).not.toBe("ready");
+});
+
+describe("what a held run asked the person", () => {
+  test("its packages when it asks to install them, else its tool by name", () => {
+    expect(
+      askedOf([
+        {
+          runId: "run-coder",
+          approvalId: "appr-1",
+          toolName: "coder.install",
+          packages: ["zod", "date-fns"],
+        },
+        {
+          runId: "run-browser",
+          approvalId: "appr-2",
+          toolName: "browser.open_page",
+        },
+      ]),
+    ).toEqual(
+      new Map([
+        ["run-coder", "installing zod, date-fns"],
+        ["run-browser", "its use of open page"],
+      ]),
+    );
+  });
+
+  test("a run parked on anything but an approval asked nothing, and an unread list asks nothing", () => {
+    expect(askedOf([{ runId: "run-c", park: { seq: 3 } }]).size).toBe(0);
+    expect(askedOf(undefined).size).toBe(0);
+  });
+});
+
+describe("runs with no hand-off in view", () => {
+  const run = (
+    runId: string,
+    role: string,
+    startedAt: string,
+  ): InFlightRun => ({
+    runId,
+    role,
+    startedAt,
+    status: "running",
+    state: "working",
+  });
+  const writer = run("run-writer", "writer", "2026-11-02T01:40:00.000Z");
+  const designer = run("run-designer", "designer", "2026-11-02T01:42:00.000Z");
+
+  test("a run its hand-off names gets no second card; any other is placed at its start", () => {
+    const placed = unseenRuns([writer, designer, coderRun], [coder]);
+    expect(placed).toEqual([
+      {
+        at: Date.parse("2026-11-02T01:40:00.000Z"),
+        dispatch: expect.objectContaining({ runId: "run-writer" }),
+      },
+      {
+        at: Date.parse("2026-11-02T01:42:00.000Z"),
+        dispatch: expect.objectContaining({ runId: "run-designer" }),
+      },
+    ]);
+  });
+
+  test("a hand-off whose call has not said which run it started covers its role's run", () => {
+    const { runId: _runId, ...starting } = coder;
+    expect(unseenRuns([coderRun, writer], [starting])).toEqual([
+      {
+        at: Date.parse("2026-11-02T01:40:00.000Z"),
+        dispatch: expect.objectContaining({ runId: "run-writer" }),
+      },
+    ]);
+  });
+});
+
+test("a run stopped here reads as cancelled before its stream says how it ended", () => {
+  const ended = endedRuns(
+    new Map([["run-writer", { status: "completed" }]]),
+    new Set(["run-coder"]),
+  );
+  expect(ended).toEqual(
+    new Map([
+      ["run-writer", { status: "completed" }],
+      ["run-coder", { status: "cancelled" }],
+    ]),
+  );
 });

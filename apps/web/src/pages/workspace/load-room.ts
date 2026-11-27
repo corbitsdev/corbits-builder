@@ -26,6 +26,7 @@ import { keys } from "../../queries/keys.ts";
 import { documentReadFailure } from "./document-read.ts";
 import { APPROVAL_PACKAGE_MEDIA_TYPE } from "./approval-package.ts";
 import { DESIGN_MEDIA_TYPE } from "./design-bundle.ts";
+import { filedArtifact } from "./pane-documents.ts";
 import { humanFault } from "../../human-fault.ts";
 import type { DeliverableState } from "./deliverable-block.tsx";
 import type { LoadedDeliverable } from "./version-reading.ts";
@@ -60,6 +61,10 @@ export function roomDocumentKey(
     artifact.sha256,
   ]);
 }
+
+/** The key of the document loaded for an artifact as the pane names it. */
+export const paneDocumentKey = (projectId: string, item: ProjectArtifact) =>
+  roomDocumentKey(projectId, filedArtifact(item));
 
 const DESIGN_KINDS = new Set(["design", "design_option"]);
 const MATERIAL_KIND = "material";

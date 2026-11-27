@@ -1,7 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { wording } from "../../config.ts";
 import { statusRooms as rooms } from "./sample-projects.testing.ts";
-import { roomStatus, rules } from "./room-status.ts";
+import { emptyLiveRun, foldLiveRun, type LiveRun } from "./live-run.ts";
+import {
+  lastSentAt,
+  roomPhase,
+  roomStatus,
+  rules,
+  type RoomPhaseFacts,
+} from "./room-status.ts";
 
 const text = wording.promptBox.status;
 
@@ -124,5 +131,197 @@ describe("what the status line says", () => {
 
   test("an app still starting says nothing on its own", () => {
     expect(roomStatus(rooms.appStarting)).toBeNull();
+  });
+});
+
+describe("when the person last wrote", () => {
+  const turns = [
+    { role: "person" as const, text: "Make a weather app", at: 10 },
+    { role: "assistant" as const, text: "On it.", at: 20 },
+  ];
+
+  test("their latest turn, until a later send of theirs has not landed yet", () => {
+    expect(lastSentAt(null, turns)).toBe(10);
+    expect(lastSentAt(30, turns)).toBe(30);
+    expect(lastSentAt(5, turns)).toBe(10);
+  });
+
+  test("a send before any turn of theirs, or never", () => {
+    expect(lastSentAt(30, [])).toBe(30);
+    expect(lastSentAt(null, [])).toBeNull();
+  });
+});
+
+describe("where the room stands with its coordinator", () => {
+  const talked = [
+    { role: "person" as const, text: "Make a weather app", at: 10 },
+    { role: "assistant" as const, text: "Which cities?", at: 20 },
+  ];
+  const quiet: RoomPhaseFacts = {
+    status: "active",
+    bound: true,
+    mirror: talked,
+    lastTurnRole: "assistant",
+    liveRun: emptyLiveRun,
+    runId: "run-c",
+    waits: [],
+    openApprovals: new Set(),
+    questionOpen: false,
+    coordinator: undefined,
+    sending: false,
+    approvalBusy: false,
+    failed: false,
+    awaitingSince: null,
+    startFault: null,
+    modelNeeded: false,
+    providerMissing: false,
+  };
+  // The person wrote at 30 and no reply has come.
+  const unanswered: RoomPhaseFacts = {
+    ...quiet,
+    lastTurnRole: "person",
+    awaitingSince: 30,
+  };
+  const heldOnApproval: Pick<RoomPhaseFacts, "waits" | "openApprovals"> = {
+    waits: [{ runId: "run-c", tenantId: "tenant-1", approvalId: "appr-1" }],
+    openApprovals: new Set(["appr-1"]),
+  };
+  const writing: LiveRun = [
+    { type: "message.run.started" },
+    { type: "inference.start" },
+    {
+      type: "inference.text.delta",
+      data: { partial: { text: "Checking the forecast API", toolCalls: [] } },
+    },
+  ].reduce((run, event) => foldLiveRun(run, event, null).run, emptyLiveRun);
+
+  test("a quiet room neither thinks nor keeps the composer waiting", () => {
+    expect(roomPhase(quiet)).toMatchObject({
+      thinking: false,
+      streaming: false,
+      unbound: false,
+      composerWaits: false,
+      composerDisabled: false,
+    });
+  });
+
+  test("a message with no reply yet keeps the thinking mark", () => {
+    expect(roomPhase(unanswered)).toMatchObject({
+      awaiting: true,
+      thinking: true,
+    });
+  });
+
+  test("a coordinator held on its own approval is not thinking, though the hub has it at work", () => {
+    const phase = roomPhase({
+      ...unanswered,
+      ...heldOnApproval,
+      coordinator: { since: "2026-11-20T10:00:00Z" },
+    });
+    expect(phase).toMatchObject({
+      parked: true,
+      held: true,
+      working: true,
+      awaiting: false,
+      thinking: false,
+    });
+  });
+
+  test("a reply being written streams until the coordinator parks on its approval", () => {
+    expect(roomPhase({ ...quiet, liveRun: writing }).streaming).toBe(true);
+    expect(
+      roomPhase({ ...quiet, ...heldOnApproval, liveRun: writing }).streaming,
+    ).toBe(false);
+  });
+
+  test("an open question holds the coordinator before the decisions are read", () => {
+    expect(
+      roomPhase({ ...unanswered, waits: undefined, questionOpen: true }),
+    ).toMatchObject({ parked: true, held: true, thinking: false });
+  });
+
+  test("the hub's read of the coordinator at work counts only for a run begun after the stream saw one end", () => {
+    const ended = {
+      ...emptyLiveRun,
+      endedAt: Date.parse("2026-11-20T10:00:00Z"),
+    };
+    const since = (at: string) =>
+      roomPhase({ ...quiet, liveRun: ended, coordinator: { since: at } });
+    expect(since("2026-11-20T10:05:00Z")).toMatchObject({
+      working: true,
+      thinking: true,
+    });
+    expect(since("2026-11-20T09:55:00Z")).toMatchObject({
+      working: false,
+      thinking: false,
+    });
+  });
+
+  test("a project between coordinators reads as at work and keeps the composer waiting", () => {
+    expect(roomPhase({ ...quiet, bound: false })).toMatchObject({
+      unbound: true,
+      between: true,
+      thinking: true,
+      awaitingBind: true,
+      composerWaits: true,
+    });
+  });
+
+  test("a new project waits for its first coordinator without the thinking mark", () => {
+    expect(roomPhase({ ...quiet, bound: false, mirror: [] })).toMatchObject({
+      between: false,
+      thinking: false,
+      awaitingBind: true,
+      composerWaits: true,
+    });
+  });
+
+  test("a refused start, or no model to run on, stops waiting on the coordinator", () => {
+    for (const refused of [
+      { startFault: "The coordinator for this project did not start." },
+      { modelNeeded: true },
+    ])
+      expect(
+        roomPhase({ ...unanswered, bound: false, ...refused }),
+      ).toMatchObject({
+        between: false,
+        awaitingBind: false,
+        awaiting: false,
+        thinking: false,
+      });
+  });
+
+  test("an archived project neither thinks over an unanswered message nor waits to bind", () => {
+    expect(
+      roomPhase({
+        ...unanswered,
+        status: "archived",
+        bound: false,
+        mirror: [],
+        runId: null,
+      }),
+    ).toMatchObject({ awaiting: false, thinking: false, awaitingBind: false });
+  });
+
+  test("a coordinator that stopped before it replied drops the thinking mark", () => {
+    expect(roomPhase({ ...unanswered, failed: true })).toMatchObject({
+      awaiting: true,
+      thinking: false,
+    });
+  });
+
+  test("a decision on its way keeps the composer waiting without the thinking mark", () => {
+    expect(roomPhase({ ...quiet, approvalBusy: true })).toMatchObject({
+      busy: true,
+      composerWaits: true,
+      thinking: false,
+    });
+  });
+
+  test("no model provider disables the composer without it waiting", () => {
+    expect(roomPhase({ ...quiet, providerMissing: true })).toMatchObject({
+      composerWaits: false,
+      composerDisabled: true,
+    });
   });
 });

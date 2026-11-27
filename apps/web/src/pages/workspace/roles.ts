@@ -153,6 +153,10 @@ function startedRole(
 /** The role an installed plugin declares by this name. */
 export const roleOf = (name: string) => roles.get(name);
 
+/** A run whose role writes the project's code, whose app the room previews. */
+export const writesCode = (run: { readonly role: string }) =>
+  roleOf(run.role)?.writesCode === true;
+
 /** What a person calls the role a run plays: the coordinator, or the label its plugin gives it. */
 export function roleLabel(name: string): string {
   if (name === COORDINATOR) return wording.speaker.coordinator;
