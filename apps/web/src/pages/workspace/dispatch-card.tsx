@@ -14,10 +14,8 @@ import {
 } from "@corbits-builder/schemas/artifact";
 import { wording } from "../../config.ts";
 import type { CallResult } from "./live-run.ts";
-import type { RunPreview } from "./run-preview.ts";
 import { withEntries } from "./session-memory.ts";
 import { actionRole, roleOf, startingActions } from "./roles.ts";
-import type { PlacedDispatch } from "./transcript.tsx";
 
 const text = wording.dispatch;
 
@@ -177,6 +175,12 @@ export function partsDispatches(
   );
 }
 
+/** A run or filed thing with no hand-off in this session's view, placed at its start or filing. */
+export type PlacedDispatch = {
+  readonly at: number;
+  readonly dispatch: Dispatch;
+};
+
 export type DispatchRoom = {
   readonly artifacts: readonly ProjectArtifact[];
   readonly inFlight: readonly InFlightRun[];
@@ -197,6 +201,10 @@ export type DispatchRoom = {
   /** What each run held on an open approval asked the person, by run id. */
   readonly asked?: ReadonlyMap<string, string>;
 };
+
+export type RunPreview =
+  | { readonly kind: "writing"; readonly text: string }
+  | { readonly kind: "thinking"; readonly text: string };
 
 /** A run's status as Interchange reports it, with why when it failed and what blocked it. */
 export type RunEnd = {

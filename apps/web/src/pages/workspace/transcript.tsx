@@ -44,14 +44,17 @@ import {
   type ConversationPart,
   type PartText,
   type PartTool,
-  type ToolApprovalStatus,
 } from "@corbits/react-ui";
 import { Tooltip } from "@corbits/react-ui/ui/tooltip";
 import { commandLine, readStep, type Step } from "./agent-activity.tsx";
 import { DOCUMENT_LINK, Markdown } from "@corbits-builder/plugin-ui/markdown";
 import { toast } from "sonner";
 import styles from "./transcript.module.css";
-import { proseSegments, type NamedDocument } from "./collaboration.ts";
+import {
+  proseSegments,
+  type DocumentApproval,
+  type NamedDocument,
+} from "./collaboration.ts";
 import { DocumentDecision, PackageDecision } from "./document-decision.tsx";
 import { turnLabel, visibleTurnParts } from "./visible-chat.ts";
 import {
@@ -67,7 +70,11 @@ import {
   FoldedUpdatesView,
   SpecialistUpdatesView,
 } from "./specialist-updates.view.tsx";
-import { partsDispatches, type Dispatch } from "./dispatch-card.tsx";
+import {
+  partsDispatches,
+  type Dispatch,
+  type PlacedDispatch,
+} from "./dispatch-card.tsx";
 import { workUnits, type WorkUnit } from "./work-unit.ts";
 import {
   inProgress,
@@ -111,24 +118,6 @@ export type TranscriptTurn =
 export function turnItemId(turn: TranscriptTurn, index: number): string {
   return `${turn.role}:${String(turn.at)}:${String(index)}`;
 }
-
-export type DocumentApproval = {
-  approvalId: string;
-  toolName?: string;
-  /** The ask's main argument, such as the address a browser tool opens. */
-  subject?: string;
-  packages?: readonly string[];
-  /** When the native approval was raised, in ms; its card sits there in the thread. */
-  at?: number;
-  /** How the native record settled it, once it is no longer pending. */
-  outcome?: ApprovalOutcome;
-};
-
-export type ApprovalOutcome = {
-  readonly status: Exclude<ToolApprovalStatus, "pending">;
-  /** "always" when the decision stands for the rest of the run. */
-  readonly scope?: "once" | "always";
-};
 
 function documentHref(id: string): string {
   return `${DOCUMENT_LINK}${encodeURIComponent(id).replace(/[()]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`)}`;
@@ -181,12 +170,6 @@ function readableTool(
 
 /** The item a specialist's row is, its own among the coordinator's steps. */
 const workItemId = (unit: WorkUnit) => `work:${unit.key}`;
-
-/** A run or filed thing with no hand-off in this session's view, placed at its start or filing. */
-export type PlacedDispatch = {
-  readonly at: number;
-  readonly dispatch: Dispatch;
-};
 
 type ThreadItem =
   | { kind: "turn"; turn: TranscriptTurn; index: number }

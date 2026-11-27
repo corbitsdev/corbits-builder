@@ -18,12 +18,12 @@ import {
 } from "../../api/run-stream.ts";
 import { keys } from "../../queries/keys.ts";
 import { finishedCallOf } from "./conversation-parts.ts";
-import { partsDispatches, type RunEnd } from "./dispatch-card.tsx";
+import {
+  partsDispatches,
+  type RunEnd,
+  type RunPreview,
+} from "./dispatch-card.tsx";
 import { resultOf, type CallResult } from "./live-run.ts";
-
-export type RunPreview =
-  | { readonly kind: "writing"; readonly text: string }
-  | { readonly kind: "thinking"; readonly text: string };
 
 type Snapshot = NonNullable<ReturnType<typeof partialOf>>;
 

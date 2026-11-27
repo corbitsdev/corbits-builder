@@ -33,7 +33,7 @@ import { ScreenCard, StepCard } from "./box-cards.tsx";
 import { submit } from "./box-submit.ts";
 import { DocumentDecision, PackageDecision } from "./document-decision.tsx";
 import { QuestionsCard } from "./questions-card.tsx";
-import type { DocumentApproval } from "./transcript.tsx";
+import type { DocumentApproval } from "./collaboration.ts";
 import { TypedYesCountdown, type TypedYes } from "./typed-yes.tsx";
 import { pastedFiles } from "./pasted-files.ts";
 import { ChatSheet, type ChatSheetProps } from "./chat-sheet.tsx";

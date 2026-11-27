@@ -12,6 +12,7 @@ import {
   filedDispatches,
   partsDispatches,
   type DispatchRoom,
+  type RunPreview,
 } from "./dispatch-card.tsx";
 import { committedSteps, emptyLiveRun, foldLiveRun } from "./live-run.ts";
 import {
@@ -21,7 +22,6 @@ import {
   savedResults,
   savedTurnSteps,
   streamedRuns,
-  type RunPreview,
 } from "./run-preview.ts";
 import {
   STEP_STATUS,
