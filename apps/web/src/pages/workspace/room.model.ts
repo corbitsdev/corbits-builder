@@ -10,7 +10,7 @@ import type { AnswerOutcome } from "./question-outcome.tsx";
  * fallback read covers what it cannot see. `useRoomGate` reads the project and
  * its room and starts its coordinator; `useRoom` works on the loaded snapshot.
  */
-import { wording } from "../../config.ts";
+import { wording, type SettingsTab } from "../../config.ts";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   queryOptions,
@@ -147,7 +147,6 @@ import {
 import { useModelCatalog } from "../settings/model-catalog.ts";
 import type { RoomContent, RoomDock } from "./room.view.tsx";
 import { useProjectSidebar } from "./project-sidebar.model.ts";
-import type { SettingsTab } from "../settings/settings.view.tsx";
 import type { MenuProject, ProjectMenuHost } from "../project-menu.model.ts";
 import { parseBundle } from "./design-bundle.ts";
 import { CommentCard } from "./comment-card.tsx";

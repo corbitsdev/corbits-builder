@@ -1673,3 +1673,5 @@ export const wording = {
     overallScope: "Overall",
   },
 } as const;
+
+export type SettingsTab = keyof typeof wording.settings.tab;
