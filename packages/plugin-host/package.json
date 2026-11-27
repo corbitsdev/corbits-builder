@@ -19,6 +19,7 @@
     "./text": "./src/text.ts"
   },
   "dependencies": {
+    "@corbits-builder/plan": "workspace:*",
     "@corbits-builder/plugin": "workspace:*",
     "@corbits-builder/schemas": "workspace:*",
     "@intx/types": "workspace:*",

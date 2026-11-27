@@ -2,7 +2,8 @@
  * Sample projects, as plain data, for the tests of the room's logic files: a project in each state
  * worth telling apart, from one where nothing waits on the person to one where everything does.
  */
-import type { PlanView } from "@corbits-builder/schemas/project";
+import { isFinished } from "@corbits-builder/plan";
+import type { PlanView } from "@corbits-builder/schemas/plan";
 import type { WaitingRoom } from "./waiting.ts";
 import type { RoomStatusFacts } from "./room-status.ts";
 
@@ -22,6 +23,7 @@ function step(
     input: {},
     askFirst: false,
     state,
+    finished: isFinished(state),
     kind: "workflow",
     ...more,
   };
@@ -36,6 +38,7 @@ const bakeryPlan: PlanView["steps"] = [
     id: "build",
     title: "Build",
     state: "needs_you",
+    finished: false,
     steps: [
       step("plan", "Write the build plan", "needs_you", { askFirst: true }),
       step("code", "Build the app", "not_started", { askFirst: true }),
@@ -209,6 +212,7 @@ export const statusRooms = {
         id: "build",
         title: "Build",
         state: "failed",
+        finished: false,
         steps: [step("code", "Build the app", "failed")],
       },
     ],

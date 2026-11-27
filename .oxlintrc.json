@@ -4,9 +4,10 @@
   "options": {
     "denyWarnings": true
   },
-  "jsPlugins": ["./oxlint-plugin.ts"],
+  "jsPlugins": ["./lint/plugin.ts"],
   "rules": {
     "corbits-builder/no-tool-replay": "error",
+    "corbits-builder/no-plan-state-check": "error",
     "eslint/eqeqeq": "error",
     "eslint/prefer-const": "error",
     "eslint/no-var": "error",
@@ -81,6 +82,13 @@
       "files": ["test/**"],
       "rules": {
         "corbits-builder/no-tool-replay": "off"
+      }
+    },
+    // The plan package defines the rule this check guards, and the check names the states it looks for.
+    {
+      "files": ["packages/plan/src/**", "lint/rules/no-plan-state-check.ts"],
+      "rules": {
+        "corbits-builder/no-plan-state-check": "off"
       }
     },
     // Not Builder's processes. The starter is the template a generated app grows from. The app

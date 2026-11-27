@@ -5,7 +5,7 @@ import { toolConsumer } from "@intx/authz";
 import { createNoopCredentialCipher } from "@intx/crypto";
 import { createRunTokenStore } from "@intx/db";
 import { grant } from "@intx/db/schema";
-import type { StoredPlan } from "@corbits-builder/schemas/project";
+import type { StoredPlan } from "@corbits-builder/schemas/plan";
 import { startInProcessHub } from "./support/in-process-hub.ts";
 
 let hub: Awaited<ReturnType<typeof startInProcessHub>>;
@@ -93,4 +93,17 @@ test("a person's decline is never lost to a coordinator's save made at the same 
     expect(await stored(path)).toHaveProperty("declined");
     await personChanges(hub.call("POST", `${path}/plan/steps/build/undecline`));
   }
+});
+
+test("a cancelled step can no longer be declined or set to ask first", async () => {
+  const { path } = await planned();
+  const cancelled = { by: "person", at: new Date(0).toISOString() };
+  await hub.call("PUT", `${path}/plan`, { steps: [{ ...build, cancelled }] });
+  await expect(
+    hub.call("POST", `${path}/plan/steps/build/decline`),
+  ).rejects.toThrow("HTTP 409");
+  await expect(
+    hub.call("POST", `${path}/plan/steps/build/ask-first`, { askFirst: true }),
+  ).rejects.toThrow("HTTP 409");
+  expect(await stored(path)).not.toHaveProperty("declined");
 });

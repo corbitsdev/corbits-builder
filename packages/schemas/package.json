@@ -13,6 +13,7 @@
     "./package-install": "./src/package-install.ts",
     "./installed-workflows": "./src/installed-workflows.ts",
     "./native-specialist": "./src/native-specialist.ts",
+    "./plan": "./src/plan.ts",
     "./project": "./src/project.ts",
     "./project-import": "./src/project-import.ts",
     "./project-status": "./src/project-status.ts",

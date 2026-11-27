@@ -4,7 +4,7 @@
  * another try, then what is new to look at, then the running app. None is checked while the box
  * asks the person something. Plain data in, plain data out, so each rule is tested without a hub.
  */
-import type { PlanView } from "@corbits-builder/schemas/project";
+import type { PlanView } from "@corbits-builder/schemas/plan";
 import { wording } from "../../config.ts";
 
 const text = wording.promptBox.status;

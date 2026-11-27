@@ -21,12 +21,6 @@ import { PUBLISH_ASKED, PUBLISH_GROUP, PublishAsked } from "../go-ahead.ts";
 // The fact the hub records once an app is filed, which the coder does only after its checks pass.
 const APP_FILED = "app_exists";
 
-// A ready-made plan's group has work ahead in these states.
-const AHEAD = new Set(["not_started", "waiting", "running", "needs_you"]);
-// A failed step does not end a publish: what the step needs, such as a change to the app, is often
-// worked on next.
-const UNFINISHED = new Set([...AHEAD, "failed"]);
-
 /**
  * How long the project still counts as busy after work last moved on: a run ended, or the person
  * asked. A publish or a take-down is a chain of hand-offs, and between one step ending and the
@@ -295,12 +289,6 @@ const tookDown = (records: Records, latest: RunRead | undefined) =>
   (records.release === undefined ||
     Date.parse(records.release.at) <= endOf(latest));
 
-// Whether a publish plan's group on the project's plan is in one of states.
-const planIn = (records: Records, states: ReadonlySet<string>) =>
-  records.project.planned.some(
-    ({ plan, state }) => records.plans.includes(plan) && states.has(state),
-  );
-
 // Whether the saved app is newer than the release, with no publishing run started since it went out.
 function isBehind(records: Records, release: PublishRelease) {
   const out = Date.parse(release.at);
@@ -341,13 +329,19 @@ function standing(records: Records): PublishState {
   const live =
     release !== undefined &&
     records.ends.some((fact) => project.facts.has(fact));
-  if (busy(records) && !done && !behind && !live && planIn(records, UNFINISHED))
+  const openPublishPlans = project.planned.filter(
+    ({ plan, finished }) => records.plans.includes(plan) && !finished,
+  );
+  if (busy(records) && !done && !behind && !live && openPublishPlans.length > 0)
     return { state: "publishing" };
   const outcome =
     latest !== undefined && stopped(latest) && !latestRemoves
       ? outcomeOf(latest, release)
       : null;
-  const planAhead = !done && planIn(records, AHEAD);
+  // A failed step keeps its plan open with nothing ahead: what it needs, such as a change to the
+  // app, is often worked on next.
+  const planAhead =
+    !done && openPublishPlans.some(({ state }) => state !== "failed");
   if (live) return { state: "published", url: release.url, at: release.at };
   if (release !== undefined && outcome === "published")
     return { state: "published", url: release.url, at: release.at };

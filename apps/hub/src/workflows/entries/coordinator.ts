@@ -31,12 +31,12 @@ const workflow = createCoordinatorWorkflow({
   agent,
   inference: { literal: parameters },
   grantRequirements: [
-    { resource: "sb-project:*", action: "read", source: "invoker" },
-    { resource: "sb-project:*", action: "manage", source: "invoker" },
-    { resource: "sb-artifact:*", action: "write", source: "invoker" },
-    { resource: "workflow:*", action: "create", source: "invoker" },
-    { resource: "asset:*", action: "read", source: "invoker" },
-    { resource: "credential:*", action: "read", source: "invoker" },
+    { resource: "sb-project:*", action: "read", source: "creator" },
+    { resource: "sb-project:*", action: "manage", source: "creator" },
+    { resource: "sb-artifact:*", action: "write", source: "creator" },
+    { resource: "workflow:*", action: "create", source: "creator" },
+    { resource: "asset:*", action: "read", source: "creator" },
+    { resource: "credential:*", action: "read", source: "creator" },
   ],
 });
 // The directors module of this package: the director the agent names and the compactors it uses.

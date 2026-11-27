@@ -14,7 +14,8 @@ import {
   type ConversationQuestion,
   type QuestionAnswer,
 } from "@corbits-builder/schemas/conversation";
-import type { PlanView, ShownScreen } from "@corbits-builder/schemas/project";
+import type { PlanView } from "@corbits-builder/schemas/plan";
+import type { ShownScreen } from "@corbits-builder/schemas/project";
 import { goAheadPlanStep } from "../../api/artifacts.ts";
 import { keys } from "../../queries/keys.ts";
 import { wording } from "../../config.ts";

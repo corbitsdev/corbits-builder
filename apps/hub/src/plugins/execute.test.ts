@@ -1,6 +1,15 @@
 import { expect, test } from "bun:test";
 import type { RuntimeCapabilities } from "@intx/types/runtime-capabilities";
 import { planState, type PlanRecords } from "@corbits-builder/plugin-host/plan";
+import { isFinished } from "@corbits-builder/plan";
+import {
+  PlanWrite,
+  type PlanChildWrite,
+  type PlanStepWrite,
+  type PlanViewChild,
+  type PlanViewStep,
+  type StoredPlanChild,
+} from "@corbits-builder/schemas/plan";
 import { CATALOG } from "./catalog.ts";
 import { createExecuteTools } from "./tools.ts";
 
@@ -32,7 +41,8 @@ function project(
   following: string[] = [],
   preferences: Record<string, string> = {},
 ) {
-  const state = { artifacts, following, plan: [] as PlanStep[] };
+  const plan: PlanViewStep[] = [];
+  const state = { artifacts, following, plan };
   const deployed: string[] = [];
   const mailed: string[] = [];
   const approvals: unknown[] = [];
@@ -81,7 +91,7 @@ function project(
     }
     if (path.endsWith("/checks")) return Response.json({ checks: [] });
     if (path.endsWith("/plan")) {
-      if (body) state.plan = body.steps.map(stored);
+      if (body) state.plan = PlanWrite.assert(body).steps.map(stored);
       return Response.json({
         steps: state.plan,
         updatedAt: null,
@@ -136,20 +146,38 @@ function project(
   };
 }
 
-// A plan step as the hub stores it with an id, shown as not started.
-type PlanStep = {
-  id?: string;
-  state?: string;
-  kind?: string;
-  steps?: PlanStep[];
-};
+// A plan step as the hub reads it back once saved: given an id, and not started.
 let lastId = 0;
-function stored(step: PlanStep): PlanStep {
-  step.id ??= `s${++lastId}`;
-  step.state = "not_started";
-  if (step.steps) step.steps.forEach(stored);
-  else step.kind = "workflow";
-  return step;
+function storedChild(step: PlanChildWrite): PlanViewChild {
+  const view: PlanViewChild = {
+    id: step.id ?? `s${++lastId}`,
+    title: step.title,
+    plugin: step.plugin,
+    action: step.action,
+    input: step.input,
+    askFirst: step.askFirst,
+    state: "not_started",
+    finished: false,
+    kind: "workflow",
+  };
+  if (step.optional) view.optional = step.optional;
+  if (step.approval) view.approval = step.approval;
+  if (step.requires) view.requires = step.requires;
+  return view;
+}
+const stepsOf = (step: PlanViewStep | undefined) =>
+  step !== undefined && "steps" in step ? step.steps : [];
+function stored(step: PlanStepWrite): PlanViewStep {
+  if (!("steps" in step)) return storedChild(step);
+  const group: PlanViewStep = {
+    id: step.id ?? `s${++lastId}`,
+    title: step.title,
+    state: "not_started",
+    finished: false,
+    steps: step.steps.map(storedChild),
+  };
+  if (step.plan) group.plan = step.plan;
+  return group;
 }
 
 const change = {
@@ -365,6 +393,27 @@ test("a second plan step for coder build with no approval does not let the build
   expect(following.deployed).toEqual([]);
 });
 
+test("a cancelled step no longer holds back its action, though it asked first or was declined", async () => {
+  const cancelledAsk = project([]);
+  cancelledAsk.state.plan = [
+    {
+      id: "looks",
+      title: "Design the looks",
+      plugin: "designer",
+      action: "mockup",
+      input: {},
+      askFirst: true,
+      optional: true,
+      declined: { by: "person", at: new Date(0).toISOString() },
+      cancelled: { by: "person", at: new Date(0).toISOString() },
+      state: "cancelled",
+      finished: true,
+      kind: "workflow",
+    },
+  ];
+  expect((await cancelledAsk.execute(designerMockup)).isError).toBeUndefined();
+});
+
 test("designer mockup starts a designer with nothing filed, unless its build-web-app step waits on the requirements being approved", async () => {
   const alone = project([]);
   expect(
@@ -411,7 +460,7 @@ test("execute on build-web-app is turned to plan add, which puts the plan's step
   expect(added.isError).toBeUndefined();
   expect(idea.state.following).toEqual(["build-web-app"]);
   expect(idea.state.plan).toHaveLength(1);
-  expect(idea.state.plan[0]?.steps).toHaveLength(6);
+  expect(stepsOf(idea.state.plan[0])).toHaveLength(6);
   expect(added.content).toContain(
     "The project is now following the build-web-app plan.",
   );
@@ -432,6 +481,9 @@ test("execute on build-web-app is turned to plan add, which puts the plan's step
     'build-web-app was not added, so the plan was not changed: the project is already following it. Show the plan with plan({ operation: "show" }) to see where its steps stand.',
   );
   expect(idea.state.plan).toHaveLength(1);
+  const shown = await idea.plan({ operation: "show" });
+  expect(shown.content).toContain('"state":"not_started"');
+  expect(shown.content).not.toContain('"finished"');
   const found = await idea.discover({ query: "build me an app" });
   expect(found.content).toContain("This project is following it.");
   expect(found.content).toContain(
@@ -478,9 +530,7 @@ test("on build-web-app, the build plan is drafted while the person reviews a fil
 test("build-web-app asks how many looks before the mockup step; the answer sets the preference and does the step, and handing approvals over skips it", async () => {
   const idea = project([]);
   await idea.plan({ operation: "add", plan: "build-web-app" });
-  const titles = (idea.state.plan[0]?.steps ?? []).map(
-    (step) => "title" in step && step.title,
-  );
+  const titles = stepsOf(idea.state.plan[0]).map(({ title }) => title);
   expect(titles.indexOf("Choose how many looks")).toBe(
     titles.indexOf("Design the look") - 1,
   );
@@ -664,6 +714,108 @@ test("a step whose run ended blocked waits again rather than failing", () => {
   expect(blocked?.state).toBe("waiting");
   expect(blocked && "summary" in blocked ? blocked.summary : "").toBe(
     "The hub refused every file write.",
+  );
+});
+
+test("a group is finished once nothing in it is left to do, so an optional step that ran keeps it open", () => {
+  const at = new Date(0).toISOString();
+  const step = (
+    id: string,
+    marks: Partial<
+      Pick<StoredPlanChild, "cancelled" | "declined" | "goAhead" | "optional">
+    >,
+  ): StoredPlanChild => {
+    const made: StoredPlanChild = {
+      id,
+      title: id,
+      plugin: "designer",
+      action: "mockup",
+      input: {},
+      askFirst: false,
+    };
+    if (marks.cancelled) made.cancelled = marks.cancelled;
+    if (marks.declined) made.declined = marks.declined;
+    if (marks.goAhead) made.goAhead = marks.goAhead;
+    if (marks.optional) made.optional = marks.optional;
+    return made;
+  };
+  const cancelled = (id: string) =>
+    step(id, { cancelled: { by: "person", at } });
+  const optional = step("extra", { optional: true });
+  const groupOf = (steps: StoredPlanChild[], runs: PlanRecords["runs"] = []) =>
+    planState(CATALOG, [{ id: "group", title: "Publish", steps }], {
+      facts: new Set(),
+      personFacts: new Set(),
+      asksApprovals: true,
+      checks: [],
+      runs,
+      questions: [],
+    })[0];
+  expect(
+    groupOf([cancelled("first"), cancelled("second"), optional]),
+  ).toMatchObject({ state: "cancelled", finished: true });
+  const wanted = step("extra", {
+    optional: true,
+    goAhead: { by: "person", at },
+  });
+  expect(groupOf([cancelled("first"), wanted])).toMatchObject({
+    finished: false,
+  });
+  const declined = step("skipped", {
+    optional: true,
+    declined: { by: "person", at },
+  });
+  expect(groupOf([declined, cancelled("publish")])).toMatchObject({
+    state: "cancelled",
+    finished: true,
+  });
+  const blocked = {
+    runId: "run",
+    plugin: "designer",
+    action: "mockup",
+    step: "extra",
+    status: "cancelled" as const,
+    startedAt: at,
+    endedAt: at,
+    blocked: { reason: "The hub refused every file write." },
+  };
+  expect(
+    groupOf([cancelled("first"), cancelled("second"), optional], [blocked]),
+  ).toMatchObject({ state: "waiting", finished: false });
+});
+
+test("the plan offers the optional steps that can start only once nothing else is left to do", async () => {
+  const idea = project([filed("app")]);
+  const step = (
+    id: string,
+    state: PlanViewChild["state"],
+    optional: boolean,
+  ): PlanViewChild => ({
+    id,
+    title: id,
+    plugin: "designer",
+    action: "mockup",
+    input: designerMockup.input,
+    askFirst: false,
+    optional,
+    state,
+    finished: isFinished(state),
+    kind: "workflow",
+  });
+  const tried = step("tried", "failed", true);
+  tried.runId = "run";
+  idea.state.plan = [
+    step("built", "done", false),
+    tried,
+    step("never", "not_started", true),
+    step("held", "waiting", true),
+  ];
+  const offer = "Every other step is done.";
+  expect((await idea.plan({ operation: "show" })).content).not.toContain(offer);
+  tried.state = "done";
+  tried.finished = true;
+  expect((await idea.plan({ operation: "show" })).content).toContain(
+    'yes or no before saying the work is done, and say which they left out: "never".',
   );
 });
 

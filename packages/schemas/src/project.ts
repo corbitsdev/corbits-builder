@@ -3,7 +3,7 @@ import { ArtifactKindWrite, DocumentContent } from "./artifact.ts";
 import { ProfileId } from "./models.ts";
 
 export const ProjectId = type(/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/);
-const text = type("string > 0").atMostLength(2000);
+export const text = type("string > 0").atMostLength(2000);
 const opening = type("string > 0").atMostLength(64 * 1024);
 export const ProjectMutation = type.or(
   {
@@ -95,94 +95,6 @@ export const ProjectShipReceipt = type({
 });
 export type ProjectShipReceipt = typeof ProjectShipReceipt.infer;
 
-// The plan the coordinator and the person keep for a project: the plugin actions still to run, in
-// order. A step is either an action step or a group that only holds action steps, one level deep.
-const PlanStepId = type(/^[A-Za-z0-9_-]{1,32}$/);
-const PlanMark = type({ "+": "reject", by: "string > 0", at: "string > 0" });
-const PlanStepBody = type({
-  "+": "reject",
-  title: text,
-  plugin: "string > 0",
-  action: "string > 0",
-  input: "Record<string, unknown>",
-  // The person wants to be consulted before this step starts.
-  askFirst: "boolean",
-  "goAhead?": PlanMark,
-  "cancelled?": PlanMark,
-  // Whether the person may decline the step, as the ready-made plan it came from or the
-  // coordinator that wrote it says.
-  "optional?": "boolean",
-  // The step's gate. approval holds it until the person approves each document kind in of, or
-  // chooses a design for "design": required always on the person's own answer, optional only while
-  // they decide approvals; without approval it asks for none. requires is what the step suggests
-  // having first, passed on as advice when it starts without it.
-  "approval?": {
-    "+": "reject",
-    of: type("string > 0").array().atLeastLength(1),
-    when: "'required' | 'optional'",
-  },
-  "requires?": type("string > 0").array(),
-  // The person said no to an optional step; it stays declined until they restore it.
-  "declined?": PlanMark,
-  // The person answered the step's screen, which does a screen step.
-  "answered?": PlanMark,
-});
-const StoredPlanChild = PlanStepBody.merge({ "+": "reject", id: PlanStepId });
-export type StoredPlanChild = typeof StoredPlanChild.infer;
-// The handle of the ready-made plan a group was added as; the project follows that plan while the
-// group is on the plan.
-const readyPlan = "string > 0";
-// A group names no action and starts nothing; where it stands is worked out from its steps.
-const StoredPlanGroup = type({
-  "+": "reject",
-  id: PlanStepId,
-  title: text,
-  "plan?": readyPlan,
-  steps: StoredPlanChild.array(),
-});
-export type StoredPlanGroup = typeof StoredPlanGroup.infer;
-export const StoredPlanStep = StoredPlanChild.or(StoredPlanGroup);
-export type StoredPlanStep = typeof StoredPlanStep.infer;
-export const StoredPlan = type({
-  "+": "reject",
-  steps: StoredPlanStep.array(),
-  updatedAt: "string > 0",
-});
-export type StoredPlan = typeof StoredPlan.infer;
-const PlanStepStateName = type(
-  "'done' | 'failed' | 'running' | 'needs_you' | 'waiting' | 'not_started' | 'skipped' | 'cancelled'",
-);
-export type PlanStepStateName = typeof PlanStepStateName.infer;
-// Where a step stands, worked out from the project's records each time the plan is read.
-const PlanStepState = type({
-  "+": "reject",
-  state: PlanStepStateName,
-  kind: "'workflow' | 'screen' | 'check'",
-  // One plain line: the check's summary, the run's last activity, or why it failed.
-  "summary?": "string > 0",
-  "evidence?": "string[]",
-  // While it waits, each requirement that does not hold, with what would make it true.
-  "needs?": "string[]",
-  "startedAt?": "string > 0",
-  "endedAt?": "string > 0",
-  // The latest run or check record for the step.
-  "runId?": "string > 0",
-  "checkId?": "string > 0",
-  // What the step makes, as its action's returns name it for its input: the kinds of document it
-  // files, and "app" for the app.
-  "makes?": "string[]",
-});
-const PlanViewChild = StoredPlanChild.merge(PlanStepState);
-// The plan as read, each step with where it stands: no steps and no time when none was ever saved.
-const PlanViewGroup = type({
-  "+": "reject",
-  id: PlanStepId,
-  title: text,
-  "plan?": readyPlan,
-  state: PlanStepStateName,
-  "needs?": "string[]",
-  steps: PlanViewChild.array(),
-});
 export const ScreenRender = type("'main-page' | 'inline-chat' | 'plugin-bar'");
 export type ScreenRender = typeof ScreenRender.infer;
 // Where a screen shown in its own tab stands, in a word or two, which the room shows beside the plan
@@ -244,33 +156,6 @@ export const AskedScreen = type({
   data: "unknown",
 });
 export type AskedScreen = typeof AskedScreen.infer;
-export const PlanView = type({
-  "+": "reject",
-  steps: PlanViewChild.or(PlanViewGroup).array(),
-  updatedAt: "string | null",
-  // Only a person's read lists them, since a screen's state may hold what no model may read.
-  screens: ShownScreen.array(),
-  // What the hub prepared for the screens of the coordinator's questions, by each question's
-  // signal, for those that prepare from the project; only a person's read lists them too.
-  asked: AskedScreen.array(),
-});
-export type PlanView = typeof PlanView.infer;
-// A saved step may leave its id out; the hub assigns one.
-const PlanChildWrite = PlanStepBody.merge({
-  "+": "reject",
-  "id?": PlanStepId,
-});
-export type PlanChildWrite = typeof PlanChildWrite.infer;
-export const PlanStepWrite = PlanChildWrite.or({
-  "+": "reject",
-  "id?": PlanStepId,
-  title: text,
-  "plan?": readyPlan,
-  steps: PlanChildWrite.array(),
-});
-export type PlanStepWrite = typeof PlanStepWrite.infer;
-export const PlanWrite = type({ "+": "reject", steps: PlanStepWrite.array() });
-export type PlanWrite = typeof PlanWrite.infer;
 
 // A portable project: every filed document at its current version. approved
 // says a person approved exactly that version; importing the file is the

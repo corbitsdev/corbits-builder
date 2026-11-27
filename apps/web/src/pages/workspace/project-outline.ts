@@ -5,7 +5,8 @@
  * as the sidebar's rows. It knows no plan, plugin or kind of document: whatever the coordinator
  * saved is listed as it is.
  */
-import type { PlanView } from "@corbits-builder/schemas/project";
+import { isDeclined } from "@corbits-builder/plan";
+import type { PlanView } from "@corbits-builder/schemas/plan";
 import type { LiveApp } from "@corbits-builder/schemas/artifact";
 import { LIVE_TAB } from "./tab-follow.ts";
 
@@ -70,25 +71,23 @@ export type Outline = {
 };
 
 function stepState(step: PlanChild): OutlineStepState {
-  if (step.declined !== undefined) return "declined";
+  // Finished without being done means it will not happen.
+  if (step.declined !== undefined || (step.finished && step.state !== "done"))
+    return "declined";
   switch (step.state) {
     case "done":
     case "failed":
     case "running":
     case "needs_you":
       return step.state;
-    case "skipped":
-    case "cancelled":
-      return "declined";
-    case "waiting":
-    case "not_started":
+    default:
       return "to_do";
   }
 }
 
 /** A step: where it stands, and which of its settings the person can still change. */
 export function outlineStep(step: PlanChild): OutlineStep {
-  const declined = step.declined !== undefined;
+  const declined = isDeclined(step);
   const mayAsk =
     !declined &&
     step.cancelled === undefined &&
@@ -97,9 +96,7 @@ export function outlineStep(step: PlanChild): OutlineStep {
       step.state === "needs_you");
   const mayDecline =
     declined ||
-    (step.optional === true &&
-      step.state !== "done" &&
-      step.state !== "running");
+    (step.optional === true && !step.finished && step.state !== "running");
   return {
     id: step.id,
     name: step.title,

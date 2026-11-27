@@ -25,6 +25,9 @@ others:
   approaches filed with a document version.
 - `project.ts`, `project-status.ts`, `project-import.ts`: project listing,
   live run state and imported project files.
+- `plan.ts`: the shapes of the project's plan and where each step and group
+  stands; the rules for when its work is finished are in
+  [`@corbits-builder/plan`][plan].
 - `conversation.ts`, `activity.ts`: chat mail and tool activity on the wire.
 - `models.ts`, `settings.ts`, `preferences.ts`: providers,
   profiles and per-person settings.
@@ -41,3 +44,4 @@ client in the same change. `bun run typecheck` checks every importer and
 [hub]: https://github.com/corbitsdev/corbits-builder/tree/main/apps/hub
 [client]: https://github.com/corbitsdev/corbits-builder/tree/main/packages/client
 [web]: https://github.com/corbitsdev/corbits-builder/tree/main/apps/web
+[plan]: https://github.com/corbitsdev/corbits-builder/tree/main/packages/plan

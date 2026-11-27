@@ -67,6 +67,14 @@ describe("a step's row", () => {
     expect(declined("running", true)).toBeNull();
     expect(declined("done", true)).toBeNull();
     expect(declined("not_started", false)).toBeNull();
+    const mark = { by: "person", at: "2026-11-20T10:00:00Z" };
+    const cancelled = planStep("step", "cancelled", {
+      optional: true,
+      cancelled: mark,
+    });
+    expect(outlineStep(cancelled).declined).toBeNull();
+    cancelled.declined = mark;
+    expect(outlineStep(cancelled).declined).toBeNull();
   });
 });
 

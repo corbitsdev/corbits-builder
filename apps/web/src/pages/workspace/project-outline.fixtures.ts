@@ -3,7 +3,8 @@
  * way, a plan the coordinator wrote whose steps mostly make nothing, and one whose app runs, for the
  * outline's tests and the room's stories.
  */
-import type { PlanView } from "@corbits-builder/schemas/project";
+import { isFinished } from "@corbits-builder/plan";
+import type { PlanView } from "@corbits-builder/schemas/plan";
 import type { OutlineInput } from "./project-outline.ts";
 
 type PlanChild = Exclude<PlanView["steps"][number], { steps: unknown }>;
@@ -22,6 +23,7 @@ export const planStep = (
   askFirst: false,
   kind: "workflow",
   state,
+  finished: isFinished(state),
   ...fields,
 });
 
@@ -30,7 +32,14 @@ export const planGroup = (
   title: string,
   steps: PlanChild[],
   fields: Partial<PlanGroup> = {},
-): PlanGroup => ({ id, title, state: "running", steps, ...fields });
+): PlanGroup => ({
+  id,
+  title,
+  state: "running",
+  finished: false,
+  steps,
+  ...fields,
+});
 
 /** Something the project view can open, by the kind its tab is named for. */
 export const filed = (id: string) => ({ id });

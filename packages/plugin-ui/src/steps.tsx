@@ -4,18 +4,13 @@
  * clock come in as props; a row opens by the browser's own disclosure.
  */
 import type { ReactNode } from "react";
+import type {
+  PlanStepApproval,
+  PlanStepStateName,
+} from "@corbits-builder/schemas/plan";
 import styles from "./steps.module.css";
 
-export type StepState =
-  | "done"
-  | "failed"
-  | "running"
-  | "needs_you"
-  | "waiting"
-  | "not_started"
-  | "skipped"
-  | "cancelled"
-  | "declined";
+export type StepState = PlanStepStateName | "declined";
 
 export type StepFields = {
   id: string;
@@ -32,9 +27,7 @@ export type StepFields = {
   /** The person may decline it. */
   optional?: boolean | undefined;
   /** The documents it waits for the person to approve before it starts, always or only if they asked. */
-  approval?:
-    | { of: readonly string[]; when: "required" | "optional" }
-    | undefined;
+  approval?: PlanStepApproval | undefined;
   /** When the step started, as a timestamp. */
   startedAt?: string | undefined;
 };

@@ -5,7 +5,7 @@
  */
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { PlanView } from "@corbits-builder/schemas/project";
+import type { PlanView } from "@corbits-builder/schemas/plan";
 import type { MenuProject, ProjectMenuHost } from "../project-menu.model.ts";
 import type { SettingsTab } from "../settings/settings.view.tsx";
 import { fileRows, type PaneDocument } from "./artifact-pane.tsx";

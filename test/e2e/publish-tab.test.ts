@@ -7,7 +7,7 @@ import { toolConsumer } from "@intx/authz";
 import { createNoopCredentialCipher } from "@intx/crypto";
 import { createRunTokenStore } from "@intx/db";
 import { grant } from "@intx/db/schema";
-import type { PlanView } from "@corbits-builder/schemas/project";
+import type { PlanView } from "@corbits-builder/schemas/plan";
 
 // The hub reads its plugins once, from the repository's plugins folder, when it loads. A place to
 // publish to is copied there: the hoster fixture and its plan, listed in the publish group, and
@@ -112,4 +112,40 @@ test("a run's read of the plan lists no screen and nothing prepared for one, sin
   );
   expect(read.screens).toEqual([]);
   expect(read.asked).toEqual([]);
+});
+
+test("a publish whose early step the person cancelled is paused while a required step is still to do", async () => {
+  const { path } = await savedApp();
+  const at = new Date().toISOString();
+  await hub.call("PUT", `${path}/plan`, {
+    steps: [
+      {
+        title: "Publish to Cloudflare",
+        plan: "publish-to-cloudflare",
+        steps: [
+          {
+            plugin: "cloudflare",
+            action: "ready",
+            title: "Check your app is ready for Cloudflare",
+            input: {},
+            askFirst: false,
+            cancelled: { by: "person", at },
+          },
+          {
+            plugin: "cloudflare",
+            action: "publish",
+            title: "Publish the app to Cloudflare",
+            input: {
+              instruction:
+                "Publish the project's saved app to Cloudflare and report the address people open it at.",
+            },
+            askFirst: false,
+          },
+        ],
+      },
+    ],
+  });
+  expect((await publishTab(path))?.state).toMatchObject({
+    state: { state: "stalled" },
+  });
 });

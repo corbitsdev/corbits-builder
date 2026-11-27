@@ -5,7 +5,7 @@
  * opens, in this order, in the plugin space. Plain data in, plain data out, so each rule is tested
  * without a hub.
  */
-import type { PlanView } from "@corbits-builder/schemas/project";
+import type { PlanView } from "@corbits-builder/schemas/plan";
 
 /** A plugin's screen, by the plugin and action that draw it, with what the person calls it. */
 export type WaitingScreenSource = {

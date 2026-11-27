@@ -4,7 +4,7 @@ import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 import { wording } from "../../config.ts";
 import { AppView } from "../../App.view.tsx";
 import app from "../../App.stories.tsx";
-import type { PlanView } from "@corbits-builder/schemas/project";
+import type { PlanView } from "@corbits-builder/schemas/plan";
 import { fileRows, type ArtifactPaneProps } from "./artifact-pane.tsx";
 import documentPane, {
   AppAndManual as appAndManual,

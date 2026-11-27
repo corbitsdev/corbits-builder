@@ -13,6 +13,7 @@
     "./tools": "./src/tools.ts"
   },
   "dependencies": {
+    "@corbits-builder/plan": "workspace:*",
     "@corbits-builder/schemas": "workspace:*",
     "@corbits/zip": "workspace:*",
     "@intx/agent": "workspace:*",
