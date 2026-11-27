@@ -225,26 +225,31 @@ const PINNED_REF = new RegExp("^(" + UUID + ")@(\\d+)@([a-f0-9]{64})$", "i");
 const isContainedPath = (path: string) =>
   !path.startsWith("/") && !path.split(/[\\/]/).includes("..");
 
+// A file's extension: a dot and a few letters or digits at the name's end.
+const EXTENSION = /\.[\p{L}\p{N}]{1,12}$/u;
+
 // A material's or design option's title as the name of its file or folder in an export, cut as a
 // download's name is; `taken` holds the folder's names so far, compared as a case-blind system
-// compares them, and a repeat is numbered rather than written over.
+// compares them, and a repeat is numbered rather than written over. A file keeps its extension
+// whole when its name is cut, so it still opens with its program.
 function exportedName(
   title: string,
   fallback: string,
   taken: Set<string>,
-  extension = "",
+  kind: "file" | "folder",
 ) {
-  const stem = title.slice(0, title.length - extension.length);
-  let name = downloadName(stem, [], fallback) + extension;
+  const dot = kind === "file" ? title.search(EXTENSION) : -1;
+  const stem = dot < 0 ? title : title.slice(0, dot);
+  const named = (kept: readonly string[]) => {
+    const name = downloadName(stem, kept, fallback);
+    return dot < 0 ? name : name + title.slice(dot);
+  };
+  let name = named([]);
   for (let copy = 2; taken.has(name.toLowerCase()); copy++)
-    name = downloadName(stem, [String(copy)], fallback) + extension;
+    name = named([String(copy)]);
   taken.add(name.toLowerCase());
   return name;
 }
-
-// A file's extension is kept whole when its name is cut, so it still opens with its program.
-const extensionOf = (name: string) =>
-  /\.[\p{L}\p{N}]{1,12}$/u.exec(name)?.[0] ?? "";
 
 async function isDirectory(path: string) {
   try {
@@ -2410,7 +2415,7 @@ export function createArtifactService(
         if (artifact.kind === MATERIAL_KIND) {
           const data = /^data:[^;,]*;base64,(.*)$/s.exec(stored.content)?.[1];
           zip.file(
-            `planning/materials/${exportedName(stored.title, "material", materials, extensionOf(stored.title))}`,
+            `planning/materials/${exportedName(stored.title, "material", materials, "file")}`,
             data === undefined ? stored.content : base64Decode(data),
           );
         } else if (section === "planning") {
@@ -2422,7 +2427,7 @@ export function createArtifactService(
           if (artifact.kind === "design") add("design", files);
           else
             add(
-              `design/options/${exportedName(stored.title, "option", options)}`,
+              `design/options/${exportedName(stored.title, "option", options, "folder")}`,
               files,
             );
         }
