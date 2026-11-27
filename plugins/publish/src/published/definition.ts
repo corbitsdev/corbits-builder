@@ -16,7 +16,7 @@ const CARRY_ON = "Carry on publishing";
 const PUBLISH_CHANGES = "Publish changes";
 const TAKING_DOWN = "Taking it down…";
 const UNDER_WAY =
-  "This can take a few minutes. If Builder needs you, it asks in the conversation.";
+  "This can take a few minutes, and Builder may ask you some questions.";
 const TRY_AGAIN = "Try again";
 const KEEP_YOUR_APP = "Keep your app";
 
@@ -54,7 +54,7 @@ export const text = {
   },
   needsYou: {
     title: "Publishing needs your answer",
-    lead: "Builder asked you something in the conversation. Publishing carries on once you answer.",
+    lead: "Builder asked you something. Publishing carries on once you answer.",
   },
   published: { title: "Your app is published" },
   changes: {

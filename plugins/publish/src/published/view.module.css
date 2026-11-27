@@ -9,6 +9,18 @@
   padding: var(--space-6);
 }
 
+/* The state is the whole tab, so its words are set at a page's size, not at the size the library
+   gives an empty corner of a panel. */
+.state [data-slot="empty-state"] > div > p {
+  font-size: 1.125rem;
+  line-height: 1.75rem;
+}
+
+.state [data-slot="empty-state"] > div > p + * {
+  font-size: var(--text-sm);
+  line-height: var(--text-sm--line-height);
+}
+
 /* A state's facts, one to a line under its title. */
 .lines {
   display: flex;
