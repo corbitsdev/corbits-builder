@@ -18,40 +18,13 @@
   display: none;
 }
 
-.head {
-  margin: 0;
-  padding: var(--space-2) var(--space-2) 0;
-  color: var(--wb-foreground);
-  font-size: var(--text-sm);
-  font-weight: 500;
-  line-height: var(--text-sm--line-height);
-}
-
 .tree {
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-/* The heading folds the group; its arrow points down while the files show. */
-.fold {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  padding: 0;
-  border: 0;
-  background: none;
-  color: inherit;
-  font: inherit;
-  cursor: pointer;
-}
-
-.fold:focus-visible {
-  outline: 2px solid var(--wb-action);
-  outline-offset: 2px;
-  border-radius: var(--radius-sm);
-}
-
+/* A folder's arrow points down while its files show. */
 .arrow {
   width: 12px;
   height: 12px;
@@ -59,7 +32,7 @@
   transition: rotate var(--duration-micro) var(--ease-out);
 }
 
-:is(.fold[aria-expanded="true"], .file[aria-expanded="true"] > .row) .arrow {
+.file[aria-expanded="true"] > .row .arrow {
   rotate: 90deg;
 }
 

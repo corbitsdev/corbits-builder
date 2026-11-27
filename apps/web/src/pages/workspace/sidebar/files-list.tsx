@@ -1,5 +1,5 @@
 /**
- * The project's files under a heading that folds them, as a compact file tree: a folder leads with a
+ * The project's files under their heading, as a compact file tree: a folder leads with a
  * chevron that folds it, a file beside one leaves that space empty so names line up, and what a
  * folder holds stands 1rem in. With no folder in the list, the rows drop that space, so the icons
  * line up with the heading. Where the list is taller than its room it scrolls inside itself. It is a tree with a single tab stop, after the
@@ -9,7 +9,6 @@
  * held here.
  */
 import {
-  useId,
   useRef,
   useState,
   type ComponentProps,
@@ -17,6 +16,7 @@ import {
 } from "react";
 import { ChevronRight, File, Folder } from "lucide-react";
 import { wording } from "../../../config.ts";
+import { SidebarHeading } from "./sidebar-heading.tsx";
 import rowStyles from "./sidebar-row.module.css";
 import styles from "./files-list.module.css";
 
@@ -62,15 +62,6 @@ type ItemProps = Required<
 >;
 
 const fileKey = (fileId: string) => `file:${fileId}`;
-// Past this many files the group starts folded, so the plan above keeps the eye.
-const MANY_FILES = 6;
-
-const countFiles = (files: readonly SidebarFile[]): number =>
-  files.reduce(
-    (sum, file) => sum + (file.opens === null ? 0 : 1) + countFiles(file.files),
-    0,
-  );
-
 // Each level stands 1rem further in than the row that holds it.
 const indent = (level: number) =>
   `calc(var(--space-2) + ${String(level - 1)}rem)`;
@@ -82,8 +73,6 @@ export function FilesList({
   // The product owner first asked for no icons and may turn them off again here.
   icons = true,
 }: FilesListProps) {
-  const treeId = `files-${useId()}`;
-  const [open, setOpen] = useState(() => countFiles(files) <= MANY_FILES);
   const [folded, setFolded] = useState<ReadonlySet<string>>(new Set());
   const fold = (key: string) => {
     const next = new Set(folded);
@@ -183,29 +172,16 @@ export function FilesList({
       if (event.target === event.currentTarget) setFocused(key);
     },
   });
-  // Until the project has a file there is no group to fold.
+  // Until the project has a file there is no group.
   if (files.length === 0) return null;
   const chevrons = files.some((file) => file.files.length > 0);
   return (
     <section className={styles.files}>
-      <h2 className={styles.head}>
-        <button
-          type="button"
-          className={styles.fold}
-          aria-expanded={open}
-          aria-controls={treeId}
-          onClick={() => setOpen(!open)}
-        >
-          {words.files}
-          <ChevronRight className={styles.arrow} aria-hidden="true" />
-        </button>
-      </h2>
+      <SidebarHeading>{words.files}</SidebarHeading>
       <ul
-        id={treeId}
         role="tree"
         aria-label={words.files}
         className={styles.tree}
-        hidden={!open}
         onKeyDown={onKeyDown}
       >
         {files.map((file) => (

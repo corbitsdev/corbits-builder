@@ -7,6 +7,7 @@ import {
   type FilesListProps,
   type SidebarFile,
 } from "./files-list.tsx";
+import { SidebarSurface } from "../../../sidebar-shell.tsx";
 
 const words = wording.projectShell;
 
@@ -110,14 +111,10 @@ const meta = {
   component: FilesList,
   args: { files: smallFiles, shown: null, onOpen: fn() },
   render: (args) => (
-    <div
-      style={{
-        width: "calc(var(--rail-width) - 2 * var(--space-2))",
-        padding: "var(--space-2)",
-        background: "var(--card)",
-      }}
-    >
-      <Clickable {...args} />
+    <div style={{ width: "var(--rail-width)" }}>
+      <SidebarSurface>
+        <Clickable {...args} />
+      </SidebarSurface>
     </div>
   ),
 } satisfies Meta<typeof FilesList>;
@@ -130,7 +127,7 @@ export const NoFiles: Story = {
   args: { files: [] },
   play: async ({ canvasElement }) => {
     await expect(
-      within(canvasElement).queryByRole("button", { name: words.files }),
+      within(canvasElement).queryByRole("tree", { name: words.files }),
     ).toBeNull();
   },
 };
@@ -171,19 +168,13 @@ export const FinishedDark: Story = {
 };
 
 /**
- * A large project: more files than fit beside the plan, so the group starts folded. Opened, the
- * designs gather under one row and each uploaded folder holds its files, each folding from its
- * arrow or the keyboard.
+ * A large project: the designs gather under one row and each uploaded folder holds its files, each
+ * folding from its arrow or the keyboard.
  */
 export const Large: Story = {
   args: { files: largeFiles },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(canvas.queryByRole("tree", { name: words.files })).toBeNull();
-    await userEvent.click(
-      canvas.getByRole("button", { name: words.files, expanded: false }),
-    );
-    await expect(canvas.getByRole("tree", { name: words.files })).toBeVisible();
     const photos = canvas.getByRole("treeitem", { name: "Cake photos" });
     await expect(
       within(photos)
@@ -206,12 +197,10 @@ export const LongNames: Story = { args: { files: longNamedFiles } };
 export const NoIcons: Story = {
   args: { files: largeFiles, icons: false },
   play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    await userEvent.click(
-      canvas.getByRole("button", { name: words.files, expanded: false }),
-    );
     await expect(
-      canvas.getByRole("treeitem", { name: "Brief" }).querySelector("svg"),
+      within(canvasElement)
+        .getByRole("treeitem", { name: "Brief" })
+        .querySelector("svg"),
     ).toBeNull();
   },
 };

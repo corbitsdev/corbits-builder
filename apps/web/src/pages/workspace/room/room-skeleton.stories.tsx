@@ -70,7 +70,7 @@ export const LoadingLongTitle: Story = {
   },
 };
 
-export const LoadingSidebarClosed: Story = {
+export const LoadingSidebarCollapsed: Story = {
   args: { ...opened, sidebar: { ...opened.sidebar, open: false } },
   render: (args) => <RoomSkeleton {...args} />,
 };

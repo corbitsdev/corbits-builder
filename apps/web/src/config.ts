@@ -471,9 +471,12 @@ export const wording = {
   },
   /** What frames an open project: its name and sidebar top left. */
   projectShell: {
-    /** The sidebar's name opens and closes it; the shortcut does the same. */
+    /** The control under the sidebar's cards expands and collapses it; the shortcut does the same. */
     openSidebar: "Open the sidebar",
     closeSidebar: "Close the sidebar",
+    /** What that control shows beside its chevron, collapsed and expanded. */
+    sidebarMore: "More",
+    sidebarLess: "Less",
     shortcut: { mac: "⌘\\", other: "Ctrl+\\" },
     sidebar: "Project",
     /** Read after a step's name, since its mark alone does not say it. */

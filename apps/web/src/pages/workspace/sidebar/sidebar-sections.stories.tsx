@@ -13,6 +13,7 @@ import { LIVE_TAB, MANUAL_TAB } from "../tab-follow.ts";
 export const preview: SidebarSection = {
   id: LIVE_TAB,
   label: wording.projectShell.preview,
+  icon: "monitor-play",
   selected: false,
 };
 
@@ -45,9 +46,10 @@ const meta = {
   render: (args) => (
     <div
       style={{
-        width: "calc(var(--rail-width) - 2 * var(--space-2))",
-        padding: "var(--space-2)",
-        background: "var(--card)",
+        display: "flex",
+        flexDirection: "column",
+        gap: "var(--space-2)",
+        width: "var(--rail-width)",
       }}
     >
       <Clickable {...args} />
@@ -72,7 +74,7 @@ export const Default: Story = {
 
 export const Dark: Story = { globals: { mode: "dark" } };
 
-/** Once the hub has the app's user manual, a row under Preview opens it. */
+/** Once the hub has the app's user manual, a card of its own under Preview opens it. */
 export const WithUserManual: Story = {
   args: {
     sections: [
@@ -80,6 +82,7 @@ export const WithUserManual: Story = {
       {
         id: MANUAL_TAB,
         label: wording.projectShell.userManual,
+        icon: "book-open",
         selected: false,
       },
     ],

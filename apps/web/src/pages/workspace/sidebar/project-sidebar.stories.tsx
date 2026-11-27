@@ -72,7 +72,7 @@ function Clickable(args: ProjectSidebarViewProps) {
   );
 }
 
-/** The sidebar on the room's ground at the window's full height, so its card and title row show. */
+/** The sidebar on the room's ground at the window's full height, so its cards show as on the page. */
 function Shell({ children }: { children: ReactNode }) {
   return (
     <div
@@ -151,9 +151,7 @@ export const FilesNone: Story = {
   args: { files: listed([]) },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(
-      canvas.queryByRole("button", { name: words.files }),
-    ).toBeNull();
+    await expect(canvas.queryByRole("tree", { name: words.files })).toBeNull();
     await expect(
       canvas.queryByRole("button", { name: words.preview }),
     ).toBeNull();
@@ -204,8 +202,8 @@ const manyDocuments = largeFiles
   .flatMap((each) => (each.opens === null ? each.files : [each]));
 
 /**
- * A project with many documents: the Files group starts folded; opened, it scrolls inside itself
- * while the plan above and the Preview row at the foot stay put.
+ * A project with many documents: the files scroll inside their card while the plan above and the
+ * sections' card under it stay put.
  */
 export const FilesLarge: Story = {
   args: {
@@ -213,19 +211,11 @@ export const FilesLarge: Story = {
     files: listed(manyDocuments),
     sections: foot(preview),
   },
-  play: async ({ canvasElement }) => {
-    await userEvent.click(
-      within(canvasElement).getByRole("button", {
-        name: words.files,
-        expanded: false,
-      }),
-    );
-  },
 };
 
 /**
- * A long plan scrolls under the project's name, and what stands below it stays at the foot of what
- * scrolls.
+ * A long plan scrolls inside its card under the project's name, and the cards below it stay in
+ * sight.
  */
 export const LongPlan: Story = {
   args: {
@@ -249,10 +239,10 @@ export const LongPlan: Story = {
 };
 
 /**
- * Closed, the card holds the project's name, with the toggle that opens it again, and the plan,
- * where the open sidebar has it; the rest of the sidebar waits until it opens.
+ * Collapsed, the sidebar holds the project's name and the plan, where the expanded sidebar has
+ * them, with the toggle that expands it again under them; the rest waits until it expands.
  */
-export const Closed: Story = {
+export const Collapsed: Story = {
   args: { ...buildingArgs, open: false },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -261,13 +251,13 @@ export const Closed: Story = {
   },
 };
 
-export const ClosedDark: Story = {
+export const CollapsedDark: Story = {
   args: { ...buildingArgs, open: false },
   globals: { mode: "dark" },
 };
 
-/** A step waiting on the person opens what it made, closed as well as open. */
-export const ClosedOpensWhatWaitsOnYou: Story = {
+/** A step waiting on the person opens what it made, collapsed as well as expanded. */
+export const CollapsedOpensWhatWaitsOnYou: Story = {
   args: { ...finishedArgs, open: false },
   play: async ({ args, canvasElement }) => {
     await userEvent.click(
@@ -280,7 +270,7 @@ export const ClosedOpensWhatWaitsOnYou: Story = {
   },
 };
 
-/** Opening and closing grow and shrink the card around the plan, which stays where it is. */
+/** Expanding and collapsing bring in and take away the cards under the plan, which stays where it is. */
 export const PlanStaysPut: Story = {
   args: { ...buildingArgs, open: false },
   play: async ({ canvasElement }) => {
@@ -302,7 +292,7 @@ export const Drawer: Story = {
   globals: { viewport: "mobile1" },
 };
 
-/** The open drawer goes away on Escape and on a press on the page beside it. */
+/** The expanded drawer goes away on Escape and on a press on the page beside it. */
 export const DrawerPutAway: Story = {
   args: { ...buildingArgs, drawer: true },
   globals: { viewport: "mobile1" },

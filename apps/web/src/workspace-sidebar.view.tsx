@@ -1,22 +1,22 @@
 /**
  * The sidebar outside a project, shown where a project was asked for and none opened; the new
- * project page, the Projects page and Settings have none. The sidebar's card and title row, holding
+ * project page, the Projects page and Settings have none. The sidebar's title and one card, holding
  * only what starts or resumes work. A new project, connecting a model while none is, and the
  * projects last worked on, to go straight back to one.
  */
 import { Plus, Unplug } from "lucide-react";
 import { SidebarItem } from "@corbits/react-ui";
 import type { LucideIcon } from "lucide-react";
-import { useId, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { wording } from "./config.ts";
 import { SidebarHeader } from "./sidebar-header.tsx";
-import { SidebarShell } from "./sidebar-shell.tsx";
+import { SidebarShell, SidebarSurface } from "./sidebar-shell.tsx";
 import styles from "./workspace-sidebar.module.css";
 
 export type WorkspaceSidebarViewProps = {
   /** The open workspace's name, beside the mark. */
   name: string;
-  /** Closed, only the name shows, to open it again. */
+  /** Collapsed, only the name shows, with the control that expands it again. */
   open: boolean;
   /** The window is narrow, so the open sidebar lies over the page. */
   drawer: boolean;
@@ -47,33 +47,30 @@ export function WorkspaceSidebarView({
   onOpenProject,
   onPreferences,
 }: WorkspaceSidebarViewProps) {
-  const bottomId = `workspace-sidebar-${useId()}`;
   return (
     <SidebarShell
       label={wording.shell.sidebar}
       open={open}
       drawer={drawer}
-      bottomId={bottomId}
-      onPutAway={onToggleSidebar}
+      onToggle={onToggleSidebar}
       header={
         <SidebarHeader
           title={name}
-          open={open}
-          controls={bottomId}
-          onToggle={onToggleSidebar}
           onHome={onNewProject}
           onPreferences={onPreferences}
         />
       }
-      bottom={
-        <WorkspaceRows
-          current={current}
-          needsProvider={needsProvider}
-          recent={recent}
-          onNewProject={onNewProject}
-          onConnectModel={onConnectModel}
-          onOpenProject={onOpenProject}
-        />
+      more={
+        <SidebarSurface scrolls>
+          <WorkspaceRows
+            current={current}
+            needsProvider={needsProvider}
+            recent={recent}
+            onNewProject={onNewProject}
+            onConnectModel={onConnectModel}
+            onOpenProject={onOpenProject}
+          />
+        </SidebarSurface>
       }
     />
   );

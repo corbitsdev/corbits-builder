@@ -16,6 +16,7 @@ import {
 import { WorkingText } from "../../../components.tsx";
 import { wording } from "../../../config.ts";
 import { useElapsedMs } from "../elapsed.ts";
+import { SidebarHeading } from "./sidebar-heading.tsx";
 import rowStyles from "./sidebar-row.module.css";
 import styles from "./plan-timeline.module.css";
 
@@ -179,9 +180,7 @@ export function PlanTimeline({
   });
   return (
     <section className={styles.plan}>
-      <h2 id={headingId} className={styles.head}>
-        {words.plan}
-      </h2>
+      <SidebarHeading id={headingId}>{words.plan}</SidebarHeading>
       <ul
         role="tree"
         aria-labelledby={headingId}

@@ -1,84 +1,97 @@
-/* The title row: the mark and the name, each opening its own menu, and the toggle at its end,
-   across the card's width. */
+/* The title row: the mark and the name, each its own control opening its own menu, set apart by a
+   hairline, across the card's width. Each lights on its own, at the rows' height, and stays lit
+   while its menu is open. */
 .head {
   display: flex;
   flex: none;
   align-items: center;
-  gap: var(--space-2);
-  height: 2.5rem;
-  padding: 0 var(--space-1) 0 var(--space-2);
+  gap: var(--space-1);
+  height: 2.25rem;
   color: var(--wb-foreground);
   white-space: nowrap;
 }
 
-/* Collapsed, the title row is a filled pill of its own. */
-.head:not([data-open]) {
-  border-radius: var(--radius-lg);
-  background: var(--card);
-}
-
-.toggle {
-  display: grid;
-  flex: none;
-  place-items: center;
-  width: 2rem;
-  height: 2rem;
-  margin-inline-start: auto;
+.mark,
+.project {
+  height: 100%;
   padding: 0;
   border: 0;
   border-radius: var(--radius-md);
-  color: var(--wb-muted-foreground);
-  background: transparent;
-  cursor: pointer;
-  transition:
-    background-color var(--duration-micro) var(--ease-out),
-    color var(--duration-micro) var(--ease-out);
-}
-
-.head[data-instant] .toggle {
-  transition: none;
-}
-
-.toggle:hover {
-  background: var(--wb-muted);
-  color: var(--wb-foreground);
-}
-
-.toggle:active {
-  background: var(--wb-selected);
-}
-
-.toggle:focus-visible {
-  outline: 2px solid var(--wb-action);
-  outline-offset: -2px;
-}
-
-.toggle > svg {
-  width: 16px;
-  height: 16px;
+  background: none;
+  color: inherit;
 }
 
 .mark {
+  display: grid;
   flex: none;
-  padding: 0;
+  place-items: center;
+  aspect-ratio: 1;
+  cursor: pointer;
+}
+
+/* The mark's own rounding, which the larger button no longer clips. */
+.logo {
   overflow: hidden;
-  border: 0;
   border-radius: var(--radius-md);
-  background: none;
+}
+
+.rule {
+  flex: none;
+  align-self: stretch;
+  width: 1px;
+  margin-block: var(--space-2);
+  background: var(--wb-border);
 }
 
 .project {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--space-1);
   min-width: 0;
-  padding: 0;
-  overflow: hidden;
-  border: 0;
-  background: none;
-  color: inherit;
+  box-sizing: border-box;
+  padding-inline: var(--space-2);
   font-family: inherit;
   text-align: start;
   font-size: var(--wb-text-control);
   font-weight: 600;
   line-height: var(--wb-text-control--line-height);
+}
+
+button.project {
+  cursor: pointer;
+}
+
+:is(.mark, button.project) {
+  transition: background-color var(--duration-micro) var(--ease-out);
+}
+
+:is(.mark, button.project):hover {
+  background: var(--wb-muted);
+}
+
+:is(.mark, button.project):active,
+:is(.mark, button.project)[aria-expanded="true"] {
+  background: var(--wb-selected);
+}
+
+:is(.mark, button.project):focus-visible {
+  outline: 2px solid var(--wb-action);
+  outline-offset: -2px;
+}
+
+.name {
+  min-width: 0;
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* At the row's end, as a select's arrow is. */
+.chevron {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin-inline-start: auto;
+  color: var(--wb-muted-foreground);
 }

@@ -28,12 +28,7 @@ import {
   readDirectory,
   type PickedDirectory,
 } from "../api/repository.ts";
-import {
-  ROOM_NARROW_QUERY,
-  SIDEBAR_KEY,
-  useSidebar,
-} from "../sidebar-setting.ts";
-import { writeStoredPreference } from "../stored-preference.ts";
+import { ROOM_NARROW_QUERY, useSidebar } from "../sidebar-setting.ts";
 import { composerKey, moveUnsent, useUnsent } from "../unsent.ts";
 import { canStartProject } from "./home-view.ts";
 import { useNewProjectProfiles } from "./new-project-profiles.model.ts";
@@ -184,8 +179,6 @@ export function useProjects({
         ...(profile === undefined ? {} : { profile }),
       });
       moveUnsent(STARTING_KEY, composerKey(created.projectId));
-      // A new project has nothing in its sidebar yet, so it opens on the conversation.
-      writeStoredPreference(SIDEBAR_KEY, "closed");
       onChanged();
       if (shownStart.current !== shown) return;
       setIdea("");

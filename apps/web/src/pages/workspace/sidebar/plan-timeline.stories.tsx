@@ -10,6 +10,7 @@ import {
   type SidebarStepState,
 } from "./plan-timeline.tsx";
 import { LIVE_TAB } from "../tab-follow.ts";
+import { SidebarSurface } from "../../../sidebar-shell.tsx";
 
 const words = wording.projectShell;
 
@@ -144,16 +145,12 @@ const meta = {
     waitsOn: null,
     onOpenStep: fn(),
   },
-  // On the card's ground, at the card's width less its padding.
+  // In a card of the sidebar's, at its width.
   render: (args) => (
-    <div
-      style={{
-        width: "calc(var(--rail-width) - 2 * var(--space-2))",
-        padding: "var(--space-2)",
-        background: "var(--card)",
-      }}
-    >
-      <Clickable {...args} />
+    <div style={{ width: "var(--rail-width)" }}>
+      <SidebarSurface>
+        <Clickable {...args} />
+      </SidebarSurface>
     </div>
   ),
 } satisfies Meta<typeof PlanTimeline>;

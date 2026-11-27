@@ -4,15 +4,6 @@
   gap: var(--space-1);
 }
 
-.head {
-  margin: 0;
-  padding: var(--space-2) var(--space-2) 0;
-  color: var(--wb-foreground);
-  font-size: var(--text-sm);
-  font-weight: 500;
-  line-height: var(--text-sm--line-height);
-}
-
 .tree {
   margin: 0;
   padding: 0;
@@ -34,6 +25,12 @@
   background: var(--ground, var(--card));
   color: var(--wb-muted-foreground);
   cursor: default;
+  /* The marks' grey: softer than the words beside them, and still clear of the ground. */
+  --mark: color-mix(
+    in srgb,
+    var(--wb-muted-foreground) 70%,
+    var(--ground, var(--card))
+  );
 }
 
 .step:not(:first-child)::before,
@@ -57,18 +54,20 @@
 }
 
 .step[data-state="done"] {
-  --line: var(--wb-muted-foreground);
+  --line: var(--wb-border-strong);
 
   color: var(--wb-foreground);
 }
 
 .step[data-state="done"] + .step {
-  --line-in: var(--wb-muted-foreground);
+  --line-in: var(--wb-border-strong);
 }
 
+/* Colour sets the steps apart first, weight second: the step at work and the one waiting on the
+   person stand out a little, but no more than the step on the page does, in a list this small. */
 .step[data-state="running"] {
   color: var(--wb-foreground);
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .step[data-state="needs_you"] {
@@ -91,13 +90,14 @@
   box-sizing: border-box;
   width: 8px;
   height: 8px;
-  border: 1.5px solid var(--wb-muted-foreground);
+  border: 1.5px solid var(--mark);
   border-radius: 50%;
 }
 
+/* Done is the common case, so its dot is quiet: the words say the step is done, and a column of
+   full-strength dots would outweigh them. */
 .step[data-state="done"] .circle::before {
-  border-color: var(--wb-foreground);
-  background: var(--wb-foreground);
+  background: var(--mark);
 }
 
 /* Skipped: the outline struck through, so it never reads as a step still to do. */
@@ -129,8 +129,8 @@
   );
 }
 
-/* The open card is near the muted grey, so the step whose document is on the page takes the
-   selection's tint, so the person sees where in the plan they are reading. */
+/* The step whose document is on the page takes the selection's tint, so the person sees where in
+   the plan they are reading. */
 .step[aria-current] {
   background: var(--wb-selected);
   font-weight: 500;
@@ -171,14 +171,11 @@
 }
 
 /* How long the step at work has run, in figures of one width so the line holds still as it
-   counts. The figures carry it; their units are lighter. */
+   counts. The figures carry it by their weight; the units share their colour, since anything
+   lighter than the muted text falls under 4.5:1 on the card's tint. */
 .clock {
   flex: none;
-  color: color-mix(
-    in oklab,
-    var(--wb-muted-foreground) 70%,
-    var(--ground, var(--card))
-  );
+  color: var(--wb-muted-foreground);
   font-variant-numeric: tabular-nums;
 }
 

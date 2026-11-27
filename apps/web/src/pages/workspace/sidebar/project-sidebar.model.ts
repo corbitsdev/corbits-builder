@@ -124,7 +124,7 @@ function filesProps(
   };
 }
 
-/** The sections at the foot: the app's preview once there is an app, and its user manual. */
+/** The sections, each a card: the app's preview once there is an app, and its user manual. */
 function sectionsProps(
   app: OutlineAppState,
   shown: string | null,
@@ -135,11 +135,13 @@ function sectionsProps(
   const preview = {
     id: LIVE_TAB,
     label: words.preview,
+    icon: "monitor-play" as const,
     selected: shown === LIVE_TAB,
   };
   const manual = {
     id: MANUAL_TAB,
     label: words.userManual,
+    icon: "book-open" as const,
     selected: shown === MANUAL_TAB,
   };
   return {

@@ -53,6 +53,8 @@
   --wb-card: var(--background);
   /* The grey a written page lies on, raised as a sheet; dark mode below. */
   --wb-frame: var(--muted);
+  /* A gentle tint of the grey: the sidebar's cards, set just off the page without reading as a
+     panel. */
   --wb-canvas: color-mix(in srgb, var(--muted) 40%, var(--background));
   --wb-shadow: 0 1px 2px color-mix(in srgb, var(--foreground) 6%, transparent);
   /* What lifts off the page while the person is in it: wide and soft, so it reads as height
