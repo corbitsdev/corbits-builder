@@ -15,8 +15,8 @@ import type {
 import {
   isCheckAction,
   type Catalog,
-  type CheckAction,
 } from "@corbits-builder/plugin-host/catalog";
+import type { CheckAction } from "@corbits-builder/plugin-host/plugins";
 import {
   keepChecking,
   NO_APP,

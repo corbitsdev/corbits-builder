@@ -1,7 +1,7 @@
 // A warmed designer or coder workspace holds the filed documents it works from as read-only files,
 // and its hub-built assignment opens by naming them, so it starts from them instead of spending
 // turns fetching each one.
-import type { SkillPack } from "@corbits-builder/plugin-host/catalog";
+import type { SkillPack } from "@corbits-builder/plugin-host/plugins";
 import { INPUTS_DIRECTORY } from "@corbits-builder/schemas/app-files";
 export { INPUTS_DIRECTORY };
 

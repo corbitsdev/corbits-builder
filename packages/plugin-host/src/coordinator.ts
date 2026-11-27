@@ -17,15 +17,17 @@ import {
   isWorkflowAction,
   startsAgent,
   offersReportValues,
-  type Action,
   type Catalog,
-  type CheckAction,
-  type Plugin,
-  type ReadyPlanPlugin,
-  type ScreenAction,
-  type SpecialistPlugin,
-  type WorkflowAction,
 } from "./catalog.ts";
+import type {
+  Action,
+  CheckAction,
+  Plugin,
+  ReadyPlanPlugin,
+  ScreenAction,
+  SpecialistPlugin,
+  WorkflowAction,
+} from "./plugins.ts";
 import {
   approvalFacts,
   holds,
