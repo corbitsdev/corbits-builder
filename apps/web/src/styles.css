@@ -53,12 +53,30 @@
   --wb-card: var(--background);
   /* The grey a written page lies on, raised as a sheet; dark mode below. */
   --wb-frame: var(--muted);
+  /* A gentle tint of the grey: the sidebar's cards, set just off the page without reading as a
+     panel. */
   --wb-canvas: color-mix(in srgb, var(--muted) 40%, var(--background));
   --wb-shadow: 0 1px 2px color-mix(in srgb, var(--foreground) 6%, transparent);
+  /* What lifts off the page while the person is in it: wide and soft, so it reads as height
+     rather than as an edge; dark mode below. */
+  --wb-raised-shadow:
+    0 2px 4px color-mix(in srgb, var(--foreground) 4%, transparent),
+    0 10px 24px -6px color-mix(in srgb, var(--foreground) 9%, transparent),
+    0 28px 56px -16px color-mix(in srgb, var(--foreground) 12%, transparent);
+  /* The same lift for what rises from the window's foot, where a shadow cast down falls off the
+     screen: it is cast up and around instead. */
+  --wb-risen-shadow:
+    0 -2px 6px color-mix(in srgb, var(--foreground) 4%, transparent),
+    0 -10px 28px -8px color-mix(in srgb, var(--foreground) 8%, transparent),
+    0 -28px 64px -20px color-mix(in srgb, var(--foreground) 12%, transparent);
   /* What floats over the room, edged in a Bedrock Charcoal hairline; dark mode below. */
   --wb-pane-shadow:
     0 0 0 1px color-mix(in srgb, #5c5555 10%, transparent),
     0 1px 3px color-mix(in srgb, #000000 6%, transparent);
+  /* Every scrollbar's thumb, on no track: a quiet tint of the words' colour, so it follows light
+     and dark. The colour inherits, so it is set once here. */
+  --wb-scrollbar: color-mix(in srgb, var(--foreground) 22%, transparent);
+  scrollbar-color: var(--wb-scrollbar) transparent;
   --wb-muted: var(--muted);
   --wb-muted-foreground: var(--muted-foreground);
   --wb-border: var(--border);
@@ -155,6 +173,15 @@ body {
   --wb-action-foreground: #000000;
   --wb-proceed-foreground: #000000;
   --wb-pane-shadow: 0 0 0 1px color-mix(in srgb, #e4d5bc 12%, transparent);
+  /* The foreground is light here and would glow, so the lift is drawn in black. */
+  --wb-raised-shadow:
+    0 2px 4px color-mix(in srgb, #000000 30%, transparent),
+    0 10px 24px -6px color-mix(in srgb, #000000 45%, transparent),
+    0 28px 56px -16px color-mix(in srgb, #000000 55%, transparent);
+  --wb-risen-shadow:
+    0 -2px 6px color-mix(in srgb, #000000 30%, transparent),
+    0 -10px 28px -8px color-mix(in srgb, #000000 45%, transparent),
+    0 -28px 64px -20px color-mix(in srgb, #000000 55%, transparent);
 }
 
 * {
@@ -347,6 +374,20 @@ button[aria-disabled="true"] {
   border: 1px solid transparent;
   color: color-mix(in srgb, var(--wb-muted-foreground) 70%, transparent);
   pointer-events: auto;
+}
+
+/* The library's link button is bare words until hovered, which reads as a label. Here it is
+   underlined at rest like a link in a document, the line thickening under the pointer. The
+   library names the variant only in its classes. */
+[data-slot="button"].underline-offset-4 {
+  text-decoration-line: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+[data-slot="button"].underline-offset-4:hover:not(:disabled):not(
+    [aria-disabled="true"]
+  ) {
+  text-decoration-thickness: 2px;
 }
 
 /* An upstream bug, corrected locally: theme.css declares --input: #8a8080 in

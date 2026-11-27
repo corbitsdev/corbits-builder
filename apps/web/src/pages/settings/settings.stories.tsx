@@ -25,8 +25,6 @@ function Page(args: SettingsViewProps) {
       appearance={{
         ...appearance,
         onThemeChange: (theme) => setAppearance({ ...appearance, theme }),
-        onDocumentTipsChange: (documentTips) =>
-          setAppearance({ ...appearance, documentTips }),
       }}
     />
   );
@@ -55,8 +53,6 @@ const meta = {
     appearance: {
       theme: "system",
       onThemeChange: fn(),
-      documentTips: true,
-      onDocumentTipsChange: fn(),
     },
     account,
     back: { to: "Bakery orders", onBack: fn() },

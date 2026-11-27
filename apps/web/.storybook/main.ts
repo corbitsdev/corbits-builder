@@ -5,4 +5,9 @@ import { defineMain } from "@storybook/react-vite/node";
 export default defineMain({
   framework: "@storybook/react-vite",
   stories: ["../src/**/*.stories.tsx"],
+  // Serves an MCP endpoint at /mcp on the dev server, so a coding agent can find, preview and
+  // read the stories it is changing.
+  addons: ["@storybook/addon-mcp"],
+  // The addon's docs tools read component props from this manifest, which is off by default.
+  features: { componentsManifest: true },
 });

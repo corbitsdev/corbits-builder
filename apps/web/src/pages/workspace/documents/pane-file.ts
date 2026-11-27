@@ -5,6 +5,7 @@
  * that asked for it.
  */
 import JSZip from "jszip";
+import { downloadName } from "@corbits-builder/schemas/download-name";
 import { createElement, useEffect, useRef } from "react";
 import { Download, Share2 } from "lucide-react";
 import { toast } from "sonner";
@@ -21,13 +22,12 @@ const EXTENSION: Record<string, string> = {
   [CSV_TYPE]: "csv",
 };
 
-/** A file name a person's system keeps as one name, as the hub names the app's zip. */
-export const fileStem = (...parts: readonly string[]) =>
-  parts
-    .join("-")
-    .replace(/[\\/:*?"<>|\s]+/g, "-")
-    .replace(/\.{2,}/g, "-")
-    .replace(/^[.-]+/, "");
+/**
+ * A file name a person's system keeps as one name, by the rule the hub names the app's zip with:
+ * the project's title shrinks to fit, and the parts after it (the document, its version) stay.
+ */
+export const fileStem = (project: string, ...kept: readonly string[]) =>
+  downloadName(project, kept, "");
 
 export const markdownFile = (stem: string, markdown: string) =>
   new File([markdown], `${stem}.md`, { type: MARKDOWN_TYPE });

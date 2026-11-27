@@ -51,7 +51,7 @@
 .dot,
 .bar {
   display: block;
-  /* A tint of the text colour, so the shapes read the same on the canvas and the sidebar's grey. */
+  /* A tint of the text colour, so the shapes read the same on the canvas and the sidebar's cards. */
   background: color-mix(in oklab, var(--wb-foreground) 7%, transparent);
   animation: breathe 1.6s ease-in-out infinite;
 }

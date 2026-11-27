@@ -1,4 +1,5 @@
 import { Fragment, type ComponentProps, type ReactNode } from "react";
+import { clsx } from "clsx";
 import { Loader2 } from "lucide-react";
 import {
   Badge,
@@ -108,6 +109,7 @@ export function Button({
   loading = false,
   disabled = false,
   block = false,
+  size = "md",
   onClick,
   children,
   type = "button",
@@ -124,6 +126,8 @@ export function Button({
   disabled?: boolean;
   /** Fills its container — for the single action that owns a screen. */
   block?: boolean;
+  /** Small is for an action beside a heading or in a tight row, and is plainly the lesser button. */
+  size?: "sm" | "md";
   onClick?: () => void;
   children: ReactNode;
   type?: "button" | "submit";
@@ -138,7 +142,8 @@ export function Button({
     <UiButton
       type={type}
       variant={variant}
-      className={block ? "w-full" : undefined}
+      className={clsx(block && "w-full", size === "sm" && styles.buttonSmall)}
+      size={size}
       disabled={inert}
       aria-busy={loading}
       onClick={inert ? undefined : onClick}

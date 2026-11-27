@@ -283,7 +283,7 @@ export function ProjectsView({
                 </h2>
               )}
               {onOpenLibrary === undefined ? null : (
-                <Button variant="link" onClick={onOpenLibrary}>
+                <Button variant="outline" size="sm" onClick={onOpenLibrary}>
                   {wording.shell.allProjects}
                 </Button>
               )}

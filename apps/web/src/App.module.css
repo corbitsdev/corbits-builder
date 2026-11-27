@@ -87,9 +87,12 @@
   background: transparent;
 }
 
-/* Closed, the sidebar leaves its name over the page's corner, so the page starts below it. */
+/* Collapsed, the sidebar leaves its title card and its toggle over the page's corner, so the page
+   starts below them. */
 .app:has(> [data-slot="project-sidebar"]:not([data-open])) .canvasBody {
-  padding-block-start: 3.5rem;
+  padding-block-start: calc(
+    2.25rem + 2 * var(--space-1) + 2px + 3 * var(--space-2) + 1.75rem
+  );
 }
 
 .canvasBody[data-below-corner] {
@@ -103,6 +106,9 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  /* The bar's space is held whether or not the page is long enough to scroll, so moving between
+     a short page and a long one, such as two settings tabs, does not shift the page sideways. */
+  scrollbar-gutter: stable;
   padding: var(--space-4) var(--space-5) var(--space-6);
   display: grid;
   grid-template-columns: minmax(
@@ -116,6 +122,7 @@
 .canvasBody[data-fill] {
   background: var(--wb-background);
   overflow: hidden;
+  scrollbar-gutter: auto;
   display: flex;
   flex-direction: column;
   gap: 0;

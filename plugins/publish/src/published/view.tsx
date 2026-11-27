@@ -2,6 +2,7 @@
 import { useId, useState, type ReactNode } from "react";
 import {
   CirclePause,
+  Clock,
   CloudOff,
   CloudUpload,
   Ellipsis,
@@ -104,25 +105,31 @@ function KeepApp({
       <section className={styles.banner} aria-label={text.keep.passed.heading}>
         <p className={styles.heading}>{text.keep.passed.heading}</p>
         <p>{text.keep.passed.lead(keep.place)}</p>
-        <Note>{text.keep.passed.which}</Note>
-        <div className={styles.actions}>
+        <div className={styles.keepFoot}>
+          <Note>{text.keep.passed.which}</Note>
           {say(busy ? text.keep.saving : text.keep.kept, () => run("kept"))}
           {say(text.keep.passed.gone, () => run("gone", { what: "keep" }))}
         </div>
         {again === null ? null : (
-          <>
-            <p>{text.keep.passed.again}</p>
-            <div className={styles.actions}>{again}</div>
-          </>
+          <div className={styles.keepFoot} data-again="">
+            <Note>{text.keep.passed.again}</Note>
+            {again}
+          </div>
         )}
       </section>
     );
   return (
     <section className={styles.banner} aria-label={text.keep.heading}>
-      <p className={styles.heading}>{text.keep.heading}</p>
+      <div className={styles.keepHead}>
+        <p className={styles.heading}>{text.keep.heading}</p>
+        <p className={styles.left} role="timer">
+          <Clock size={14} aria-hidden="true" />
+          {text.keep.left(keep.minutesLeft)}
+        </p>
+      </div>
       <p>{text.keep.lead(keep.place)}</p>
-      <p role="timer">{text.keep.left(keep.minutesLeft)}</p>
-      <div className={styles.actions}>
+      <Note>{text.keep.share}</Note>
+      <div className={styles.keepFoot}>
         <Button
           type="button"
           onClick={() =>
@@ -131,9 +138,8 @@ function KeepApp({
         >
           {text.keep.action}
         </Button>
+        <AskedTwice place={keep.place} onYes={() => run("kept")} busy={busy} />
       </div>
-      <Note>{text.keep.share}</Note>
-      <AskedTwice place={keep.place} onYes={() => run("kept")} busy={busy} />
     </section>
   );
 }
@@ -162,19 +168,18 @@ function AskedTwice({
   // While it saves, the answer given stays on screen.
   if (!sure && !busy)
     return (
-      <>
+      <div className={styles.already}>
         <Note>{text.keep.already}</Note>
-        <div className={styles.actions}>
-          <Button
-            type="button"
-            variant="outline"
-            autoFocus={back}
-            onClick={() => setSure(true)}
-          >
-            {text.keep.kept}
-          </Button>
-        </div>
-      </>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          autoFocus={back}
+          onClick={() => setSure(true)}
+        >
+          {text.keep.kept}
+        </Button>
+      </div>
     );
   return (
     <div

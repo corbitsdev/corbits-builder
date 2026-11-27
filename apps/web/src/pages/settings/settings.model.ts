@@ -7,10 +7,6 @@ import { useTheme } from "@corbits/react-ui";
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { preferencesQuery } from "../../queries/preferences.ts";
-import {
-  useDocumentTips,
-  writeDocumentTips,
-} from "../../document-tips-setting.ts";
 import type { HubUser } from "../../api/auth.ts";
 import type { SettingsSlots, SettingsViewProps } from "./settings.view.tsx";
 
@@ -137,7 +133,6 @@ export function useSettings({
     };
   }
   const { mode, setMode } = useTheme();
-  const tips = useDocumentTips();
   const [signingOut, setSigningOut] = useState(false);
   const signOut = async (leave: () => Promise<void>) => {
     setSigningOut(true);
@@ -155,8 +150,6 @@ export function useSettings({
       appearance: {
         theme: mode,
         onThemeChange: setMode,
-        documentTips: tips === "on",
-        onDocumentTipsChange: (on) => writeDocumentTips(on ? "on" : "off"),
       },
       ...(back !== undefined ? { back } : {}),
       account: user && {

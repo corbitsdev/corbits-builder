@@ -14,8 +14,8 @@ import {
 /** The open or closed sidebar, in this browser; a project's room keeps it here too. */
 export const SIDEBAR_KEY = "builder-project-sidebar";
 
-/** Shut until the person opens it, so a project opens on its work. */
-export const SIDEBAR_DEFAULT = "closed";
+/** Expanded until the person collapses it, so the plan, the files and the sections are in sight. */
+export const SIDEBAR_DEFAULT = "open";
 
 // The width below which the sidebar outside a project is a drawer.
 const NARROW_QUERY = "(max-width: 899px)";

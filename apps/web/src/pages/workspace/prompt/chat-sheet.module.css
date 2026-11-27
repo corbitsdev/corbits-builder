@@ -24,7 +24,9 @@
   border: 1px solid var(--wb-border);
   border-radius: inherit;
   background: var(--wb-background);
-  box-shadow: var(--wb-pane-shadow);
+  /* Open, the sheet stands over the page as the box does with the person in it, on the same wide
+     soft shadow, cast up from the window's foot where it can be seen. */
+  box-shadow: var(--wb-risen-shadow);
   opacity: 0;
   pointer-events: none;
 }

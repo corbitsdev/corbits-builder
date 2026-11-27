@@ -97,12 +97,21 @@ export type ProjectShipReceipt = typeof ProjectShipReceipt.infer;
 
 export const ScreenRender = type("'main-page' | 'inline-chat' | 'plugin-bar'");
 export type ScreenRender = typeof ScreenRender.infer;
+// The icons a screen's status may lead with, by name, so a plugin can pick one without drawing it;
+// the room draws each.
+export const ScreenStatusIcon = type(
+  "'cloud-upload' | 'cloud-sync' | 'cloud-check' | 'cloud-alert' | 'cloud-off'",
+);
+export type ScreenStatusIcon = typeof ScreenStatusIcon.infer;
 // Where a screen shown in its own tab stands, in a word or two, which the room shows beside the plan
-// and opens the tab from. mark draws the plan's mark for a step in that state.
+// and opens the tab from. mark draws the plan's mark for a step in that state; icon leads the word;
+// tone colours the dot after it, in place of the dot a needs_you mark would draw.
 export const ScreenStatus = type({
   "+": "reject",
   label: "string > 0",
   "mark?": "'needs_you' | 'failed' | 'done'",
+  "icon?": ScreenStatusIcon,
+  "tone?": "'neutral' | 'warning' | 'success'",
 });
 export type ScreenStatus = typeof ScreenStatus.infer;
 export const ShownScreen = type({

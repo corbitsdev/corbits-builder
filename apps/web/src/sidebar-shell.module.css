@@ -1,15 +1,11 @@
 .sidebar {
   --width: var(--rail-width);
-  /* Closing is the system answering, so it is quicker than opening. */
+  /* Collapsing is the system answering, so it is quicker than expanding. */
   --speed: var(--duration-standard);
   --inset: var(--frame-edge, var(--space-2));
-  /* flex keeps the top in the closed card under the header; none leaves the closed card the header
-     alone. */
-  --top-when-closed: flex;
-  /* Behind the collapsed top: var(--wb-background) fills the header alone, var(--card) the card. */
-  --closed-ground: var(--wb-background);
-  /* The open card's top keeps at least this much of the room under the header, when it needs it. */
-  --top-share: 40%;
+  /* Expanded, a scrolling card that always shows keeps at least this much of the stack, when it
+     needs it. */
+  --kept-share: 40%;
 
   position: relative;
   display: flex;
@@ -24,7 +20,7 @@
   --speed: var(--duration-large);
 }
 
-/* Beside the page, open, it takes its card's room from what stands beside it; as a drawer it
+/* Beside the page, expanded, it takes its cards' room from what stands beside it; as a drawer it
    takes none. */
 .sidebar[data-open]:not([data-drawer]) {
   width: calc(var(--width) + var(--inset));
@@ -34,110 +30,147 @@
   z-index: 5;
 }
 
-/* The card holds the header and the top, open or closed; open, it grows to the window's height
-   around them, so neither moves. */
-.card {
+/* The cards, one under the other from the corner, each as tall as what it holds. The stack is the
+   window's height, so a card that gives way has a definite room to give way in; the room under the
+   last card is the page's, so presses there go through to it. */
+.stack {
   position: absolute;
   inset-block-start: var(--inset);
   inset-inline-start: var(--inset);
   z-index: 6;
   display: flex;
   flex-direction: column;
+  gap: var(--space-2);
   box-sizing: border-box;
   width: var(--width);
-  height: auto;
-  --ground: var(--card);
+  height: calc(100% - 2 * var(--inset));
+  pointer-events: none;
+}
 
-  overflow: hidden;
+.stack :is(.surface, .toggle) {
+  pointer-events: auto;
+}
+
+/* The page's cards sit straight in the stack, one under another. */
+.kept,
+.more {
+  display: contents;
+}
+
+.sidebar:not([data-open]) .more {
+  display: none;
+}
+
+/* A drawer collapsed is its title alone, so it covers as little of the page as it can. */
+.sidebar[data-drawer]:not([data-open]) .kept {
+  display: none;
+}
+
+/* A gentle tint of the page, with the prompt box's hairline and soft shadow, so the sidebar sits
+   just off the page. Whatever masks a line on it reads its fill from --ground. */
+.surface {
+  --ground: var(--wb-canvas);
+
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  box-sizing: border-box;
+  padding: var(--space-1);
+  border: 1px solid var(--wb-border);
   border-radius: var(--radius-lg);
   background: var(--ground);
-  interpolate-size: allow-keywords;
-  transition:
-    height var(--speed) var(--ease-out),
-    background-color var(--speed) var(--ease-out),
-    box-shadow var(--speed) var(--ease-out);
+  box-shadow: var(--wb-shadow);
+  transition: box-shadow var(--speed) var(--ease-out);
 }
 
-.sidebar:not([data-open]) .card {
-  --ground: var(--closed-ground);
-}
-
-.sidebar[data-open] .card {
-  height: calc(100% - 2 * var(--inset));
-}
-
-/* Over the page as a drawer it is lifted clear of the text beneath, as the room's floating cards
-   are. */
-.sidebar[data-drawer][data-open] .card {
-  box-shadow:
-    var(--wb-pane-shadow),
-    0 8px 24px rgb(0 0 0 / 0.16);
-}
-
-/* Opened or closed from the keyboard, as the header marks, it moves at once. */
-.sidebar:has([data-instant]),
-.sidebar:has([data-instant]) .card {
-  transition: none;
-}
-
-/* Under the header, the top and the bottom share what is left of the card. Each is as tall as what
-   it holds; when both are more than fits, the top keeps its share and the bottom the rest, and when
-   one holds little the other takes the room it leaves. Each scrolls inside itself, without a bar
-   that would narrow its rows. */
-.sections {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-height: 0;
-}
-
-.top,
-.bottom {
-  display: flex;
+/* When the stack is more than the window, a card that scrolls gives way to the rest and scrolls
+   inside itself, without a bar that would narrow its rows. */
+.surface[data-scrolls] {
   flex: 0 1 auto;
-  flex-direction: column;
   min-height: 0;
   overflow-y: auto;
   scrollbar-width: none;
 }
 
-:is(.top, .bottom)::-webkit-scrollbar {
+.surface[data-scrolls]::-webkit-scrollbar {
   display: none;
 }
 
-/* The top gives way first, but never below its share, nor below what it holds. */
+/* Expanded, the cards that always show give way first, but never below their share, nor below what
+   they hold; the cards that come in on expanding take the rest. */
 @supports (min-height: calc-size(max-content, size)) {
-  .sidebar[data-open] .top {
+  .sidebar[data-open] .kept > .surface[data-scrolls] {
     flex-shrink: 1000;
-    min-height: calc-size(max-content, min(size, var(--top-share)));
+    min-height: calc-size(max-content, min(size, var(--kept-share)));
   }
 }
 
-.top {
-  padding: 0 var(--space-2) var(--space-2);
-}
-
-/* Closed, the top is at most a screenful under the header. */
-.sidebar:not([data-open]) .top {
-  display: var(--top-when-closed);
+/* Collapsed, a card that scrolls is at most a screenful. */
+.sidebar:not([data-open]) .surface[data-scrolls] {
   max-height: min(24rem, 100dvh - 6rem);
 }
 
-/* A drawer closed is its header alone, so it covers as little of the page as it can. */
-.sidebar[data-drawer]:not([data-open]) .top {
-  display: none;
-}
-
-/* The bottom, only while open, ruled off from the top. */
-.bottom {
-  gap: var(--space-2);
-  margin-inline: var(--space-2);
-  padding: var(--space-2) 0 var(--space-3);
-  border-block-start: 1px solid var(--wb-border);
+.more > .surface {
   animation: global(fade-in) var(--speed) var(--ease-out);
 }
 
-.sidebar:not([data-open]) .bottom,
-.bottom:empty {
-  display: none;
+/* Over the page as a drawer each card is lifted clear of the text beneath, as the room's floating
+   cards are. */
+.sidebar[data-drawer][data-open] .surface {
+  box-shadow:
+    var(--wb-pane-shadow),
+    0 8px 24px rgb(0 0 0 / 0.16);
+}
+
+/* Expanded or collapsed from the keyboard, as the toggle marks, it changes at once. */
+.sidebar:has([data-instant]),
+.sidebar:has([data-instant]) .surface {
+  transition: none;
+  animation: none;
+}
+
+/* A quiet word under the last card, not a card of its own. On the page's ground, so over the page
+   as a drawer the text beneath does not show through it. */
+.toggle {
+  display: inline-flex;
+  flex: none;
+  align-self: center;
+  align-items: center;
+  gap: var(--space-1);
+  height: 1.75rem;
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--wb-background);
+  color: var(--wb-muted-foreground);
+  font-family: inherit;
+  font-size: var(--text-xs);
+  line-height: var(--text-xs--line-height);
+  cursor: pointer;
+  transition:
+    background-color var(--duration-micro) var(--ease-out),
+    color var(--duration-micro) var(--ease-out);
+}
+
+.toggle[data-instant] {
+  transition: none;
+}
+
+.toggle:hover {
+  background: var(--wb-muted);
+  color: var(--wb-foreground);
+}
+
+.toggle:active {
+  background: var(--wb-selected);
+}
+
+.toggle:focus-visible {
+  outline: 2px solid var(--wb-action);
+  outline-offset: -2px;
+}
+
+.toggle > svg {
+  width: 14px;
+  height: 14px;
 }

@@ -153,12 +153,12 @@ export const SettingsDark: Story = {
   globals: { mode: "dark" },
 };
 
-/** Put away, the sidebar leaves only its name, and the page starts below it. */
-export const SidebarClosed: Story = {
+/** Collapsed, the sidebar leaves only its name and the toggle under it, and the page starts below them. */
+export const SidebarCollapsed: Story = {
   args: { sidebar: { ...meta.args.sidebar, open: false } },
 };
 
-/** A narrow window: the sidebar waits as a drawer behind its name. */
+/** A narrow window: the sidebar waits as a drawer behind its name and its toggle. */
 export const Narrow: Story = {
   args: { sidebar: { ...meta.args.sidebar, open: false, drawer: true } },
   globals: { viewport: { value: "mobile1" } },

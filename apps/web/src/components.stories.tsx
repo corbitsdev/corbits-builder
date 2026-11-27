@@ -87,6 +87,10 @@ export const ButtonVariants: StoryObj = {
           {variant}
         </Button>
       ))}
+      <Button size="sm">small</Button>
+      <Button size="sm" variant="primary">
+        small primary
+      </Button>
       <Button loading>loading</Button>
       <Button disabled title="Nothing to send yet">
         disabled

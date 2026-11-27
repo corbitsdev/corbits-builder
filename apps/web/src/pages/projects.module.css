@@ -82,7 +82,7 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   min-width: 0;
-  gap: var(--space-2);
+  gap: var(--space-3);
   margin-top: var(--space-6);
 }
 
@@ -93,21 +93,19 @@
   gap: var(--space-4);
 }
 
-.recentHead [data-slot="button"] {
-  font-size: 0.75rem;
-  color: var(--wb-muted-foreground);
-}
-
+/* The row's heading is a heading: the words' own size and colour, a step heavier. */
 .recentTitle {
   margin: 0;
-  font-size: 0.75rem;
-  font-weight: 500;
-  color: var(--wb-muted-foreground);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  line-height: 20px;
+  color: var(--wb-foreground);
 }
 
-/* Four across beside a wide prompt; two on a narrow screen, where four would cut every name short. */
+/* Three across beside a wide prompt, so each cover has room; two on a narrow screen, where three
+   would cut every name short. */
 .recent .recentCards {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--space-3);
 }
 

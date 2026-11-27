@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { fn } from "storybook/test";
-import { SidebarShell } from "./sidebar-shell.tsx";
+import { SidebarShell, SidebarSurface } from "./sidebar-shell.tsx";
 
 /** A stand-in for what a slot holds: the given number of rows, named for the slot. */
 function Rows({ name, count }: { name: string; count: number }) {
@@ -24,10 +24,17 @@ function Rows({ name, count }: { name: string; count: number }) {
   );
 }
 
+/** Rows in a card of their own, as a page passes them. */
+const card = (name: string, count: number, scrolls = true) => (
+  <SidebarSurface scrolls={scrolls}>
+    <Rows name={name} count={count} />
+  </SidebarSurface>
+);
+
 const header = (
   <div
     style={{
-      height: "2.5rem",
+      height: "2.25rem",
       padding: "0 var(--space-2)",
       display: "flex",
       alignItems: "center",
@@ -47,11 +54,15 @@ const meta = {
     label: "Sidebar",
     open: true,
     drawer: false,
-    bottomId: "sidebar-bottom",
     header,
-    top: <Rows name="Top" count={4} />,
-    bottom: <Rows name="Bottom" count={4} />,
-    onPutAway: fn(),
+    surfaces: card("Plan", 4),
+    more: (
+      <>
+        {card("Files", 4)}
+        {card("Section", 2, false)}
+      </>
+    ),
+    onToggle: fn(),
   },
   render: (args) => (
     <div
@@ -70,27 +81,50 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** Both short: each as tall as what it holds, one under the other. */
+/** All short: each card as tall as what it holds, one under the other, the toggle under the last. */
 export const BothShort: Story = {};
 
-/** The top is tall and the bottom short: the top takes the room the bottom leaves and scrolls. */
-export const TopTall: Story = { args: { top: <Rows name="Top" count={40} /> } };
+/**
+ * The card that always shows is tall and those that come in on expanding short: it takes the room
+ * they leave and scrolls.
+ */
+export const TopTall: Story = { args: { surfaces: card("Plan", 40) } };
 
-/** The bottom is tall and the top short: the top keeps what it holds and the bottom scrolls. */
+/** A card that comes in on expanding is tall: the card above keeps what it holds and it scrolls. */
 export const BottomTall: Story = {
-  args: { bottom: <Rows name="Bottom" count={40} /> },
-};
-
-/** Both tall: the top keeps its share, the bottom the rest, and each scrolls inside itself. */
-export const BothTall: Story = {
   args: {
-    top: <Rows name="Top" count={40} />,
-    bottom: <Rows name="Bottom" count={40} />,
+    more: (
+      <>
+        {card("Files", 40)}
+        {card("Section", 2, false)}
+      </>
+    ),
   },
 };
 
-/** No top: the bottom stands under the header and the empty slot takes no room. */
-export const NoTop: Story = { args: { top: null } };
+/**
+ * Both tall: the card that always shows keeps its share, the files the rest, and each scrolls inside
+ * itself; the title, the sections' card and the toggle keep their size.
+ */
+export const BothTall: Story = {
+  args: {
+    surfaces: card("Plan", 40),
+    more: (
+      <>
+        {card("Files", 40)}
+        {card("Section", 2, false)}
+      </>
+    ),
+  },
+};
 
-/** Closed: the header and the top alone; the bottom waits until the sidebar opens. */
+/** Nothing that always shows: the cards that come in on expanding stand under the title. */
+export const NoTop: Story = { args: { surfaces: null } };
+
+/** Collapsed: the title and the card that always shows, with the toggle under them. */
 export const Collapsed: Story = { args: { open: false } };
+
+export const CollapsedDark: Story = {
+  args: { open: false },
+  globals: { mode: "dark" },
+};

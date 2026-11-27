@@ -9,6 +9,18 @@
   padding: var(--space-6);
 }
 
+/* The state is the whole tab, so its words are set at a page's size, not at the size the library
+   gives an empty corner of a panel. */
+.state [data-slot="empty-state"] > div > p {
+  font-size: 1.125rem;
+  line-height: 1.75rem;
+}
+
+.state [data-slot="empty-state"] > div > p + * {
+  font-size: var(--text-sm);
+  line-height: var(--text-sm--line-height);
+}
+
 /* A state's facts, one to a line under its title. */
 .lines {
   display: flex;
@@ -103,9 +115,65 @@
   padding: 0 var(--space-6) var(--space-6);
 }
 
-/* The second ask spaces its words and buttons like the banner around it. */
+/* The notice reads in three parts: what it is and how long is left, why, and what to do. The time
+   left stands at the heading's end, where a deadline is looked for. */
+.keepHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-1) var(--space-3);
+}
+
+.left {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--wb-muted-foreground);
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.left > svg {
+  flex: none;
+  align-self: center;
+}
+
+/* What to do, on one line: the way to keep the app leads, and the quieter way to say it is
+   already kept stands at the line's end, so the two are not read as steps one and two. */
+.keepFoot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  margin-top: var(--space-2);
+}
+
+/* Publishing again is a different thing to do from answering, so it has a line of its own, ruled
+   off: why it gives a new address, with its button at the line's end. */
+.keepFoot[data-again] {
+  flex-wrap: nowrap;
+  justify-content: space-between;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--wb-border);
+}
+
+.keepFoot[data-again] > :last-child {
+  flex: none;
+}
+
+.already {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-inline-start: auto;
+}
+
+/* The second ask takes the line under the button, its words above its two answers. */
 .sure {
   display: grid;
+  flex-basis: 100%;
   gap: var(--space-1);
 }
 

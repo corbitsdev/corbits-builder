@@ -289,15 +289,6 @@ export const wording = {
     user_manual: "User manual",
   } as Record<string, string> & { user_manual: string },
   documentRetryFailed: "The project could not be read. Try again.",
-  tips: {
-    label: "Tips",
-    turnOff: "Turn off tips",
-    items: [
-      "Select a passage on a page to comment on it",
-      "Ask for changes in plain words",
-      "Compare versions with the version menu",
-    ],
-  },
   liveApp: {
     frameTitle: "The running preview",
     notBuiltTitle: "Anything that runs appears here",
@@ -386,7 +377,7 @@ export const wording = {
   },
   newProject: {
     title: "What do you want to make today?",
-    lead: "Build, write, edit or improve anything. Say what you want and the coordinator takes it from there.",
+    lead: "Build, publish and maintain anything. Say what you want and Builder will guide you from there.",
     starting: "Starting your project…",
     titleRequired: "A project needs a title.",
     createFailed: "The project could not be created.",
@@ -471,9 +462,12 @@ export const wording = {
   },
   /** What frames an open project: its name and sidebar top left. */
   projectShell: {
-    /** The sidebar's name opens and closes it; the shortcut does the same. */
+    /** The control under the sidebar's cards expands and collapses it; the shortcut does the same. */
     openSidebar: "Open the sidebar",
     closeSidebar: "Close the sidebar",
+    /** What that control shows beside its chevron, collapsed and expanded. */
+    sidebarMore: "More",
+    sidebarLess: "Less",
     shortcut: { mac: "⌘\\", other: "Ctrl+\\" },
     sidebar: "Project",
     /** Read after a step's name, since its mark alone does not say it. */
@@ -1183,8 +1177,7 @@ export const wording = {
     coordinatorNotStarted: "The coordinator for this project did not start.",
     projectNotOpened: "The project could not be opened.",
     projectLoading: (title: string) => `Opening ${title}…`,
-    projectEmpty:
-      "Describe what you want to make or change to start a project.",
+    projectEmpty: "Describe what you want to build to start a project.",
     stepFailed: "That step could not finish.",
   },
   /** The coordinator's questions as a card the person answers in the conversation. */
@@ -1510,9 +1503,6 @@ export const wording = {
       theme: "Theme",
       themeHint: `How ${productName} looks in this browser.`,
       themes: { light: "Light", system: "System", dark: "Dark" },
-      tips: "Document tips",
-      tipsHint: "A tips button at the foot of each document.",
-      tipsChoices: { on: "Shown", off: "Hidden" },
     },
     account: {
       section: "Account",

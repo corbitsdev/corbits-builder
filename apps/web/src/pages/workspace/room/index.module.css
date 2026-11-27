@@ -53,39 +53,43 @@
   gap: var(--space-2);
 }
 
-/* Boxed like the close button and a page's Download and Share. It opens the tab, so its words are
-   at full strength like any button's; one that needs the person carries a dot, one that failed
-   reads red. */
-.control {
-  height: 1.75rem;
-  padding-inline: 10px;
-  border: 1px solid var(--wb-border);
-  border-radius: var(--radius-control);
-  background: var(--wb-background);
-  color: var(--wb-foreground);
-  font-size: 0.8125rem;
-  font-weight: 500;
-}
-
-.control:hover {
-  background: var(--wb-muted);
-}
-
-.control[data-mark="needs_you"]::before {
-  content: "";
+/* A regular secondary button, which opens the tab: the plugin's icon, its word, and at the end one
+   dot, in the plugin's tone or, for a status that needs the person, the action's colour. One that
+   failed reads red. The tones are the theme's own status colours, since the library's dot draws
+   success and warning alike. */
+.dot {
+  flex: none;
   width: 6px;
   height: 6px;
   border-radius: 50%;
+}
+
+.dot[data-tone="neutral"] {
+  background: var(--wb-muted-foreground);
+}
+
+.dot[data-tone="warning"] {
+  background: var(--warn);
+}
+
+.dot[data-tone="success"] {
+  background: var(--wb-okay);
+}
+
+.dot[data-tone="needs_you"] {
   background: var(--wb-action);
 }
 
-.control[data-mark="failed"] {
+/* Over the app's own colour for an enabled secondary button, which is set with more weight than a
+   class alone. */
+:is(.controls, .pageControls)
+  > button.control[data-mark="failed"]:not(:disabled) {
   color: var(--wb-destructive);
 }
 
 /* With controls in the corner, the turns start below them, where the row that held them ended. */
 .conversation:has(> .top .control) [role="log"] {
-  padding-top: calc(var(--space-4) + 1.75rem + var(--space-5));
+  padding-top: calc(var(--space-4) + 2.25rem + var(--space-5));
 }
 
 .conversation {
@@ -167,7 +171,9 @@
 }
 
 /* The project view's way back to the chat, in its top corner on the floating rail's look so it
-   reads as a control over the view rather than part of the page beneath. */
+   reads as a control over the view rather than part of the page beneath. It stands in the same
+   place at the same size whatever the view shows, a written page or a preview, so the way back is
+   always where it was last time. */
 .close {
   position: absolute;
   top: var(--space-4);
@@ -192,49 +198,7 @@
   background: var(--wb-frame);
 }
 
-/* Over a written page it stands just beyond the page's top right corner, so it reads as closing
-   the page, at the size of the page's own Download and Share. The page is 768px at the pane's middle, as the document lays it; where the pane leaves
-   no room beside it, the button keeps to the corner. */
-.page:has(
-  > [data-slot="artifact-pane"]
-    [data-slot="panel-pane"][data-state="active"]
-    [data-slot="document-page"]
-) {
-  --close-size: 1.75rem;
-  --close-left: min(
-    50% + min(768px, 100% - 2 * var(--space-4)) / 2 + var(--space-3),
-    100% - var(--close-size) - var(--space-4)
-  );
-  --controls-right: calc(100% - var(--close-left) + var(--space-2));
-}
-
-/* On the white ground no sheet edge shows, so the button goes just past the text instead, inside
-   the page's side padding. */
-.page[data-ground="white"]:has(
-    > [data-slot="artifact-pane"]
-      [data-slot="panel-pane"][data-state="active"]
-      [data-slot="document-page"]
-  ) {
-  --close-left: min(
-    50% + min(768px, 100% - 2 * var(--space-4)) / 2 -
-      var(--document-page-gutter) + var(--space-3),
-    100% - var(--close-size) - var(--space-4)
-  );
-}
-
-.page:has(
-    > [data-slot="artifact-pane"]
-      [data-slot="panel-pane"][data-state="active"]
-      [data-slot="document-page"]
-  )
-  > .close {
-  right: auto;
-  left: var(--close-left);
-  width: var(--close-size);
-  height: var(--close-size);
-}
-
-/* The tabs' status goes just left of the close button and moves with it. */
+/* The tabs' status goes just left of the close button, level with it. */
 .pageControls {
   position: absolute;
   top: var(--space-4);
@@ -246,38 +210,12 @@
   height: var(--close-size);
 }
 
-.page:has(
-    > [data-slot="artifact-pane"]
-      [data-slot="panel-pane"][data-state="active"]
-      [data-slot="document-page"]
-  )
-  > .close
-  > svg {
-  width: 14px;
-  height: 14px;
-}
-
-/* Where the written page lays its contents beside it, the button is level with Download and
-   Share; narrower, they stand above the title and the button keeps to the corner. */
-@container (width >= 74rem) {
-  .page:has(
-      > [data-slot="artifact-pane"]
-        [data-slot="panel-pane"][data-state="active"]
-        [data-slot="document-page"]
-    )
-    > .close {
-    top: var(--document-controls-top);
-  }
-
-  /* Next to the button it would cover a long title, so it goes in the corner, where the chat has it. */
-  .page:has(
-      > [data-slot="artifact-pane"]
-        [data-slot="panel-pane"][data-state="active"]
-        [data-slot="document-page"]
-    )
-    > .pageControls {
-    --controls-right: var(--space-4);
-  }
+/* A preview shows someone else's interface, whatever it is, so a status floating over its corner
+   reads as part of it. With one there, the preview starts below the controls' row. */
+.page:has(> .pageControls) [data-slot="device-preview"][data-fill] {
+  padding-block-start: calc(
+    var(--space-4) + var(--close-size) + var(--space-2)
+  );
 }
 
 /* Pulled up, the chat covers the view's foot and, on a narrow canvas, its edge where the view's

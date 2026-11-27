@@ -16,13 +16,13 @@ import {
   PromptInputToolbar,
   ShimmerText,
 } from "@corbits/react-ui";
-import { useEffect, useId, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { Composer } from "../../../composer.tsx";
 import { Fault } from "../../../components.jsx";
 import { wording } from "../../../config.ts";
 import { ProjectSidebarView } from "../sidebar/project-sidebar.view.tsx";
 import { SidebarHeader, type MarkWays } from "../../../sidebar-header.tsx";
-import { SidebarShell } from "../../../sidebar-shell.tsx";
+import { SidebarShell, SidebarSurface } from "../../../sidebar-shell.tsx";
 import { RoomFrame } from "./room-frame.tsx";
 import styles from "./room-skeleton.module.css";
 import { StageView } from "./stage-view.tsx";
@@ -58,7 +58,6 @@ export function RoomSkeleton({
   draft?: { value: string; onValueChange: (value: string) => void } | undefined;
 }) {
   const said = status ?? wording.message.projectLoading(title);
-  const bottomId = `room-skeleton-sidebar-${useId()}`;
   const boxRef = useRef<HTMLTextAreaElement>(null);
   // A project just started was being typed about a moment ago, so the cursor stays in the box.
   const takesCursor = draft !== undefined && opening !== undefined;
@@ -78,27 +77,25 @@ export function RoomSkeleton({
                 label={wording.projectShell.sidebar}
                 open={sidebar.open}
                 drawer={sidebar.drawer}
-                bottomId={bottomId}
-                onPutAway={sidebar.onToggleSidebar}
+                onToggle={sidebar.onToggleSidebar}
                 header={
                   <SidebarHeader
                     title={title}
-                    open={sidebar.open}
-                    controls={bottomId}
-                    onToggle={sidebar.onToggleSidebar}
                     onHome={sidebar.onHome}
                     onPreferences={sidebar.onPreferences}
                   />
                 }
-                top={
-                  <ul className={styles.plan} aria-hidden="true">
-                    {PLAN_ROWS.map((width, index) => (
-                      <li key={index} className={styles.step}>
-                        <span className={styles.dot} />
-                        <span className={styles.bar} style={{ width }} />
-                      </li>
-                    ))}
-                  </ul>
+                surfaces={
+                  <SidebarSurface>
+                    <ul className={styles.plan} aria-hidden="true">
+                      {PLAN_ROWS.map((width, index) => (
+                        <li key={index} className={styles.step}>
+                          <span className={styles.dot} />
+                          <span className={styles.bar} style={{ width }} />
+                        </li>
+                      ))}
+                    </ul>
+                  </SidebarSurface>
                 }
               />
             ) : (

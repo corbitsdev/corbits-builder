@@ -170,10 +170,12 @@
   outline-offset: -2px;
 }
 
+/* A tile's foot: the name, and under it a quieter line for its stage and when it was last worked
+   on. It is kept short, so the cover above it is most of the card. */
 .cardBody {
   display: grid;
-  gap: var(--space-2);
-  padding: var(--space-3) var(--space-4) var(--space-4);
+  gap: 2px;
+  padding: 10px var(--space-3) var(--space-3);
 }
 
 .cardTitle {
@@ -187,10 +189,11 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-2);
+  gap: 6px;
   padding-right: var(--space-6);
   color: var(--wb-muted-foreground);
-  font-size: 0.8125rem;
+  font-size: var(--text-xs);
+  line-height: 1rem;
 }
 
 .grid:not([data-menu]) .cardMeta {
@@ -200,7 +203,12 @@
 .cardMenu {
   position: absolute;
   right: var(--space-2);
-  bottom: var(--space-3);
+  bottom: var(--space-2);
+}
+
+/* As a tile the cover is shown whole, at a shape that gives a design's first page room. */
+.grid[data-view="grid"] [data-slot="project-cover"] {
+  aspect-ratio: 3 / 2;
 }
 
 /* As a list: one line per project, a small swatch of its cover at the start,
@@ -242,6 +250,7 @@
 .grid[data-view="rows"] .cardMeta {
   flex-wrap: nowrap;
   padding-right: 0;
+  font-size: 0.8125rem;
   white-space: nowrap;
 }
 

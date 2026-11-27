@@ -5,6 +5,8 @@
   flex-direction: column;
   gap: 6px;
   width: 16rem;
+  /* In a narrow document margin it takes the room there is. */
+  max-width: 100%;
   padding: 10px var(--space-3);
   border: 1px solid var(--wb-border);
   border-radius: var(--radius-lg);

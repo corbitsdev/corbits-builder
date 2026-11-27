@@ -3,6 +3,7 @@ import { expect, fn, userEvent, within } from "storybook/test";
 import { wording } from "./config.ts";
 import { ProjectMenuView } from "./pages/project-menu.view.tsx";
 import { SidebarHeader } from "./sidebar-header.tsx";
+import { SidebarSurface } from "./sidebar-shell.tsx";
 
 const words = wording.projectShell;
 
@@ -11,21 +12,14 @@ const meta = {
   component: SidebarHeader,
   args: {
     title: "Bakery orders",
-    open: true,
-    controls: "sidebar-bottom",
-    onToggle: fn(),
     onHome: fn(),
     onPreferences: fn(),
   },
   render: (args) => (
-    <div
-      style={{
-        width: "var(--rail-width)",
-        borderRadius: "var(--radius-lg)",
-        background: "var(--card)",
-      }}
-    >
-      <SidebarHeader {...args} />
+    <div style={{ width: "var(--rail-width)" }}>
+      <SidebarSurface>
+        <SidebarHeader {...args} />
+      </SidebarSurface>
     </div>
   ),
 } satisfies Meta<typeof SidebarHeader>;
@@ -33,17 +27,15 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-export const Open: Story = {};
+/** With no menu of its own, the name is only shown, with no chevron after it. */
+export const NameOnly: Story = {};
 
-/** Closed, the title row is a filled pill of its own. */
-export const Closed: Story = { args: { open: false } };
+export const NameOnlyDark: Story = { globals: { mode: "dark" } };
 
-export const ClosedDark: Story = {
-  args: { open: false },
-  globals: { mode: "dark" },
-};
-
-/** The project's name opens the project's own menu, as its card on the projects page does. */
+/**
+ * The project's name opens the project's own menu, as its card on the projects page does; the
+ * chevron after it says so.
+ */
 export const NameMenu: Story = {
   args: {
     titleMenu: (trigger, placement) => (

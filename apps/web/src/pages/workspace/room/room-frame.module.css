@@ -40,6 +40,10 @@
 }
 
 .frame:has([data-drawer]) > .main {
-  /* Below the sidebar's 2.5rem title row and the edge either side of it. */
-  padding-block-start: calc(2.5rem + 2 * var(--frame-edge));
+  /* Below the sidebar's title card (its 2.25rem row, padding and border), the toggle under it, and
+     the edge either side of them. */
+  padding-block-start: calc(
+    2.25rem + 2 * var(--space-1) + 2px + var(--space-2) + 1.75rem + 2 *
+      var(--frame-edge)
+  );
 }

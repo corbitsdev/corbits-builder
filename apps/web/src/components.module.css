@@ -197,3 +197,17 @@ button.quietControl {
 .working .sweep {
   animation-duration: 2.2s;
 }
+
+/* The library's small button is only a step under its regular one. Ours is a size class down, in
+   height, type and inset, so beside a heading it reads as the lesser control. */
+button.buttonSmall {
+  height: 28px;
+  gap: var(--space-1);
+  padding-inline: var(--space-3);
+  font-size: var(--wb-text-control);
+}
+
+button.buttonSmall svg {
+  width: 14px;
+  height: 14px;
+}

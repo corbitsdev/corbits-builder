@@ -177,6 +177,7 @@ function sidebarOf(
               {
                 id: LIVE_TAB,
                 label: wording.projectShell.preview,
+                icon: "monitor-play",
                 selected: false,
               },
             ],
@@ -614,12 +615,59 @@ export const ChoosingADesign: Story = {
 };
 
 const published = [
-  { tab: "Publish", label: "Published", mark: "done" as const, onOpen: fn() },
+  {
+    tab: "Publish",
+    label: "Published",
+    mark: "done" as const,
+    icon: "cloud-check" as const,
+    tone: "success" as const,
+    onOpen: fn(),
+  },
 ];
 
-/** A plugin's tab says where its work stands in the room's top bar, and opens from there. */
+/**
+ * A plugin's tab says where its work stands in the room's top bar, and opens from there: the
+ * plugin's icon, its word and its dot. Published, the app is up to date.
+ */
 export const TabStatus: Story = {
   args: { ...withDocuments, tabStatus: published },
+};
+
+/** Not published yet: the corner offers to put the app up. */
+export const TabStatusUnpublished: Story = {
+  args: {
+    ...withDocuments,
+    tabStatus: [
+      {
+        tab: "Publish",
+        label: "Publish",
+        icon: "cloud-upload",
+        tone: "neutral",
+        onOpen: fn(),
+      },
+    ],
+  },
+};
+
+/** Changes saved since the last publish: the corner says the app online is behind. */
+export const TabStatusChanges: Story = {
+  args: {
+    ...withDocuments,
+    tabStatus: [
+      {
+        tab: "Publish",
+        label: "Publish changes",
+        icon: "cloud-sync",
+        tone: "warning",
+        onOpen: fn(),
+      },
+    ],
+  },
+};
+
+export const TabStatusDark: Story = {
+  args: { ...withDocuments, tabStatus: published },
+  globals: { mode: "dark" },
 };
 
 // Enough turns that the conversation scrolls, so its scrollbar shows beside the corner.
@@ -649,14 +697,15 @@ export const TabStatusNeedsYou: Story = {
         tab: "Publish",
         label: "Publishing needs you",
         mark: "needs_you",
+        icon: "cloud-upload",
         onOpen: fn(),
       },
     ],
   },
 };
 
-/** With the sidebar put away, the corner keeps its place. */
-export const TabStatusSidebarClosed: Story = {
+/** With the sidebar collapsed, the corner keeps its place. */
+export const TabStatusSidebarCollapsed: Story = {
   args: {
     ...TabStatus.args,
     sidebar: { ...withDocuments.sidebar, open: false },
@@ -706,24 +755,24 @@ export const TabStatusOverPreview: Story = {
   },
 };
 
-/** The sidebar put away: its toggle keeps the room's corner, with the project's name. */
-export const SidebarClosed: Story = {
+/** The sidebar collapsed: the project's name keeps the room's corner, with the toggle under it. */
+export const SidebarCollapsed: Story = {
   args: {
     ...withDocuments,
     sidebar: { ...withDocuments.sidebar, open: false },
   },
 };
 
-/** Put away while the coordinator's plan is under way: the plan stays in sight under the name. */
-export const SidebarClosedPlanUnderWay: Story = {
+/** Collapsed while the coordinator's plan is under way: the plan stays in sight under the name. */
+export const SidebarCollapsedPlanUnderWay: Story = {
   args: { sidebar: { ...sidebarOf({}, coordinatorPlan.plan), open: false } },
 };
 
 /**
- * Put away beside the open project view. The sidebar keeps its own column, so its plan and the
+ * Collapsed beside the open project view. The sidebar keeps its own column, so its plan and the
  * page's contents, in the page's margin, are both in sight.
  */
-export const SidebarClosedProjectOpen: Story = {
+export const SidebarCollapsedProjectOpen: Story = {
   args: {
     ...ProjectOpen.args,
     sidebar: { ...withDocuments.sidebar, open: false },
