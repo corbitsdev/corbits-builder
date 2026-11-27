@@ -10,12 +10,12 @@ import { ConceptMockup } from "./design-concepts.tsx";
 import { LiveApp } from "./live-app.tsx";
 import { TweakPanel } from "./mockup-tweaks.tsx";
 import { SpaceScreen } from "./plugin-screens.tsx";
+import { useRoom } from "./room.model.ts";
 import {
-  useRoom,
   useRoomGate,
   type ReadyRoomProps,
   type StageWorkspaceProps,
-} from "./room.model.ts";
+} from "./room-gate.model.ts";
 import { ROOM_NARROW_QUERY, useSidebar } from "../../sidebar-setting.ts";
 import { composerKey, useUnsent } from "../../unsent.ts";
 import { RoomFault, RoomSkeleton } from "./room-skeleton.tsx";
