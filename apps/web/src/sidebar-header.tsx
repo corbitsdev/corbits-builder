@@ -18,8 +18,8 @@ import {
   MenuSeparator,
   MenuTrigger,
 } from "@corbits/react-ui/ui/menu";
-import { wording } from "../../config.ts";
-import { Mark, MenuPanel } from "../../components.jsx";
+import { wording } from "./config.ts";
+import { Mark, MenuPanel } from "./components.jsx";
 import styles from "./sidebar-header.module.css";
 
 const words = wording.projectShell;

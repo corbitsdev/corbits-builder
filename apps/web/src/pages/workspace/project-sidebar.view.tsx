@@ -11,12 +11,12 @@ import {
   SidebarHeader,
   type MarkWays,
   type TitleMenu,
-} from "./sidebar-header.tsx";
+} from "../../sidebar-header.tsx";
 import {
   SidebarSections,
   type SidebarSectionsProps,
 } from "./sidebar-sections.tsx";
-import { SidebarShell } from "./sidebar-shell.tsx";
+import { SidebarShell } from "../../sidebar-shell.tsx";
 
 export type ProjectSidebarViewProps = MarkWays & {
   project: string;
