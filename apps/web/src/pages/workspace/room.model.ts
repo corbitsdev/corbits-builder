@@ -20,7 +20,6 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import type { ConversationPart } from "@corbits/react-ui";
 import {
   heldOnApproval,
   projectActivityQuery,
@@ -47,12 +46,9 @@ import { toast } from "sonner";
 import type { SpaceScreenProps } from "./plugin-screens.tsx";
 import { useCommentDrafts, usePromptBox } from "./prompt-box.model.ts";
 import { acceptedMaterialsQuery, useComposer } from "./composer.model.ts";
-import { subscribeWorkflowRun } from "../../api/run-stream.ts";
 import {
   runStepsQuery,
-  savedResults,
   savedRunIds,
-  savedTurnSteps,
   useRunStreams,
   useSavedRunSteps,
 } from "./run-preview.ts";
@@ -101,22 +97,11 @@ import {
   type DocumentChoice,
 } from "./tab-follow.ts";
 import {
-  awaitingCommit,
-  committedSteps,
-  emptyLiveRun,
-  foldLiveRun,
-  latestAssistantAt,
-  pendingLiveTurn,
-  sameParts,
-  type LiveRun,
-} from "./live-run.ts";
-import {
   useBindPoll,
   useReloadOnHold,
   useRoomReload,
   useSettleReloads,
 } from "./room-reload.model.ts";
-import { withPendingSends } from "./pending-sends.ts";
 import { decideApproval, openDecisions } from "../../api/decisions.ts";
 import {
   documentTab,
@@ -129,12 +114,7 @@ import type { DeliverableState } from "./deliverable-block.tsx";
 import { formatPassageQuote, type PassageQuote } from "./passage-quote.ts";
 import { humanFault, humanFaultWithCode } from "../../human-fault.ts";
 import { suggestedReplies } from "./suggested-replies.ts";
-import {
-  sentItemId,
-  visibleChatText,
-  withLiveTurn,
-  withSteps,
-} from "./visible-chat.ts";
+import { sentItemId, withLiveTurn } from "./visible-chat.ts";
 import {
   keptRoom,
   loadProjectRoom,
@@ -169,6 +149,7 @@ import type {
 } from "./screen-question.tsx";
 import type { RoomSession } from "./room-session.ts";
 import { useSessionMemory, withEntries } from "./session-memory.ts";
+import { useLiveTurn } from "./live-turn.model.ts";
 import { screenWords, writesCode } from "./roles.ts";
 import { inTab, pluginTabs, screensFor, selectionNames } from "./screens.ts";
 
@@ -255,7 +236,6 @@ export type ReadyRoomProps = StageWorkspaceProps & LoadedRoom;
  * Reads the project and its room, and starts its coordinator, while the room shows its loading
  * or fault state; the room is ready only with a loaded snapshot.
  */
-const NO_STEPS: ReadonlyMap<number, readonly ConversationPart[]> = new Map();
 const NO_RUNS: ReadonlyMap<string, InFlightRun> = new Map();
 const NO_SIGHTINGS: ReadonlyMap<string, Sighting> = new Map();
 
@@ -447,7 +427,6 @@ export function useRoom({
   const shownDocuments = artifacts.map((item) =>
     shownDocument(item, documents[paneDocumentKey(projectId, item)]),
   );
-  const [liveRun, setLiveRun] = useState<LiveRun>(emptyLiveRun);
   // Kept stable, so an open screen reads the project's values once rather than on every render.
   const projectValues = useMemo(
     () => ({
@@ -477,14 +456,6 @@ export function useRoom({
   // The project view open over the conversation.
   const [projectOpen, setProjectOpen] = useState(false);
   const [enablingAi, setEnablingAi] = useState(false);
-  const liveRunRef = useRef<LiveRun>(emptyLiveRun);
-  // The stream folds each event against the latest committed reply, read once the render commits.
-  const committedAt = latestAssistantAt(mirror);
-  const committedAtRef = useRef(committedAt);
-  useEffect(() => {
-    committedAtRef.current = committedAt;
-  }, [committedAt]);
-  const reportedFailure = useRef<number | null>(null);
   const rolesAtWork = useRolesAtWork(projectId);
   const [gateDone, setGateDone] = useState(0);
   // The waits that belong to this project, from the open decisions.
@@ -551,30 +522,16 @@ export function useRoom({
       ? openedFromScreen.id
       : null;
 
-  // The durable mirror is the committed transcript. The stream fills the gap
-  // while a message run is producing it, and says when to read the room
-  // again. A dropped stream reads the room too: the coordinator run it named
-  // may have been replaced, and a new run id resubscribes here.
-  useEffect(() => {
-    liveRunRef.current = emptyLiveRun;
-    setLiveRun(emptyLiveRun);
-    if (runId === null || runTenantId === undefined) return;
-    return subscribeWorkflowRun(runTenantId, runId, {
-      onEvent: (event) => {
-        const next = foldLiveRun(
-          liveRunRef.current,
-          event,
-          committedAtRef.current,
-        );
-        liveRunRef.current = next.run;
-        setLiveRun(next.run);
-        if (next.reload) reload();
-      },
-      onChange: reload,
-      onReconnect: reload,
-      onError: reload,
-    }).unsubscribe;
-  }, [projectId, runId, runTenantId, reload]);
+  const { liveRun, settling, turns, coordinatorResults, liveTurn } =
+    useLiveTurn({
+      projectId,
+      runId,
+      runTenantId,
+      events,
+      mirror,
+      reload,
+      composer,
+    });
 
   // The runs held on an approval, from the polled run states: a coder's package request raises no
   // room event, so the room alone would not say the person's turn came until something else moved.
@@ -592,55 +549,8 @@ export function useRoom({
   }, [projectId, queryClient, snapshot, gateDone, awaitingApproval]);
   useReloadOnHold(awaitingApproval, reload);
 
-  const settling = awaitingCommit(liveRun, mirror);
   useSettleReloads(settling, reload);
 
-  // A dead run is not a quiet colleague. Say so once, and stop the thinking
-  // mark, when the person is still waiting on a reply that will not come.
-  useEffect(() => {
-    if (!events || mirror.some((turn) => turn.role === "assistant")) return;
-    const failure = [...events]
-      .reverse()
-      .find(
-        (event) => event.type === "StepFailed" || event.type === "RunFailed",
-      );
-    if (!failure || reportedFailure.current !== null) return;
-    reportedFailure.current = failure.seq;
-    const detail = failure.body["message"];
-    const visible = typeof detail === "string" ? visibleChatText(detail) : "";
-    const message =
-      visible.length > 0
-        ? humanFault(new Error(visible), wording.message.coordinatorStopped)
-        : wording.message.coordinatorStopped;
-    composer.fail(message);
-    toast.error(message);
-  }, [events, mirror]);
-
-  // Each committed reply's thinking and tool work, as this session watched it.
-  const stepsByAt = useSessionMemory(NO_STEPS, (known) =>
-    withEntries(known, committedSteps(liveRun, mirror), sameParts),
-  );
-  // What this session watched the coordinator do wins; a reply from before it has its saved calls.
-  const coordinatorSteps = useSavedRunSteps(runTenantId, runId);
-  const turns = useMemo(
-    () =>
-      withSteps(
-        withPendingSends(mirror, composer.sent),
-        stepsByAt,
-        savedTurnSteps(
-          coordinatorSteps.steps,
-          mirror.flatMap((turn) =>
-            turn.role === "assistant" ? [turn.at] : [],
-          ),
-        ),
-      ),
-    [mirror, composer.sent, coordinatorSteps.steps, stepsByAt],
-  );
-  // What each of the coordinator's calls returned, saved or as this session watched it.
-  const coordinatorResults = new Map([
-    ...savedResults(coordinatorSteps.steps),
-    ...liveRun.results,
-  ]);
   const mailThreads = snapshot.conversation.threads;
   const specialistUpdates = useMemo(
     () => threadUpdates(mailThreads),
@@ -683,7 +593,6 @@ export function useRoom({
     providerMissing,
   });
   const { streaming, thinking } = phase;
-  const liveTurn = pendingLiveTurn(liveRun, mirror);
   const shownTurns = withLiveTurn(turns, liveTurn, streaming);
   const lastShown = shownTurns.at(-1);
   const replies =
